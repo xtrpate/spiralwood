@@ -328,6 +328,7 @@ export default function CustomCheckoutPage() {
   const [error, setError] = useState("");
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [assemblyChoice, setAssemblyChoice] = useState("");
+  const [fulfillmentMethod, setFulfillmentMethod] = useState("delivery");
   const [partsModalItem, setPartsModalItem] = useState(null);
 
   const [checkoutNote, setCheckoutNote] = useState("");
@@ -516,26 +517,26 @@ export default function CustomCheckoutPage() {
       return;
     }
 
-    if (!String(form.delivery_address || "").trim()) {
-      setError("Please enter your project/delivery address.");
-      return;
-    }
+    let validDeliveryPin = null;
+    if (fulfillmentMethod === "delivery") {
+      if (!String(form.delivery_address || "").trim()) {
+        setError("Please enter your delivery address.");
+        return;
+      }
 
-    // PHASE 6A: the location pin is mandatory for every new blueprint/
-    // custom-request order — never submit a NULL, half-set, or
-    // out-of-range pin (strict validator — see isValidCoordPair).
-    const validDeliveryPin = getValidCoordPair(
-      deliveryPin?.lat,
-      deliveryPin?.lng,
-    );
-
-    if (!validDeliveryPin) {
-      setError(
-        useDefaultAddress
-          ? "Your default address has no saved map pin. Please select a location on the map before submitting."
-          : "Please select a valid location pin on the map before submitting.",
+      validDeliveryPin = getValidCoordPair(
+        deliveryPin?.lat,
+        deliveryPin?.lng,
       );
-      return;
+
+      if (!validDeliveryPin) {
+        setError(
+          useDefaultAddress
+            ? "Your default address has no saved map pin. Please select a location on the map before submitting."
+            : "Please select a valid delivery location on the map before submitting.",
+        );
+        return;
+      }
     }
 
     const feedbackDurations = getMotionFeedbackDurations();
@@ -604,9 +605,15 @@ export default function CustomCheckoutPage() {
           })),
           name: form.name,
           phone: form.phone,
-          delivery_address: String(form.delivery_address || "").trim(),
-          delivery_lat: validDeliveryPin.lat,
-          delivery_lng: validDeliveryPin.lng,
+          fulfillment_method: fulfillmentMethod,
+          delivery_address:
+            fulfillmentMethod === "delivery"
+              ? String(form.delivery_address || "").trim()
+              : null,
+          delivery_lat:
+            fulfillmentMethod === "delivery" ? validDeliveryPin.lat : null,
+          delivery_lng:
+            fulfillmentMethod === "delivery" ? validDeliveryPin.lng : null,
           notes: form.notes,
           assembly_choice: assemblyChoice,
           design_review_confirmed: true,
@@ -898,7 +905,50 @@ export default function CustomCheckoutPage() {
                   />
                 </div>
 
-                {hasDefaultAddress && (
+                <div className="form-field full">
+                  <label style={{ display: "block", marginBottom: 8, fontWeight: 600 }}>
+                    How will you receive your furniture?
+                  </label>
+                  <div
+                    role="group"
+                    aria-label="Fulfillment method"
+                    style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}
+                  >
+                    {[{ key: "delivery", label: "Delivery", detail: "We deliver to your selected address." }, { key: "pickup", label: "Pickup", detail: "Collect your furniture at Spiral Wood Services." }].map((option) => {
+                      const selected = fulfillmentMethod === option.key;
+                      return (
+                        <button
+                          key={option.key}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => {
+                            setFulfillmentMethod(option.key);
+                            setError("");
+                          }}
+                          style={{
+                            textAlign: "left",
+                            padding: "14px 16px",
+                            border: selected ? "2px solid #111111" : "1px solid #d7d0c9",
+                            background: selected ? "#111111" : "#fff",
+                            color: selected ? "#ffffff" : "#111111",
+                            borderRadius: 8,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <div style={{ fontWeight: 700, marginBottom: 4 }}>{option.label}</div>
+                          <div style={{ fontSize: 13, color: selected ? "#ffffff" : "#6b625c", lineHeight: 1.4 }}>{option.detail}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {fulfillmentMethod === "pickup" ? (
+                    <p style={{ margin: "10px 0 0", fontSize: 13, color: "#6b625c" }}>
+                      No delivery address, delivery scheduling, logistics fee, or delivery fee is required for pickup.
+                    </p>
+                  ) : null}
+                </div>
+
+                {fulfillmentMethod === "delivery" && hasDefaultAddress && (
                   <div className="form-field full">
                     <label
                       style={{
@@ -1000,20 +1050,18 @@ export default function CustomCheckoutPage() {
                   </div>
                 )}
 
-                <div className="form-field full">
-                  <LocationPicker
-                    key={`custom-checkout-location-${locationPickerKey}`}
-                    label={
-                      useDefaultAddress
-                        ? "Default Delivery Location"
-                        : "Project / Delivery Address"
-                    }
-                    addressValue={form.delivery_address}
-                    onAddressChange={handleAddressInputChange}
-                    value={deliveryPin}
-                    onChange={handlePinChange}
-                  />
-                </div>
+                {fulfillmentMethod === "delivery" && (
+                  <div className="form-field full">
+                    <LocationPicker
+                      key={`custom-checkout-location-${locationPickerKey}`}
+                      label={useDefaultAddress ? "Default Delivery Location" : "Delivery Address"}
+                      addressValue={form.delivery_address}
+                      onAddressChange={handleAddressInputChange}
+                      value={deliveryPin}
+                      onChange={handlePinChange}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </div>

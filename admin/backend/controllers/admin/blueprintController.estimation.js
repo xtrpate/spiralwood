@@ -610,6 +610,11 @@ exports.saveEstimation = async (req, res) => {
       }
     }
 
+    const isPickupOrder =
+      String(lifecycle.order?.fulfillment_method || "delivery")
+        .trim()
+        .toLowerCase() === "pickup";
+
     const {
       items = [],
       labor_cost = 0,
@@ -622,7 +627,7 @@ exports.saveEstimation = async (req, res) => {
     validateEstimationItems(items);
 
     const laborCostInput = Number(labor_cost);
-    const overheadCostInput = Number(overhead_cost);
+    const overheadCostInput = isPickupOrder ? 0 : Number(overhead_cost);
     const taxRateInput = Number(tax_rate);
     const discountInput = Number(discount);
     const notesInput = String(notes || "").trim();
@@ -714,8 +719,9 @@ exports.saveEstimation = async (req, res) => {
       .trim()
       .toLowerCase();
 
-    const preservedAdditionalDeliveryFee =
-      existingDeliveryDecision === "fee_required"
+    const preservedAdditionalDeliveryFee = isPickupOrder
+      ? 0
+      : existingDeliveryDecision === "fee_required"
         ? Math.max(
             0,
             Number(
@@ -725,6 +731,9 @@ exports.saveEstimation = async (req, res) => {
         : 0;
 
     const preservedDeliveryMeta = {};
+    if (isPickupOrder) {
+      preservedDeliveryMeta.fulfillment_method = "pickup";
+    }
 
     [
       "oversized_delivery_decision",

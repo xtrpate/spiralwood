@@ -19,6 +19,7 @@ const ALLOWED_STATUSES = [
   "confirmed",
   "contract_released",
   "production",
+  "ready_for_pickup",
   "shipping",
   "delivered",
 ];
@@ -314,6 +315,10 @@ const buildSummary = ({ order, estimation, contract = null, paymentRows }) => {
     order_number: order.order_number,
     order_type: order.order_type,
     order_status: order.status,
+    fulfillment_method:
+      normalize(order.fulfillment_method) === "pickup" ? "pickup" : "delivery",
+    picked_up_at: order.picked_up_at || null,
+    has_pending_payment: Boolean(hasPendingPayment),
     initial_payment_method: order.payment_method || null,
     payment_status: derivedStatus,
     total: roundMoney(orderTotalCents / 100),

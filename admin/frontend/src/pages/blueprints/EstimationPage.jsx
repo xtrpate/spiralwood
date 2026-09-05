@@ -1883,6 +1883,7 @@ export default function EstimationPage() {
     readyForQuote: false,
     dirty: false,
     message: "Wait for the delivery capacity review to finish loading.",
+    fulfillmentMethod: "delivery",
   });
 
   useEffect(() => {
@@ -1891,6 +1892,7 @@ export default function EstimationPage() {
       readyForQuote: false,
       dirty: false,
       message: "Wait for the delivery capacity review to finish loading.",
+      fulfillmentMethod: "delivery",
     });
     setSavedDraftSignature(null);
   }, [id]);
@@ -2191,12 +2193,15 @@ export default function EstimationPage() {
     otherSubtotal +
     (inventoryTrackingOnly ? 0 : inventorySubtotal);
   const laborCost = Number(costs.labor_cost || 0);
-  const logisticsCost = Number(costs.overhead_cost || 0);
+  const isPickup = deliveryGate.fulfillmentMethod === "pickup";
+  const logisticsCost = isPickup ? 0 : Number(costs.overhead_cost || 0);
   const draftDeliveryDecision = String(oversizedDeliveryDraft?.decision || "")
     .trim()
     .toLowerCase();
-  const additionalDeliveryFee = Math.max(
-    0,
+  const additionalDeliveryFee = isPickup
+    ? 0
+    : Math.max(
+        0,
     Number(
       oversizedDeliveryDraft?.assessment_status === "oversized"
         ? draftDeliveryDecision === "fee_required"
@@ -2398,8 +2403,9 @@ export default function EstimationPage() {
     const validationErrors = getValidationErrors({ items, costs });
     if (showFirstValidationError(validationErrors)) return;
 
-    const currentDeliveryDraft =
-      readOversizedDeliveryDraft(id) || oversizedDeliveryDraft;
+    const currentDeliveryDraft = isPickup
+      ? null
+      : readOversizedDeliveryDraft(id) || oversizedDeliveryDraft;
 
     if (
       currentDeliveryDraft?.assessment_status === "oversized" &&
@@ -2680,7 +2686,7 @@ export default function EstimationPage() {
         : []),
       ["Additional Items", money(otherSubtotal)],
       ["Labor", money(laborCost)],
-      ["Logistics", money(logisticsCost)],
+      ...(!isPickup ? [["Logistics", money(logisticsCost)]] : []),
       ...(additionalDeliveryFee > 0
         ? [["Additional Delivery Fee", money(additionalDeliveryFee)]]
         : []),
@@ -2870,7 +2876,7 @@ export default function EstimationPage() {
           ["request", "Request"],
           ["components", "Components"],
           ["materials", "Materials"],
-          ["delivery", "Delivery"],
+          ...(!isPickup ? [["delivery", "Delivery"]] : []),
           ["quotation", "Quotation"],
         ].map(([key, label]) => {
           const active = activeEstimateTab === key;
@@ -3007,19 +3013,21 @@ export default function EstimationPage() {
       </div>
       )}
 
-      <div
-        style={{
-          display: activeEstimateTab === "delivery" ? "block" : "none",
-          marginBottom: 20,
-        }}
-        aria-hidden={activeEstimateTab !== "delivery"}
-      >
-        <OversizedDeliveryEstimatorPanel
-          key={id}
-          blueprintId={id}
-          onGateChange={setDeliveryGate}
-        />
-      </div>
+      {!isPickup && (
+        <div
+          style={{
+            display: activeEstimateTab === "delivery" ? "block" : "none",
+            marginBottom: 20,
+          }}
+          aria-hidden={activeEstimateTab !== "delivery"}
+        >
+          <OversizedDeliveryEstimatorPanel
+            key={id}
+            blueprintId={id}
+            onGateChange={setDeliveryGate}
+          />
+        </div>
+      )}
 
       {activeEstimateTab === "components" && (
         <>
@@ -3075,7 +3083,9 @@ export default function EstimationPage() {
           <div style={sectionHeaderSmall}>
             <h3 style={sectionTitle}>Quotation Details</h3>
             <p style={helperText}>
-              Enter labor, logistics, adjustments, and notes.
+              {isPickup
+                ? "Enter labor, adjustments, and notes."
+                : "Enter labor, logistics, adjustments, and notes."}
             </p>
           </div>
           <div style={{ padding: "20px 24px" }}>
@@ -3097,24 +3107,26 @@ export default function EstimationPage() {
                 disabled={isReadOnly}
               />
             </div>
-            <div style={{ marginBottom: 16 }}>
-              <label style={labelSm}>Logistics (₱)</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={costs.overhead_cost}
-                onChange={(event) =>
-                  !isReadOnly &&
-                  setCosts((current) => ({
-                    ...current,
-                    overhead_cost: event.target.value,
-                  }))
-                }
-                style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly) }}
-                disabled={isReadOnly}
-              />
-            </div>
+            {!isPickup && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={labelSm}>Logistics (₱)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={costs.overhead_cost}
+                  onChange={(event) =>
+                    !isReadOnly &&
+                    setCosts((current) => ({
+                      ...current,
+                      overhead_cost: event.target.value,
+                    }))
+                  }
+                  style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly) }}
+                  disabled={isReadOnly}
+                />
+              </div>
+            )}
             <div style={dualFieldGrid}>
               <div>
                 <label style={labelSm}>Discount (%)</label>
@@ -3174,7 +3186,7 @@ export default function EstimationPage() {
                 }}
                 maxLength={500}
                 disabled={isReadOnly}
-                placeholder="Add terms, inclusions, exclusions, or delivery notes..."
+                placeholder="Add terms, inclusions, exclusions, or project notes..."
               />
             </div>
           </div>
@@ -3195,7 +3207,7 @@ export default function EstimationPage() {
                 : []),
               ["Additional Items", otherSubtotal],
               ["Labor", laborCost],
-              ["Logistics", logisticsCost],
+              ...(!isPickup ? [["Logistics", logisticsCost]] : []),
               ...(additionalDeliveryFee > 0
                 ? [["Additional Delivery Fee", additionalDeliveryFee]]
                 : []),

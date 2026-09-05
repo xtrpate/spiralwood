@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import { Check, MapPin } from "lucide-react";
 import api, { buildAssetUrl } from "../../services/api";
 import { downloadProjectAgreementPdf } from "../../utils/projectAgreementPdf";
+import { downloadPickupAcknowledgementPdf } from "../../utils/pickupAcknowledgementPdf";
 import CustomerTemplateWorkbench from "./CustomerTemplateWorkbench";
 import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
 import "./customizepage.css";
@@ -22,6 +23,11 @@ const STATUS_META = {
   },
   confirmed: {
     label: "Confirmed",
+    color: "#111111",
+    bg: "#f3f4f6",
+  },
+  ready_for_pickup: {
+    label: "Ready for pickup",
     color: "#111111",
     bg: "#f3f4f6",
   },
@@ -104,6 +110,7 @@ const CUSTOMER_JOURNEY_STEPS = [
 
 const getCustomerJourneyState = ({
   orderStatus = "",
+  fulfillmentMethod = "delivery",
   estimationStatus = "",
   paymentStatus = "",
   deliveryStatus = "",
@@ -118,11 +125,21 @@ const getCustomerJourneyState = ({
   const delivery = String(deliveryStatus || "").trim().toLowerCase();
   const remainingBalance = Math.max(0, Number(balanceDue) || 0);
   const verifiedTotal = Math.max(0, Number(verifiedPaymentTotal) || 0);
+  const isPickupJourney = String(fulfillmentMethod || "").trim().toLowerCase() === "pickup";
+  const journeySteps = CUSTOMER_JOURNEY_STEPS.map((step) =>
+    isPickupJourney && step.key === "delivery"
+      ? {
+          ...step,
+          label: "Pickup",
+          description: "Your finished furniture is prepared for store pickup and confirmed at handoff.",
+        }
+      : step,
+  );
 
   let currentIndex = 1;
   let title = "We are reviewing your design";
   let description =
-    "We received your furniture request. Our team is checking your design, size, materials, and delivery details before preparing your quotation.";
+    "We received your furniture request. Our team is checking your design, size, materials, and project details before preparing your quotation.";
   let actionTitle = "No action needed";
   let actionText =
     "You do not need to do anything right now. We will notify you when your quotation is ready.";
@@ -138,10 +155,11 @@ const getCustomerJourneyState = ({
     actionText = "No further action is required for this request.";
     isCancelled = true;
   } else if (order === "completed") {
-    currentIndex = CUSTOMER_JOURNEY_STEPS.length - 1;
+    currentIndex = journeySteps.length - 1;
     title = "Your project is complete";
-    description =
-      "Your furniture has been delivered and this project is complete. Thank you for choosing Spiral Wood Services.";
+    description = isPickupJourney
+      ? "Your furniture was picked up and the signed handoff record is saved. Thank you for choosing Spiral Wood Services."
+      : "Your furniture has been delivered and this project is complete. Thank you for choosing Spiral Wood Services.";
     actionTitle = "Completed";
     actionText = "No further action is needed for this project.";
     isComplete = true;
@@ -158,6 +176,18 @@ const getCustomerJourneyState = ({
       actionTitle = "Delivery complete";
       actionText = "No action is needed from you right now.";
     }
+  } else if (order === "ready_for_pickup") {
+    currentIndex = 5;
+    title = "Your furniture is ready for pickup";
+    description =
+      remainingBalance > 0
+        ? "Production is complete. Complete the remaining balance before collecting your furniture at Spiral Wood Services."
+        : "Production is complete and your balance is fully paid. Visit Spiral Wood Services for pickup and signed handoff confirmation.";
+    actionTitle = remainingBalance > 0 ? "Payment action needed" : "Ready for collection";
+    actionText =
+      remainingBalance > 0
+        ? "Choose how to pay the remaining balance below."
+        : "Bring the customer or authorized recipient to the store. The Cashier will record the signed pickup acknowledgement during handoff.";
   } else if (order === "shipping" || delivery === "in_transit") {
     currentIndex = 5;
     title = "Your furniture is on the way";
@@ -171,8 +201,9 @@ const getCustomerJourneyState = ({
   } else if (order === "production") {
     currentIndex = 4;
     title = "Your furniture is in production";
-    description =
-      "Your approved furniture is now being made by our team. We will update you when it is ready for delivery.";
+    description = isPickupJourney
+      ? "Your approved furniture is now being made by our team. We will update you when it is ready for pickup."
+      : "Your approved furniture is now being made by our team. We will update you when it is ready for delivery.";
     actionTitle = "No action needed";
     actionText = "You do not need to do anything right now.";
   } else if (order === "contract_released") {
@@ -244,13 +275,13 @@ const getCustomerJourneyState = ({
         ? "Your quotation is being prepared"
         : "We are reviewing your design";
     description =
-      "We received your furniture request. Our team is checking your design, materials, and delivery requirements before preparing your quotation.";
+      "We received your furniture request. Our team is checking your design, materials, and project requirements before preparing your quotation.";
     actionTitle = "No action needed";
     actionText =
       "You do not need to do anything right now. We will notify you when your quotation is ready.";
   }
 
-  const steps = CUSTOMER_JOURNEY_STEPS.map((step, index) => {
+  const steps = journeySteps.map((step, index) => {
     let state = "upcoming";
     if (isComplete || index < currentIndex) state = "complete";
     else if (index === currentIndex) state = "current";
@@ -270,7 +301,7 @@ const getCustomerJourneyState = ({
       ? "Request cancelled"
       : isComplete
         ? "Completed"
-        : CUSTOMER_JOURNEY_STEPS[currentIndex]?.label || "Design review",
+        : journeySteps[currentIndex]?.label || "Design review",
     steps,
     isCancelled,
     isComplete,
@@ -284,6 +315,7 @@ const getSubmittedItemProgressLabel = ({
   const estimation = String(estimationStatus || "").trim().toLowerCase();
 
   if (order === "completed") return "Completed";
+  if (order === "ready_for_pickup") return "Ready for pickup";
   if (order === "delivered") return "Delivered";
   if (order === "shipping") return "Shipping";
   if (order === "production") return "In production";
@@ -772,8 +804,14 @@ export default function CustomRequestDetailPage() {
   const latestEstimation = requestData?.latest_estimation || null;
   const projectAgreement = requestData?.project_agreement || null;
   const projectAgreementAccepted = Boolean(projectAgreement?.signed_at);
+  const fulfillmentMethod =
+    String(requestData?.fulfillment_method || "").trim().toLowerCase() === "pickup"
+      ? "pickup"
+      : "delivery";
+  const isPickup = fulfillmentMethod === "pickup";
+  const pickupAcknowledgement = requestData?.pickup_acknowledgement || null;
 
-  const additionalDeliveryFee = Math.max(
+  const additionalDeliveryFee = isPickup ? 0 : Math.max(
     0,
     Number(
       latestEstimation?.additional_delivery_fee ??
@@ -1018,7 +1056,7 @@ export default function CustomRequestDetailPage() {
     canSelectRemainingPaymentMethod &&
     remainingPaymentMethod === "cash";
   const REMAINING_METHOD_LABELS = {
-    cash: "Cash on Delivery",
+    cash: isPickup ? "Cash at Store" : "Cash on Delivery",
     paymongo: "Online Payment",
   };
 
@@ -1033,7 +1071,9 @@ export default function CustomRequestDetailPage() {
     String(requestData?.payment_status || "").trim().toLowerCase() !== "paid" &&
     Number(verifiedPaymentTotal || 0) > 0 &&
     balanceDue > 0 &&
-    ["scheduled", "in_transit"].includes(deliveryStatusForRemainingMethod) &&
+    (isPickup
+      ? orderStatusKey === "ready_for_pickup"
+      : ["scheduled", "in_transit"].includes(deliveryStatusForRemainingMethod)) &&
     !["cancelled", "completed"].includes(orderStatusKey) &&
     !Boolean(paymentSummary.has_pending_payment);
 
@@ -1054,6 +1094,7 @@ export default function CustomRequestDetailPage() {
     paymentStatus: requestData?.payment_status,
     deliveryStatus: deliveryStatusForRemainingMethod,
     balanceDue,
+    fulfillmentMethod,
     verifiedPaymentTotal,
     hasProjectAgreement: Boolean(projectAgreement),
     projectAgreementAccepted,
@@ -1070,6 +1111,7 @@ export default function CustomRequestDetailPage() {
     [
       "contract_released",
       "production",
+      "ready_for_pickup",
       "shipping",
       "delivered",
       "completed",
@@ -1466,6 +1508,23 @@ export default function CustomRequestDetailPage() {
     }
   };
 
+  const handleDownloadPickupAcknowledgement = () => {
+    if (!pickupAcknowledgement) {
+      toast.error("Pickup acknowledgement is not available yet.");
+      return;
+    }
+    try {
+      downloadPickupAcknowledgementPdf({
+        acknowledgement: pickupAcknowledgement,
+        order: requestData,
+      });
+      toast.success("Pickup acknowledgement PDF downloaded.");
+    } catch (err) {
+      console.error("[Customer Pickup PDF]", err);
+      toast.error("Failed to generate pickup acknowledgement PDF.");
+    }
+  };
+
   const handlePayRemainingBalanceOnlineInstead = async () => {
     if (
       !requestData?.id ||
@@ -1513,7 +1572,7 @@ export default function CustomRequestDetailPage() {
       <div className="page-hero">
         <div>
           <h1>Request details</h1>
-          <p>Track your custom furniture project, payments, and delivery in one place.</p>
+          <p>Track your custom furniture project, payments, and fulfillment in one place.</p>
 
           {requestData ? (
             <div className="crd-request-meta-v12">
@@ -1838,9 +1897,11 @@ export default function CustomRequestDetailPage() {
                           {formatMoney(latestEstimation.labor_cost || 0)}
                         </DetailValue>
 
-                        <DetailValue label="Logistics">
-                          {formatMoney(latestEstimation.overhead_cost || 0)}
-                        </DetailValue>
+                        {!isPickup ? (
+                          <DetailValue label="Logistics">
+                            {formatMoney(latestEstimation.overhead_cost || 0)}
+                          </DetailValue>
+                        ) : null}
 
                         {additionalDeliveryFee > 0 ? (
                           <DetailValue label="Additional Delivery Fee">
@@ -1893,7 +1954,7 @@ export default function CustomRequestDetailPage() {
                         <h4>Quotation is being prepared</h4>
                         <p>
                           Our team is reviewing your furniture design and
-                          checking the materials and delivery requirements.
+                          checking the materials and project requirements.
                         </p>
                         <div className="crd-quotation-waiting-action-v2">
                           <strong>No action needed from you right now.</strong>
@@ -2023,9 +2084,11 @@ export default function CustomRequestDetailPage() {
                           <DetailValue label="Labor">
                             {formatMoney(latestEstimation.labor_cost || 0)}
                           </DetailValue>
-                          <DetailValue label="Logistics">
-                            {formatMoney(latestEstimation.overhead_cost || 0)}
-                          </DetailValue>
+                          {!isPickup ? (
+                            <DetailValue label="Logistics">
+                              {formatMoney(latestEstimation.overhead_cost || 0)}
+                            </DetailValue>
+                          ) : null}
                           {additionalDeliveryFee > 0 ? (
                             <DetailValue label="Delivery Fee">
                               {formatMoney(additionalDeliveryFee)}
@@ -2777,7 +2840,7 @@ export default function CustomRequestDetailPage() {
                         <div className="wisdom-remaining-method-line-v184">
                           <h4>
                             {REMAINING_METHOD_LABELS[remainingPaymentMethod] ||
-                              "Cash on Delivery"}
+                              (isPickup ? "Cash at Store" : "Cash on Delivery")}
                           </h4>
 
                           <span className="wisdom-remaining-method-badge-v184">
@@ -2792,7 +2855,9 @@ export default function CustomRequestDetailPage() {
                         <p>
                           {remainingPaymentMethod === "paymongo"
                             ? "Pay the remaining balance securely online."
-                            : "Pay the remaining balance directly to the rider upon delivery."}
+                            : isPickup
+                              ? "Pay the remaining balance at the Spiral Wood store before collecting your furniture."
+                              : "Pay the remaining balance directly to the rider upon delivery."}
                         </p>
                       </div>
 
@@ -2862,7 +2927,7 @@ export default function CustomRequestDetailPage() {
                                 handleSelectRemainingPaymentMethod("cash")
                               }
                             >
-                              Use Cash on Delivery instead
+                              {isPickup ? "Use Cash at Store instead" : "Use Cash on Delivery instead"}
                             </button>
                           ) : null}
                         </div>
@@ -2872,7 +2937,7 @@ export default function CustomRequestDetailPage() {
                     {remainingPaymentMethodLocked ? (
                       <p className="wisdom-remaining-locked-note-v184">
                         This payment method can no longer be changed for this
-                        delivery.
+                        order.
                       </p>
                     ) : null}
                   </div>
@@ -3263,10 +3328,84 @@ export default function CustomRequestDetailPage() {
               <div className="checkout-section wisdom-request-project-v11">
                 <div className="checkout-section-header">
                   <div className="checkout-section-num">05</div>
-                  <h3>Delivery</h3>
+                  <h3>{isPickup ? "Pickup" : "Delivery"}</h3>
                 </div>
 
                 <div className="checkout-section-body">
+                  {isPickup ? (
+                    <div className="crd-delivery-layout-v5 crd-delivery-layout-v6">
+                      <div className="crd-delivery-column-v5">
+                        <div className="crd-delivery-column-title-v5">Pickup information</div>
+                        <div className="crd-delivery-pair-v5">
+                          <div className="crd-delivery-fact-v5">
+                            <span>Pickup status</span>
+                            <strong>
+                              {pickupAcknowledgement
+                                ? "Picked up"
+                                : orderStatusKey === "ready_for_pickup"
+                                  ? "Ready for pickup"
+                                  : "Not ready yet"}
+                            </strong>
+                          </div>
+                          <div className="crd-delivery-fact-v5">
+                            <span>Collection method</span>
+                            <strong>Spiral Wood Services store</strong>
+                          </div>
+                        </div>
+                        {pickupAcknowledgement ? (
+                          <div className="crd-delivery-note-v5">
+                            <span>Received by</span>
+                            <p style={{ marginBottom: 4 }}>
+                              <strong>{pickupAcknowledgement.received_by_name || "Recipient"}</strong>
+                            </p>
+                            <p style={{ margin: 0 }}>
+                              {pickupAcknowledgement.recipient_type === "authorized_representative"
+                                ? "Authorized Representative"
+                                : "Customer"}
+                              {pickupAcknowledgement.acknowledged_at
+                                ? " • " + formatDate(pickupAcknowledgement.acknowledged_at)
+                                : ""}
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="crd-delivery-note-v5">
+                            <span>Pickup handoff</span>
+                            <p>
+                              When the balance is fully verified, the customer or authorized representative signs the Pickup Acknowledgement at the store before the Cashier confirms release.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="crd-delivery-column-v5 is-confirmation">
+                        <div className="crd-delivery-column-title-v5">Pickup confirmation</div>
+                        <div className="crd-delivery-confirmation-row-v5">
+                          <span>Assembly</span>
+                          <strong>{customerAssemblyLabel}</strong>
+                        </div>
+                        <div className="crd-delivery-confirmation-row-v5">
+                          <span>Signed acknowledgement</span>
+                          {pickupAcknowledgement ? (
+                            <button
+                              type="button"
+                              className="crd-delivery-proof-btn-v5"
+                              onClick={handleDownloadPickupAcknowledgement}
+                            >
+                              Download copy
+                            </button>
+                          ) : (
+                            <strong>Available after pickup</strong>
+                          )}
+                        </div>
+                        {pickupAcknowledgement?.released_by_name ? (
+                          <div className="crd-delivery-confirmation-row-v5">
+                            <span>Released by</span>
+                            <strong>{pickupAcknowledgement.released_by_name}</strong>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : (
                   <div className="crd-delivery-layout-v5 crd-delivery-layout-v6">
                     <div className="crd-delivery-column-v5">
                       <div className="crd-delivery-column-title-v5">
@@ -3356,6 +3495,7 @@ export default function CustomRequestDetailPage() {
                       </div>
                     </div>
                   </div>
+                  )}
                 </div>
               </div>
 
@@ -3402,7 +3542,7 @@ export default function CustomRequestDetailPage() {
                             </div>
                             <strong>Start the conversation</strong>
                             <span>
-                              Ask about your order, payment, production, or delivery.
+                              Ask about your order, payment, production, or {isPickup ? "pickup" : "delivery"}.
                             </span>
                           </div>
                         ) : (

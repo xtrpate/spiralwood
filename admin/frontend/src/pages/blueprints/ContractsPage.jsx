@@ -17,8 +17,8 @@ Any requested change after the contract is accepted must be reviewed first. Appr
 4. CANCELLATION
 Before any payment is verified, the customer may cancel an eligible project through WISDOM. After a payment is verified or production starts, the customer must contact Spiral Wood Services. Cancellation does not remove existing payment or acceptance records.
 
-5. DELIVERY
-The completion and delivery schedule is confirmed after the required down payment is received. Delays outside the reasonable control of Spiral Wood Services may affect the schedule.
+5. COMPLETION
+The completion and handoff schedule follows the fulfillment method selected for the order. Full payment is required before final release. Delays outside the reasonable control of Spiral Wood Services may affect the schedule.
 
 6. OWNERSHIP
 Ownership of the finished furniture transfers to the customer after full payment.
@@ -26,7 +26,7 @@ Ownership of the finished furniture transfers to the customer after full payment
 7. GOVERNING LAW
 This contract is governed by the laws of the Republic of the Philippines.`;
 
-const DEFAULT_WARRANTY = `The furniture is covered by a one (1) year warranty from the delivery date for defects in materials and workmanship under normal use.
+const DEFAULT_WARRANTY = `The furniture is covered by a one (1) year warranty from the handoff date for defects in materials and workmanship under normal use.
 
 The warranty does not cover misuse, neglect, unauthorized changes, accidents, natural disasters, or damage caused by outside factors.
 

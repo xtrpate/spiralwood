@@ -4,6 +4,8 @@ const {
   recordCashPayment,
 } = require("../../services/blueprintCashPaymentService");
 const { parseStrictPositiveInt } = require("../../utils/validators");
+const { parseDecimalToCentsStrict } = require("../../utils/paymentAmounts");
+const { createNotificationSafe } = require("../../utils/notificationHelper");
 
 const normalize = (value) => String(value || "").trim().toLowerCase();
 
@@ -90,6 +92,57 @@ const isValidOrderNumber = (value) => {
 // raw user id, and never lets a customer-triggered PayMongo verification
 // (issued_by/verified_by pointing at a technical FK owner, not a real
 // staff processor) be displayed as a person's name.
+const PICKUP_ACKNOWLEDGEMENT_TEXT =
+  "I confirm that I received the furniture listed for this order from Spiral Wood Services.";
+
+const normalizePickupRecipientType = (value) => {
+  const key = normalize(value).replace(/\s+/g, "_");
+  return ["customer", "authorized_representative"].includes(key) ? key : null;
+};
+
+const normalizePickupSignature = (value) => {
+  const raw = String(value || "").trim();
+  const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(raw);
+  if (!match || raw.length > 250000) return null;
+
+  let bytes;
+  try {
+    bytes = Buffer.from(match[1], "base64");
+  } catch {
+    return null;
+  }
+
+  const pngHeader = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  if (bytes.length < 500 || !bytes.subarray(0, 8).equals(pngHeader)) {
+    return null;
+  }
+
+  return raw;
+};
+
+const getPickupAcknowledgementForOrder = async (dbPool, orderId) => {
+  const [[row]] = await dbPool.query(
+    `SELECT
+       pa.id,
+       pa.order_id,
+       pa.received_by_name,
+       pa.recipient_type,
+       pa.signature_data,
+       pa.acknowledgement_text,
+       pa.note,
+       pa.acknowledged_at,
+       pa.released_by,
+       u.name AS released_by_name
+     FROM pickup_acknowledgements pa
+     LEFT JOIN users u ON u.id = pa.released_by
+     WHERE pa.order_id = ?
+     LIMIT 1`,
+    [orderId],
+  );
+
+  return row || null;
+};
+
 const buildProcessorDisplay = ({ paymentMethod, status, verifierName }) => {
   const method = normalize(paymentMethod);
   const normalizedStatus = normalize(status);
@@ -172,6 +225,8 @@ exports.listOrders = async (req, res) => {
         o.status AS order_status,
         o.payment_status,
         o.payment_method AS initial_payment_method,
+        o.fulfillment_method,
+        o.picked_up_at,
         o.total,
         o.blueprint_id,
         o.created_at,
@@ -230,6 +285,8 @@ exports.listOrders = async (req, res) => {
         o.status,
         o.payment_status,
         o.payment_method,
+        o.fulfillment_method,
+        o.picked_up_at,
         o.total,
         o.blueprint_id,
         o.created_at,
@@ -269,6 +326,9 @@ exports.listOrders = async (req, res) => {
             : storedStatus,
         stored_payment_status: storedStatus,
         initial_payment_method: row.initial_payment_method || null,
+        fulfillment_method:
+          normalize(row.fulfillment_method) === "pickup" ? "pickup" : "delivery",
+        picked_up_at: row.picked_up_at || null,
         total,
         verified_total: verifiedTotal,
         remaining_balance: remainingBalance,
@@ -337,6 +397,7 @@ exports.lookupByOrderNumber = async (req, res) => {
 
     const summary = await getRestrictedPaymentSummary(pool, row.id);
     const paymentHistory = await getPaymentHistoryForOrder(pool, row.id);
+    const pickupAcknowledgement = await getPickupAcknowledgementForOrder(pool, row.id);
     const draftPreviewByOrderId = await getOrderDraftPreviewMap(pool, [row.id]);
 
     return res.json({
@@ -350,6 +411,7 @@ exports.lookupByOrderNumber = async (req, res) => {
       draft_editor_snapshot:
         draftPreviewByOrderId.get(Number(row.id)) || null,
       payment_history: paymentHistory,
+      pickup_acknowledgement: pickupAcknowledgement,
     });
   } catch (err) {
     console.error("[pos.blueprintPayments lookupByOrderNumber]", err);
@@ -389,5 +451,230 @@ exports.recordPayment = async (req, res) => {
     req.auditRecord = null;
     console.error("[pos.blueprintPayments recordPayment]", err);
     return res.status(500).json({ message: "Failed to record cash payment." });
+  }
+};
+
+exports.markPickedUp = async (req, res) => {
+  req.auditRecord = null;
+  const orderId = parseStrictPositiveInt(req.params.id);
+  if (!orderId) return res.status(400).json({ message: "Invalid order id." });
+
+  const bodyKeys = Object.keys(req.body || {}).sort();
+  const allowedBodyKeys = ["note", "received_by_name", "recipient_type", "signature_data"].sort();
+  if (bodyKeys.some((key) => !allowedBodyKeys.includes(key))) {
+    return res.status(400).json({ message: "Unexpected pickup acknowledgement field." });
+  }
+
+  const receivedByName = String(req.body?.received_by_name || "").trim().replace(/\s+/g, " ");
+  const recipientType = normalizePickupRecipientType(req.body?.recipient_type);
+  const signatureData = normalizePickupSignature(req.body?.signature_data);
+  const note = String(req.body?.note || "").trim();
+
+  if (!receivedByName || receivedByName.length > 150) {
+    return res.status(400).json({ message: "Enter the name of the person receiving the furniture." });
+  }
+  if (!recipientType) {
+    return res.status(400).json({ message: "Choose Customer or Authorized Representative." });
+  }
+  if (!signatureData) {
+    return res.status(400).json({ message: "A valid customer or recipient signature is required before pickup release." });
+  }
+  if (note.length > 500) {
+    return res.status(400).json({ message: "Pickup note must be 500 characters or fewer." });
+  }
+
+  let conn = null;
+  let transactionActive = false;
+  try {
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+    transactionActive = true;
+
+    const [[order]] = await conn.query(
+      `SELECT id, order_number, customer_id, order_type, status, payment_status,
+              total, fulfillment_method, picked_up_at
+       FROM orders
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [orderId],
+    );
+
+    if (!order || normalize(order.order_type) !== "blueprint") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(404).json({ message: "Blueprint order not found." });
+    }
+    if (normalize(order.fulfillment_method) !== "pickup") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({ message: "Only pickup orders can use pickup acknowledgement." });
+    }
+    if (order.picked_up_at || normalize(order.status) === "completed") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({ message: "This order has already been picked up." });
+    }
+    if (normalize(order.status) !== "ready_for_pickup") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({ message: "This furniture is not ready for pickup yet." });
+    }
+
+    const [[existingAcknowledgement]] = await conn.query(
+      `SELECT id FROM pickup_acknowledgements WHERE order_id = ? LIMIT 1 FOR UPDATE`,
+      [orderId],
+    );
+    if (existingAcknowledgement) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({ message: "A pickup acknowledgement already exists for this order." });
+    }
+
+    const [tasks] = await conn.query(
+      `SELECT task_role, status
+       FROM project_tasks
+       WHERE order_id = ?
+       FOR UPDATE`,
+      [orderId],
+    );
+    const statusByRole = new Map(
+      tasks.map((row) => [
+        String(row.task_role || "")
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, "_"),
+        normalize(row.status),
+      ]),
+    );
+    const requiredRoles = ["cutting_machine", "edge_banding", "horizontal_drilling", "retouching", "packing"];
+    const productionComplete = requiredRoles.every(
+      (role) => statusByRole.get(role) === "completed",
+    );
+    if (!productionComplete) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({ message: "All required production tasks must be completed before pickup." });
+    }
+
+    const [payments] = await conn.query(
+      `SELECT id, amount, status
+       FROM payment_transactions
+       WHERE order_id = ?
+       ORDER BY id
+       FOR UPDATE`,
+      [orderId],
+    );
+    let verifiedCents = 0;
+    for (const payment of payments) {
+      const cents = parseDecimalToCentsStrict(payment.amount);
+      if (cents === null) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(409).json({ message: "This order's payment records are inconsistent." });
+      }
+      const status = normalize(payment.status);
+      if (status === "pending") {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(400).json({ message: "A payment is still awaiting verification." });
+      }
+      if (status === "verified") verifiedCents += cents;
+    }
+    const totalCents = parseDecimalToCentsStrict(order.total);
+    if (totalCents === null || totalCents <= 0 || verifiedCents !== totalCents || normalize(order.payment_status) !== "paid") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({ message: "The full balance must be verified before releasing this furniture." });
+    }
+
+    const [acknowledgementInsert] = await conn.execute(
+      `INSERT INTO pickup_acknowledgements
+        (order_id, received_by_name, recipient_type, signature_data,
+         acknowledgement_text, note, released_by, acknowledged_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [
+        orderId,
+        receivedByName,
+        recipientType,
+        signatureData,
+        PICKUP_ACKNOWLEDGEMENT_TEXT,
+        note || null,
+        req.user.id,
+      ],
+    );
+
+    if (acknowledgementInsert.affectedRows !== 1 || !acknowledgementInsert.insertId) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({ message: "The pickup acknowledgement could not be saved. No release was recorded." });
+    }
+
+    const [updateResult] = await conn.execute(
+      `UPDATE orders
+       SET status = 'completed', picked_up_at = NOW(), picked_up_by = ?, updated_at = NOW()
+       WHERE id = ? AND status = 'ready_for_pickup' AND picked_up_at IS NULL`,
+      [req.user.id, orderId],
+    );
+    if (updateResult.affectedRows !== 1) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({ message: "This order's pickup state changed. No release was recorded." });
+    }
+
+    const [[acknowledgement]] = await conn.query(
+      `SELECT
+         pa.id, pa.order_id, pa.received_by_name, pa.recipient_type,
+         pa.signature_data, pa.acknowledgement_text, pa.note,
+         pa.acknowledged_at, pa.released_by, u.name AS released_by_name
+       FROM pickup_acknowledgements pa
+       LEFT JOIN users u ON u.id = pa.released_by
+       WHERE pa.id = ?
+       LIMIT 1`,
+      [acknowledgementInsert.insertId],
+    );
+
+    const orderLabel = order.order_number || ("#" + order.id);
+    if (order.customer_id) {
+      await createNotificationSafe(conn, {
+        userId: order.customer_id,
+        type: "pickup_completed",
+        title: "Pickup Completed",
+        message: "Order " + orderLabel + " was handed over and your signed pickup acknowledgement was recorded.",
+        targetType: "order",
+        targetId: order.id,
+        targetOrderId: order.id,
+      });
+    }
+
+    await conn.commit();
+    transactionActive = false;
+    req.auditRecord = {
+      id: orderId,
+      old: { status: order.status, picked_up_at: null },
+      new: {
+        status: "completed",
+        fulfillment_method: "pickup",
+        pickup_acknowledgement_id: acknowledgementInsert.insertId,
+        recipient_type: recipientType,
+        signature_recorded: true,
+      },
+    };
+
+    return res.json({
+      message: "Pickup confirmed and acknowledgement saved.",
+      order_status: "completed",
+      picked_up_at: acknowledgement?.acknowledged_at || null,
+      pickup_acknowledgement: acknowledgement || null,
+    });
+  } catch (err) {
+    req.auditRecord = null;
+    if (conn && transactionActive) {
+      try { await conn.rollback(); } catch {}
+    }
+    console.error("[pos.blueprintPayments markPickedUp]", err);
+    return res.status(500).json({ message: "Failed to confirm pickup. No release was recorded." });
+  } finally {
+    if (conn) conn.release();
   }
 };

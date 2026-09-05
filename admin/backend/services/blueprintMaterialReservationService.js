@@ -29,6 +29,7 @@ const ALLOWED_ORDER_STATUSES = new Set([
   "confirmed",
   "contract_released",
   "production",
+  "ready_for_pickup",
   "shipping",
   "delivered",
 ]);

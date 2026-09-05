@@ -74,6 +74,16 @@ exports.getOrderDeliveryAssessment = async (req, res) => {
     const order = orders[0];
     const assessment = await assessOrderDelivery(conn, order.id);
 
+    if (assessment.status === "not_applicable") {
+      return res.json({
+        order_id: order.id,
+        order_number: order.order_number,
+        fulfillment_method: "pickup",
+        assessment,
+        quotation_delivery: null,
+      });
+    }
+
     const lifecycle = await resolveLifecycleByOrder(conn, {
       orderId: order.id,
     });

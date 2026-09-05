@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { RefreshCw, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import CustomerBlueprintViewer from "../customer/CustomerBlueprintViewer";
+import { downloadPickupAcknowledgementPdf } from "../../utils/pickupAcknowledgementPdf";
 import "./BlueprintPayments.css";
 
 const formatMoney = (value) =>
@@ -38,6 +39,7 @@ const ORDER_STATUS_TEXT = {
   confirmed: "Confirmed",
   contract_released: "Contract Released",
   production: "Production",
+  ready_for_pickup: "Ready for Pickup",
   shipping: "Shipping",
   delivered: "Delivered",
   completed: "Completed",
@@ -175,6 +177,106 @@ function BlueprintPreview({ blueprint, title, size = "list" }) {
   );
 }
 
+function PickupSignaturePad({ value, onChange, disabled = false }) {
+  const canvasRef = useRef(null);
+  const drawingRef = useRef(false);
+  const hasStrokeRef = useRef(Boolean(value));
+
+  const prepareCanvas = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "#18181b";
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+  }, []);
+
+  useEffect(() => {
+    prepareCanvas();
+  }, [prepareCanvas]);
+
+  const pointFromEvent = (event) => {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    if (!(rect.width > 0) || !(rect.height > 0)) return null;
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * canvas.width,
+      y: ((event.clientY - rect.top) / rect.height) * canvas.height,
+    };
+  };
+
+  const start = (event) => {
+    if (disabled) return;
+    const canvas = canvasRef.current;
+    const point = pointFromEvent(event);
+    if (!canvas || !point) return;
+    canvas.setPointerCapture?.(event.pointerId);
+    const ctx = canvas.getContext("2d");
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y);
+    drawingRef.current = true;
+  };
+
+  const move = (event) => {
+    if (disabled || !drawingRef.current) return;
+    const canvas = canvasRef.current;
+    const point = pointFromEvent(event);
+    if (!canvas || !point) return;
+    const ctx = canvas.getContext("2d");
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+    hasStrokeRef.current = true;
+  };
+
+  const finish = () => {
+    if (disabled || !drawingRef.current) return;
+    drawingRef.current = false;
+    if (hasStrokeRef.current && canvasRef.current) {
+      onChange(canvasRef.current.toDataURL("image/png"));
+    }
+  };
+
+  const clear = () => {
+    if (disabled) return;
+    prepareCanvas();
+    hasStrokeRef.current = false;
+    onChange("");
+  };
+
+  return (
+    <div>
+      <canvas
+        ref={canvasRef}
+        width={720}
+        height={220}
+        onPointerDown={start}
+        onPointerMove={move}
+        onPointerUp={finish}
+        onPointerCancel={finish}
+        style={{
+          display: "block",
+          width: "100%",
+          height: 180,
+          border: "1px solid #d4d4d8",
+          background: "#ffffff",
+          touchAction: "none",
+          cursor: disabled ? "not-allowed" : "crosshair",
+        }}
+        aria-label="Recipient signature area"
+      />
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 8 }}>
+        <small style={{ color: "#71717a" }}>Sign using a mouse, finger, or stylus.</small>
+        <button type="button" className="bp-secondary-button" disabled={disabled} onClick={clear}>
+          Clear signature
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function OrderStatusBadge({ status }) {
   const key = normalize(status);
   return (
@@ -200,6 +302,12 @@ export default function BlueprintPayments() {
 
   const [customAmount, setCustomAmount] = useState("");
   const [recording, setRecording] = useState(false);
+  const [releasingPickup, setReleasingPickup] = useState(false);
+  const [pickupModalOpen, setPickupModalOpen] = useState(false);
+  const [pickupRecipientType, setPickupRecipientType] = useState("customer");
+  const [pickupRecipientName, setPickupRecipientName] = useState("");
+  const [pickupSignature, setPickupSignature] = useState("");
+  const [pickupNote, setPickupNote] = useState("");
   const [recordError, setRecordError] = useState("");
   const [lastPaymentResult, setLastPaymentResult] = useState(null);
 
@@ -367,6 +475,67 @@ export default function BlueprintPayments() {
       );
     } finally {
       setRecording(false);
+    }
+  };
+
+  const openPickupAcknowledgement = () => {
+    if (!summary?.order_id) return;
+    setRecordError("");
+    setPickupRecipientType("customer");
+    setPickupRecipientName(String(summary.customer_name || "").trim());
+    setPickupSignature("");
+    setPickupNote("");
+    setPickupModalOpen(true);
+  };
+
+  const confirmPickup = async () => {
+    if (!summary?.order_id || releasingPickup) return;
+    const recipientName = pickupRecipientName.trim();
+    if (!recipientName) {
+      setRecordError("Enter the name of the person receiving the furniture.");
+      return;
+    }
+    if (!pickupSignature) {
+      setRecordError("The customer or recipient must sign before pickup can be confirmed.");
+      return;
+    }
+
+    try {
+      setReleasingPickup(true);
+      setRecordError("");
+      const { data } = await api.post(
+        "/pos/blueprint-cash-payments/" + summary.order_id + "/picked-up",
+        {
+          recipient_type: pickupRecipientType,
+          received_by_name: recipientName,
+          signature_data: pickupSignature,
+          note: pickupNote.trim(),
+        },
+      );
+      toast.success(data?.message || "Pickup confirmed.");
+      setPickupModalOpen(false);
+      setPickupSignature("");
+      await Promise.all([refreshSummary(), loadOrders({ quiet: true })]);
+    } catch (err) {
+      const message = err.response?.data?.message || "Failed to confirm pickup.";
+      setRecordError(message);
+      toast.error(message);
+    } finally {
+      setReleasingPickup(false);
+    }
+  };
+
+  const downloadPickupProof = () => {
+    if (!summary?.pickup_acknowledgement) return;
+    try {
+      downloadPickupAcknowledgementPdf({
+        acknowledgement: summary.pickup_acknowledgement,
+        order: summary,
+      });
+      toast.success("Pickup acknowledgement PDF downloaded.");
+    } catch (err) {
+      console.error("[BlueprintPayments Pickup PDF]", err);
+      toast.error("Failed to generate pickup acknowledgement PDF.");
     }
   };
 
@@ -692,6 +861,59 @@ export default function BlueprintPayments() {
                 )}
               </section>
 
+              {summary.fulfillment_method === "pickup" ? (
+                <section className="bp-history-section">
+                  <div className="bp-section-heading">
+                    <div>
+                      <p className="bp-eyebrow">Store pickup</p>
+                      <h3>Pickup Release</h3>
+                    </div>
+                  </div>
+
+                  {summary.pickup_acknowledgement ? (
+                    <div className="bp-notice bp-notice-success">
+                      <strong>Pickup completed</strong>
+                      <span>
+                        Received by {summary.pickup_acknowledgement.received_by_name || "Recipient"}
+                        {summary.pickup_acknowledgement.acknowledged_at
+                          ? " on " + new Date(summary.pickup_acknowledgement.acknowledged_at).toLocaleString("en-PH")
+                          : ""}.
+                      </span>
+                      <button type="button" className="bp-secondary-button" onClick={downloadPickupProof}>
+                        Pickup Acknowledgement
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="bp-help-text">
+                        The customer or authorized representative must be present, fully paid, and sign the pickup acknowledgement before release.
+                      </p>
+                      <button
+                        type="button"
+                        className="bp-primary-button"
+                        disabled={
+                          releasingPickup ||
+                          summary.order_status !== "ready_for_pickup" ||
+                          Number(summary.remaining_balance || 0) > 0.009 ||
+                          Boolean(summary.has_pending_payment) ||
+                          summary.payment_status !== "paid"
+                        }
+                        onClick={openPickupAcknowledgement}
+                      >
+                        Proceed to Pickup
+                      </button>
+                      {summary.order_status !== "ready_for_pickup" ? (
+                        <p className="bp-help-text">Production must be complete before pickup release.</p>
+                      ) : Boolean(summary.has_pending_payment) ? (
+                        <p className="bp-help-text">Resolve the pending payment before pickup release.</p>
+                      ) : Number(summary.remaining_balance || 0) > 0.009 || summary.payment_status !== "paid" ? (
+                        <p className="bp-help-text">Full verified payment is required before pickup release.</p>
+                      ) : null}
+                    </>
+                  )}
+                </section>
+              ) : null}
+
               <section className="bp-history-section">
                 <div className="bp-section-heading">
                   <h3>Payment History</h3>
@@ -771,6 +993,133 @@ export default function BlueprintPayments() {
           ) : null}
         </aside>
       </div>
+
+      {pickupModalOpen ? (
+        <div
+          role="presentation"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 2000,
+            background: "rgba(0,0,0,0.48)",
+            display: "grid",
+            placeItems: "center",
+            padding: 20,
+          }}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !releasingPickup) {
+              setPickupModalOpen(false);
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pickup-ack-title"
+            style={{
+              width: "min(720px, 100%)",
+              maxHeight: "92vh",
+              overflowY: "auto",
+              background: "#ffffff",
+              border: "1px solid #d4d4d8",
+              padding: 24,
+              boxSizing: "border-box",
+            }}
+          >
+            <p className="bp-eyebrow" style={{ marginTop: 0 }}>Store pickup</p>
+            <h2 id="pickup-ack-title" style={{ margin: "0 0 8px" }}>Pickup Acknowledgement</h2>
+            <p style={{ margin: "0 0 18px", lineHeight: 1.6, color: "#52525b" }}>
+              Complete this only while the customer or authorized representative is physically receiving the furniture.
+            </p>
+
+            <div style={{ display: "grid", gap: 16 }}>
+              <div>
+                <label className="bp-field-label">Recipient type</label>
+                <select
+                  value={pickupRecipientType}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    setPickupRecipientType(next);
+                    if (next === "customer") {
+                      setPickupRecipientName(String(summary?.customer_name || "").trim());
+                    } else {
+                      setPickupRecipientName("");
+                    }
+                  }}
+                  disabled={releasingPickup}
+                  style={{ width: "100%", minHeight: 40 }}
+                >
+                  <option value="customer">Customer</option>
+                  <option value="authorized_representative">Authorized Representative</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="bp-field-label" htmlFor="pickup-received-by">Received by</label>
+                <input
+                  id="pickup-received-by"
+                  type="text"
+                  maxLength={150}
+                  value={pickupRecipientName}
+                  onChange={(event) => setPickupRecipientName(event.target.value)}
+                  disabled={releasingPickup}
+                  placeholder="Full name of recipient"
+                  style={{ width: "100%", minHeight: 40, boxSizing: "border-box" }}
+                />
+              </div>
+
+              <div style={{ padding: 14, background: "#fafafa", border: "1px solid #e4e4e7", lineHeight: 1.6 }}>
+                <strong>Acknowledgement</strong>
+                <p style={{ margin: "6px 0 0" }}>
+                  I confirm that I received the furniture listed for this order from Spiral Wood Services.
+                </p>
+              </div>
+
+              <div>
+                <label className="bp-field-label">Recipient signature</label>
+                <PickupSignaturePad
+                  value={pickupSignature}
+                  onChange={setPickupSignature}
+                  disabled={releasingPickup}
+                />
+              </div>
+
+              <div>
+                <label className="bp-field-label" htmlFor="pickup-note">Pickup note (optional)</label>
+                <textarea
+                  id="pickup-note"
+                  rows={3}
+                  maxLength={500}
+                  value={pickupNote}
+                  onChange={(event) => setPickupNote(event.target.value)}
+                  disabled={releasingPickup}
+                  placeholder="Add a short handoff note if needed"
+                  style={{ width: "100%", boxSizing: "border-box", resize: "vertical" }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 20 }}>
+              <button
+                type="button"
+                className="bp-secondary-button"
+                disabled={releasingPickup}
+                onClick={() => setPickupModalOpen(false)}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                className="bp-primary-button"
+                disabled={releasingPickup || !pickupRecipientName.trim() || !pickupSignature}
+                onClick={confirmPickup}
+              >
+                {releasingPickup ? "Confirming Pickup..." : "Confirm Pickup"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

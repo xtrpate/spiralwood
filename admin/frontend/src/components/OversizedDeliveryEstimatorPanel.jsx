@@ -314,6 +314,14 @@ export default function OversizedDeliveryEstimatorPanel({
       payload?.assessment?.status || "",
     ).toLowerCase();
 
+    if (assessmentStatus === "not_applicable") {
+      return {
+        active: false,
+        readyForQuote: true,
+        message: "",
+      };
+    }
+
     if (assessmentStatus === "standard") {
       return {
         active: true,
@@ -380,6 +388,12 @@ export default function OversizedDeliveryEstimatorPanel({
     if (typeof onGateChange === "function") {
       onGateChange({
         ...gate,
+        fulfillmentMethod:
+          String(payload?.order?.fulfillment_method || payload?.assessment?.fulfillment_method || "delivery")
+            .trim()
+            .toLowerCase() === "pickup"
+            ? "pickup"
+            : "delivery",
         dirty: Boolean(
           payload?.estimation?.id &&
             assessmentStatus === "oversized" &&
@@ -395,6 +409,8 @@ export default function OversizedDeliveryEstimatorPanel({
     payload?.estimation?.id,
   ]);
 
+
+  if (assessmentStatus === "not_applicable") return null;
 
   if (notApplicable) {
     return null;

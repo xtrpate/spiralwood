@@ -1100,6 +1100,7 @@ exports.updateStatus = async (req, res) => {
       "confirmed",
       "contract_released",
       "production",
+      "ready_for_pickup",
       "shipping",
       "delivered",
       "completed",
@@ -1142,6 +1143,8 @@ exports.updateStatus = async (req, res) => {
       order.contract_blueprint_id || order.blueprint_id || null;
     const isBlueprintOrder =
       normalize(order.order_type) === "blueprint" || Boolean(blueprintId);
+    const isBlueprintPickupOrder =
+      isBlueprintOrder && normalize(order.fulfillment_method) === "pickup";
 
     const hasDeliveryRequirement = Boolean(
       String(order.delivery_address || "").trim(),
@@ -1155,27 +1158,39 @@ exports.updateStatus = async (req, res) => {
     const isStandardDeliveryOrder = isStandardOrder && !isStandardPickupOrder;
 
     const effectiveStatusTransitions = isBlueprintOrder
-      ? isWalkInOrder
+      ? isBlueprintPickupOrder
         ? {
             pending: ["confirmed", "cancelled"],
             confirmed: ["contract_released", "cancelled"],
             contract_released: ["production", "cancelled"],
-            production: ["completed", "cancelled"],
-            shipping: ["completed"],
-            delivered: ["completed"],
+            production: ["cancelled"],
+            ready_for_pickup: ["cancelled"],
+            shipping: [],
+            delivered: [],
             completed: [],
             cancelled: [],
           }
-        : {
-            pending: ["confirmed", "cancelled"],
-            confirmed: ["contract_released", "cancelled"],
-            contract_released: ["production", "cancelled"],
-            production: ["shipping", "cancelled"],
-            shipping: ["delivered", "completed"],
-            delivered: ["completed"],
-            completed: [],
-            cancelled: [],
-          }
+        : isWalkInOrder
+          ? {
+              pending: ["confirmed", "cancelled"],
+              confirmed: ["contract_released", "cancelled"],
+              contract_released: ["production", "cancelled"],
+              production: ["completed", "cancelled"],
+              shipping: ["completed"],
+              delivered: ["completed"],
+              completed: [],
+              cancelled: [],
+            }
+          : {
+              pending: ["confirmed", "cancelled"],
+              confirmed: ["contract_released", "cancelled"],
+              contract_released: ["production", "cancelled"],
+              production: ["shipping", "cancelled"],
+              shipping: ["delivered", "completed"],
+              delivered: ["completed"],
+              completed: [],
+              cancelled: [],
+            }
       : isWalkInOrder
         ? hasDeliveryRequirement
           ? {
@@ -1933,6 +1948,7 @@ exports.verifyPayment = async (req, res) => {
         "confirmed",
         "contract_released",
         "production",
+        "ready_for_pickup",
         "shipping",
         "delivered",
       ];

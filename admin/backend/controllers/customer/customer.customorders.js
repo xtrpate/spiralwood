@@ -515,6 +515,7 @@ exports.createCustomOrder = async (req, res) => {
     delivery_address,
     delivery_lat,
     delivery_lng,
+    fulfillment_method,
     notes,
     assembly_choice,
     design_review_confirmed,
@@ -569,41 +570,52 @@ exports.createCustomOrder = async (req, res) => {
     return res.status(400).json({ message: "Phone is required." });
   }
 
-  const cleanDeliveryAddress =
-    typeof delivery_address === "string" ? delivery_address.trim() : "";
+  const cleanFulfillmentMethod = String(fulfillment_method || "delivery")
+    .trim()
+    .toLowerCase();
 
-  if (!cleanDeliveryAddress) {
-    return res.status(400).json({ message: "Delivery address is required." });
+  if (!["delivery", "pickup"].includes(cleanFulfillmentMethod)) {
+    return res.status(400).json({ message: "Choose Delivery or Pickup." });
   }
 
-  // Every new blueprint/custom request must include a complete, valid
-  // delivery coordinate pair. Unlike the standard-order flow (where the
-  // map pin is optional), this is mandatory here — no half-a-pin allowed.
-  const hasDeliveryLat = delivery_lat !== undefined && delivery_lat !== null;
-  const hasDeliveryLng = delivery_lng !== undefined && delivery_lng !== null;
+  const isPickupRequest = cleanFulfillmentMethod === "pickup";
+  let cleanDeliveryAddress = null;
+  let cleanDeliveryLat = null;
+  let cleanDeliveryLng = null;
 
-  if (!hasDeliveryLat || !hasDeliveryLng) {
-    return res.status(400).json({
-      message:
-        "A delivery map location (latitude and longitude) is required for custom/blueprint requests.",
-    });
-  }
+  if (!isPickupRequest) {
+    cleanDeliveryAddress =
+      typeof delivery_address === "string" ? delivery_address.trim() : "";
 
-  const cleanDeliveryLat = parseStrictCoordinate(delivery_lat);
-  const cleanDeliveryLng = parseStrictCoordinate(delivery_lng);
+    if (!cleanDeliveryAddress) {
+      return res.status(400).json({ message: "Delivery address is required." });
+    }
 
-  if (
-    cleanDeliveryLat === null ||
-    cleanDeliveryLng === null ||
-    cleanDeliveryLat < -90 ||
-    cleanDeliveryLat > 90 ||
-    cleanDeliveryLng < -180 ||
-    cleanDeliveryLng > 180
-  ) {
-    return res.status(400).json({
-      message:
-        "Invalid map location. Latitude must be between -90 and 90, and longitude between -180 and 180.",
-    });
+    const hasDeliveryLat = delivery_lat !== undefined && delivery_lat !== null;
+    const hasDeliveryLng = delivery_lng !== undefined && delivery_lng !== null;
+
+    if (!hasDeliveryLat || !hasDeliveryLng) {
+      return res.status(400).json({
+        message: "A delivery map location is required for delivery orders.",
+      });
+    }
+
+    cleanDeliveryLat = parseStrictCoordinate(delivery_lat);
+    cleanDeliveryLng = parseStrictCoordinate(delivery_lng);
+
+    if (
+      cleanDeliveryLat === null ||
+      cleanDeliveryLng === null ||
+      cleanDeliveryLat < -90 ||
+      cleanDeliveryLat > 90 ||
+      cleanDeliveryLng < -180 ||
+      cleanDeliveryLng > 180
+    ) {
+      return res.status(400).json({
+        message:
+          "Invalid map location. Latitude must be between -90 and 90, and longitude between -180 and 180.",
+      });
+    }
   }
 
   const cleanedItems = items
@@ -701,14 +713,15 @@ exports.createCustomOrder = async (req, res) => {
       `INSERT INTO orders
         (order_number, customer_id, blueprint_id, type, order_type, status,
           walkin_customer_name, walkin_customer_phone,
-          payment_method, payment_status,
-          delivery_address, delivery_lat, delivery_lng, notes, subtotal, total)
-      VALUES (?, ?, NULL, 'online', 'blueprint', 'pending', ?, ?, NULL, 'unpaid', ?, ?, ?, ?, 0, 0)`,
+          payment_method, payment_status, fulfillment_method,
+          delivery_address, delivery_lat, delivery_lng, delivery_fee, notes, subtotal, total)
+      VALUES (?, ?, NULL, 'online', 'blueprint', 'pending', ?, ?, NULL, 'unpaid', ?, ?, ?, ?, 0, ?, 0, 0)`,
       [
         order_number,
         req.user.id,
         String(name).trim(),
         String(phone).trim(),
+        cleanFulfillmentMethod,
         cleanDeliveryAddress,
         cleanDeliveryLat,
         cleanDeliveryLng,
@@ -825,6 +838,7 @@ exports.createCustomOrder = async (req, res) => {
         order_number,
         order_type: "blueprint",
         status: "pending",
+        fulfillment_method: cleanFulfillmentMethod,
         item_count: cleanedItems.reduce(
           (sum, item) => sum + Number(item.quantity || 0),
           0,
@@ -899,6 +913,7 @@ exports.getCustomOrders = async (req, res) => {
           status,
           payment_method,
           payment_status,
+          fulfillment_method,
           total,
           created_at
        FROM orders
@@ -942,6 +957,9 @@ exports.getCustomOrderById = async (req, res) => {
           paymongo_session_id,
           payment_url,
           payment_status,
+          fulfillment_method,
+          picked_up_at,
+          picked_up_by,
           delivery_address,
           delivery_lat,
           delivery_lng,
@@ -969,6 +987,9 @@ exports.getCustomOrderById = async (req, res) => {
     }
 
     const order = orders[0];
+    order.fulfillment_method =
+      normalize(order.fulfillment_method) === "pickup" ? "pickup" : "delivery";
+    const isPickupOrder = order.fulfillment_method === "pickup";
 
     // Read once, then stripped from `order` before the response spread
     // below so the raw session id / URL are never sent to the client —
@@ -1053,7 +1074,7 @@ exports.getCustomOrderById = async (req, res) => {
     );
     const deliveryRow = deliveryRows[0] || null;
     const deliveryStatus = deliveryRow ? normalize(deliveryRow.status) : null;
-    const customerDeliveryDetails = deliveryRow
+    const customerDeliveryDetails = !isPickupOrder && deliveryRow
       ? {
           id: deliveryRow.id,
           status: deliveryStatus,
@@ -1072,6 +1093,32 @@ exports.getCustomOrderById = async (req, res) => {
           ),
         }
       : null;
+
+    let customerPickupAcknowledgement = null;
+    if (isPickupOrder) {
+      const [pickupRows] = await conn.execute(
+        `SELECT
+           pa.id,
+           pa.order_id,
+           pa.received_by_name,
+           pa.recipient_type,
+           pa.signature_data,
+           pa.acknowledgement_text,
+           pa.note,
+           pa.acknowledged_at,
+           pa.released_by,
+           u.name AS released_by_name
+         FROM pickup_acknowledgements pa
+         LEFT JOIN users u ON u.id = pa.released_by
+         WHERE pa.order_id = ?
+         LIMIT 1`,
+        [orderId],
+      );
+      const pickupRow = pickupRows[0] || null;
+      if (pickupRow) {
+        customerPickupAcknowledgement = pickupRow;
+      }
+    }
 
     const totalVerifiedPayments = roundMoney(
       normalizedPayments
@@ -1208,8 +1255,9 @@ exports.getCustomOrderById = async (req, res) => {
       normalize(order.payment_status) !== "paid" &&
       totalVerifiedPayments > 0 &&
       balanceDue > 0 &&
-      Boolean(deliveryRow) &&
-      ["scheduled", "in_transit"].includes(deliveryStatus) &&
+      (isPickupOrder
+        ? canonicalOrderStatus === "ready_for_pickup"
+        : Boolean(deliveryRow) && ["scheduled", "in_transit"].includes(deliveryStatus)) &&
       !hasPendingPayment &&
       !paymentMethodChangeLocked;
 
@@ -1227,6 +1275,7 @@ exports.getCustomOrderById = async (req, res) => {
     const REMAINING_BALANCE_STAGES = new Set([
       "contract_released",
       "production",
+      "ready_for_pickup",
       "shipping",
       "delivered",
     ]);
@@ -1322,6 +1371,10 @@ exports.getCustomOrderById = async (req, res) => {
     const customerVisibleEstimationV141 = latestEstimation
       ? {
           ...latestEstimation,
+          overhead_cost: isPickupOrder ? 0 : Number(latestEstimation.overhead_cost || 0),
+          additional_delivery_fee: isPickupOrder
+            ? 0
+            : Number(latestEstimation.additional_delivery_fee || 0),
           notes: "",
           items: (latestEstimation.items || [])
             .filter((item) => !item.raw_material_id)
@@ -1347,6 +1400,7 @@ exports.getCustomOrderById = async (req, res) => {
       payment_transactions: normalizedPayments,
       discussion: discussionData.messages,
       delivery_details: customerDeliveryDetails,
+      pickup_acknowledgement: customerPickupAcknowledgement,
       payment_summary: {
         quoted_total: quotedTotal,
         down_payment_due: downPaymentDue,
@@ -4200,6 +4254,256 @@ exports.selectPaymentMethod = async (req, res) => {
   }
 };
 
+const selectPickupRemainingPaymentMethod = async ({ req, res, orderId, normalizedMethod }) => {
+  let conn = null;
+  let transactionActive = false;
+  try {
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+    transactionActive = true;
+
+    const [[order]] = await conn.query(
+      `SELECT id, customer_id, order_type, status, payment_status, total,
+              fulfillment_method, remaining_payment_method,
+              paymongo_session_id, payment_url
+       FROM orders
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [orderId],
+    );
+
+    if (!order || Number(order.customer_id) !== Number(req.user.id)) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(404).json({ message: "Custom request not found." });
+    }
+    if (normalize(order.order_type) !== "blueprint" || normalize(order.fulfillment_method) !== "pickup") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({ message: "This order is not available for pickup payment." });
+    }
+    if (normalize(order.status) !== "ready_for_pickup") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({ message: "The remaining payment method can be chosen when the furniture is ready for pickup." });
+    }
+    if (normalize(order.payment_status) === "paid") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({ message: "This order has already been fully paid." });
+    }
+
+    const [paymentRows] = await conn.query(
+      `SELECT id, amount, status
+       FROM payment_transactions
+       WHERE order_id = ?
+       ORDER BY id
+       FOR UPDATE`,
+      [orderId],
+    );
+    let verifiedCents = 0;
+    let hasPendingPayment = false;
+    for (const row of paymentRows) {
+      const cents = parseDecimalToCentsStrict(row.amount);
+      if (cents === null) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(409).json({ message: "This order's payment records are inconsistent. Please contact support." });
+      }
+      const status = normalize(row.status);
+      if (status === "verified") verifiedCents += cents;
+      if (status === "pending") hasPendingPayment = true;
+    }
+    if (verifiedCents <= 0) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({ message: "A verified down payment is required first." });
+    }
+    if (hasPendingPayment) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({ message: "A payment is already awaiting review for this order." });
+    }
+    const totalCents = parseDecimalToCentsStrict(order.total);
+    if (totalCents === null || totalCents <= verifiedCents) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({ message: totalCents === null ? "This order's total is invalid. Please contact support." : "This order has already been fully paid." });
+    }
+    if (order.paymongo_session_id || order.payment_url) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({ message: "An online payment session is already in progress." });
+    }
+
+    const previousMethod = order.remaining_payment_method || null;
+    if (previousMethod !== normalizedMethod) {
+      const [updateResult] = await conn.execute(
+        `UPDATE orders
+         SET remaining_payment_method = ?, updated_at = NOW()
+         WHERE id = ? AND customer_id = ? AND order_type = 'blueprint'
+           AND status = 'ready_for_pickup' AND fulfillment_method = 'pickup'
+           AND payment_status <> 'paid'`,
+        [normalizedMethod, orderId, req.user.id],
+      );
+      if (updateResult.affectedRows !== 1) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(409).json({ message: "This order's state changed. Please refresh and try again." });
+      }
+    }
+
+    await conn.commit();
+    transactionActive = false;
+    req.auditRecord = {
+      id: orderId,
+      old: { remaining_payment_method: previousMethod },
+      new: { remaining_payment_method: normalizedMethod, fulfillment_method: "pickup" },
+    };
+    return res.json({ success: true, remaining_payment_method: normalizedMethod });
+  } catch (err) {
+    req.auditRecord = null;
+    if (conn && transactionActive) { try { await conn.rollback(); } catch {} }
+    console.error("[customer.customorders pickup remaining method]", err);
+    return res.status(500).json({ message: "Failed to update the remaining payment method." });
+  } finally {
+    if (conn) conn.release();
+  }
+};
+
+const createPickupRemainingBalancePayMongoCheckout = async ({ req, res, orderId }) => {
+  let conn = null;
+  let transactionActive = false;
+  try {
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+    transactionActive = true;
+
+    const [[order]] = await conn.query(
+      `SELECT id, order_number, customer_id, order_type, status, payment_status, total,
+              fulfillment_method, remaining_payment_method,
+              paymongo_session_id, payment_url
+       FROM orders
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [orderId],
+    );
+    if (!order || Number(order.customer_id) !== Number(req.user.id)) {
+      await conn.rollback(); transactionActive = false;
+      return res.status(404).json({ message: "Custom order not found." });
+    }
+    if (normalize(order.order_type) !== "blueprint" || normalize(order.fulfillment_method) !== "pickup") {
+      await conn.rollback(); transactionActive = false;
+      return res.status(409).json({ message: "This order is not available for pickup payment." });
+    }
+    if (normalize(order.status) !== "ready_for_pickup") {
+      await conn.rollback(); transactionActive = false;
+      return res.status(400).json({ message: "Online remaining-balance payment is available when the furniture is ready for pickup." });
+    }
+    if (normalize(order.remaining_payment_method) !== "paymongo") {
+      await conn.rollback(); transactionActive = false;
+      return res.status(400).json({ message: "Select Online Payment for the remaining balance first." });
+    }
+    if (normalize(order.payment_status) === "paid") {
+      await conn.rollback(); transactionActive = false;
+      return res.status(400).json({ message: "This order has already been fully paid." });
+    }
+
+    const [paymentRows] = await conn.query(
+      `SELECT id, amount, status FROM payment_transactions WHERE order_id = ? ORDER BY id FOR UPDATE`,
+      [orderId],
+    );
+    let verifiedCents = 0;
+    for (const row of paymentRows) {
+      const cents = parseDecimalToCentsStrict(row.amount);
+      if (cents === null) {
+        await conn.rollback(); transactionActive = false;
+        return res.status(409).json({ message: "This order's payment records are inconsistent. Please contact support." });
+      }
+      if (normalize(row.status) === "pending") {
+        await conn.rollback(); transactionActive = false;
+        return res.status(400).json({ message: "A payment is already awaiting review for this order." });
+      }
+      if (normalize(row.status) === "verified") verifiedCents += cents;
+    }
+    const totalCents = parseDecimalToCentsStrict(order.total);
+    if (totalCents === null) {
+      await conn.rollback(); transactionActive = false;
+      return res.status(409).json({ message: "This order's total is invalid. Please contact support." });
+    }
+    const remainingCents = Math.max(0, totalCents - verifiedCents);
+    if (remainingCents <= 0) {
+      await conn.rollback(); transactionActive = false;
+      return res.status(400).json({ message: "This order has already been fully paid." });
+    }
+
+    const hasSessionId = Boolean(order.paymongo_session_id);
+    const hasPaymentUrl = Boolean(order.payment_url);
+    if (hasSessionId !== hasPaymentUrl) {
+      await conn.rollback(); transactionActive = false;
+      return res.status(409).json({ message: "This order's payment state is inconsistent. Please contact support." });
+    }
+    if (hasSessionId && hasPaymentUrl) {
+      let session;
+      try { session = await retrieveCheckoutSession(order.paymongo_session_id); }
+      catch (pmErr) {
+        await conn.rollback(); transactionActive = false;
+        return res.status(502).json({ message: "Unable to reach the payment provider. Please try again." });
+      }
+      const payments = session.attributes?.payments || [];
+      const intent = session.attributes?.payment_intent;
+      const paid = payments.some((p) => p.attributes?.status === "paid") || intent?.attributes?.status === "succeeded";
+      const active = normalize(session.attributes?.status) === "active";
+      if (paid || active) {
+        await conn.commit(); transactionActive = false;
+        return res.json({ payment_url: order.payment_url, reused: true });
+      }
+      await conn.execute(
+        `UPDATE orders SET payment_url = NULL, paymongo_session_id = NULL
+         WHERE id = ? AND customer_id = ? AND paymongo_session_id = ? AND payment_url = ?`,
+        [order.id, req.user.id, order.paymongo_session_id, order.payment_url],
+      );
+    }
+
+    const [[customer]] = await conn.execute(
+      `SELECT name, phone, email FROM users WHERE id = ? LIMIT 1`,
+      [req.user.id],
+    );
+    const remainingAmount = centsToAmount(remainingCents);
+    const frontendUrl = process.env.FRONTEND_URL || req.headers.origin;
+    const checkout = await createCheckoutSession({
+      customer,
+      amount: remainingAmount,
+      description: `Remaining Balance for ${order.order_number}`,
+      successUrl: `${frontendUrl}/custom-requests/${order.id}?verify_remaining_success=true`,
+      cancelUrl: `${frontendUrl}/custom-requests/${order.id}`,
+      metadata: { order_id: order.id, order_type: "blueprint", payment_purpose: "remaining_balance", fulfillment_method: "pickup" },
+    });
+    const [updateResult] = await conn.execute(
+      `UPDATE orders SET payment_url = ?, paymongo_session_id = ?, updated_at = NOW()
+       WHERE id = ? AND customer_id = ? AND order_type = 'blueprint'
+         AND fulfillment_method = 'pickup' AND status = 'ready_for_pickup'
+         AND remaining_payment_method = 'paymongo' AND payment_status <> 'paid'
+         AND paymongo_session_id IS NULL AND payment_url IS NULL`,
+      [checkout.checkoutUrl, checkout.sessionId, order.id, req.user.id],
+    );
+    if (updateResult.affectedRows !== 1) {
+      await conn.rollback(); transactionActive = false;
+      return res.status(409).json({ message: "This order's state changed. Please refresh and try again." });
+    }
+    await conn.commit(); transactionActive = false;
+    return res.json({ payment_url: checkout.checkoutUrl });
+  } catch (err) {
+    if (conn && transactionActive) { try { await conn.rollback(); } catch {} }
+    console.error("[customer.customorders pickup remaining checkout]", err.response?.data || err);
+    return res.status(500).json({ message: "Failed to create the online payment session." });
+  } finally {
+    if (conn) conn.release();
+  }
+};
+
 // PHASE 5 — Blueprint Rider Final Cash Collection (Final Decision 3).
 // Lets the customer choose (or switch) how the REMAINING balance of a
 // blueprint order will be paid: cash to the assigned rider on delivery,
@@ -4234,6 +4538,14 @@ exports.selectRemainingPaymentMethod = async (req, res) => {
       return res.status(400).json({
         message: "Choose Cash or Online Payment for the remaining balance.",
       });
+    }
+
+    const [[fulfillmentProbe]] = await db.execute(
+      `SELECT fulfillment_method FROM orders WHERE id = ? AND customer_id = ? AND order_type = 'blueprint' LIMIT 1`,
+      [orderId, req.user.id],
+    );
+    if (normalize(fulfillmentProbe?.fulfillment_method) === "pickup") {
+      return selectPickupRemainingPaymentMethod({ req, res, orderId, normalizedMethod });
     }
 
     conn = await db.getConnection();
@@ -4511,6 +4823,14 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
     const orderId = parseStrictPositiveInt(req.params.id);
     if (!orderId) {
       return res.status(400).json({ message: "Invalid custom request ID." });
+    }
+
+    const [[fulfillmentProbe]] = await db.execute(
+      `SELECT fulfillment_method FROM orders WHERE id = ? AND customer_id = ? AND order_type = 'blueprint' LIMIT 1`,
+      [orderId, req.user.id],
+    );
+    if (normalize(fulfillmentProbe?.fulfillment_method) === "pickup") {
+      return createPickupRemainingBalancePayMongoCheckout({ req, res, orderId });
     }
 
     conn = await db.getConnection();

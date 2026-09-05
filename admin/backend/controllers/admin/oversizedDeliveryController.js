@@ -469,6 +469,15 @@ exports.saveDecisionByBlueprint = async (req, res) => {
       assessment,
     } = await resolveBlueprintContext(conn, blueprintId);
 
+    if (assessment.status === "not_applicable") {
+      await conn.rollback();
+      return res.status(409).json({
+        message: "Pickup orders do not use delivery capacity, truck review, or delivery fees.",
+        code: "DELIVERY_NOT_APPLICABLE",
+        assessment,
+      });
+    }
+
     if (
       assessment.status === "not_configured" ||
       assessment.status === "manual_review"

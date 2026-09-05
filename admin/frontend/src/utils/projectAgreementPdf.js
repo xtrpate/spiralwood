@@ -149,6 +149,7 @@ export function downloadProjectAgreementPdf({
     agreement?.down_payment || (approvedTotal > 0 ? (approvedTotal * 0.3).toFixed(2) : 0),
   );
   const remainingBalance = Math.max(0, approvedTotal - requiredDownPayment);
+  const isPickup = normalize(order?.fulfillment_method) === "pickup";
   const visibleItems = getCustomerVisibleItems(estimation);
 
   const addPage = () => {
@@ -256,6 +257,7 @@ export function downloadProjectAgreementPdf({
     ["Furniture", projectName, "Quantity", String(quantity)],
     ["Dimensions", dimensions, "Wood", titleCase(wood)],
     ["Finish", titleCase(finish), "Assembly", assembly],
+    ["Fulfillment", isPickup ? "Store Pickup" : "Delivery", "", ""],
   ]);
 
   if (visibleItems.length) {
@@ -280,9 +282,11 @@ export function downloadProjectAgreementPdf({
   sectionTitle("Cost Summary");
   moneyRow("Materials", estimation?.material_cost || 0);
   moneyRow("Labor", estimation?.labor_cost || 0);
-  moneyRow("Logistics", estimation?.overhead_cost || 0);
-  if (Number(estimation?.additional_delivery_fee || 0) > 0) {
-    moneyRow("Delivery Fee", estimation.additional_delivery_fee);
+  if (!isPickup) {
+    moneyRow("Logistics", estimation?.overhead_cost || 0);
+    if (Number(estimation?.additional_delivery_fee || 0) > 0) {
+      moneyRow("Delivery Fee", estimation.additional_delivery_fee);
+    }
   }
   const discount = Number(estimation?.discount_amount ?? estimation?.discount ?? 0);
   if (discount > 0) moneyRow("Discount", -discount);
@@ -297,7 +301,9 @@ export function downloadProjectAgreementPdf({
   moneyRow("Remaining Balance", remainingBalance, true);
   y += 2;
   text(
-    "Production starts after the 30% down payment is verified. The remaining balance must be fully paid before the order is completed.",
+    isPickup
+      ? "Production starts after the 30% down payment is verified. The remaining balance must be fully paid before the furniture can be released for pickup."
+      : "Production starts after the 30% down payment is verified. The remaining balance must be fully paid before the order is completed.",
     margin,
     contentWidth,
   );
