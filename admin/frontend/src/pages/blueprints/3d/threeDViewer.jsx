@@ -30,6 +30,7 @@ import { QuickControlsBar } from "./components/QuickControlsBar";
 import {
   createBlueprintSceneFoundation,
   disposeObject3DResources,
+  BLUEPRINT_GRID,
 } from "./sceneSetup";
 import {
   captureCameraView as captureCameraSnapshot,
@@ -90,18 +91,12 @@ const getPartFunction = (component = {}) => {
     .trim()
     .toLowerCase();
 
-  return ["auto", "normal", "door", "drawer"].includes(value)
-    ? value
-    : "auto";
+  return ["auto", "normal", "door", "drawer"].includes(value) ? value : "auto";
 };
 
 // WISDOM MANUAL MOVING GROUPS V1.1.0
 const getMotionGroupId = (component = {}) =>
-  String(
-    component?.motionGroupId ??
-      component?.motion_group_id ??
-      "",
-  ).trim();
+  String(component?.motionGroupId ?? component?.motion_group_id ?? "").trim();
 
 const getMotionReferencePartId = (component = {}) =>
   String(
@@ -118,11 +113,7 @@ const resolveManualMotionSet = (
   const functionType = getPartFunction(component);
   const groupId = getMotionGroupId(component);
 
-  if (
-    !component?.id ||
-    !groupId ||
-    functionType !== expectedFunction
-  ) {
+  if (!component?.id || !groupId || functionType !== expectedFunction) {
     return {
       groupId: "",
       members: component?.id ? [component] : [],
@@ -147,15 +138,11 @@ const resolveManualMotionSet = (
 
   const referenceId =
     getMotionReferencePartId(component) ||
-    members
-      .map(getMotionReferencePartId)
-      .find(Boolean) ||
+    members.map(getMotionReferencePartId).find(Boolean) ||
     component.id;
 
   const reference =
-    members.find((item) => item.id === referenceId) ||
-    component ||
-    members[0];
+    members.find((item) => item.id === referenceId) || component || members[0];
 
   return {
     groupId,
@@ -359,10 +346,7 @@ const resolveDrawerPreviewKey = (component = {}) => {
   if (!component?.id) return "";
 
   const motionGroupId = getMotionGroupId(component);
-  if (
-    getPartFunction(component) === "drawer" &&
-    motionGroupId
-  ) {
+  if (getPartFunction(component) === "drawer" && motionGroupId) {
     return `motion:${motionGroupId}`;
   }
 
@@ -734,6 +718,36 @@ function ThreeDViewer({
     keysRef.current = {};
   }, []);
 
+  const getBoundsOffset = useCallback((box, floorY) => {
+    const offset = new THREE.Vector3(0, 0, 0);
+    if (!box || box.isEmpty()) return offset;
+
+    // 1. Floor Clamp (Y-Axis)
+    if (box.min.y < floorY) {
+      offset.y = floorY - box.min.y;
+    }
+
+    // 2. Wall Clamps (X and Z Axes)
+    const limitMinX = -BLUEPRINT_GRID.w / 2;
+    const limitMaxX = BLUEPRINT_GRID.w / 2;
+    const limitMinZ = -BLUEPRINT_GRID.d / 2;
+    const limitMaxZ = BLUEPRINT_GRID.d / 2;
+
+    if (box.min.x < limitMinX) {
+      offset.x = limitMinX - box.min.x;
+    } else if (box.max.x > limitMaxX) {
+      offset.x = limitMaxX - box.max.x;
+    }
+
+    if (box.min.z < limitMinZ) {
+      offset.z = limitMinZ - box.min.z;
+    } else if (box.max.z > limitMaxZ) {
+      offset.z = limitMaxZ - box.max.z;
+    }
+
+    return offset; // Returns (0,0,0) if perfectly inside bounds
+  }, []);
+
   const getPlacementDims = useCallback(
     (typeDef = {}) => ({
       width: Math.max(
@@ -947,6 +961,14 @@ function ThreeDViewer({
         0,
       );
       preview.updateMatrixWorld(true);
+
+      // Enforce physical boundary collision on the visual spawn ghost
+      const box = new THREE.Box3().setFromObject(preview);
+      const offset = getBoundsOffset(box, -canvasH / 2);
+      if (offset.lengthSq() > 0) {
+        preview.position.add(offset);
+        preview.updateMatrixWorld(true);
+      }
     },
     [
       canvasH,
@@ -954,6 +976,7 @@ function ThreeDViewer({
       ensurePlacementPreview,
       getPlacementDims,
       isTemplatePlacementType,
+      getBoundsOffset, // Added dependency
     ],
   );
 
@@ -1721,9 +1744,7 @@ function ThreeDViewer({
 
     const originals =
       preview?.originals ||
-      (preview?.original
-        ? [{ object: preview.original, visible: true }]
-        : []);
+      (preview?.original ? [{ object: preview.original, visible: true }] : []);
 
     originals.forEach(({ object, visible }) => {
       if (object) {
@@ -1820,34 +1841,24 @@ function ThreeDViewer({
       );
 
       const members =
-        manualSet.members.length > 0
-          ? manualSet.members
-          : [component];
+        manualSet.members.length > 0 ? manualSet.members : [component];
 
-      const referenceComponent =
-        manualSet.reference || component;
+      const referenceComponent = manualSet.reference || component;
 
       const memberEntries = members.map((member) => ({
         member,
         entry: entryMapRef.current.get(member.id),
       }));
 
-      if (
-        memberEntries.some(
-          ({ entry }) => !entry?.obj?.parent,
-        )
-      ) {
+      if (memberEntries.some(({ entry }) => !entry?.obj?.parent)) {
         return false;
       }
 
-      const parent =
-        memberEntries[0]?.entry?.obj?.parent || null;
+      const parent = memberEntries[0]?.entry?.obj?.parent || null;
 
       if (
         !parent ||
-        memberEntries.some(
-          ({ entry }) => entry.obj.parent !== parent,
-        )
+        memberEntries.some(({ entry }) => entry.obj.parent !== parent)
       ) {
         return false;
       }
@@ -1874,10 +1885,7 @@ function ThreeDViewer({
           .trim()
           .toLowerCase();
 
-        return (
-          value.startsWith("l") ||
-          value.startsWith("r")
-        );
+        return value.startsWith("l") || value.startsWith("r");
       });
 
       const hingeSide = explicitHingeComponent
@@ -1893,20 +1901,12 @@ function ThreeDViewer({
             .startsWith("r")
           ? "right"
           : "left"
-        : resolveDoorPreviewHingeSide(
-            referenceComponent,
-            sourceComponents,
-          );
+        : resolveDoorPreviewHingeSide(referenceComponent, sourceComponents);
 
-      const width = Math.max(
-        1,
-        Number(referenceComponent?.width || 1),
-      );
+      const width = Math.max(1, Number(referenceComponent?.width || 1));
 
       const localHingeOffset = new THREE.Vector3(
-        hingeSide === "right"
-          ? width / 2
-          : -width / 2,
+        hingeSide === "right" ? width / 2 : -width / 2,
         0,
         0,
       );
@@ -1916,18 +1916,13 @@ function ThreeDViewer({
         .add(
           localHingeOffset
             .clone()
-            .applyQuaternion(
-              referenceOriginal.quaternion,
-            ),
+            .applyQuaternion(referenceOriginal.quaternion),
         );
 
       const pivot = new THREE.Group();
-      pivot.name =
-        `door-preview-pivot-${manualSet.groupId || component.id}`;
+      pivot.name = `door-preview-pivot-${manualSet.groupId || component.id}`;
       pivot.position.copy(hingePosition);
-      pivot.quaternion.copy(
-        referenceOriginal.quaternion,
-      );
+      pivot.quaternion.copy(referenceOriginal.quaternion);
 
       parent.add(pivot);
       parent.updateMatrixWorld(true);
@@ -1940,8 +1935,7 @@ function ThreeDViewer({
         const original = entry.obj;
         const clone = original.clone(true);
 
-        clone.name =
-          `door-preview-clone-${member.id}`;
+        clone.name = `door-preview-clone-${member.id}`;
 
         clone.traverse((child) => {
           child.userData = {
@@ -1980,13 +1974,10 @@ function ThreeDViewer({
       });
 
       const transform = transformRef.current;
-      const outlineGroup =
-        selectionOutlineGroupRef.current;
+      const outlineGroup = selectionOutlineGroupRef.current;
 
       const transformVisible =
-        typeof transform?.visible === "boolean"
-          ? transform.visible
-          : true;
+        typeof transform?.visible === "boolean" ? transform.visible : true;
 
       const outlineVisible =
         typeof outlineGroup?.visible === "boolean"
@@ -2006,13 +1997,10 @@ function ThreeDViewer({
         originals,
         clones,
         pivot,
-        basePivotQuaternion:
-          referenceOriginal.quaternion.clone(),
-        direction:
-          hingeSide === "right" ? 1 : -1,
+        basePivotQuaternion: referenceOriginal.quaternion.clone(),
+        direction: hingeSide === "right" ? 1 : -1,
         currentAngle: 0,
-        componentSignature:
-          getDoorPreviewComponentsSignature(members),
+        componentSignature: getDoorPreviewComponentsSignature(members),
         transform,
         transformVisible,
         outlineGroup,
@@ -2021,11 +2009,7 @@ function ThreeDViewer({
 
       setDoorPreviewOpenId(component.id);
 
-      animateDoorPreviewTo(
-        THREE.MathUtils.degToRad(
-          DOOR_PREVIEW_OPEN_DEGREES,
-        ),
-      );
+      animateDoorPreviewTo(THREE.MathUtils.degToRad(DOOR_PREVIEW_OPEN_DEGREES));
 
       return true;
     },
@@ -2074,15 +2058,13 @@ function ThreeDViewer({
     const preview = doorPreviewRef.current;
     if (!preview) return;
 
-    const previewMemberIds =
-      preview.memberIds?.length
-        ? preview.memberIds
-        : [preview.id];
+    const previewMemberIds = preview.memberIds?.length
+      ? preview.memberIds
+      : [preview.id];
 
-    const previewDoorIsSelected =
-      activeSelectionIds3D.some((id) =>
-        previewMemberIds.includes(id),
-      );
+    const previewDoorIsSelected = activeSelectionIds3D.some((id) =>
+      previewMemberIds.includes(id),
+    );
 
     // When another object is selected while the door stays open,
     // restore normal editor visuals for that new selection.
@@ -2102,13 +2084,12 @@ function ThreeDViewer({
   const openDoorPreviewComponentSignature = useMemo(() => {
     if (!doorPreviewOpenId) return "";
 
-    const previewMemberIds =
-      doorPreviewRef.current?.memberIds?.length
-        ? doorPreviewRef.current.memberIds
-        : [doorPreviewOpenId];
+    const previewMemberIds = doorPreviewRef.current?.memberIds?.length
+      ? doorPreviewRef.current.memberIds
+      : [doorPreviewOpenId];
 
-    const openMembers = (components || []).filter(
-      (item) => previewMemberIds.includes(item.id),
+    const openMembers = (components || []).filter((item) =>
+      previewMemberIds.includes(item.id),
     );
 
     return getDoorPreviewComponentsSignature(openMembers);
@@ -2307,18 +2288,14 @@ function ThreeDViewer({
 
       const manualReferenceId =
         getMotionReferencePartId(component) ||
-        drawerSet.movableMembers
-          .map(getMotionReferencePartId)
-          .find(Boolean) ||
+        drawerSet.movableMembers.map(getMotionReferencePartId).find(Boolean) ||
         "";
 
       const frontMember =
         drawerSet.movableMembers.find(
           (item) => item.id === manualReferenceId,
         ) ||
-        drawerSet.movableMembers.find(
-          isDrawerPreviewFrontComponent,
-        ) ||
+        drawerSet.movableMembers.find(isDrawerPreviewFrontComponent) ||
         component;
 
       const frontEntry =
@@ -3013,6 +2990,55 @@ function ThreeDViewer({
     entryMapRef.current = entryMap;
     selectableMeshesRef.current = selectableMeshes;
 
+    // Global Pass: Keep assemblies together while clamping them inside the grid bounds
+    const floorLimit = -canvasH / 2;
+    const outOfBoundsUpdates = {};
+    const groups = new Map();
+    const singletons = [];
+
+    selectableMeshes.forEach((mesh) => {
+      const rootId = mesh.userData.rootId;
+      const entry = entryMap.get(rootId);
+      if (entry && entry.comp) {
+        const groupId = entry.comp.groupId || entry.comp.assemblyId;
+        if (groupId) {
+          if (!groups.has(groupId)) groups.set(groupId, []);
+          groups.get(groupId).push({ mesh, comp: entry.comp });
+        } else {
+          singletons.push({ mesh, comp: entry.comp });
+        }
+      }
+    });
+
+    const clampGroup = (items) => {
+      const groupBox = new THREE.Box3();
+      items.forEach((item) => {
+        item.mesh.updateMatrixWorld(true);
+        groupBox.expandByObject(item.mesh);
+      });
+
+      const offset = getBoundsOffset(groupBox, floorLimit);
+      if (offset.lengthSq() > 0) {
+        items.forEach((item) => {
+          item.mesh.position.add(offset);
+          item.mesh.updateMatrixWorld(true);
+          outOfBoundsUpdates[item.comp.id] = compFromWorld(
+            item.mesh,
+            item.comp,
+          );
+        });
+      }
+    };
+
+    groups.forEach((items) => clampGroup(items));
+    singletons.forEach((item) => clampGroup([item]));
+
+    if (Object.keys(outOfBoundsUpdates).length > 0) {
+      onBatchUpdateCompsRef.current?.(outOfBoundsUpdates, {
+        skipHistory: true,
+      });
+    }
+
     attachSelectedRaw();
     syncSelectionOutlines();
 
@@ -3276,9 +3302,29 @@ function ThreeDViewer({
 
     const onTransformObjectChange = () => {
       if (!transform.dragging || !transform.enabled) return;
+      const floorLimit = -canvasH / 2;
 
       if (transform.object === selectionPivotRef.current) {
         previewMultiTransform();
+
+        // Measure all moving parts together to get the combined group bounds
+        const state = multiTransformStateRef.current;
+        if (state && state.items) {
+          const groupBox = new THREE.Box3();
+          state.items.forEach((item) => {
+            item.obj.updateMatrixWorld(true);
+            groupBox.expandByObject(item.obj);
+          });
+
+          // If the group hits the wall, push the pivot back and resync the parts
+          const offset = getBoundsOffset(groupBox, floorLimit);
+          if (offset.lengthSq() > 0) {
+            selectionPivotRef.current.position.add(offset);
+            selectionPivotRef.current.updateMatrixWorld(true);
+            previewMultiTransform();
+          }
+        }
+
         syncSelectionOutlines();
 
         const currentId = selectedIdRef.current;
@@ -3297,12 +3343,18 @@ function ThreeDViewer({
       const entry = entryMapRef.current.get(currentId);
       if (!entry?.obj || !entry?.comp) return;
 
-      // Do not rewrite the object's position or scale while TransformControls
-      // is actively dragging. Mutating the controlled object during the same
-      // drag makes TransformControls recalculate from a moving baseline, which
-      // causes the part to drift sideways and compounds the scale. The live
-      // inspector and the release commit both read from the same untouched
-      // transform values instead.
+      // Handle single-object scaling/rotating/translating collisions
+      if (transform.object) {
+        transform.object.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(transform.object);
+        const offset = getBoundsOffset(box, floorLimit);
+
+        if (offset.lengthSq() > 0) {
+          transform.object.position.add(offset);
+          transform.object.updateMatrixWorld(true);
+        }
+      }
+
       syncLiveSelectedCompFromObject(currentId, entry.obj, entry.comp);
       syncSelectionOutlines();
     };
