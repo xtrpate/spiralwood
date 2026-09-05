@@ -256,6 +256,37 @@ const useAuthStore = create((set, get) => ({
     return data;
   },
 
+  completeTemporaryPasswordChange: async (currentPassword, newPassword) => {
+    try {
+      const { data } = await api.put("/auth/change-password", {
+        current_password: currentPassword,
+        new_password: newPassword,
+      });
+
+      const updatedUser = {
+        ...(get().user || {}),
+        must_change_password: 0,
+      };
+      const freshToken = data?.token || get().token;
+      const rememberMe = localStorage.getItem(REMEMBER_KEY) === "true";
+
+      if (freshToken) {
+        persistSession(freshToken, updatedUser, rememberMe);
+        set({ user: updatedUser, token: freshToken });
+      } else {
+        persistUserOnly(updatedUser);
+        set({ user: updatedUser });
+      }
+      return updatedUser;
+    } catch (err) {
+      const wrapped = new Error(
+        extractAuthErrorMessage(err, "Password could not be changed."),
+      );
+      if (err.response) wrapped.response = err.response;
+      throw wrapped;
+    }
+  },
+
   logout: () => {
     clearSession();
     set({

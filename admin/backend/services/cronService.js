@@ -4,6 +4,7 @@ const path = require("path");
 const fs = require("fs");
 const pool = require("../config/db");
 const { runPosQrCleanupBatch } = require("./posQrCleanupService");
+const { cleanupUnverifiedCustomers } = require("./unverifiedCustomerCleanupService");
 
 // Pure Node.js SQL dump (no mysqldump binary needed)
 async function generateSQLDump(filePath) {
@@ -119,6 +120,18 @@ function startCronJobs() {
     }
   });
 
+  // Abandoned customer registration cleanup — once daily at 2:30 AM.
+  cron.schedule("30 2 * * *", async () => {
+    try {
+      const result = await cleanupUnverifiedCustomers({ ageDays: 7, batchSize: 100 });
+      console.log(
+        `[CRON] Unverified registration cleanup: scanned=${result.scanned}, deleted=${result.deleted}, skipped_linked=${result.skipped_linked}`,
+      );
+    } catch (err) {
+      console.error("[CRON] Unverified registration cleanup failed:", err.message);
+    }
+  });
+
   // New: Support ticket auto-close (Runs at midnight)
   cron.schedule("0 0 * * *", async () => {
     try {
@@ -150,7 +163,7 @@ function startCronJobs() {
   });
 
   console.log(
-    "✅  Cron jobs started: auto-backup at 12:00 AM and 12:00 PM daily; POS QR cleanup check every 5 minutes; Ticket auto-close at 12:00 AM.",
+    "✅  Cron jobs started: auto-backup at 12:00 AM and 12:00 PM daily; POS QR cleanup every 5 minutes; unverified registration cleanup at 2:30 AM; ticket auto-close at 12:00 AM.",
   );
 }
 

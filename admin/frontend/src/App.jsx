@@ -8,6 +8,7 @@ import {
   Navigate,
   Outlet,
   useSearchParams,
+  useLocation,
 } from "react-router-dom";
 import "leaflet/dist/leaflet.css";
 import { Toaster } from "react-hot-toast";
@@ -50,6 +51,7 @@ import { CartProvider } from "./pages/customer/cartcontext";
 import { CustomCartProvider } from "./pages/customer/customcartcontext";
 import CustomerLayout from "./pages/customer/customerlayout.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
+import ForcePasswordChangePage from "./pages/ForcePasswordChangePage.jsx";
 import RegisterPage from "./pages/customer/registerpage";
 import ForgotPasswordPage from "./pages/customer/forgotpasswordpage";
 import ProductCatalog from "./pages/customer/productcatalog";
@@ -108,6 +110,7 @@ window.addEventListener("error", (e) => {
 
 function RequireAuth({ children, roles }) {
   const { user } = useAuthStore();
+  const location = useLocation();
 
   if (!user) {
     return <Navigate to="/login" replace />;
@@ -115,6 +118,17 @@ function RequireAuth({ children, roles }) {
 
   if (roles && !roles.includes(user.role)) {
     return <Navigate to={getDefaultRouteForUser(user)} replace />;
+  }
+
+  const internalMustChange =
+    (user.role === "admin" || user.role === "staff") &&
+    Number(user.must_change_password) === 1;
+
+  if (
+    internalMustChange &&
+    location.pathname !== "/change-temporary-password"
+  ) {
+    return <Navigate to="/change-temporary-password" replace />;
   }
 
   return children;
@@ -163,6 +177,13 @@ function RequireStaffOnlyType({ children, allowedTypes }) {
 function getDefaultRouteForUser(user) {
   if (!user) {
     return "/login";
+  }
+
+  if (
+    (user.role === "admin" || user.role === "staff") &&
+    Number(user.must_change_password) === 1
+  ) {
+    return "/change-temporary-password";
   }
 
   if (user.role === "admin") {
@@ -258,6 +279,15 @@ export default function App() {
             <SessionLoginFeedback />
 
             <Routes>
+              <Route
+                path="/change-temporary-password"
+                element={
+                  <RequireAuth roles={["admin", "staff"]}>
+                    <ForcePasswordChangePage />
+                  </RequireAuth>
+                }
+              />
+
               {/* CUSTOMER PORTAL */}
               <Route element={<Outlet />}>
                 <Route

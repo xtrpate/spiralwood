@@ -7,6 +7,11 @@ const db = require("../../config/db"); // Uses the unified db config
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const { verifyRecaptcha } = require("../../utils/verifyRecaptcha");
 const { sendSms } = require("../../services/semaphore.service");
+const {
+  normalizePhilippinePhone,
+  getPhoneLookupVariants,
+  phoneDigitsSql,
+} = require("../../utils/phone");
 
 require("dotenv").config();
 
@@ -16,24 +21,6 @@ const RESET_TOKEN_EXPIRY = "10m";
 
 const generateOtp = () =>
   Math.floor(100000 + Math.random() * 900000).toString();
-
-const normalizePhilippinePhone = (phone) => {
-  let value = String(phone || "").replace(/\D/g, "");
-
-  if (value.startsWith("09") && value.length === 11) {
-    return "63" + value.slice(1);
-  }
-
-  if (value.startsWith("639") && value.length === 12) {
-    return value;
-  }
-
-  if (value.startsWith("9") && value.length === 10) {
-    return "63" + value;
-  }
-
-  throw new Error("Invalid Philippine mobile number.");
-};
 
 /* ── Helper: Fetch Global Email Footer ── */
 const getGlobalEmailFooter = async () => {
@@ -335,6 +322,15 @@ exports.register = async (req, res) => {
       .json({ message: "Password must be at least 8 characters." });
   }
 
+  let normalizedPhone;
+  try {
+    normalizedPhone = normalizePhilippinePhone(phone);
+  } catch {
+    return res.status(400).json({
+      message: "Enter a valid Philippine mobile number.",
+    });
+  }
+
   const isHuman = await verifyRecaptcha(recaptcha_token);
   if (!isHuman) {
     return res
@@ -346,15 +342,24 @@ exports.register = async (req, res) => {
     const normalizedEmail = String(email).trim().toLowerCase();
     const fullName = `${String(first_name).trim()} ${String(last_name).trim()}`;
 
+    const phoneVariants = getPhoneLookupVariants(normalizedPhone);
     const [existing] = await db.query(
-      "SELECT id FROM users WHERE email = ? LIMIT 1",
-      [normalizedEmail],
+      `SELECT id, email, phone
+         FROM users
+        WHERE LOWER(email) = ?
+           OR ${phoneDigitsSql("phone")} IN (?, ?, ?)
+        LIMIT 1`,
+      [normalizedEmail, ...phoneVariants],
     );
 
     if (existing.length > 0) {
-      return res
-        .status(409)
-        .json({ message: "An account with this email already exists." });
+      const sameEmail =
+        String(existing[0]?.email || "").toLowerCase() === normalizedEmail;
+      return res.status(409).json({
+        message: sameEmail
+          ? "An account with this email already exists."
+          : "This phone number is already registered.",
+      });
     }
 
     const hashed = await bcrypt.hash(password, 12);
@@ -371,8 +376,6 @@ exports.register = async (req, res) => {
     const phoneOtpExpires = new Date(
       Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000,
     );
-
-    const normalizedPhone = normalizePhilippinePhone(phone);
 
     const [result] = await db.query(
       `
@@ -451,9 +454,13 @@ exports.register = async (req, res) => {
     }
   } catch (err) {
     console.error("[register]", err);
+    if (err.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({
+        message: "Email or phone number is already registered.",
+      });
+    }
     return res.status(500).json({
-      message: "Server error",
-      error: err.message,
+      message: "Registration could not be completed. Please try again.",
     });
   }
 };
@@ -767,15 +774,14 @@ exports.changeRegistrationPhone = async (req, res) => {
     }
 
     // Prevent duplicate phone numbers.
+    const phoneVariants = getPhoneLookupVariants(normalizedPhone);
     const [existing] = await db.query(
-      `
-      SELECT id
-      FROM users
-      WHERE phone = ?
-        AND id <> ?
-      LIMIT 1
-      `,
-      [normalizedPhone, user.id],
+      `SELECT id
+         FROM users
+        WHERE ${phoneDigitsSql("phone")} IN (?, ?, ?)
+          AND id <> ?
+        LIMIT 1`,
+      [...phoneVariants, user.id],
     );
 
     if (existing.length > 0) {

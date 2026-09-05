@@ -6,6 +6,7 @@ import useAuthStore from "../../store/authStore";
 import {
   BriefcaseBusiness,
   KeyRound,
+  ImagePlus,
   MoreHorizontal,
   Pencil,
   Search,
@@ -39,6 +40,7 @@ const BLANK_FORM = {
   role: "staff",
   staff_type: "cashier",
   phone: "",
+  address: "",
   is_active: true,
 };
 
@@ -106,6 +108,22 @@ const formatLastLogin = (value) => {
   });
 };
 
+const normalizePhoneDigits = (value) =>
+  String(value || "")
+    .replace(/\D/g, "");
+
+const formatPhoneForDisplay = (value) => {
+  const digits = normalizePhoneDigits(value);
+  if (/^639\d{9}$/.test(digits)) return `0${digits.slice(2)}`;
+  if (/^9\d{9}$/.test(digits)) return `0${digits}`;
+  return value || "Phone not provided";
+};
+
+const formatPhoneForInput = (value) => {
+  const display = formatPhoneForDisplay(value);
+  return display === "Phone not provided" ? "" : display;
+};
+
 export default function UsersPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -123,6 +141,8 @@ export default function UsersPage() {
   });
   const [saving, setSaving] = useState(false);
   const [target, setTarget] = useState(null);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState("");
   const [filters, setFilters] = useState(FILTERS);
   const [openMenuId, setOpenMenuId] = useState(null);
 
@@ -144,6 +164,9 @@ export default function UsersPage() {
     try {
       const { data } = await api.get("/users");
       setUsers(Array.isArray(data) ? data : []);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Unable to load accounts.");
+      setUsers([]);
     } finally {
       setLoading(false);
     }
@@ -156,6 +179,8 @@ export default function UsersPage() {
   const openAdd = () => {
     setForm({ ...BLANK_FORM });
     setTarget(null);
+    setPhotoFile(null);
+    setPhotoPreview("");
     setModal("add");
     setOpenMenuId(null);
   };
@@ -166,11 +191,14 @@ export default function UsersPage() {
       email: user.email || "",
       role: user.role || "staff",
       staff_type: user.staff_type || "cashier",
-      phone: user.phone || "",
+      phone: formatPhoneForInput(user.phone),
+      address: user.address || "",
       is_active: !!user.is_active,
       password: "",
     });
     setTarget(user);
+    setPhotoFile(null);
+    setPhotoPreview(buildAssetUrl(user.profile_photo) || "");
     setModal("edit");
     setOpenMenuId(null);
   };
@@ -187,7 +215,7 @@ export default function UsersPage() {
 
   const openDelete = (user) => {
     if (user.id === me?.id) {
-      toast.error("You cannot delete your own account.");
+      toast.error("You cannot deactivate your own account.");
       return;
     }
 
@@ -200,6 +228,8 @@ export default function UsersPage() {
     if (saving) return;
     setModal(null);
     setTarget(null);
+    setPhotoFile(null);
+    setPhotoPreview("");
   };
 
   const setF = (key, value) =>
@@ -207,6 +237,44 @@ export default function UsersPage() {
       ...current,
       [key]: value,
     }));
+
+  const handlePhotoChange = (event) => {
+    const file = event.target.files?.[0] || null;
+    event.target.value = "";
+
+    if (!file) return;
+
+    const extension = String(file.name || "")
+      .toLowerCase()
+      .match(/\.[a-z0-9]+$/)?.[0];
+    const allowedExtensions = new Set([
+      ".jpg",
+      ".jpeg",
+      ".jfif",
+      ".png",
+      ".webp",
+    ]);
+
+    if (!extension || !allowedExtensions.has(extension)) {
+      toast.error("Profile photo must be JPG, JPEG, JFIF, PNG, or WEBP.");
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Profile photo must be 2MB or smaller.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setPhotoFile(file);
+      setPhotoPreview(String(reader.result || ""));
+    };
+    reader.onerror = () => {
+      toast.error("Unable to preview the selected photo.");
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSave = async (event) => {
     event.preventDefault();
@@ -219,23 +287,40 @@ export default function UsersPage() {
     setSaving(true);
 
     try {
-      const payload = {
-        ...form,
-        staff_type: form.role === "staff" ? form.staff_type : "",
-      };
+      const payload = new FormData();
+      payload.append("name", form.name.trim());
+      payload.append("email", form.email.trim());
+      payload.append("phone", form.phone.trim());
+      payload.append("address", form.address.trim());
+      payload.append("role", form.role);
+      payload.append(
+        "staff_type",
+        form.role === "staff" ? form.staff_type : "",
+      );
+      payload.append("is_active", form.is_active ? "true" : "false");
+
+      if (modal === "add") {
+        payload.append("password", form.password);
+      }
+      if (photoFile) {
+        payload.append("profile_photo", photoFile);
+      }
 
       if (modal === "add") {
         await api.post("/users", payload);
-        toast.success("Account created.");
+        toast.success("Account created with a temporary password.");
       } else {
-        const { password, ...rest } = payload;
-        await api.put(`/users/${target.id}`, rest);
+        await api.put(`/users/${target.id}`, payload);
         toast.success("Account updated.");
       }
 
       setModal(null);
       setTarget(null);
+      setPhotoFile(null);
+      setPhotoPreview("");
       await load();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Unable to save account.");
     } finally {
       setSaving(false);
     }
@@ -260,9 +345,11 @@ export default function UsersPage() {
       await api.patch(`/users/${target.id}/password`, {
         new_password: pwForm.new_password,
       });
-      toast.success("Password reset successfully.");
+      toast.success("Temporary password reset. User must change it on next login.");
       setModal(null);
       setTarget(null);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Unable to reset password.");
     } finally {
       setSaving(false);
     }
@@ -270,7 +357,7 @@ export default function UsersPage() {
 
   const handleDelete = async () => {
     if (!target || target.id === me?.id) {
-      toast.error("You cannot delete your own account.");
+      toast.error("You cannot deactivate your own account.");
       return;
     }
 
@@ -278,10 +365,12 @@ export default function UsersPage() {
 
     try {
       await api.delete(`/users/${target.id}`);
-      toast.success("Account deleted.");
+      toast.success("Account deactivated.");
       setModal(null);
       setTarget(null);
       await load();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Unable to deactivate account.");
     } finally {
       setSaving(false);
     }
@@ -311,6 +400,7 @@ export default function UsersPage() {
         user.name,
         user.email,
         user.phone,
+        formatPhoneForDisplay(user.phone),
         roleLabel,
       ]
         .filter(Boolean)
@@ -518,6 +608,9 @@ export default function UsersPage() {
           target={target}
           form={form}
           setF={setF}
+          me={me}
+          photoPreview={photoPreview}
+          onPhotoChange={handlePhotoChange}
           saving={saving}
           onClose={closeModal}
           onSubmit={handleSave}
@@ -599,7 +692,7 @@ function UserRow({
       <td>
         <div className="um-contact">
           <span>{user.email || "No email"}</span>
-          <small>{user.phone || "Phone not provided"}</small>
+          <small>{formatPhoneForDisplay(user.phone)}</small>
         </div>
       </td>
 
@@ -668,7 +761,7 @@ function UserRow({
                       onClick={() => onDelete(user)}
                     >
                       <Trash2 size={14} strokeWidth={1.9} />
-                      Delete Account
+                      Deactivate Account
                     </button>
                   </>
                 )}
@@ -686,11 +779,15 @@ function AccountModal({
   target,
   form,
   setF,
+  me,
+  photoPreview,
+  onPhotoChange,
   saving,
   onClose,
   onSubmit,
 }) {
   const isEdit = mode === "edit";
+  const isSelf = isEdit && target?.id === me?.id;
 
   return (
     <ModalShell onClose={onClose}>
@@ -718,6 +815,31 @@ function AccountModal({
 
       <form onSubmit={onSubmit}>
         <div className="um-modal-body">
+          <section className="um-profile-photo-section">
+            <div className="um-profile-photo-preview">
+              {photoPreview ? (
+                <img src={photoPreview} alt="Profile preview" />
+              ) : (
+                getInitial(form.name)
+              )}
+            </div>
+
+            <div className="um-profile-photo-copy">
+              <div className="um-section-label">Profile Photo</div>
+              <p>Optional. JPG, JPEG, JFIF, PNG, or WEBP up to 2MB.</p>
+              <label className="um-btn um-btn-secondary um-photo-upload-btn">
+                <ImagePlus size={14} strokeWidth={1.9} />
+                {photoPreview ? "Change Photo" : "Upload Photo"}
+                <input
+                  type="file"
+                  accept=".jpg,.jpeg,.jfif,.png,.webp,image/jpeg,image/png,image/webp"
+                  onChange={onPhotoChange}
+                  disabled={saving}
+                />
+              </label>
+            </div>
+          </section>
+
           <div className="um-form-grid">
             <Field label="Full Name" required>
               <input
@@ -751,11 +873,21 @@ function AccountModal({
               </Field>
             )}
 
-            <Field label="Phone Number">
+            <Field label="Phone Number" required>
               <input
+                required
                 value={form.phone}
                 onChange={(event) => setF("phone", event.target.value)}
                 placeholder="09XX XXX XXXX"
+              />
+            </Field>
+
+            <Field label="Address" required>
+              <input
+                required
+                value={form.address}
+                onChange={(event) => setF("address", event.target.value)}
+                placeholder="Complete address"
               />
             </Field>
           </div>
@@ -785,6 +917,7 @@ function AccountModal({
                     name="role"
                     value={option.value}
                     checked={form.role === option.value}
+                    disabled={isSelf && option.value !== "admin"}
                     onChange={() => {
                       setF("role", option.value);
 
@@ -841,6 +974,7 @@ function AccountModal({
               <input
                 type="checkbox"
                 checked={!!form.is_active}
+                disabled={isSelf}
                 onChange={(event) => setF("is_active", event.target.checked)}
               />
               <span>
@@ -965,10 +1099,10 @@ function DeleteModal({ target, saving, onClose, onConfirm }) {
     <ModalShell onClose={onClose} compact>
       <div className="um-modal-header">
         <div>
-          <div className="um-modal-eyebrow um-danger-text">Permanent Action</div>
-          <h3>Delete Account</h3>
+          <div className="um-modal-eyebrow um-danger-text">Account Access</div>
+          <h3>Deactivate Account</h3>
           <p>
-            Delete {target?.name || "this account"} from WISDOM?
+            Deactivate {target?.name || "this account"} in WISDOM?
           </p>
         </div>
 
@@ -987,10 +1121,9 @@ function DeleteModal({ target, saving, onClose, onConfirm }) {
         <div className="um-delete-warning">
           <Trash2 size={18} strokeWidth={1.9} />
           <div>
-            <strong>This action cannot be undone.</strong>
+            <strong>This is a reversible access change.</strong>
             <span>
-              The account will be permanently removed. Review the selected account
-              before continuing.
+              The account will remain in WISDOM for history and can be reactivated later.
             </span>
           </div>
         </div>
@@ -1012,7 +1145,7 @@ function DeleteModal({ target, saving, onClose, onConfirm }) {
           onClick={onConfirm}
           disabled={saving}
         >
-          {saving ? "Deleting..." : "Delete Account"}
+          {saving ? "Deactivating..." : "Deactivate Account"}
         </button>
       </div>
     </ModalShell>
@@ -1941,4 +2074,58 @@ const styles = `
       max-height: 94vh;
     }
   }
+  .um-profile-photo-section {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px;
+    margin-bottom: 16px;
+    border: 1px solid var(--um-border-soft);
+    border-radius: 4px;
+    background: #fafafa;
+  }
+
+  .um-profile-photo-preview {
+    width: 62px;
+    height: 62px;
+    flex: 0 0 62px;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    border: 1px solid #d9dde2;
+    border-radius: 50%;
+    background: #ffffff;
+    color: #4d535b;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .um-profile-photo-preview img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+  }
+
+  .um-profile-photo-copy {
+    min-width: 0;
+  }
+
+  .um-profile-photo-copy p {
+    margin: 4px 0 9px;
+    color: var(--um-muted);
+    font-size: 10.5px;
+    line-height: 1.45;
+  }
+
+  .um-photo-upload-btn {
+    width: fit-content;
+    min-height: 32px;
+    cursor: pointer;
+  }
+
+  .um-photo-upload-btn input {
+    display: none;
+  }
+
 `;

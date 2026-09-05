@@ -476,12 +476,14 @@ router.get("/users", adminOnly, mgmt.getUsers);
 router.post(
   "/users",
   adminOnly,
+  upload.uploadUserProfilePhoto,
   logAction("create_user", "users"),
   mgmt.createUser,
 );
 router.put(
   "/users/:id",
   adminOnly,
+  upload.uploadUserProfilePhoto,
   logAction("update_user", "users"),
   mgmt.updateUser,
 );
@@ -494,7 +496,7 @@ router.patch(
 router.delete(
   "/users/:id",
   adminOnly,
-  logAction("delete_user", "users"),
+  logAction("deactivate_user", "users"),
   mgmt.deleteUser,
 );
 

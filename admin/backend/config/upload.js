@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const { v2: cloudinary } = require("cloudinary");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const { verifyBufferSignature } = require("../utils/verifyFileSignature");
 
 // 1. Configure Cloudinary with your .env keys
 cloudinary.config({
@@ -158,6 +159,135 @@ exports.uploadProductImage = (req, res, next) => {
 
     next();
   });
+};
+
+// WISDOM INTERNAL USER PROFILE PHOTO UPLOAD V1
+// Admin-created Admin/Staff photos reuse the same Cloudinary-backed pattern as
+// customer avatars. Multipart parsing and magic-byte validation happen before
+// controller validation; Cloudinary persistence is deferred until the account
+// payload and duplicate checks have passed.
+const INTERNAL_PROFILE_EXTENSIONS = new Set([
+  ".jpg",
+  ".jpeg",
+  ".jfif",
+  ".png",
+  ".webp",
+]);
+const INTERNAL_PROFILE_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+const INTERNAL_PROFILE_MAX_BYTES = 2 * 1024 * 1024;
+
+const internalProfileRawUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: INTERNAL_PROFILE_MAX_BYTES },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || "").toLowerCase();
+    const mime = String(file.mimetype || "")
+      .trim()
+      .toLowerCase();
+
+    if (
+      INTERNAL_PROFILE_EXTENSIONS.has(ext) &&
+      INTERNAL_PROFILE_MIME_TYPES.has(mime)
+    ) {
+      cb(null, true);
+      return;
+    }
+
+    const error = new Error(
+      "Profile photo must be a JPG, JPEG, JFIF, PNG, or WEBP image.",
+    );
+    error.status = 400;
+    cb(error);
+  },
+}).single("profile_photo");
+
+const uploadInternalProfileBufferToCloudinary = (file) =>
+  new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: "wisdom_uploads/avatars",
+        resource_type: "image",
+      },
+      (error, result) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(result);
+      },
+    );
+
+    stream.end(file.buffer);
+  });
+
+exports.uploadUserProfilePhoto = (req, res, next) => {
+  internalProfileRawUpload(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(400).json({
+            message: "Profile photo must be 2MB or smaller.",
+          });
+        }
+        if (err.code === "LIMIT_UNEXPECTED_FILE") {
+          return res.status(400).json({
+            message: "Invalid profile photo upload.",
+          });
+        }
+      }
+
+      if (Number(err.status) === 400) {
+        return res.status(400).json({ message: err.message });
+      }
+
+      console.error("[internal profile photo parse]", err);
+      return res.status(500).json({
+        message: "Profile photo could not be read.",
+      });
+    }
+
+    if (!req.file) {
+      next();
+      return;
+    }
+
+    const ext = path.extname(req.file.originalname || "").toLowerCase();
+    if (!verifyBufferSignature(req.file.buffer, ext)) {
+      return res.status(400).json({
+        message: "Profile photo content does not match its image file type.",
+      });
+    }
+
+    next();
+  });
+};
+
+exports.persistUserProfilePhoto = async (file) => {
+  if (!file) return null;
+
+  try {
+    const result = await uploadInternalProfileBufferToCloudinary(file);
+    if (!result?.secure_url) {
+      throw new Error("Cloudinary did not return a secure image URL.");
+    }
+
+    return {
+      url: result.secure_url,
+      public_id: result.public_id || null,
+    };
+  } catch (uploadError) {
+    console.error(
+      "[internal profile photo cloudinary]",
+      uploadError?.message || uploadError,
+    );
+    const error = new Error("Profile photo upload failed. Please try again.");
+    error.code = "INTERNAL_PROFILE_UPLOAD_FAILED";
+    throw error;
+  }
 };
 
 const blueprintUpload = multer({

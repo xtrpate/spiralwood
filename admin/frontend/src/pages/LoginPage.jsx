@@ -7,6 +7,12 @@ import "./customer/authpages.css";
 
 const getDefaultRouteForUser = (user) => {
   if (!user) return "/login";
+  if (
+    (user.role === "admin" || user.role === "staff") &&
+    Number(user.must_change_password) === 1
+  ) {
+    return "/change-temporary-password";
+  }
   if (user.role === "admin") return "/admin/dashboard";
 
   if (user.role === "staff") {
