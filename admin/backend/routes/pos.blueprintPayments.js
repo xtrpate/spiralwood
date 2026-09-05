@@ -20,6 +20,14 @@ router.get(
 );
 
 router.post(
+  "/:id/picked-up",
+  authenticate,
+  requireCashierOrAdmin,
+  logAction("confirm_blueprint_pickup", "orders"),
+  controller.markPickedUp,
+);
+
+router.post(
   "/:id",
   authenticate,
   requireCashierOrAdmin,

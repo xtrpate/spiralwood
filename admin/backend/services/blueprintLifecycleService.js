@@ -309,7 +309,8 @@ async function resolveLifecycleByOrder(conn, options = {}) {
   const orderSql =
     `SELECT id, order_number, customer_id, order_type, status, blueprint_id,
         subtotal, tax, discount, total, down_payment, payment_status,
-        payment_method, paymongo_session_id, payment_url,
+        payment_method, remaining_payment_method, paymongo_session_id, payment_url,
+        fulfillment_method, picked_up_at, picked_up_by,
         created_at, updated_at
      FROM orders
      WHERE id = ?

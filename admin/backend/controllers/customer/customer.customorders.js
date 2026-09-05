@@ -20,6 +20,10 @@ const {
   ensureReceiptForVerifiedPayment,
 } = require("../../services/blueprintReceiptService");
 const {
+  releaseBlueprintMaterialsForCancellation,
+  BlueprintMaterialReleaseError,
+} = require("../../services/blueprintMaterialReleaseService");
+const {
   roundMoney,
   calcDownPaymentAmount,
   parseDecimalToCentsStrict,
@@ -511,6 +515,7 @@ exports.createCustomOrder = async (req, res) => {
     delivery_address,
     delivery_lat,
     delivery_lng,
+    fulfillment_method,
     notes,
     assembly_choice,
     design_review_confirmed,
@@ -565,41 +570,52 @@ exports.createCustomOrder = async (req, res) => {
     return res.status(400).json({ message: "Phone is required." });
   }
 
-  const cleanDeliveryAddress =
-    typeof delivery_address === "string" ? delivery_address.trim() : "";
+  const cleanFulfillmentMethod = String(fulfillment_method || "delivery")
+    .trim()
+    .toLowerCase();
 
-  if (!cleanDeliveryAddress) {
-    return res.status(400).json({ message: "Delivery address is required." });
+  if (!["delivery", "pickup"].includes(cleanFulfillmentMethod)) {
+    return res.status(400).json({ message: "Choose Delivery or Pickup." });
   }
 
-  // Every new blueprint/custom request must include a complete, valid
-  // delivery coordinate pair. Unlike the standard-order flow (where the
-  // map pin is optional), this is mandatory here — no half-a-pin allowed.
-  const hasDeliveryLat = delivery_lat !== undefined && delivery_lat !== null;
-  const hasDeliveryLng = delivery_lng !== undefined && delivery_lng !== null;
+  const isPickupRequest = cleanFulfillmentMethod === "pickup";
+  let cleanDeliveryAddress = null;
+  let cleanDeliveryLat = null;
+  let cleanDeliveryLng = null;
 
-  if (!hasDeliveryLat || !hasDeliveryLng) {
-    return res.status(400).json({
-      message:
-        "A delivery map location (latitude and longitude) is required for custom/blueprint requests.",
-    });
-  }
+  if (!isPickupRequest) {
+    cleanDeliveryAddress =
+      typeof delivery_address === "string" ? delivery_address.trim() : "";
 
-  const cleanDeliveryLat = parseStrictCoordinate(delivery_lat);
-  const cleanDeliveryLng = parseStrictCoordinate(delivery_lng);
+    if (!cleanDeliveryAddress) {
+      return res.status(400).json({ message: "Delivery address is required." });
+    }
 
-  if (
-    cleanDeliveryLat === null ||
-    cleanDeliveryLng === null ||
-    cleanDeliveryLat < -90 ||
-    cleanDeliveryLat > 90 ||
-    cleanDeliveryLng < -180 ||
-    cleanDeliveryLng > 180
-  ) {
-    return res.status(400).json({
-      message:
-        "Invalid map location. Latitude must be between -90 and 90, and longitude between -180 and 180.",
-    });
+    const hasDeliveryLat = delivery_lat !== undefined && delivery_lat !== null;
+    const hasDeliveryLng = delivery_lng !== undefined && delivery_lng !== null;
+
+    if (!hasDeliveryLat || !hasDeliveryLng) {
+      return res.status(400).json({
+        message: "A delivery map location is required for delivery orders.",
+      });
+    }
+
+    cleanDeliveryLat = parseStrictCoordinate(delivery_lat);
+    cleanDeliveryLng = parseStrictCoordinate(delivery_lng);
+
+    if (
+      cleanDeliveryLat === null ||
+      cleanDeliveryLng === null ||
+      cleanDeliveryLat < -90 ||
+      cleanDeliveryLat > 90 ||
+      cleanDeliveryLng < -180 ||
+      cleanDeliveryLng > 180
+    ) {
+      return res.status(400).json({
+        message:
+          "Invalid map location. Latitude must be between -90 and 90, and longitude between -180 and 180.",
+      });
+    }
   }
 
   const cleanedItems = items
@@ -697,14 +713,15 @@ exports.createCustomOrder = async (req, res) => {
       `INSERT INTO orders
         (order_number, customer_id, blueprint_id, type, order_type, status,
           walkin_customer_name, walkin_customer_phone,
-          payment_method, payment_status,
-          delivery_address, delivery_lat, delivery_lng, notes, subtotal, total)
-      VALUES (?, ?, NULL, 'online', 'blueprint', 'pending', ?, ?, NULL, 'unpaid', ?, ?, ?, ?, 0, 0)`,
+          payment_method, payment_status, fulfillment_method,
+          delivery_address, delivery_lat, delivery_lng, delivery_fee, notes, subtotal, total)
+      VALUES (?, ?, NULL, 'online', 'blueprint', 'pending', ?, ?, NULL, 'unpaid', ?, ?, ?, ?, 0, ?, 0, 0)`,
       [
         order_number,
         req.user.id,
         String(name).trim(),
         String(phone).trim(),
+        cleanFulfillmentMethod,
         cleanDeliveryAddress,
         cleanDeliveryLat,
         cleanDeliveryLng,
@@ -821,6 +838,7 @@ exports.createCustomOrder = async (req, res) => {
         order_number,
         order_type: "blueprint",
         status: "pending",
+        fulfillment_method: cleanFulfillmentMethod,
         item_count: cleanedItems.reduce(
           (sum, item) => sum + Number(item.quantity || 0),
           0,
@@ -895,6 +913,7 @@ exports.getCustomOrders = async (req, res) => {
           status,
           payment_method,
           payment_status,
+          fulfillment_method,
           total,
           created_at
        FROM orders
@@ -938,6 +957,9 @@ exports.getCustomOrderById = async (req, res) => {
           paymongo_session_id,
           payment_url,
           payment_status,
+          fulfillment_method,
+          picked_up_at,
+          picked_up_by,
           delivery_address,
           delivery_lat,
           delivery_lng,
@@ -948,6 +970,8 @@ exports.getCustomOrderById = async (req, res) => {
           total,
           down_payment,
           payment_proof,
+          cancellation_reason,
+          cancelled_at,
           created_at,
           updated_at
        FROM orders
@@ -963,6 +987,9 @@ exports.getCustomOrderById = async (req, res) => {
     }
 
     const order = orders[0];
+    order.fulfillment_method =
+      normalize(order.fulfillment_method) === "pickup" ? "pickup" : "delivery";
+    const isPickupOrder = order.fulfillment_method === "pickup";
 
     // Read once, then stripped from `order` before the response spread
     // below so the raw session id / URL are never sent to the client —
@@ -1047,7 +1074,7 @@ exports.getCustomOrderById = async (req, res) => {
     );
     const deliveryRow = deliveryRows[0] || null;
     const deliveryStatus = deliveryRow ? normalize(deliveryRow.status) : null;
-    const customerDeliveryDetails = deliveryRow
+    const customerDeliveryDetails = !isPickupOrder && deliveryRow
       ? {
           id: deliveryRow.id,
           status: deliveryStatus,
@@ -1066,6 +1093,32 @@ exports.getCustomOrderById = async (req, res) => {
           ),
         }
       : null;
+
+    let customerPickupAcknowledgement = null;
+    if (isPickupOrder) {
+      const [pickupRows] = await conn.execute(
+        `SELECT
+           pa.id,
+           pa.order_id,
+           pa.received_by_name,
+           pa.recipient_type,
+           pa.signature_data,
+           pa.acknowledgement_text,
+           pa.note,
+           pa.acknowledged_at,
+           pa.released_by,
+           u.name AS released_by_name
+         FROM pickup_acknowledgements pa
+         LEFT JOIN users u ON u.id = pa.released_by
+         WHERE pa.order_id = ?
+         LIMIT 1`,
+        [orderId],
+      );
+      const pickupRow = pickupRows[0] || null;
+      if (pickupRow) {
+        customerPickupAcknowledgement = pickupRow;
+      }
+    }
 
     const totalVerifiedPayments = roundMoney(
       normalizedPayments
@@ -1162,6 +1215,21 @@ exports.getCustomOrderById = async (req, res) => {
     // themselves under lock). Never derived from order.payment_status.
     const canonicalOrderStatus = normalize(order.status);
     const hasRealContract = Boolean(lifecycle.contract);
+    const projectAgreementAccepted = Boolean(lifecycle.contract?.signed_at);
+    const projectAgreement = lifecycle.contract
+      ? {
+          id: lifecycle.contract.id,
+          order_id: lifecycle.contract.order_id,
+          blueprint_id: lifecycle.contract.blueprint_id,
+          customer_name: lifecycle.contract.customer_name || null,
+          terms: lifecycle.contract.materials_used || "",
+          warranty_terms: lifecycle.contract.warranty_terms || "",
+          down_payment: Number(lifecycle.contract.down_payment || downPaymentDue || 0),
+          signed_at: lifecycle.contract.signed_at || null,
+          created_at: lifecycle.contract.created_at || null,
+          updated_at: lifecycle.contract.updated_at || null,
+        }
+      : null;
     const blueprintArchivedForPayment = lifecycle.blueprint
       ? isBlueprintArchived(lifecycle.blueprint)
       : false;
@@ -1187,8 +1255,9 @@ exports.getCustomOrderById = async (req, res) => {
       normalize(order.payment_status) !== "paid" &&
       totalVerifiedPayments > 0 &&
       balanceDue > 0 &&
-      Boolean(deliveryRow) &&
-      ["scheduled", "in_transit"].includes(deliveryStatus) &&
+      (isPickupOrder
+        ? canonicalOrderStatus === "ready_for_pickup"
+        : Boolean(deliveryRow) && ["scheduled", "in_transit"].includes(deliveryStatus)) &&
       !hasPendingPayment &&
       !paymentMethodChangeLocked;
 
@@ -1206,6 +1275,7 @@ exports.getCustomOrderById = async (req, res) => {
     const REMAINING_BALANCE_STAGES = new Set([
       "contract_released",
       "production",
+      "ready_for_pickup",
       "shipping",
       "delivered",
     ]);
@@ -1253,21 +1323,26 @@ exports.getCustomOrderById = async (req, res) => {
       paymentActionMessage =
         "Approve your quotation first before submitting a payment.";
     } else if (canonicalOrderStatus === "confirmed") {
-      if (hasRealContract) {
-        paymentStage = "unavailable";
+      if (!hasRealContract) {
+        paymentStage = "awaiting_agreement";
         paymentActionMessage =
-          "Please contact support if you need assistance with payment.";
+          "Your quotation is approved. Our team is preparing your Project Agreement.";
+      } else if (!projectAgreementAccepted) {
+        paymentStage = "awaiting_agreement_acceptance";
+        paymentActionMessage =
+          "Review and accept your Project Agreement before choosing a payment method.";
       } else if (!hasVerifiedDownPayment) {
         canSubmitInitialDownPayment = true;
         paymentStage = "initial";
-        paymentActionMessage = "Submit your 30% down payment proof to proceed.";
-      } else {
-        paymentStage = "awaiting_contract";
         paymentActionMessage =
-          "Your initial payment is verified. We're preparing your contract next.";
+          "Your Project Agreement is accepted. Complete the required 30% down payment to proceed.";
+      } else {
+        paymentStage = "awaiting_release";
+        paymentActionMessage =
+          "Your Project Agreement is accepted and the required payment is verified. We're preparing your project for production.";
       }
     } else if (REMAINING_BALANCE_STAGES.has(canonicalOrderStatus)) {
-      if (!hasRealContract || !hasVerifiedDownPayment) {
+      if (!hasRealContract || !projectAgreementAccepted || !hasVerifiedDownPayment) {
         paymentStage = "unavailable";
         paymentActionMessage =
           "Please contact support if you need assistance with payment.";
@@ -1296,6 +1371,10 @@ exports.getCustomOrderById = async (req, res) => {
     const customerVisibleEstimationV141 = latestEstimation
       ? {
           ...latestEstimation,
+          overhead_cost: isPickupOrder ? 0 : Number(latestEstimation.overhead_cost || 0),
+          additional_delivery_fee: isPickupOrder
+            ? 0
+            : Number(latestEstimation.additional_delivery_fee || 0),
           notes: "",
           items: (latestEstimation.items || [])
             .filter((item) => !item.raw_material_id)
@@ -1317,9 +1396,11 @@ exports.getCustomOrderById = async (req, res) => {
       quotation_action_blocked: quotationActionBlocked,
       quotation_integrity_warning: quotationIntegrityWarning,
       quotation_message: quotationMessage,
+      project_agreement: projectAgreement,
       payment_transactions: normalizedPayments,
       discussion: discussionData.messages,
       delivery_details: customerDeliveryDetails,
+      pickup_acknowledgement: customerPickupAcknowledgement,
       payment_summary: {
         quoted_total: quotedTotal,
         down_payment_due: downPaymentDue,
@@ -1333,6 +1414,8 @@ exports.getCustomOrderById = async (req, res) => {
         can_submit_remaining_balance: canSubmitRemainingBalance,
         payment_stage: paymentStage,
         payment_action_message: paymentActionMessage,
+        project_agreement_required: estimationApprovedForPayment,
+        project_agreement_accepted: projectAgreementAccepted,
         // PHASE 5 — Blueprint Rider Final Cash Collection
         remaining_payment_method: order.remaining_payment_method || null,
         delivery_status: deliveryStatus,
@@ -1514,6 +1597,453 @@ const normalizeLifecycleEstimation = async (conn, estimation) => {
       subtotal: Number(row.subtotal || 0),
     })),
   };
+};
+
+exports.cancelUnpaidProject = async (req, res) => {
+  const orderId = parseStrictPositiveInt(req.params.id);
+  const reason = String(req.body?.reason || "").trim();
+
+  if (!orderId) {
+    return res.status(400).json({ message: "Invalid custom request ID." });
+  }
+
+  if (reason.length > 500) {
+    return res.status(400).json({
+      message: "Cancellation reason must be 500 characters or fewer.",
+    });
+  }
+
+  let conn = null;
+  let transactionActive = false;
+  let connectionReusable = true;
+
+  try {
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+    transactionActive = true;
+
+    const [ownedOrders] = await conn.execute(
+      `SELECT id
+       FROM orders
+       WHERE id = ?
+         AND customer_id = ?
+         AND order_type = 'blueprint'
+       LIMIT 1
+       FOR UPDATE`,
+      [orderId, req.user.id],
+    );
+
+    if (!ownedOrders.length) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(404).json({ message: "Custom request not found." });
+    }
+
+    const lifecycle = await resolveLifecycleByOrder(conn, {
+      orderId,
+      lockOrder: true,
+      lockBlueprint: true,
+      lockEstimation: true,
+      lockContext: true,
+    });
+
+    if (
+      lifecycle.status !== "OK" ||
+      !lifecycle.order ||
+      !lifecycle.blueprint ||
+      !lifecycle.estimation
+    ) {
+      await conn.rollback();
+      transactionActive = false;
+      return sendLifecycleConflict(res);
+    }
+
+    const order = lifecycle.order;
+    const blueprint = lifecycle.blueprint;
+    const estimation = lifecycle.estimation;
+    const agreement = lifecycle.contract;
+
+    if (normalize(order.order_type) !== "blueprint") {
+      await conn.rollback();
+      transactionActive = false;
+      return sendLifecycleConflict(res);
+    }
+
+    if (isBlueprintArchived(blueprint)) {
+      await conn.rollback();
+      transactionActive = false;
+      return sendLifecycleConflict(res);
+    }
+
+    if (normalize(order.status) !== "confirmed") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "This project can no longer be cancelled directly from the customer page.",
+      });
+    }
+
+    if (normalize(estimation.status) !== "approved") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "Only a project with an approved quotation can use this cancellation flow.",
+      });
+    }
+
+    if (!agreement?.signed_at) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "The Project Agreement must be accepted before using this cancellation flow.",
+      });
+    }
+
+    if (Number(lifecycle.verified_payment_total || 0) > 0) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message:
+          "A verified payment already exists for this project. Please contact Spiral Wood Services for cancellation assistance.",
+      });
+    }
+
+    if (lifecycle.has_pending_payment_transaction) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message:
+          "A payment is already awaiting review. Please wait for it to be resolved before cancelling this project.",
+      });
+    }
+
+    if (order.paymongo_session_id || order.payment_url) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message:
+          "An online payment session is still active. Please contact Spiral Wood Services before cancelling this project.",
+      });
+    }
+
+    const materialReleaseResult = await releaseBlueprintMaterialsForCancellation(
+      conn,
+      {
+        orderId: order.id,
+        actorUserId: req.user.id,
+        releaseReason:
+          reason || "Customer cancelled the project before any verified payment.",
+      },
+    );
+
+    const cancellationReason =
+      reason || "Cancelled by customer before any verified payment.";
+
+    const [updateResult] = await conn.execute(
+      `UPDATE orders
+       SET status = 'cancelled',
+           cancellation_reason = ?,
+           cancelled_at = NOW(),
+           updated_at = NOW()
+       WHERE id = ?
+         AND customer_id = ?
+         AND order_type = 'blueprint'
+         AND status = 'confirmed'`,
+      [cancellationReason, order.id, req.user.id],
+    );
+
+    if (updateResult.affectedRows !== 1) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message: "This project's state changed. Please refresh and try again.",
+      });
+    }
+
+    const [[creatorRow]] = await conn.execute(
+      `SELECT creator_id FROM blueprints WHERE id = ? LIMIT 1`,
+      [blueprint.id],
+    );
+
+    await insertNotificationSafe(conn, creatorRow?.creator_id || null, {
+      type: "custom_project_cancelled",
+      title: "Project Cancelled by Customer",
+      message: `Customer cancelled ${order.order_number} before any verified payment.`,
+      targetType: "order",
+      targetId: order.id,
+      targetOrderId: order.id,
+    });
+
+    await conn.commit();
+    transactionActive = false;
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "cancel_unpaid_custom_project",
+      tableName: "orders",
+      recordId: order.id,
+      oldValues: {
+        status: order.status,
+        verified_payment_total: Number(lifecycle.verified_payment_total || 0),
+      },
+      newValues: {
+        status: "cancelled",
+        project_agreement_id: agreement.id,
+        project_agreement_signed_at: agreement.signed_at,
+        cancellation_reason: cancellationReason,
+        cancelled_before_payment: true,
+        material_release_reason: materialReleaseResult?.reason || null,
+        released_material_reservation_ids:
+          materialReleaseResult?.reservation_ids || [],
+      },
+      ipAddress: req.ip || null,
+    });
+
+    return res.json({
+      message: "Project cancelled successfully.",
+      status: "cancelled",
+      cancellation_reason: cancellationReason,
+    });
+  } catch (err) {
+    if (conn && transactionActive) {
+      try {
+        await conn.rollback();
+        transactionActive = false;
+      } catch (rollbackErr) {
+        console.error(
+          "[customer.customorders CANCEL PROJECT] rollback failed:",
+          rollbackErr.message || rollbackErr,
+        );
+        connectionReusable = false;
+      }
+    }
+
+    if (err instanceof BlueprintMaterialReleaseError) {
+      return res.status(err.statusCode || 409).json({
+        message: err.message,
+        integrity_reason: err.code,
+        ...(err.details ? { details: err.details } : {}),
+      });
+    }
+
+    console.error("[customer.customorders CANCEL PROJECT]", err);
+    return res.status(500).json({ message: "Failed to cancel project." });
+  } finally {
+    if (conn) {
+      if (connectionReusable) {
+        conn.release();
+      } else {
+        conn.destroy();
+      }
+    }
+  }
+};
+
+exports.acceptProjectAgreement = async (req, res) => {
+  const orderId = parseStrictPositiveInt(req.params.id);
+
+  if (!orderId) {
+    return res.status(400).json({ message: "Invalid custom request ID." });
+  }
+
+  let conn = null;
+  let transactionActive = false;
+  let connectionReusable = true;
+
+  try {
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+    transactionActive = true;
+
+    const [ownedOrders] = await conn.execute(
+      `SELECT id
+       FROM orders
+       WHERE id = ?
+         AND customer_id = ?
+         AND order_type = 'blueprint'
+       LIMIT 1
+       FOR UPDATE`,
+      [orderId, req.user.id],
+    );
+
+    if (!ownedOrders.length) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(404).json({ message: "Custom request not found." });
+    }
+
+    const lifecycle = await resolveLifecycleByOrder(conn, {
+      orderId,
+      lockOrder: true,
+      lockBlueprint: true,
+    });
+
+    if (
+      lifecycle.status !== "OK" ||
+      !lifecycle.order ||
+      !lifecycle.blueprint ||
+      !lifecycle.estimation
+    ) {
+      await conn.rollback();
+      transactionActive = false;
+      return sendLifecycleConflict(res);
+    }
+
+    const order = lifecycle.order;
+    const estimation = lifecycle.estimation;
+    const agreement = lifecycle.contract;
+
+    if (normalize(order.order_type) !== "blueprint") {
+      await conn.rollback();
+      transactionActive = false;
+      return sendLifecycleConflict(res);
+    }
+
+    if (isBlueprintArchived(lifecycle.blueprint)) {
+      await conn.rollback();
+      transactionActive = false;
+      return sendLifecycleConflict(res);
+    }
+
+    if (!agreement) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "Your Project Agreement has not been prepared yet.",
+      });
+    }
+
+    if (normalize(estimation.status) !== "approved") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "The quotation must be approved before accepting the Project Agreement.",
+      });
+    }
+
+    const currentStatus = normalize(order.status);
+    const alreadyAccepted = Boolean(agreement.signed_at);
+
+    if (!alreadyAccepted && currentStatus !== "confirmed") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "This Project Agreement can no longer be accepted from the current order stage.",
+      });
+    }
+
+    if (!alreadyAccepted) {
+      const [acceptResult] = await conn.execute(
+        `UPDATE contracts
+         SET signed_at = NOW(),
+             updated_at = NOW()
+         WHERE id = ?
+           AND order_id = ?
+           AND customer_id = ?
+           AND signed_at IS NULL`,
+        [agreement.id, order.id, req.user.id],
+      );
+
+      if (acceptResult.affectedRows !== 1) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(409).json({
+          message: "This Project Agreement was already updated. Please refresh and try again.",
+        });
+      }
+    }
+
+    const requiredDownPayment = calcDownPaymentAmount(
+      Number(estimation.grand_total || 0),
+    );
+    const verifiedTotal = Number(lifecycle.verified_payment_total || 0);
+    let released = false;
+
+    if (
+      currentStatus === "confirmed" &&
+      verifiedTotal >= Math.max(0, requiredDownPayment - 0.01)
+    ) {
+      const [releaseResult] = await conn.execute(
+        `UPDATE orders
+         SET status = 'contract_released', updated_at = NOW()
+         WHERE id = ?
+           AND customer_id = ?
+           AND order_type = 'blueprint'
+           AND status = 'confirmed'`,
+        [order.id, req.user.id],
+      );
+      released = releaseResult.affectedRows === 1;
+    }
+
+    const [[acceptedRow]] = await conn.execute(
+      `SELECT signed_at FROM contracts WHERE id = ? LIMIT 1`,
+      [agreement.id],
+    );
+
+    if (!alreadyAccepted) {
+      const [[creatorRow]] = await conn.execute(
+        `SELECT creator_id FROM blueprints WHERE id = ? LIMIT 1`,
+        [lifecycle.blueprint.id],
+      );
+
+      await insertNotificationSafe(conn, creatorRow?.creator_id || null, {
+        type: "project_agreement_accepted",
+        title: "Project Agreement Accepted",
+        message: `Customer accepted the Project Agreement for ${order.order_number}.`,
+        targetType: "order",
+        targetId: order.id,
+        targetOrderId: order.id,
+      });
+    }
+
+    await conn.commit();
+    transactionActive = false;
+
+    if (!alreadyAccepted) {
+      await writeAuditLogSafe({
+        userId: req.user.id,
+        action: "accept_project_agreement",
+        tableName: "contracts",
+        recordId: agreement.id,
+        oldValues: { signed_at: null },
+        newValues: {
+          signed_at: acceptedRow?.signed_at || true,
+          order_id: order.id,
+          released_after_existing_payment: released,
+        },
+        ipAddress: req.ip || null,
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: alreadyAccepted
+        ? "Project Agreement is already accepted."
+        : "Project Agreement accepted successfully.",
+      signed_at: acceptedRow?.signed_at || agreement.signed_at || null,
+      order_status: released ? "contract_released" : order.status,
+    });
+  } catch (err) {
+    if (conn && transactionActive) {
+      try {
+        await conn.rollback();
+        transactionActive = false;
+      } catch (rollbackErr) {
+        console.error(
+          "[customer.customorders ACCEPT PROJECT AGREEMENT] rollback failed:",
+          rollbackErr.message || rollbackErr,
+        );
+        connectionReusable = false;
+      }
+    }
+    console.error("[customer.customorders ACCEPT PROJECT AGREEMENT]", err);
+    return res.status(500).json({ message: "Failed to accept Project Agreement." });
+  } finally {
+    if (conn) {
+      if (connectionReusable) conn.release();
+      else conn.destroy();
+    }
+  }
 };
 
 exports.acceptEstimation = async (req, res) => {
@@ -2305,10 +2835,13 @@ exports.submitDownPayment = async (req, res) => {
       });
     }
 
-    if (lifecycle.contract) {
+    if (!lifecycle.contract || !lifecycle.contract.signed_at) {
       await conn.rollback();
       transactionActive = false;
-      return sendLifecycleConflict(res);
+      return res.status(400).json({
+        message:
+          "Review and accept the Project Agreement before submitting the 30% down payment.",
+      });
     }
 
     const estimationGrandTotal = Number(estimation.grand_total || 0);
@@ -3100,6 +3633,17 @@ exports.verifyPayment = async (req, res) => {
 
     const lockedOrder = lifecycle.order;
 
+    // New payment sessions can only be created after acceptance. A
+    // contract-less legacy session may still be verified for backward
+    // compatibility, but an existing unsigned agreement is never payable.
+    if (lifecycle.contract && !lifecycle.contract.signed_at) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "Accept the Project Agreement before payment can be verified.",
+      });
+    }
+
     // 👉 FIX 1: Explicitly check the DB row inside the lock, because lifecycle.order hides the session ID column
     const [[lockedCheck]] = await conn.execute(
       `SELECT paymongo_session_id FROM orders WHERE id = ?`,
@@ -3131,16 +3675,31 @@ exports.verifyPayment = async (req, res) => {
       [lockedOrder.id, downPaymentAmount, session.id],
     );
 
-    // 5. UPDATE THE ORDER
-    await conn.execute(
+    // 5. UPDATE THE ORDER. New-flow orders move to contract_released as
+    // soon as the accepted agreement and required 30% payment are both true.
+    // A legacy PayMongo session without an agreement remains confirmed.
+    const releaseAfterVerification = Boolean(lifecycle.contract?.signed_at);
+    const [orderPaymentUpdate] = await conn.execute(
       `UPDATE orders
        SET payment_status = 'partial',
+           status = CASE
+             WHEN ? = 1 AND status = 'confirmed' THEN 'contract_released'
+             ELSE status
+           END,
            payment_url = NULL,
            paymongo_session_id = NULL,
            updated_at = NOW()
        WHERE id = ?`,
-      [lockedOrder.id],
+      [releaseAfterVerification ? 1 : 0, lockedOrder.id],
     );
+
+    if (orderPaymentUpdate.affectedRows !== 1) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message: "This order's payment state changed. Please refresh and try again.",
+      });
+    }
 
     // 6. Receipt — created inside this same transaction, after the
     // payment transaction is verified and the order is updated, before
@@ -3241,6 +3800,15 @@ exports.createPayMongoCheckout = async (req, res) => {
       return res.status(400).json({
         message:
           "The quotation must be approved before submitting a down payment.",
+      });
+    }
+
+    if (!lifecycle.contract || !lifecycle.contract.signed_at) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message:
+          "Review and accept the Project Agreement before starting payment.",
       });
     }
 
@@ -3498,6 +4066,15 @@ exports.selectPaymentMethod = async (req, res) => {
       });
     }
 
+    if (!lifecycle.contract || !lifecycle.contract.signed_at) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message:
+          "Review and accept the Project Agreement before choosing a payment method.",
+      });
+    }
+
     if (normalize(order.payment_status) !== "unpaid") {
       await conn.rollback();
       transactionActive = false;
@@ -3677,6 +4254,256 @@ exports.selectPaymentMethod = async (req, res) => {
   }
 };
 
+const selectPickupRemainingPaymentMethod = async ({ req, res, orderId, normalizedMethod }) => {
+  let conn = null;
+  let transactionActive = false;
+  try {
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+    transactionActive = true;
+
+    const [[order]] = await conn.query(
+      `SELECT id, customer_id, order_type, status, payment_status, total,
+              fulfillment_method, remaining_payment_method,
+              paymongo_session_id, payment_url
+       FROM orders
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [orderId],
+    );
+
+    if (!order || Number(order.customer_id) !== Number(req.user.id)) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(404).json({ message: "Custom request not found." });
+    }
+    if (normalize(order.order_type) !== "blueprint" || normalize(order.fulfillment_method) !== "pickup") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({ message: "This order is not available for pickup payment." });
+    }
+    if (normalize(order.status) !== "ready_for_pickup") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({ message: "The remaining payment method can be chosen when the furniture is ready for pickup." });
+    }
+    if (normalize(order.payment_status) === "paid") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({ message: "This order has already been fully paid." });
+    }
+
+    const [paymentRows] = await conn.query(
+      `SELECT id, amount, status
+       FROM payment_transactions
+       WHERE order_id = ?
+       ORDER BY id
+       FOR UPDATE`,
+      [orderId],
+    );
+    let verifiedCents = 0;
+    let hasPendingPayment = false;
+    for (const row of paymentRows) {
+      const cents = parseDecimalToCentsStrict(row.amount);
+      if (cents === null) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(409).json({ message: "This order's payment records are inconsistent. Please contact support." });
+      }
+      const status = normalize(row.status);
+      if (status === "verified") verifiedCents += cents;
+      if (status === "pending") hasPendingPayment = true;
+    }
+    if (verifiedCents <= 0) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({ message: "A verified down payment is required first." });
+    }
+    if (hasPendingPayment) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({ message: "A payment is already awaiting review for this order." });
+    }
+    const totalCents = parseDecimalToCentsStrict(order.total);
+    if (totalCents === null || totalCents <= verifiedCents) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({ message: totalCents === null ? "This order's total is invalid. Please contact support." : "This order has already been fully paid." });
+    }
+    if (order.paymongo_session_id || order.payment_url) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({ message: "An online payment session is already in progress." });
+    }
+
+    const previousMethod = order.remaining_payment_method || null;
+    if (previousMethod !== normalizedMethod) {
+      const [updateResult] = await conn.execute(
+        `UPDATE orders
+         SET remaining_payment_method = ?, updated_at = NOW()
+         WHERE id = ? AND customer_id = ? AND order_type = 'blueprint'
+           AND status = 'ready_for_pickup' AND fulfillment_method = 'pickup'
+           AND payment_status <> 'paid'`,
+        [normalizedMethod, orderId, req.user.id],
+      );
+      if (updateResult.affectedRows !== 1) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(409).json({ message: "This order's state changed. Please refresh and try again." });
+      }
+    }
+
+    await conn.commit();
+    transactionActive = false;
+    req.auditRecord = {
+      id: orderId,
+      old: { remaining_payment_method: previousMethod },
+      new: { remaining_payment_method: normalizedMethod, fulfillment_method: "pickup" },
+    };
+    return res.json({ success: true, remaining_payment_method: normalizedMethod });
+  } catch (err) {
+    req.auditRecord = null;
+    if (conn && transactionActive) { try { await conn.rollback(); } catch {} }
+    console.error("[customer.customorders pickup remaining method]", err);
+    return res.status(500).json({ message: "Failed to update the remaining payment method." });
+  } finally {
+    if (conn) conn.release();
+  }
+};
+
+const createPickupRemainingBalancePayMongoCheckout = async ({ req, res, orderId }) => {
+  let conn = null;
+  let transactionActive = false;
+  try {
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+    transactionActive = true;
+
+    const [[order]] = await conn.query(
+      `SELECT id, order_number, customer_id, order_type, status, payment_status, total,
+              fulfillment_method, remaining_payment_method,
+              paymongo_session_id, payment_url
+       FROM orders
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [orderId],
+    );
+    if (!order || Number(order.customer_id) !== Number(req.user.id)) {
+      await conn.rollback(); transactionActive = false;
+      return res.status(404).json({ message: "Custom order not found." });
+    }
+    if (normalize(order.order_type) !== "blueprint" || normalize(order.fulfillment_method) !== "pickup") {
+      await conn.rollback(); transactionActive = false;
+      return res.status(409).json({ message: "This order is not available for pickup payment." });
+    }
+    if (normalize(order.status) !== "ready_for_pickup") {
+      await conn.rollback(); transactionActive = false;
+      return res.status(400).json({ message: "Online remaining-balance payment is available when the furniture is ready for pickup." });
+    }
+    if (normalize(order.remaining_payment_method) !== "paymongo") {
+      await conn.rollback(); transactionActive = false;
+      return res.status(400).json({ message: "Select Online Payment for the remaining balance first." });
+    }
+    if (normalize(order.payment_status) === "paid") {
+      await conn.rollback(); transactionActive = false;
+      return res.status(400).json({ message: "This order has already been fully paid." });
+    }
+
+    const [paymentRows] = await conn.query(
+      `SELECT id, amount, status FROM payment_transactions WHERE order_id = ? ORDER BY id FOR UPDATE`,
+      [orderId],
+    );
+    let verifiedCents = 0;
+    for (const row of paymentRows) {
+      const cents = parseDecimalToCentsStrict(row.amount);
+      if (cents === null) {
+        await conn.rollback(); transactionActive = false;
+        return res.status(409).json({ message: "This order's payment records are inconsistent. Please contact support." });
+      }
+      if (normalize(row.status) === "pending") {
+        await conn.rollback(); transactionActive = false;
+        return res.status(400).json({ message: "A payment is already awaiting review for this order." });
+      }
+      if (normalize(row.status) === "verified") verifiedCents += cents;
+    }
+    const totalCents = parseDecimalToCentsStrict(order.total);
+    if (totalCents === null) {
+      await conn.rollback(); transactionActive = false;
+      return res.status(409).json({ message: "This order's total is invalid. Please contact support." });
+    }
+    const remainingCents = Math.max(0, totalCents - verifiedCents);
+    if (remainingCents <= 0) {
+      await conn.rollback(); transactionActive = false;
+      return res.status(400).json({ message: "This order has already been fully paid." });
+    }
+
+    const hasSessionId = Boolean(order.paymongo_session_id);
+    const hasPaymentUrl = Boolean(order.payment_url);
+    if (hasSessionId !== hasPaymentUrl) {
+      await conn.rollback(); transactionActive = false;
+      return res.status(409).json({ message: "This order's payment state is inconsistent. Please contact support." });
+    }
+    if (hasSessionId && hasPaymentUrl) {
+      let session;
+      try { session = await retrieveCheckoutSession(order.paymongo_session_id); }
+      catch (pmErr) {
+        await conn.rollback(); transactionActive = false;
+        return res.status(502).json({ message: "Unable to reach the payment provider. Please try again." });
+      }
+      const payments = session.attributes?.payments || [];
+      const intent = session.attributes?.payment_intent;
+      const paid = payments.some((p) => p.attributes?.status === "paid") || intent?.attributes?.status === "succeeded";
+      const active = normalize(session.attributes?.status) === "active";
+      if (paid || active) {
+        await conn.commit(); transactionActive = false;
+        return res.json({ payment_url: order.payment_url, reused: true });
+      }
+      await conn.execute(
+        `UPDATE orders SET payment_url = NULL, paymongo_session_id = NULL
+         WHERE id = ? AND customer_id = ? AND paymongo_session_id = ? AND payment_url = ?`,
+        [order.id, req.user.id, order.paymongo_session_id, order.payment_url],
+      );
+    }
+
+    const [[customer]] = await conn.execute(
+      `SELECT name, phone, email FROM users WHERE id = ? LIMIT 1`,
+      [req.user.id],
+    );
+    const remainingAmount = centsToAmount(remainingCents);
+    const frontendUrl = process.env.FRONTEND_URL || req.headers.origin;
+    const checkout = await createCheckoutSession({
+      customer,
+      amount: remainingAmount,
+      description: `Remaining Balance for ${order.order_number}`,
+      successUrl: `${frontendUrl}/custom-requests/${order.id}?verify_remaining_success=true`,
+      cancelUrl: `${frontendUrl}/custom-requests/${order.id}`,
+      metadata: { order_id: order.id, order_type: "blueprint", payment_purpose: "remaining_balance", fulfillment_method: "pickup" },
+    });
+    const [updateResult] = await conn.execute(
+      `UPDATE orders SET payment_url = ?, paymongo_session_id = ?, updated_at = NOW()
+       WHERE id = ? AND customer_id = ? AND order_type = 'blueprint'
+         AND fulfillment_method = 'pickup' AND status = 'ready_for_pickup'
+         AND remaining_payment_method = 'paymongo' AND payment_status <> 'paid'
+         AND paymongo_session_id IS NULL AND payment_url IS NULL`,
+      [checkout.checkoutUrl, checkout.sessionId, order.id, req.user.id],
+    );
+    if (updateResult.affectedRows !== 1) {
+      await conn.rollback(); transactionActive = false;
+      return res.status(409).json({ message: "This order's state changed. Please refresh and try again." });
+    }
+    await conn.commit(); transactionActive = false;
+    return res.json({ payment_url: checkout.checkoutUrl });
+  } catch (err) {
+    if (conn && transactionActive) { try { await conn.rollback(); } catch {} }
+    console.error("[customer.customorders pickup remaining checkout]", err.response?.data || err);
+    return res.status(500).json({ message: "Failed to create the online payment session." });
+  } finally {
+    if (conn) conn.release();
+  }
+};
+
 // PHASE 5 — Blueprint Rider Final Cash Collection (Final Decision 3).
 // Lets the customer choose (or switch) how the REMAINING balance of a
 // blueprint order will be paid: cash to the assigned rider on delivery,
@@ -3711,6 +4538,14 @@ exports.selectRemainingPaymentMethod = async (req, res) => {
       return res.status(400).json({
         message: "Choose Cash or Online Payment for the remaining balance.",
       });
+    }
+
+    const [[fulfillmentProbe]] = await db.execute(
+      `SELECT fulfillment_method FROM orders WHERE id = ? AND customer_id = ? AND order_type = 'blueprint' LIMIT 1`,
+      [orderId, req.user.id],
+    );
+    if (normalize(fulfillmentProbe?.fulfillment_method) === "pickup") {
+      return selectPickupRemainingPaymentMethod({ req, res, orderId, normalizedMethod });
     }
 
     conn = await db.getConnection();
@@ -3988,6 +4823,14 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
     const orderId = parseStrictPositiveInt(req.params.id);
     if (!orderId) {
       return res.status(400).json({ message: "Invalid custom request ID." });
+    }
+
+    const [[fulfillmentProbe]] = await db.execute(
+      `SELECT fulfillment_method FROM orders WHERE id = ? AND customer_id = ? AND order_type = 'blueprint' LIMIT 1`,
+      [orderId, req.user.id],
+    );
+    if (normalize(fulfillmentProbe?.fulfillment_method) === "pickup") {
+      return createPickupRemainingBalancePayMongoCheckout({ req, res, orderId });
     }
 
     conn = await db.getConnection();

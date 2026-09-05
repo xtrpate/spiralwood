@@ -19,6 +19,7 @@ const ALLOWED_STATUSES = [
   "confirmed",
   "contract_released",
   "production",
+  "ready_for_pickup",
   "shipping",
   "delivered",
 ];
@@ -28,6 +29,7 @@ const REASON = {
   NOT_BLUEPRINT: "NOT_BLUEPRINT",
   INVALID_ORDER_STATUS: "INVALID_ORDER_STATUS",
   QUOTATION_NOT_APPROVED: "QUOTATION_NOT_APPROVED",
+  PROJECT_AGREEMENT_NOT_ACCEPTED: "PROJECT_AGREEMENT_NOT_ACCEPTED",
   INVALID_ORDER_TOTAL: "INVALID_ORDER_TOTAL",
   PAYMENT_AMOUNT_INCONSISTENT: "PAYMENT_AMOUNT_INCONSISTENT",
   PAYMENT_TOTAL_INCONSISTENT: "PAYMENT_TOTAL_INCONSISTENT",
@@ -58,6 +60,8 @@ const REASON_MESSAGE = {
   INVALID_ORDER_STATUS:
     "This order's current status does not allow a store payment.",
   QUOTATION_NOT_APPROVED: "The quotation has not been approved.",
+  PROJECT_AGREEMENT_NOT_ACCEPTED:
+    "The customer must accept the Project Agreement before the initial store payment can be recorded.",
   INVALID_ORDER_TOTAL: "The order total is not finalized yet.",
   PAYMENT_AMOUNT_INCONSISTENT:
     "One or more recorded payment amounts are inconsistent. Please contact support.",
@@ -133,6 +137,7 @@ const computeRequiredMinimumCents = (orderTotalCents) => {
 const evaluate = ({
   order,
   estimation,
+  contract = null,
   verifiedTotalCents,
   hasPendingPayment,
   hasInvalidAmount,
@@ -153,6 +158,12 @@ const evaluate = ({
   }
   if (!estimation || normalize(estimation.status) !== "approved") {
     return build(REASON.QUOTATION_NOT_APPROVED);
+  }
+  if (
+    normalize(order.status) === "confirmed" &&
+    (!contract || !contract.signed_at)
+  ) {
+    return build(REASON.PROJECT_AGREEMENT_NOT_ACCEPTED);
   }
 
   const orderTotalCents = parseDecimalToCentsStrict(order.total);
@@ -235,7 +246,7 @@ const buildQuickAmountsCents = ({
     .sort((a, b) => a - b);
 };
 
-const buildSummary = ({ order, estimation, paymentRows }) => {
+const buildSummary = ({ order, estimation, contract = null, paymentRows }) => {
   if (!order) {
     return {
       order_id: null,
@@ -265,6 +276,7 @@ const buildSummary = ({ order, estimation, paymentRows }) => {
   const eligibility = evaluate({
     order,
     estimation,
+    contract,
     verifiedTotalCents,
     hasPendingPayment,
     hasInvalidAmount,
@@ -303,6 +315,10 @@ const buildSummary = ({ order, estimation, paymentRows }) => {
     order_number: order.order_number,
     order_type: order.order_type,
     order_status: order.status,
+    fulfillment_method:
+      normalize(order.fulfillment_method) === "pickup" ? "pickup" : "delivery",
+    picked_up_at: order.picked_up_at || null,
+    has_pending_payment: Boolean(hasPendingPayment),
     initial_payment_method: order.payment_method || null,
     payment_status: derivedStatus,
     total: roundMoney(orderTotalCents / 100),
@@ -355,6 +371,7 @@ exports.getRestrictedPaymentSummary = async (conn, orderId) => {
   return buildSummary({
     order: lifecycle.order,
     estimation: lifecycle.estimation || null,
+    contract: lifecycle.contract || null,
     paymentRows,
   });
 };
@@ -432,6 +449,7 @@ exports.recordCashPayment = async ({ pool, orderId, amountRaw, verifiedByUserId 
     const eligibility = evaluate({
       order,
       estimation,
+      contract: lifecycle.contract || null,
       verifiedTotalCents: verifiedTotalBeforeCents,
       hasPendingPayment,
       hasInvalidAmount,
@@ -526,15 +544,30 @@ exports.recordCashPayment = async ({ pool, orderId, amountRaw, verifiedByUserId 
       };
     }
 
+    const releaseAfterPayment =
+      normalize(order.status) === "confirmed" &&
+      projectedTotalCents >= requiredMinimumCents &&
+      Boolean(lifecycle.contract?.signed_at);
+    const nextOrderStatus = releaseAfterPayment
+      ? "contract_released"
+      : order.status;
+
     const [updateResult] = await conn.execute(
       `UPDATE orders
-       SET payment_status = ?
+       SET payment_status = ?, status = ?
        WHERE id = ?
          AND order_type = 'blueprint'
+         AND status = ?
          AND payment_status = ?
          AND paymongo_session_id IS NULL
          AND payment_url IS NULL`,
-      [nextStatus, orderId, derivedPreviousPaymentStatus],
+      [
+        nextStatus,
+        nextOrderStatus,
+        orderId,
+        order.status,
+        derivedPreviousPaymentStatus,
+      ],
     );
 
     if (updateResult.affectedRows !== 1) {
@@ -605,7 +638,7 @@ exports.recordCashPayment = async ({ pool, orderId, amountRaw, verifiedByUserId 
       normalize(reReadOrderRow.payment_status) === finalStatus &&
       reReadOrderRow.paymongo_session_id === null &&
       reReadOrderRow.payment_url === null &&
-      ALLOWED_STATUSES.includes(normalize(reReadOrderRow.status)) &&
+      normalize(reReadOrderRow.status) === normalize(nextOrderStatus) &&
       normalize(reReadOrderRow.order_type) === "blueprint";
 
     if (!finalConditionsMet) {
@@ -640,6 +673,7 @@ exports.recordCashPayment = async ({ pool, orderId, amountRaw, verifiedByUserId 
         verified_total: roundMoney(finalVerifiedCents / 100),
         remaining_balance: roundMoney((orderTotalCents - finalVerifiedCents) / 100),
         payment_status: finalStatus,
+        order_status: nextOrderStatus,
         receipt_id: receiptResult.receiptId,
         receipt_number: receiptResult.receiptNumber,
         payment_label: receiptResult.paymentLabel,
@@ -660,6 +694,7 @@ exports.recordCashPayment = async ({ pool, orderId, amountRaw, verifiedByUserId 
         verified_total: roundMoney(finalVerifiedCents / 100),
         remaining_balance: roundMoney((orderTotalCents - finalVerifiedCents) / 100),
         payment_status: finalStatus,
+        order_status: nextOrderStatus,
         receipt_id: receiptResult.receiptId,
         receipt_number: receiptResult.receiptNumber,
         payment_label: receiptResult.paymentLabel,

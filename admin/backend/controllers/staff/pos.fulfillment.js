@@ -331,6 +331,7 @@ exports.getDeliverableOrders = async (req, res) => {
       LEFT JOIN users customer ON customer.id = o.customer_id
 
       WHERE o.status IN ('confirmed', 'contract_released', 'production', 'shipping')
+        AND COALESCE(NULLIF(LOWER(TRIM(o.fulfillment_method)), ''), 'delivery') = 'delivery'
         AND COALESCE(o.delivery_address, '') <> ''
         AND NOT EXISTS (
           SELECT 1
@@ -535,6 +536,7 @@ exports.createDelivery = async (req, res) => {
         o.status,
         o.order_type,
         o.payment_status,
+        o.fulfillment_method,
         o.delivery_address,
         o.requested_delivery_date,
         o.delivery_request_notes,
@@ -551,6 +553,15 @@ exports.createDelivery = async (req, res) => {
 
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
+    }
+
+    if (
+      normalizeText(order.order_type).toLowerCase() === "blueprint" &&
+      normalizeText(order.fulfillment_method).toLowerCase() === "pickup"
+    ) {
+      return res.status(409).json({
+        message: "Pickup orders cannot be scheduled for delivery.",
+      });
     }
 
     const orderStatus = String(order.status || "").toLowerCase();
@@ -606,7 +617,7 @@ exports.createDelivery = async (req, res) => {
 
       const [[lockedOrder]] = await scheduleConn.query(
         `
-        SELECT id, status, order_type, type
+        SELECT id, status, order_type, type, fulfillment_method
         FROM orders
         WHERE id = ?
         LIMIT 1
@@ -626,6 +637,18 @@ exports.createDelivery = async (req, res) => {
       const lockedIsBlueprintOrder =
         normalizeText(lockedOrder.order_type || "").toLowerCase() ===
         "blueprint";
+      const lockedIsPickupOrder =
+        lockedIsBlueprintOrder &&
+        normalizeText(lockedOrder.fulfillment_method || "").toLowerCase() ===
+          "pickup";
+
+      if (lockedIsPickupOrder) {
+        await scheduleConn.rollback();
+        return res.status(409).json({
+          message: "Pickup orders cannot be scheduled for delivery.",
+        });
+      }
+
       const lockedIsOnlineStandardOrder =
         normalizeText(lockedOrder.order_type || "").toLowerCase() ===
           "standard" &&

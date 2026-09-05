@@ -422,6 +422,28 @@ async function assessOrderDelivery(
   orderId,
   suppliedLimits = null,
 ) {
+  const [fulfillmentRows] = await conn.query(
+    `SELECT fulfillment_method FROM orders WHERE id = ? LIMIT 1`,
+    [orderId],
+  );
+  const fulfillmentMethod = String(
+    fulfillmentRows?.[0]?.fulfillment_method || "delivery",
+  ).trim().toLowerCase();
+
+  if (fulfillmentMethod === "pickup") {
+    return {
+      status: "not_applicable",
+      fulfillment_method: "pickup",
+      oversized: false,
+      requires_large_truck: false,
+      requires_admin_decision: false,
+      standard_truck_limits_mm: null,
+      exceeded_dimensions: [],
+      items: [],
+      additional_delivery_fee_status: "not_applicable",
+    };
+  }
+
   const limits =
     suppliedLimits || (await getStandardTruckLimits(conn));
 

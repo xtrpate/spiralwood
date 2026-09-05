@@ -1013,6 +1013,7 @@ exports.getOne = async (req, res) => {
         ? buildPaymentSummaryFromRows({
             order,
             estimation: latestEstimation,
+            contract,
             paymentRows: paymentTransactions,
           })
         : null;
@@ -1099,6 +1100,7 @@ exports.updateStatus = async (req, res) => {
       "confirmed",
       "contract_released",
       "production",
+      "ready_for_pickup",
       "shipping",
       "delivered",
       "completed",
@@ -1141,6 +1143,8 @@ exports.updateStatus = async (req, res) => {
       order.contract_blueprint_id || order.blueprint_id || null;
     const isBlueprintOrder =
       normalize(order.order_type) === "blueprint" || Boolean(blueprintId);
+    const isBlueprintPickupOrder =
+      isBlueprintOrder && normalize(order.fulfillment_method) === "pickup";
 
     const hasDeliveryRequirement = Boolean(
       String(order.delivery_address || "").trim(),
@@ -1154,27 +1158,39 @@ exports.updateStatus = async (req, res) => {
     const isStandardDeliveryOrder = isStandardOrder && !isStandardPickupOrder;
 
     const effectiveStatusTransitions = isBlueprintOrder
-      ? isWalkInOrder
+      ? isBlueprintPickupOrder
         ? {
             pending: ["confirmed", "cancelled"],
             confirmed: ["contract_released", "cancelled"],
             contract_released: ["production", "cancelled"],
-            production: ["completed", "cancelled"],
-            shipping: ["completed"],
-            delivered: ["completed"],
+            production: ["cancelled"],
+            ready_for_pickup: ["cancelled"],
+            shipping: [],
+            delivered: [],
             completed: [],
             cancelled: [],
           }
-        : {
-            pending: ["confirmed", "cancelled"],
-            confirmed: ["contract_released", "cancelled"],
-            contract_released: ["production", "cancelled"],
-            production: ["shipping", "cancelled"],
-            shipping: ["delivered", "completed"],
-            delivered: ["completed"],
-            completed: [],
-            cancelled: [],
-          }
+        : isWalkInOrder
+          ? {
+              pending: ["confirmed", "cancelled"],
+              confirmed: ["contract_released", "cancelled"],
+              contract_released: ["production", "cancelled"],
+              production: ["completed", "cancelled"],
+              shipping: ["completed"],
+              delivered: ["completed"],
+              completed: [],
+              cancelled: [],
+            }
+          : {
+              pending: ["confirmed", "cancelled"],
+              confirmed: ["contract_released", "cancelled"],
+              contract_released: ["production", "cancelled"],
+              production: ["shipping", "cancelled"],
+              shipping: ["delivered", "completed"],
+              delivered: ["completed"],
+              completed: [],
+              cancelled: [],
+            }
       : isWalkInOrder
         ? hasDeliveryRequirement
           ? {
@@ -1356,6 +1372,19 @@ exports.updateStatus = async (req, res) => {
 
       if (!order.contract_id) {
         failures.push("A contract must exist for this order.");
+      }
+
+      // New-flow release cannot be manually bypassed. Legacy orders that
+      // are already beyond confirmed remain compatible; this acceptance
+      // gate applies only to the confirmed -> contract_released transition.
+      if (
+        currentStatus === "confirmed" &&
+        nextStatus === "contract_released" &&
+        !lifecycle?.contract?.signed_at
+      ) {
+        failures.push(
+          "The customer must accept the Project Agreement before the order can be released.",
+        );
       }
 
       if (nextStatus === "completed") {
@@ -1919,6 +1948,7 @@ exports.verifyPayment = async (req, res) => {
         "confirmed",
         "contract_released",
         "production",
+        "ready_for_pickup",
         "shipping",
         "delivered",
       ];
@@ -1940,12 +1970,17 @@ exports.verifyPayment = async (req, res) => {
           0.01;
 
       const hasContract = Boolean(lifecycle.contract);
+      const agreementAccepted = Boolean(lifecycle.contract?.signed_at);
 
-      // A confirmed order must NOT already have a contract; every later
-      // stage must already have a real one. Never auto-repaired or
-      // relinked here — a mismatch simply blocks verification.
+      // New flow: a confirmed order may have an accepted Project Agreement.
+      // Legacy confirmed orders with an already-pending payment and no
+      // contract remain verifiable for backward compatibility. An existing
+      // unsigned agreement is never payable. Advanced stages still require
+      // a real contract/agreement record.
       const contractConsistent =
-        currentOrderStatus === "confirmed" ? !hasContract : hasContract;
+        currentOrderStatus === "confirmed"
+          ? !hasContract || agreementAccepted
+          : hasContract;
 
       const lifecycleUnsafe =
         lifecycle.status !== "OK" ||
@@ -2172,12 +2207,35 @@ exports.verifyPayment = async (req, res) => {
       nextPaymentStatus = "rejected";
     }
 
-    await conn.query(
+    const requiredBlueprintDownPayment =
+      isBlueprintOrder && lifecycle?.estimation
+        ? calcDownPaymentAmount(Number(lifecycle.estimation.grand_total || 0))
+        : 0;
+    const releaseAfterVerification =
+      normalizedAction === "verified" &&
+      isBlueprintOrder &&
+      normalize(order.status) === "confirmed" &&
+      Boolean(lifecycle?.contract?.signed_at) &&
+      verifiedTotal >= Math.max(0, requiredBlueprintDownPayment - 0.01);
+    const nextOrderStatus = releaseAfterVerification
+      ? "contract_released"
+      : order.status;
+
+    const [orderPaymentStateUpdate] = await conn.query(
       `UPDATE orders
-       SET payment_status = ?
-       WHERE id = ?`,
-      [nextPaymentStatus, order.id],
+       SET payment_status = ?, status = ?
+       WHERE id = ? AND status = ?`,
+      [nextPaymentStatus, nextOrderStatus, order.id, order.status],
     );
+
+    if (orderPaymentStateUpdate.affectedRows !== 1) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message: "This order's state changed. Please refresh and try again.",
+        integrity_reason: "ORDER_STATE_CHANGED",
+      });
+    }
 
     // Receipt — only for a real "verified" outcome on a blueprint order.
     // Never for: action=rejected, a non-blueprint order, an
@@ -2249,6 +2307,7 @@ exports.verifyPayment = async (req, res) => {
         payment_id,
         action: normalizedAction,
         payment_status: nextPaymentStatus,
+        order_status: nextOrderStatus,
         ...(receiptResult
           ? {
               receipt_id: receiptResult.receiptId,
@@ -2262,6 +2321,7 @@ exports.verifyPayment = async (req, res) => {
     return res.json({
       message: `Payment ${normalizedAction}.`,
       payment_status: nextPaymentStatus,
+      order_status: nextOrderStatus,
     });
   } catch (err) {
     if (conn && transactionActive) {

@@ -277,6 +277,20 @@ router.post(
 );
 
 router.post(
+  "/:id/project-agreement/accept",
+  authenticate,
+  requireCustomer,
+  customOrderController.acceptProjectAgreement,
+);
+
+router.post(
+  "/:id/cancel",
+  authenticate,
+  requireCustomer,
+  customOrderController.cancelUnpaidProject,
+);
+
+router.post(
   "/:id/down-payment",
   authenticate,
   requireCustomer,

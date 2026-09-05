@@ -792,7 +792,8 @@ exports.updateTaskStatus = async (req, res) => {
     const [rows] = await db.query(
       `SELECT pt.id, pt.title, pt.status, pt.assigned_to, pt.assigned_by,
               pt.accepted_at, pt.completed_at, pt.order_id, pt.task_role,
-              o.order_number
+              o.order_number, o.customer_id, o.status AS order_status,
+              o.fulfillment_method
        FROM project_tasks pt
        LEFT JOIN orders o ON o.id = pt.order_id
        WHERE pt.id = ?
@@ -938,6 +939,10 @@ exports.updateTaskStatus = async (req, res) => {
     }
 
     let becameProductionReady = false;
+    const isPickupOrder =
+      String(existing.fulfillment_method || "delivery").trim().toLowerCase() ===
+      "pickup";
+    let pickupReadyApplied = false;
 
     try {
       if (existing.order_id && existing.assigned_by) {
@@ -996,15 +1001,49 @@ exports.updateTaskStatus = async (req, res) => {
         }
 
         if (becameProductionReady) {
+          if (isPickupOrder) {
+            const [pickupReadyResult] = await db.query(
+              `UPDATE orders
+               SET status = 'ready_for_pickup', updated_at = NOW()
+               WHERE id = ?
+                 AND order_type = 'blueprint'
+                 AND status = 'production'
+                 AND COALESCE(NULLIF(LOWER(TRIM(fulfillment_method)), ''), 'delivery') = 'pickup'`,
+              [parseInt(existing.order_id)],
+            );
+
+            pickupReadyApplied = pickupReadyResult.affectedRows === 1;
+
+            if (pickupReadyApplied && existing.customer_id) {
+              await createNotificationSafe(db, {
+                userId: parseInt(existing.customer_id),
+                type: "ready_for_pickup",
+                title: "Ready for Pickup",
+                message: existing.order_number
+                  ? `Your furniture for Order ${existing.order_number} is ready for pickup. Please complete any remaining balance before collection.`
+                  : `Your furniture for Order #${existing.order_id} is ready for pickup. Please complete any remaining balance before collection.`,
+                targetType: "order",
+                targetId: existing.order_id,
+                targetOrderId: existing.order_id,
+              });
+            }
+          }
+
           await createNotificationSafe(db, {
             userId: parseInt(existing.assigned_by),
-            type: "production_ready",
-            title: "Production Ready for Shipping",
-            message: `The full production workflow for ${
-              existing.order_number
-                ? `Order ${existing.order_number}`
-                : `Order #${existing.order_id}`
-            } is complete. Review the order before scheduling delivery.`,
+            type: isPickupOrder ? "ready_for_pickup" : "production_ready",
+            title: isPickupOrder
+              ? "Production Complete - Ready for Pickup"
+              : "Production Ready for Shipping",
+            message: isPickupOrder
+              ? existing.order_number
+                ? `The full production workflow for Order ${existing.order_number} is complete. The furniture is ready for customer pickup.`
+                : `The full production workflow for Order #${existing.order_id} is complete. The furniture is ready for customer pickup.`
+              : `The full production workflow for ${
+                  existing.order_number
+                    ? `Order ${existing.order_number}`
+                    : `Order #${existing.order_id}`
+                } is complete. Review the order before scheduling delivery.`,
             targetType: "order",
             targetId: existing.order_id,
             targetOrderId: existing.order_id,
@@ -1026,14 +1065,29 @@ exports.updateTaskStatus = async (req, res) => {
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
           [
             req.user.id,
-            "mark_production_ready_for_shipping",
+            isPickupOrder && pickupReadyApplied
+              ? "mark_production_ready_for_pickup"
+              : isPickupOrder
+                ? "mark_production_complete_pickup_state_unchanged"
+                : "mark_production_ready_for_shipping",
             "orders",
             parseInt(existing.order_id),
-            JSON.stringify({ ready_for_shipping: false }),
-            JSON.stringify({
-              ready_for_shipping: true,
-              completed_required_steps: REQUIRED_PRODUCTION_STEP_KEYS.length,
-            }),
+            JSON.stringify(
+              isPickupOrder
+                ? { ready_for_pickup: false }
+                : { ready_for_shipping: false },
+            ),
+            JSON.stringify(
+              isPickupOrder
+                ? {
+                    ready_for_pickup: pickupReadyApplied,
+                    completed_required_steps: REQUIRED_PRODUCTION_STEP_KEYS.length,
+                  }
+                : {
+                    ready_for_shipping: true,
+                    completed_required_steps: REQUIRED_PRODUCTION_STEP_KEYS.length,
+                  },
+            ),
             req.ip || null,
           ],
         );
