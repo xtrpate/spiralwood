@@ -4,6 +4,11 @@ import { TransformControls } from "three/examples/jsm/controls/TransformControls
 
 const BACKGROUND_COLOR = 0x16263d;
 
+export const BLUEPRINT_GRID = {
+  w: 6000,
+  d: 6000,
+};
+
 function createAxisLine(start, end, material, renderOrder = 3) {
   const line = new THREE.Line(
     new THREE.BufferGeometry().setFromPoints([
@@ -119,9 +124,7 @@ function addBlueprintFloor(scene, floorY) {
       axisMaterialX,
     ),
   );
-  scene.add(
-    createAxisLine([0, floorY, 0], [0, 2800, 0], axisMaterialY),
-  );
+  scene.add(createAxisLine([0, floorY, 0], [0, 2800, 0], axisMaterialY));
   scene.add(
     createAxisLine(
       [0, floorY + 1.05, -3000],
@@ -165,7 +168,7 @@ export function createBlueprintSceneFoundation({
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(BACKGROUND_COLOR);
 
-  const camera = new THREE.PerspectiveCamera(38, width / height, 0.5, 12000);
+  const camera = new THREE.PerspectiveCamera(38, width / height, 0.5, 50000);
   camera.position.set(1100, 760, 1100);
 
   addBlueprintLights(scene);
@@ -180,12 +183,31 @@ export function createBlueprintSceneFoundation({
   orbit.panSpeed = 1;
   orbit.zoomSpeed = 1.05;
   orbit.minDistance = 140;
-  orbit.maxDistance = 9500;
+
+  // 1. LIMIT HOW FAR THEY CAN ZOOM OUT (World Width 6400 + 100 buffer)
+  orbit.maxDistance = 4500;
+
   orbit.maxPolarAngle = Math.PI / 2.02;
   orbit.target.set(0, 160, 0);
   orbit.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
   orbit.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
   orbit.mouseButtons.RIGHT = THREE.MOUSE.PAN;
+
+  // 2. LIMIT CAMERA PANNING BOUNDARY (Half of 6400/5200 + 100 buffer)
+  const limitX = 3200;
+  const limitZ = 3200;
+
+  orbit.addEventListener("change", function () {
+    if (orbit.target.x > limitX) orbit.target.x = limitX;
+    else if (orbit.target.x < -limitX) orbit.target.x = -limitX;
+
+    if (orbit.target.z > limitZ) orbit.target.z = limitZ;
+    else if (orbit.target.z < -limitZ) orbit.target.z = -limitZ;
+
+    // Prevents the camera from panning underneath the floor
+    if (orbit.target.y < 0) orbit.target.y = 0;
+  });
+
   orbit.update();
 
   const transform = new TransformControls(camera, canvas);
