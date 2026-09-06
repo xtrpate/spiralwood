@@ -508,14 +508,21 @@ router.get("/audit-logs", adminOnly, mgmt.getAuditLogs);
 // ══════════════════════════════════════════════════════════════════════════════
 // WEBSITE MAINTENANCE
 // ══════════════════════════════════════════════════════════════════════════════
-// PUBLIC ROUTES (storefront-safe data only)
+// PUBLIC ROUTES (storefront-safe, visible content only)
 router.get("/website/settings", website.getSettings);
 router.get("/website/faqs", website.getFaqs);
 router.get("/website/pages", website.getPages);
+
+// PROTECTED READ ROUTES
+// Register the exact /pages/admin route before the public /pages/:slug route.
+router.get("/website/settings/admin", adminOnly, website.getAdminSettings);
+router.get("/website/faqs/admin", adminOnly, website.getAdminFaqs);
+router.get("/website/pages/admin", adminOnly, website.getAdminPages);
+
+// Public single-page reader must not shadow /website/pages/admin.
 router.get("/website/pages/:slug", website.getPage);
 
-// PROTECTED ROUTES (Only Admins can read/update operational settings)
-router.get("/website/settings/admin", adminOnly, website.getAdminSettings);
+// PROTECTED WRITE ROUTES
 router.put(
   "/website/settings",
   adminOnly,

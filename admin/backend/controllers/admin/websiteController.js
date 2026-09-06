@@ -39,9 +39,6 @@ const DELIVERY_SETTING_KEYS = [
 const PUBLIC_SETTING_KEYS = new Set([
   "site_logo",
   "site_name",
-  "show_faq_section",
-  "show_about_section",
-  "show_contact_section",
   "business_address",
   "google_maps_url",
   "business_latitude",
@@ -280,6 +277,12 @@ const SETTING_KEY_GROUPS = {
 // slug is rejected before touching the database.
 const KNOWN_PAGE_SLUGS = ["about_us", "contact", "faq"];
 
+const PAGE_VISIBILITY_SETTING_KEYS = {
+  about_us: "show_about_section",
+  contact: "show_contact_section",
+  faq: "show_faq_section",
+};
+
 // ── SETTINGS ─────────────────────────────────────────────────────────────────
 const loadSettingRows = async () => {
   const [rows] = await pool.query(
@@ -293,6 +296,37 @@ const loadSettingRows = async () => {
     [],
   );
   return rows;
+};
+
+const loadPageVisibilityRows = async () => {
+  const [rows] = await pool.query(
+    `SELECT content_key AS slug, is_visible
+     FROM website_content
+     WHERE content_type = 'page'
+       AND content_key IN (?, ?, ?)`,
+    KNOWN_PAGE_SLUGS,
+  );
+  return rows;
+};
+
+const applyPageVisibilityToPublicSettings = (grouped, pageRows) => {
+  grouped.display = grouped.display || {};
+
+  const visibilityBySlug = new Map(
+    (pageRows || []).map((row) => [
+      row.slug,
+      Number(row.is_visible) === 1,
+    ]),
+  );
+
+  for (const [slug, settingKey] of Object.entries(
+    PAGE_VISIBILITY_SETTING_KEYS,
+  )) {
+    grouped.display[settingKey] =
+      visibilityBySlug.get(slug) === true ? "true" : "false";
+  }
+
+  return grouped;
 };
 
 const groupSettingRows = (rows, { publicOnly = false } = {}) => {
@@ -332,8 +366,13 @@ const groupSettingRows = (rows, { publicOnly = false } = {}) => {
 // Public storefront-safe settings only.
 exports.getSettings = async (req, res) => {
   try {
-    const rows = await loadSettingRows();
-    res.json(groupSettingRows(rows, { publicOnly: true }));
+    const [rows, pageRows] = await Promise.all([
+      loadSettingRows(),
+      loadPageVisibilityRows(),
+    ]);
+
+    const grouped = groupSettingRows(rows, { publicOnly: true });
+    res.json(applyPageVisibilityToPublicSettings(grouped, pageRows));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -605,9 +644,39 @@ exports.updateSettings = async (req, res) => {
 };
 
 // ── FAQs ─────────────────────────────────────────────────────────────────────
+// Public FAQ reader: hidden FAQ rows are not exposed to storefront clients.
+// If the FAQ page itself is hidden, its Q&A content must not be exposed either.
 exports.getFaqs = async (req, res) => {
   try {
-    // ── FIXED: Added empty array [] ──
+    const [[faqPage]] = await pool.query(
+      `SELECT is_visible
+       FROM website_content
+       WHERE content_type = 'page' AND content_key = 'faq'
+       LIMIT 1`,
+      [],
+    );
+
+    // FAQ page is hidden, so its Q&A content must not be exposed.
+    if (!faqPage || Number(faqPage.is_visible) !== 1) {
+      return res.json([]);
+    }
+
+    const [rows] = await pool.query(
+      `SELECT id, question, answer, sort_order, is_visible
+       FROM faqs
+       WHERE is_visible = 1
+       ORDER BY sort_order ASC, id ASC`,
+      [],
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// Admin reader keeps hidden FAQ rows available for management.
+exports.getAdminFaqs = async (req, res) => {
+  try {
     const [rows] = await pool.query(
       "SELECT * FROM faqs ORDER BY sort_order ASC, id ASC",
       [],
@@ -705,7 +774,33 @@ exports.deleteFaq = async (req, res) => {
 // ── STATIC PAGES ─────────────────────────────────────────────────────────────
 // static_pages was merged into website_content. Static page rows are stored
 // with content_type='page' and use content_key as the page slug.
+// Public page list: hidden page content is not exposed, and internal
+// editor/user metadata is deliberately omitted from storefront responses.
 exports.getPages = async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT
+         id,
+         content_key AS slug,
+         title,
+         content,
+         is_visible,
+         updated_at
+       FROM website_content
+       WHERE content_type = 'page'
+         AND content_key IN (?, ?, ?)
+         AND is_visible = 1
+       ORDER BY FIELD(content_key, ?, ?, ?)`,
+      [...KNOWN_PAGE_SLUGS, ...KNOWN_PAGE_SLUGS],
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// Admin page list keeps hidden content available for editing.
+exports.getAdminPages = async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT
@@ -742,10 +837,11 @@ exports.getPage = async (req, res) => {
          title,
          content,
          is_visible,
-         updated_by,
          updated_at
        FROM website_content
-       WHERE content_type = 'page' AND content_key = ?
+       WHERE content_type = 'page'
+         AND content_key = ?
+         AND is_visible = 1
        LIMIT 1`,
       [slug],
     );
@@ -772,14 +868,10 @@ exports.updatePage = async (req, res) => {
       req.body.content === null || req.body.content === undefined
         ? ""
         : String(req.body.content);
-    const submittedVisible = req.body.is_visible;
-    const nextVisible =
-      submittedVisible === true ||
-      submittedVisible === 1 ||
-      submittedVisible === "1" ||
-      submittedVisible === "true"
-        ? 1
-        : 0;
+    const hasSubmittedVisibility = Object.prototype.hasOwnProperty.call(
+      req.body || {},
+      "is_visible",
+    );
 
     const [[oldPage]] = await pool.query(
       `SELECT id, title, content, is_visible
@@ -788,6 +880,25 @@ exports.updatePage = async (req, res) => {
        LIMIT 1`,
       [slug],
     );
+
+    const submittedVisible = req.body.is_visible;
+    let nextVisible;
+
+    if (hasSubmittedVisibility) {
+      nextVisible =
+        submittedVisible === true ||
+        submittedVisible === 1 ||
+        submittedVisible === "1" ||
+        submittedVisible === "true"
+          ? 1
+          : 0;
+    } else {
+      nextVisible = oldPage
+        ? Number(oldPage.is_visible) === 1
+          ? 1
+          : 0
+        : 1;
+    }
 
     const isNew = !oldPage;
     const titleChanged = isNew || String(oldPage.title ?? "") !== nextTitle;

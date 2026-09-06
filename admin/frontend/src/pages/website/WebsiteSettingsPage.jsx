@@ -25,7 +25,7 @@ const SECTION_META = {
   display: {
     label: "Website Details",
     icon: "🖼️",
-    description: "Brand, website sections, and public business information.",
+    description: "Brand, storefront, checkout message, and public business information.",
   },
   payment: {
     label: "Payments",
@@ -62,21 +62,6 @@ const KEY_META = {
     type: "text",
     hint: "Displayed in the browser tab and customer-facing website details.",
     width: "wide",
-  },
-  show_faq_section: {
-    label: "FAQ Section",
-    type: "toggle",
-    hint: "Show or hide the FAQ section on the customer website.",
-  },
-  show_about_section: {
-    label: "About Us Section",
-    type: "toggle",
-    hint: "Show or hide the About Us section.",
-  },
-  show_contact_section: {
-    label: "Contact Us Section",
-    type: "toggle",
-    hint: "Show or hide the Contact Us section.",
   },
   business_address: {
     label: "Business Address",
@@ -190,7 +175,7 @@ const KEY_META = {
   checkout_note: {
     label: "Checkout Note",
     type: "textarea",
-    hint: "Message shown to customers during checkout.",
+    hint: "Message shown to customers during ready-made checkout.",
     width: "message",
   },
 
@@ -241,9 +226,6 @@ const TAB_KEYS = {
   display: [
     "site_logo",
     "site_name",
-    "show_faq_section",
-    "show_about_section",
-    "show_contact_section",
     "business_address",
     "business_latitude",
     "business_longitude",
@@ -254,6 +236,7 @@ const TAB_KEYS = {
     "social_instagram",
     "social_telegram",
     "operating_hours",
+    "checkout_note",
   ],
   payment: ["cod_enabled", "paymongo_enabled"],
   email: [
@@ -262,7 +245,6 @@ const TAB_KEYS = {
     "email_production_started",
     "email_out_for_delivery",
     "email_footer",
-    "checkout_note",
   ],
   policy: ["warranty_period_days"],
   delivery: DELIVERY_LIMIT_KEYS,

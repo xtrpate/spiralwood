@@ -24,12 +24,25 @@ export default function FaqsPage() {
   const [form, setForm] = useState(BLANK);
   const [target, setTarget] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [faqPage, setFaqPage] = useState(null);
+  const [visibilitySaving, setVisibilitySaving] = useState(false);
 
   const load = async () => {
     setLoad(true);
     try {
-      const { data } = await api.get("/website/faqs");
-      setFaqs(data);
+      const [faqResponse, pageResponse] = await Promise.all([
+        api.get("/website/faqs/admin"),
+        api.get("/website/pages/admin"),
+      ]);
+
+      setFaqs(Array.isArray(faqResponse.data) ? faqResponse.data : []);
+
+      const pageRows = Array.isArray(pageResponse.data) ? pageResponse.data : [];
+      setFaqPage(pageRows.find((page) => page.slug === "faq") || null);
+    } catch (error) {
+      toast.error(
+        error.response?.data?.message || "Unable to load FAQ management.",
+      );
     } finally {
       setLoad(false);
     }
@@ -99,6 +112,45 @@ export default function FaqsPage() {
 
   const visible = faqs.filter((faq) => faq.is_visible).length;
   const hidden = faqs.filter((faq) => !faq.is_visible).length;
+  const faqPageVisible =
+    faqPage?.is_visible === true ||
+    faqPage?.is_visible === 1 ||
+    faqPage?.is_visible === "1";
+
+  const toggleFaqPageVisibility = async () => {
+    if (!faqPage) {
+      toast.error("FAQ page settings are unavailable.");
+      return;
+    }
+
+    const nextVisible = !faqPageVisible;
+    setVisibilitySaving(true);
+
+    try {
+      await api.put("/website/pages/faq", {
+        title: faqPage.title || "",
+        content: faqPage.content || "",
+        is_visible: nextVisible,
+      });
+
+      setFaqPage((current) => ({
+        ...current,
+        is_visible: nextVisible ? 1 : 0,
+      }));
+
+      toast.success(
+        nextVisible
+          ? "FAQ page shown on website."
+          : "FAQ page hidden from website.",
+      );
+    } catch (error) {
+      toast.error(
+        error.response?.data?.message || "Unable to update FAQ page visibility.",
+      );
+    } finally {
+      setVisibilitySaving(false);
+    }
+  };
 
   return (
     <div className="website-admin-page website-faq-page">
@@ -119,6 +171,39 @@ export default function FaqsPage() {
           Add FAQ
         </button>
       </header>
+
+      <section className="website-panel">
+        <div className="website-panel-heading">
+          <div>
+            <h2>FAQ Page Visibility</h2>
+            <p>
+              Show or hide the FAQ page and its footer link. Individual FAQ
+              visibility is managed separately below.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={toggleFaqPageVisibility}
+            disabled={!faqPage || visibilitySaving}
+            className="website-switch-row"
+          >
+            <span
+              className={`website-switch ${faqPageVisible ? "is-on" : ""}`}
+              aria-hidden="true"
+            >
+              <span />
+            </span>
+            <span>
+              {visibilitySaving
+                ? "Saving..."
+                : faqPageVisible
+                  ? "Visible on site"
+                  : "Hidden from site"}
+            </span>
+          </button>
+        </div>
+      </section>
 
       <section
         className="website-summary-grid website-summary-grid-3"

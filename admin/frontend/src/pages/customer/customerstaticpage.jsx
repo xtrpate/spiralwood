@@ -5,10 +5,12 @@ export default function CustomerStaticPage({ slug }) {
   const [pageData, setPageData] = useState(null);
   const [faqs, setFaqs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [pageUnavailable, setPageUnavailable] = useState(false);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setPageUnavailable(false);
 
     // Group the API requests so we can wait for all of them to finish
     const requests = [api.get(`/website/pages/${slug}`)];
@@ -39,7 +41,18 @@ export default function CustomerStaticPage({ slug }) {
           );
         }
       })
-      .catch((err) => console.error("Failed to load page content:", err))
+      .catch((err) => {
+        if (!active) return;
+
+        if (err.response?.status === 404) {
+          setPageData(null);
+          setFaqs([]);
+          setPageUnavailable(true);
+          return;
+        }
+
+        console.error("Failed to load page content:", err);
+      })
       .finally(() => {
         // Only turn off the loading state AFTER the data has safely arrived
         if (active) setLoading(false);
@@ -56,6 +69,16 @@ export default function CustomerStaticPage({ slug }) {
         style={{ padding: "120px 20px", textAlign: "center", color: "#6b7280" }}
       >
         Loading content...
+      </div>
+    );
+  }
+
+  if (pageUnavailable) {
+    return (
+      <div
+        style={{ padding: "120px 20px", textAlign: "center", color: "#6b7280" }}
+      >
+        This page is currently unavailable.
       </div>
     );
   }
