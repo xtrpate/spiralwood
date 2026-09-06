@@ -285,10 +285,7 @@ export function QuickControlsBar() {
     if (!open || typeof document === "undefined") return undefined;
 
     const handleOutside = (event) => {
-      if (
-        rootRef.current &&
-        !rootRef.current.contains(event.target)
-      ) {
+      if (rootRef.current && !rootRef.current.contains(event.target)) {
         setOpen(false);
       }
     };
@@ -336,9 +333,7 @@ export function QuickControlsBar() {
             ? "1px solid rgba(96,165,250,.88)"
             : "1px solid rgba(100,116,139,.72)",
           borderRadius: 2,
-          background: open
-            ? "rgba(23,40,68,.98)"
-            : "rgba(7,14,26,.94)",
+          background: open ? "rgba(23,40,68,.98)" : "rgba(7,14,26,.94)",
           color: "#e5edf8",
           boxShadow: "0 4px 12px rgba(0,0,0,.18)",
           display: "inline-flex",
@@ -434,7 +429,8 @@ export function QuickControlsBar() {
                   lineHeight: 1.35,
                 }}
               >
-                Click the 3D workspace first, then use these controls while editing.
+                Click the 3D workspace first, then use these controls while
+                editing.
               </div>
             </div>
 
@@ -467,10 +463,7 @@ export function QuickControlsBar() {
             }}
           >
             <ControlSection title="Camera">
-              <ControlItem
-                keys={<WasdKeys />}
-                label="Move Camera"
-              />
+              <ControlItem keys={<WasdKeys />} label="Move Camera" />
               <ControlItem
                 keys={<ShortcutKeys parts={["Q", "E"]} />}
                 label="Move Down / Up"
@@ -498,18 +491,9 @@ export function QuickControlsBar() {
                 keys={<MouseWithKey keyName="Shift" active="left" />}
                 label="Shift + Left Click - Multi-select"
               />
-              <ControlItem
-                keys={<Keycap>G</Keycap>}
-                label="Move Part"
-              />
-              <ControlItem
-                keys={<Keycap>R</Keycap>}
-                label="Rotate Part"
-              />
-              <ControlItem
-                keys={<Keycap>T</Keycap>}
-                label="Resize Part"
-              />
+              <ControlItem keys={<Keycap>G</Keycap>} label="Move Part" />
+              <ControlItem keys={<Keycap>R</Keycap>} label="Rotate Part" />
+              <ControlItem keys={<Keycap>T</Keycap>} label="Resize Part" />
             </ControlSection>
 
             <ControlSection title="Actions">
@@ -518,9 +502,10 @@ export function QuickControlsBar() {
                 label="Undo"
               />
               <ControlItem
-                keys={<Keycap>Del</Keycap>}
-                label="Delete"
+                keys={<ShortcutKeys parts={["Ctrl", "Y"]} />}
+                label="Redo"
               />
+              <ControlItem keys={<Keycap>Del</Keycap>} label="Delete" />
               <ControlItem
                 keys={<ShortcutKeys parts={["Ctrl", "D"]} />}
                 label="Duplicate"

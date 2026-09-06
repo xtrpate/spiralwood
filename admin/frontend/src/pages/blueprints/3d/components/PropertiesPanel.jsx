@@ -5,7 +5,11 @@ import {
   buildFurnitureTemplateParts,
   buildDiningChairParts,
 } from "../../data/templateComponents";
-import { applyWoodFinish, isWoodLikeMaterial } from "../../data/componentUtils";
+import {
+  applyWoodFinish,
+  isWoodLikeMaterial,
+  getDefaultFinishId,
+} from "../../data/componentUtils";
 import {
   MATERIAL_SUGGESTIONS,
   GRAIN_DIRECTION_OPTIONS,
@@ -3128,6 +3132,306 @@ const buildAiFurnitureParts = ({
   });
 };
 
+// ---------------------------------------------------------------------
+// WISDOM AI GENERATIVE CASEGOOD BUILDER V1.0.0
+// ---------------------------------------------------------------------
+// Unlike buildAiFurnitureParts (which instantiates a fixed, hand-coded
+// template like the dining table/chair), this builds furniture that has
+// NO template — cabinets, sideboards, bookcases, anything the AI composes
+// on the fly from a structural PLAN rather than a fixed recipe.
+//
+// The AI is only ever asked to decide the STRUCTURE (how many sections,
+// which are open/drawers/doors, roughly how big) — never raw coordinates.
+// This function does the exact millimeter math deterministically, so the
+// output can never have overlapping or floating geometry regardless of
+// what the model proposes. Every part is a generic box (furniture_*
+// part types), which the renderer already draws as a plain positioned
+// box by default — no new rendering code was needed for this to work.
+
+const CASEGOOD_BOARD_THICKNESS = 18;
+const CASEGOOD_BACK_THICKNESS = 6;
+const CASEGOOD_FRONT_THICKNESS = 18;
+const CASEGOOD_FRONT_REVEAL = 4;
+const CASEGOOD_LEG_SIZE = 50;
+const CASEGOOD_LEG_HEIGHT = 100;
+
+const clampNum = (value, min, max) => Math.min(max, Math.max(min, value));
+
+const buildGenerativeCasegoodParts = (
+  assembly,
+  { canvasW = 6400, canvasH = 3200, canvasD = 5200 } = {},
+) => {
+  const width = clampNum(Number(assembly?.carcass?.width) || 900, 200, 3000);
+  const height = clampNum(Number(assembly?.carcass?.height) || 450, 200, 2400);
+  const depth = clampNum(Number(assembly?.carcass?.depth) || 400, 200, 900);
+
+  const materialLabel =
+    String(assembly?.material || "Oak Wood").trim() || "Oak Wood";
+  const finishId = getDefaultFinishId(materialLabel);
+  const finishData = finishId
+    ? applyWoodFinish({ material: materialLabel }, finishId)
+    : {};
+  const resolvedFill = finishData.fill || "#d9c2a5";
+  const resolvedMaterial = finishData.material || materialLabel;
+
+  const hasLegs = assembly?.hasLegs !== false;
+  const legHeight = hasLegs ? CASEGOOD_LEG_HEIGHT : 0;
+
+  const rawSections =
+    Array.isArray(assembly?.sections) && assembly.sections.length
+      ? assembly.sections
+      : [{ type: "open" }];
+
+  const ALLOWED_SECTION_TYPES = new Set([
+    "open",
+    "drawer_stack",
+    "door_single",
+    "door_double",
+  ]);
+
+  const sections = rawSections.slice(0, 8).map((section) => ({
+    type: ALLOWED_SECTION_TYPES.has(section?.type) ? section.type : "open",
+    widthShare:
+      Number(section?.widthShare) > 0 ? Number(section.widthShare) : 1,
+    drawers: clampNum(Math.round(Number(section?.drawers) || 3), 1, 6),
+    shelves: clampNum(Math.round(Number(section?.shelves) || 0), 0, 8),
+  }));
+
+  const originX = canvasW / 2 - width / 2;
+  const originZ = canvasD / 2 - depth / 2;
+  const floorY = canvasH - 40;
+
+  // Y grows downward in this coordinate system (matches the dining chair
+  // template above): a part's "y" is its top edge, "y + height" its
+  // bottom edge, and the real floor is the largest y value.
+  const carcassBottomY = floorY - legHeight;
+  const carcassTopY = carcassBottomY - height;
+
+  const buildId = `ai-cab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const groupLabel = String(assembly?.furnitureType || "Cabinet")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+  let partIndex = 0;
+  const parts = [];
+
+  const addPart = (overrides) => {
+    partIndex += 1;
+    parts.push({
+      id: `${buildId}-p${partIndex}-${Math.random().toString(36).slice(2, 6)}`,
+      groupId: buildId,
+      groupLabel,
+      groupType: "furniture",
+      templateType: "template_generated_casegood",
+      category: "Furniture Parts",
+      material: resolvedMaterial,
+      fill: resolvedFill,
+      finish: finishData.finish || "",
+      rotationY: 0,
+      locked: false,
+      ...overrides,
+    });
+  };
+
+  // --- Carcass: bottom, top, two sides, back -------------------------
+  addPart({
+    type: "furniture_bottom_panel",
+    label: "Bottom Panel",
+    x: originX,
+    y: carcassBottomY - CASEGOOD_BOARD_THICKNESS,
+    z: originZ,
+    width,
+    height: CASEGOOD_BOARD_THICKNESS,
+    depth,
+  });
+
+  addPart({
+    type: "furniture_top_panel",
+    label: "Top Panel",
+    x: originX,
+    y: carcassTopY,
+    z: originZ,
+    width,
+    height: CASEGOOD_BOARD_THICKNESS,
+    depth,
+  });
+
+  addPart({
+    type: "furniture_side_panel",
+    label: "Side Panel Left",
+    x: originX,
+    y: carcassTopY,
+    z: originZ,
+    width: CASEGOOD_BOARD_THICKNESS,
+    height,
+    depth,
+  });
+
+  addPart({
+    type: "furniture_side_panel",
+    label: "Side Panel Right",
+    x: originX + width - CASEGOOD_BOARD_THICKNESS,
+    y: carcassTopY,
+    z: originZ,
+    width: CASEGOOD_BOARD_THICKNESS,
+    height,
+    depth,
+  });
+
+  addPart({
+    type: "furniture_back_panel",
+    label: "Back Panel",
+    x: originX + CASEGOOD_BOARD_THICKNESS,
+    y: carcassTopY + CASEGOOD_BOARD_THICKNESS,
+    z: originZ + depth - CASEGOOD_BACK_THICKNESS,
+    width: width - CASEGOOD_BOARD_THICKNESS * 2,
+    height: height - CASEGOOD_BOARD_THICKNESS * 2,
+    depth: CASEGOOD_BACK_THICKNESS,
+  });
+
+  if (hasLegs) {
+    const legSpots = [
+      [originX + 10, originZ + 10],
+      [originX + width - CASEGOOD_LEG_SIZE - 10, originZ + 10],
+      [originX + 10, originZ + depth - CASEGOOD_LEG_SIZE - 10],
+      [
+        originX + width - CASEGOOD_LEG_SIZE - 10,
+        originZ + depth - CASEGOOD_LEG_SIZE - 10,
+      ],
+    ];
+
+    legSpots.forEach(([legX, legZ], index) => {
+      addPart({
+        type: "furniture_leg",
+        label: `Leg ${index + 1}`,
+        x: legX,
+        y: carcassBottomY,
+        z: legZ,
+        width: CASEGOOD_LEG_SIZE,
+        height: legHeight,
+        depth: CASEGOOD_LEG_SIZE,
+      });
+    });
+  }
+
+  // --- Interior sections: dividers + drawer/door fronts ---------------
+  const interiorX = originX + CASEGOOD_BOARD_THICKNESS;
+  const interiorTopY = carcassTopY + CASEGOOD_BOARD_THICKNESS;
+  const interiorHeight = height - CASEGOOD_BOARD_THICKNESS * 2;
+  const interiorWidth = width - CASEGOOD_BOARD_THICKNESS * 2;
+
+  const dividerCount = Math.max(0, sections.length - 1);
+  const usableWidth = Math.max(
+    60,
+    interiorWidth - dividerCount * CASEGOOD_BOARD_THICKNESS,
+  );
+  const shareTotal =
+    sections.reduce((sum, section) => sum + section.widthShare, 0) ||
+    sections.length;
+
+  let cursorX = interiorX;
+
+  sections.forEach((section, index) => {
+    const sectionWidth = Math.max(
+      60,
+      (section.widthShare / shareTotal) * usableWidth,
+    );
+
+    if (section.type === "drawer_stack") {
+      const drawerCount = section.drawers;
+      const drawerHeight = Math.max(
+        20,
+        (interiorHeight - CASEGOOD_FRONT_REVEAL * (drawerCount + 1)) /
+          drawerCount,
+      );
+
+      for (let d = 0; d < drawerCount; d += 1) {
+        addPart({
+          type: "cabinet_drawer_front",
+          label: `Drawer ${d + 1}`,
+          partFunction: "drawer",
+          x: cursorX + CASEGOOD_FRONT_REVEAL,
+          y:
+            interiorTopY +
+            CASEGOOD_FRONT_REVEAL +
+            d * (drawerHeight + CASEGOOD_FRONT_REVEAL),
+          z: originZ + depth - CASEGOOD_FRONT_THICKNESS,
+          width: Math.max(20, sectionWidth - CASEGOOD_FRONT_REVEAL * 2),
+          height: drawerHeight,
+          depth: CASEGOOD_FRONT_THICKNESS,
+        });
+      }
+    } else if (
+      section.type === "door_single" ||
+      section.type === "door_double"
+    ) {
+      const leafCount = section.type === "door_double" ? 2 : 1;
+      const leafWidth = Math.max(
+        20,
+        (sectionWidth - CASEGOOD_FRONT_REVEAL * (leafCount + 1)) / leafCount,
+      );
+
+      for (let leaf = 0; leaf < leafCount; leaf += 1) {
+        addPart({
+          type: "cabinet_door_front",
+          label: leafCount > 1 ? `Door ${leaf + 1}` : "Door",
+          partFunction: "door",
+          doorHinge: leaf === 0 ? "left" : "right",
+          x:
+            cursorX +
+            CASEGOOD_FRONT_REVEAL +
+            leaf * (leafWidth + CASEGOOD_FRONT_REVEAL),
+          y: interiorTopY + CASEGOOD_FRONT_REVEAL,
+          z: originZ + depth - CASEGOOD_FRONT_THICKNESS,
+          width: leafWidth,
+          height: Math.max(20, interiorHeight - CASEGOOD_FRONT_REVEAL * 2),
+          depth: CASEGOOD_FRONT_THICKNESS,
+        });
+      }
+    } else if (section.type === "open" && section.shelves > 0) {
+      // Horizontal shelf boards stacked vertically inside this
+      // open compartment (bookcases, shelving units).
+      const shelfCount = section.shelves;
+      const gapCount = shelfCount + 1;
+      const gapHeight =
+        (interiorHeight - shelfCount * CASEGOOD_BOARD_THICKNESS) / gapCount;
+
+      for (let s = 0; s < shelfCount; s += 1) {
+        addPart({
+          type: "furniture_shelf",
+          label: `Shelf ${s + 1}`,
+          x: cursorX,
+          y: interiorTopY + gapHeight * (s + 1) + CASEGOOD_BOARD_THICKNESS * s,
+          z: originZ,
+          width: sectionWidth,
+          height: CASEGOOD_BOARD_THICKNESS,
+          depth,
+        });
+      }
+    }
+    // Plain "open" sections with no shelves get no extra parts — the
+    // cavity created by the carcass itself is the point.
+
+    cursorX += sectionWidth;
+
+    if (index < sections.length - 1) {
+      addPart({
+        type: "furniture_side_panel",
+        label: `Divider ${index + 1}`,
+        x: cursorX,
+        y: carcassTopY,
+        z: originZ,
+        width: CASEGOOD_BOARD_THICKNESS,
+        height,
+        depth,
+      });
+      cursorX += CASEGOOD_BOARD_THICKNESS;
+    }
+  });
+
+  return parts;
+};
+
 export function PropertiesPanel({
   selectedComp: committedSelectedComp,
   liveSelectedComp = null,
@@ -3704,13 +4008,33 @@ export function PropertiesPanel({
 
                   console.log("AI PLAN:", data);
 
-                  const generatedParts = buildAiFurnitureParts({
-                    data,
-                    canvasW,
-                    canvasH,
-                    canvasD,
-                    prompt: aiPrompt.trim(),
-                  });
+                  const structuredParts =
+                    Array.isArray(data?.assemblies) && data.assemblies.length
+                      ? buildAiFurnitureParts({
+                          data,
+                          canvasW,
+                          canvasH,
+                          canvasD,
+                          prompt: aiPrompt.trim(),
+                        })
+                      : [];
+
+                  const generativeParts = Array.isArray(
+                    data?.generativeAssemblies,
+                  )
+                    ? data.generativeAssemblies.flatMap((assembly) =>
+                        buildGenerativeCasegoodParts(assembly, {
+                          canvasW,
+                          canvasH,
+                          canvasD,
+                        }),
+                      )
+                    : [];
+
+                  const generatedParts = [
+                    ...structuredParts,
+                    ...generativeParts,
+                  ];
 
                   if (!generatedParts.length) {
                     throw new Error(
