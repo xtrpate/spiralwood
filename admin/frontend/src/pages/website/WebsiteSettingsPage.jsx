@@ -38,9 +38,9 @@ const SECTION_META = {
     description: "Admin alerts and customer email updates.",
   },
   policy: {
-    label: "Policies",
-    icon: "📋",
-    description: "Customer warranty settings.",
+    label: "Warranty",
+    icon: "🛡️",
+    description: "Configure warranty coverage period for customer orders.",
   },
   delivery: {
     label: "Truck Capacity",
@@ -186,7 +186,7 @@ const KEY_META = {
     min: 1,
     max: 3650,
     step: 1,
-    hint: "Warranty period counted from the delivery date.",
+    hint: "Number of days covered from the delivery date.",
     width: "number",
   },
 
@@ -948,7 +948,7 @@ export default function WebsiteSettingsPage() {
           <h1 className="website-settings-title">Website Settings</h1>
           <p className="website-settings-subtitle">
             Configure customer website details, payments, email notifications,
-            policies, and standard truck capacity.
+            warranty, and standard truck capacity.
           </p>
         </div>
 
