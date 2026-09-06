@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bell } from "lucide-react";
+import toast from "react-hot-toast";
 import api from "../services/api";
 
 const formatCustomerNotificationDate = (value) => {
@@ -39,6 +40,37 @@ function resolveCustomerNotificationRoute(n) {
       return `/warranty?focus_claim_id=${targetId}`;
     default:
       return "/orders";
+  }
+}
+
+async function preflightCustomerDirectNotificationTarget(n) {
+  const targetType = n?.target_type || null;
+  const targetId = Number(n?.target_id);
+
+  if (targetType !== "custom_request") {
+    // Standard orders/support/appointments/warranty already open safe list
+    // pages with focus query parameters.
+    return { available: true, fallback: null };
+  }
+
+  const fallback = "/orders";
+
+  if (!Number.isSafeInteger(targetId) || targetId <= 0) {
+    return { available: false, fallback };
+  }
+
+  try {
+    await api.get(`/customer/custom-orders/${targetId}`);
+    return { available: true, fallback };
+  } catch (err) {
+    const status = Number(err?.response?.status);
+    if ([403, 404, 410].includes(status)) {
+      return { available: false, fallback };
+    }
+
+    // A temporary request failure must not be misclassified as a stale
+    // notification target.
+    return { available: true, fallback };
   }
 }
 
@@ -184,9 +216,18 @@ export default function CustomerNotificationBell() {
       return;
     }
 
+    const targetState = await preflightCustomerDirectNotificationTarget(n);
+
+    setOpen(false);
+
+    if (!targetState.available) {
+      toast.error("The related request is no longer available.");
+      navigate(targetState.fallback || "/orders");
+      return;
+    }
+
     // A notification that is already read opens its exact destination
     // with one click. Legacy notifications still fall back to My Orders.
-    setOpen(false);
     navigate(resolveCustomerNotificationRoute(n));
   };
 
