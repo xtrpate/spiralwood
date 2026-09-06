@@ -3,6 +3,10 @@ const pool = require("../../config/db");
 const path = require("path");
 const fs = require("fs");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
+const {
+  persistSiteLogo,
+  cleanupPersistedSiteLogo,
+} = require("../../config/upload");
 
 // Setting-key categorization for audit metadata only — does not affect
 // validation or business behavior. Values are never logged, only which
@@ -27,6 +31,207 @@ const DELIVERY_SETTING_KEYS = [
   "standard_truck_limit_height_mm",
   "standard_truck_limit_depth_mm",
 ];
+
+// Public storefront consumers only need branding/contact/location data,
+// storefront section visibility, checkout note, and the two live ready-made
+// payment switches. Operational/admin settings must never be exposed just
+// because a new row exists in website_content.
+const PUBLIC_SETTING_KEYS = new Set([
+  "site_logo",
+  "site_name",
+  "show_faq_section",
+  "show_about_section",
+  "show_contact_section",
+  "business_address",
+  "google_maps_url",
+  "business_latitude",
+  "business_longitude",
+  "google_maps_place_id",
+  "business_phone",
+  "business_email",
+  "social_facebook",
+  "social_instagram",
+  "social_telegram",
+  "operating_hours",
+  "cod_enabled",
+  "paymongo_enabled",
+  "checkout_note",
+]);
+
+const TOGGLE_SETTING_KEYS = new Set([
+  "show_faq_section",
+  "show_about_section",
+  "show_contact_section",
+  "cod_enabled",
+  "cop_enabled",
+  "paymongo_enabled",
+  "gcash_enabled",
+  "bank_transfer_enabled",
+  "email_order_confirmed",
+  "email_production_started",
+  "email_out_for_delivery",
+]);
+
+const EMAIL_SETTING_KEYS = new Map([
+  ["business_email", "Business Email"],
+  ["admin_alert_email", "Admin Alert Email"],
+]);
+
+const URL_SETTING_KEYS = new Map([
+  ["google_maps_url", "Google Maps URL"],
+  ["social_facebook", "Facebook URL"],
+  ["social_instagram", "Instagram URL"],
+  ["social_telegram", "Telegram URL"],
+]);
+
+const hasOwn = (obj, key) =>
+  Object.prototype.hasOwnProperty.call(obj || {}, key);
+
+const makeValidationError = (message) => {
+  const error = new Error(message);
+  error.statusCode = 400;
+  return error;
+};
+
+const normalizeToggleSetting = (value, key) => {
+  if (value === true || value === 1 || value === "1") return "true";
+  if (value === false || value === 0 || value === "0") return "false";
+
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase();
+
+  if (normalized === "true") return "true";
+  if (normalized === "false") return "false";
+
+  throw makeValidationError(
+    `${key} must be a true/false setting value.`,
+  );
+};
+
+const validateEmailSetting = (value, label) => {
+  const text = String(value ?? "").trim();
+  if (!text) return;
+
+  if (
+    text.length > 254 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)
+  ) {
+    throw makeValidationError(`${label} must be a valid email address.`);
+  }
+};
+
+const validateHttpUrlSetting = (value, label) => {
+  const text = String(value ?? "").trim();
+  if (!text) return;
+
+  let parsed;
+  try {
+    parsed = new URL(text);
+  } catch {
+    throw makeValidationError(`${label} must be a valid URL.`);
+  }
+
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    throw makeValidationError(`${label} must use http:// or https://.`);
+  }
+};
+
+const normalizeAndValidateSettingsPayload = (body, existingMap) => {
+  const normalized = { ...(body || {}) };
+
+  for (const key of TOGGLE_SETTING_KEYS) {
+    if (hasOwn(normalized, key)) {
+      normalized[key] = normalizeToggleSetting(normalized[key], key);
+    }
+  }
+
+  if (hasOwn(normalized, "business_phone")) {
+    const phone = String(normalized.business_phone ?? "").trim();
+    if (phone && !/^09\d{9}$/.test(phone)) {
+      throw makeValidationError(
+        "Business Phone must be exactly 11 digits and start with 09.",
+      );
+    }
+    normalized.business_phone = phone;
+  }
+
+  if (hasOwn(normalized, "gcash_number")) {
+    const phone = String(normalized.gcash_number ?? "").trim();
+    if (phone && !/^09\d{9}$/.test(phone)) {
+      throw makeValidationError(
+        "GCash Number must be exactly 11 digits and start with 09.",
+      );
+    }
+    normalized.gcash_number = phone;
+  }
+
+  for (const [key, label] of EMAIL_SETTING_KEYS) {
+    if (hasOwn(normalized, key)) {
+      const value = String(normalized[key] ?? "").trim();
+      validateEmailSetting(value, label);
+      normalized[key] = value;
+    }
+  }
+
+  for (const [key, label] of URL_SETTING_KEYS) {
+    if (hasOwn(normalized, key)) {
+      const value = String(normalized[key] ?? "").trim();
+      validateHttpUrlSetting(value, label);
+      normalized[key] = value;
+    }
+  }
+
+  const coordinatesChanged =
+    hasOwn(normalized, "business_latitude") ||
+    hasOwn(normalized, "business_longitude");
+
+  if (coordinatesChanged) {
+    const latitudeRaw = String(
+      hasOwn(normalized, "business_latitude")
+        ? normalized.business_latitude
+        : existingMap.get("business_latitude")?.value ?? "",
+    ).trim();
+    const longitudeRaw = String(
+      hasOwn(normalized, "business_longitude")
+        ? normalized.business_longitude
+        : existingMap.get("business_longitude")?.value ?? "",
+    ).trim();
+
+    if ((latitudeRaw && !longitudeRaw) || (!latitudeRaw && longitudeRaw)) {
+      throw makeValidationError(
+        "Business Latitude and Business Longitude must be provided together.",
+      );
+    }
+
+    if (latitudeRaw && longitudeRaw) {
+      const latitude = Number(latitudeRaw);
+      const longitude = Number(longitudeRaw);
+
+      if (
+        !Number.isFinite(latitude) ||
+        latitude < -90 ||
+        latitude > 90 ||
+        !Number.isFinite(longitude) ||
+        longitude < -180 ||
+        longitude > 180
+      ) {
+        throw makeValidationError(
+          "Enter valid business latitude and longitude coordinates.",
+        );
+      }
+    }
+
+    if (hasOwn(normalized, "business_latitude")) {
+      normalized.business_latitude = latitudeRaw;
+    }
+    if (hasOwn(normalized, "business_longitude")) {
+      normalized.business_longitude = longitudeRaw;
+    }
+  }
+
+  return normalized;
+};
 
 // Strict allow-list mapping each known non-logo setting key to its
 // database group_name. Any key not in this map is ignored entirely —
@@ -76,32 +281,39 @@ const SETTING_KEY_GROUPS = {
 const KNOWN_PAGE_SLUGS = ["about_us", "contact", "faq"];
 
 // ── SETTINGS ─────────────────────────────────────────────────────────────────
-exports.getSettings = async (req, res) => {
-  try {
-    // website_settings was merged into website_content. Settings are now
-    // stored as content_type='setting', keyed by content_key/content.
-    const [rows] = await pool.query(
-      `SELECT
-         content_key AS setting_key,
-         content AS value,
-         group_name
-       FROM website_content
-       WHERE content_type = 'setting'
-       ORDER BY group_name, content_key`,
-      [],
-    );
-    const grouped = rows.reduce((acc, r) => {
-      if (
-        r.setting_key === "cancellation_fee_pct" ||
-        r.setting_key === WARRANTY_POLICY_VERSION_KEY
-      ) {
-        return acc;
-      }
+const loadSettingRows = async () => {
+  const [rows] = await pool.query(
+    `SELECT
+       content_key AS setting_key,
+       content AS value,
+       group_name
+     FROM website_content
+     WHERE content_type = 'setting'
+     ORDER BY group_name, content_key`,
+    [],
+  );
+  return rows;
+};
 
-      (acc[r.group_name] = acc[r.group_name] || {})[r.setting_key] = r.value;
+const groupSettingRows = (rows, { publicOnly = false } = {}) => {
+  const grouped = rows.reduce((acc, row) => {
+    if (
+      row.setting_key === "cancellation_fee_pct" ||
+      row.setting_key === WARRANTY_POLICY_VERSION_KEY
+    ) {
       return acc;
-    }, {});
+    }
 
+    if (publicOnly && !PUBLIC_SETTING_KEYS.has(row.setting_key)) {
+      return acc;
+    }
+
+    (acc[row.group_name] = acc[row.group_name] || {})[row.setting_key] =
+      row.value;
+    return acc;
+  }, {});
+
+  if (!publicOnly) {
     const warrantyVersion = rows.find(
       (row) => row.setting_key === WARRANTY_POLICY_VERSION_KEY,
     )?.value;
@@ -112,8 +324,26 @@ exports.getSettings = async (req, res) => {
         DEFAULT_WARRANTY_PERIOD_DAYS,
       );
     }
+  }
 
-    res.json(grouped);
+  return grouped;
+};
+
+// Public storefront-safe settings only.
+exports.getSettings = async (req, res) => {
+  try {
+    const rows = await loadSettingRows();
+    res.json(groupSettingRows(rows, { publicOnly: true }));
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// Full settings are available only through the admin-protected route.
+exports.getAdminSettings = async (req, res) => {
+  try {
+    const rows = await loadSettingRows();
+    res.json(groupSettingRows(rows));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -121,6 +351,9 @@ exports.getSettings = async (req, res) => {
 
 exports.updateSettings = async (req, res) => {
   const conn = await pool.getConnection();
+  let persistedLogo = null;
+  let transactionCommitted = false;
+
   try {
     await conn.beginTransaction();
 
@@ -151,10 +384,15 @@ exports.updateSettings = async (req, res) => {
       ]),
     );
 
-    if (
-      Object.prototype.hasOwnProperty.call(req.body, "warranty_period_days")
-    ) {
-      const warrantyDays = Number(req.body.warranty_period_days);
+    // Normalize/validate all incoming settings before any setting row is
+    // changed. Frontend validation remains UX; this is the authoritative gate.
+    const incomingSettings = normalizeAndValidateSettingsPayload(
+      req.body,
+      existingMap,
+    );
+
+    if (hasOwn(incomingSettings, "warranty_period_days")) {
+      const warrantyDays = Number(incomingSettings.warranty_period_days);
 
       if (
         !Number.isInteger(warrantyDays) ||
@@ -170,13 +408,13 @@ exports.updateSettings = async (req, res) => {
     }
 
     const hasDeliveryLimitUpdate = DELIVERY_SETTING_KEYS.some((key) =>
-      Object.prototype.hasOwnProperty.call(req.body, key),
+      hasOwn(incomingSettings, key),
     );
 
     if (hasDeliveryLimitUpdate) {
       const mergedLimits = DELIVERY_SETTING_KEYS.map((key) => {
-        const incoming = Object.prototype.hasOwnProperty.call(req.body, key)
-          ? req.body[key]
+        const incoming = hasOwn(incomingSettings, key)
+          ? incomingSettings[key]
           : existingMap.get(key)?.value;
 
         return Number(incoming);
@@ -196,7 +434,7 @@ exports.updateSettings = async (req, res) => {
     }
 
     const changedKeys = [];
-    for (const [key, value] of Object.entries(req.body)) {
+    for (const [key, value] of Object.entries(incomingSettings)) {
       const groupName = SETTING_KEY_GROUPS[key];
       if (!groupName) continue; // unknown/arbitrary key — ignored entirely
 
@@ -252,7 +490,10 @@ exports.updateSettings = async (req, res) => {
       changedKeys.push(key);
     }
     if (req.file) {
-      const logoUrl = req.file.path;
+      // File content has already passed extension/MIME/magic-byte checks in
+      // uploadSiteLogo. Persist only after settings validation has succeeded.
+      persistedLogo = await persistSiteLogo(req.file);
+      const logoUrl = persistedLogo.url;
 
       await conn.query(
         `INSERT INTO website_content
@@ -278,6 +519,7 @@ exports.updateSettings = async (req, res) => {
     const hasLogoAfter = Boolean(updatedLogo?.value);
 
     await conn.commit();
+    transactionCommitted = true;
 
     if (changedKeys.length > 0 || Boolean(req.file)) {
       req.auditRecord = {
@@ -329,8 +571,34 @@ exports.updateSettings = async (req, res) => {
 
     res.json({ message: "Settings updated." });
   } catch (err) {
-    await conn.rollback();
-    res.status(err.statusCode || 500).json({ message: err.message });
+    // Roll back only while the DB transaction is still open. A rare error
+    // after commit must never make the controller pretend the committed write
+    // was rolled back.
+    if (!transactionCommitted) {
+      try {
+        await conn.rollback();
+      } catch (rollbackErr) {
+        console.error(
+          "[website settings rollback]",
+          rollbackErr?.message || rollbackErr,
+        );
+      }
+    }
+
+    // Clean the newly persisted asset only when its DB transaction did not
+    // commit. If commit already succeeded, website_content now references it.
+    if (!transactionCommitted && persistedLogo) {
+      try {
+        await cleanupPersistedSiteLogo(persistedLogo);
+      } catch (cleanupErr) {
+        console.error(
+          "[website settings logo cleanup]",
+          cleanupErr?.message || cleanupErr,
+        );
+      }
+    }
+
+    res.status(err.statusCode || err.status || 500).json({ message: err.message });
   } finally {
     conn.release();
   }

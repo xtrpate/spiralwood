@@ -122,23 +122,6 @@ const ensureStandardPaymongoReceipt = async (
   return { ...receipt, created: true };
 };
 
-/* ── Get Settings (Payment Info) ── */
-exports.getSettings = async (req, res) => {
-  try {
-    const [rows] = await db.query(
-      `SELECT setting_key, value FROM website_settings
-       WHERE setting_key IN ('gcash_number','bank_account_name','bank_account_number')`,
-    );
-    const out = {};
-    rows.forEach((r) => {
-      out[r.setting_key] = r.value;
-    });
-    res.json(out);
-  } catch (err) {
-    res.json({}); // silently return empty — non-critical
-  }
-};
-
 /* ── Place a New Order ── */
 exports.createOrder = async (req, res) => {
   const conn = await db.getConnection();

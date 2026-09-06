@@ -289,7 +289,7 @@ export default function WebsiteSettingsPage() {
     const loadSettings = async () => {
       try {
         setLoadError("");
-        const { data } = await api.get("/website/settings");
+        const { data } = await api.get("/website/settings/admin");
         if (cancelled) return;
 
         const flat = {};
