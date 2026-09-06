@@ -1519,6 +1519,27 @@ const insertNotificationSafe = async (
   });
 };
 
+const notifyActiveAdminsSafe = async (conn, notification) => {
+  try {
+    const [activeAdmins] = await conn.execute(
+      `SELECT id
+       FROM users
+       WHERE role = 'admin' AND is_active = 1`,
+    );
+
+    for (const admin of activeAdmins) {
+      await insertNotificationSafe(conn, admin.id, notification);
+    }
+  } catch (err) {
+    // Notification delivery is best-effort and must never invalidate a
+    // customer action that otherwise passed its business transaction checks.
+    console.error(
+      "[customer.customorders ACTIVE ADMIN NOTIFICATION]",
+      err.message || err,
+    );
+  }
+};
+
 // Safely deletes an uploaded file from disk when the request that
 // accepted it does not end up successfully committing (validation
 // failure, lifecycle conflict, rolled-back transaction, or any other
@@ -1789,12 +1810,7 @@ exports.cancelUnpaidProject = async (req, res) => {
       });
     }
 
-    const [[creatorRow]] = await conn.execute(
-      `SELECT creator_id FROM blueprints WHERE id = ? LIMIT 1`,
-      [blueprint.id],
-    );
-
-    await insertNotificationSafe(conn, creatorRow?.creator_id || null, {
+    await notifyActiveAdminsSafe(conn, {
       type: "custom_project_cancelled",
       title: "Project Cancelled by Customer",
       message: `Customer cancelled ${order.order_number} before any verified payment.`,
@@ -2010,12 +2026,7 @@ exports.acceptProjectAgreement = async (req, res) => {
     );
 
     if (!alreadyAccepted) {
-      const [[creatorRow]] = await conn.execute(
-        `SELECT creator_id FROM blueprints WHERE id = ? LIMIT 1`,
-        [lifecycle.blueprint.id],
-      );
-
-      await insertNotificationSafe(conn, creatorRow?.creator_id || null, {
+      await notifyActiveAdminsSafe(conn, {
         type: "project_agreement_accepted",
         title: "Project Agreement Accepted",
         message: `Customer accepted the Project Agreement for ${order.order_number}.`,
@@ -2268,12 +2279,7 @@ exports.acceptEstimation = async (req, res) => {
       });
     }
 
-    const [[creatorRow]] = await conn.execute(
-      `SELECT creator_id FROM blueprints WHERE id = ? LIMIT 1`,
-      [blueprint.id],
-    );
-
-    await insertNotificationSafe(conn, creatorRow?.creator_id || null, {
+    await notifyActiveAdminsSafe(conn, {
       type: "estimation_customer_approved",
       title: "Quotation Approved by Customer",
       message: `Customer approved the quotation for ${order.order_number}. Required 30% down payment: ₱${downPaymentAmount.toFixed(2)}.`,
@@ -2467,12 +2473,7 @@ exports.requestEstimationRevision = async (req, res) => {
       [blueprint.id],
     );
 
-    const [[creatorRow]] = await conn.execute(
-      `SELECT creator_id FROM blueprints WHERE id = ? LIMIT 1`,
-      [blueprint.id],
-    );
-
-    await insertNotificationSafe(conn, creatorRow?.creator_id || null, {
+    await notifyActiveAdminsSafe(conn, {
       type: "estimation_revision_requested",
       title: "Customer Requested Quotation Revision",
       message: note
@@ -2675,12 +2676,7 @@ exports.rejectEstimation = async (req, res) => {
       });
     }
 
-    const [[creatorRow]] = await conn.execute(
-      `SELECT creator_id FROM blueprints WHERE id = ? LIMIT 1`,
-      [blueprint.id],
-    );
-
-    await insertNotificationSafe(conn, creatorRow?.creator_id || null, {
+    await notifyActiveAdminsSafe(conn, {
       type: "estimation_rejected",
       title: "Customer Rejected Quotation",
       message: reason
@@ -2973,12 +2969,7 @@ exports.submitDownPayment = async (req, res) => {
       });
     }
 
-    const [[creatorRow]] = await conn.execute(
-      `SELECT creator_id FROM blueprints WHERE id = ? LIMIT 1`,
-      [blueprint.id],
-    );
-
-    await insertNotificationSafe(conn, creatorRow?.creator_id || null, {
+    await notifyActiveAdminsSafe(conn, {
       type: "blueprint_down_payment_submitted",
       title: "30% Down Payment Submitted",
       message: `Customer submitted the 30% down payment for ${order.order_number}. Please verify the payment proof.`,
