@@ -32,6 +32,37 @@ const getPaymentMethodLabel = (method) => {
   return "the selected payment method";
 };
 
+const parseStoredPaymentToggle = (value, fallback = true) => {
+  if (value === undefined || value === null || String(value).trim() === "") {
+    return fallback;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+
+  if (["true", "1", "yes", "on"].includes(normalized)) return true;
+  if (["false", "0", "no", "off"].includes(normalized)) return false;
+
+  return fallback;
+};
+
+const getStandardCheckoutPaymentAvailability = async (conn) => {
+  const [rows] = await conn.query(
+    `SELECT content_key, content
+     FROM website_content
+     WHERE content_type = 'setting'
+       AND content_key IN ('cod_enabled', 'paymongo_enabled')`,
+  );
+
+  const values = new Map(
+    rows.map((row) => [String(row.content_key), row.content]),
+  );
+
+  return {
+    cod: parseStoredPaymentToggle(values.get("cod_enabled"), true),
+    paymongo: parseStoredPaymentToggle(values.get("paymongo_enabled"), true),
+  };
+};
+
 /* WISDOM STANDARD PAYMONGO IDEMPOTENCY + RECEIPT V1 */
 const getVerifiedStandardPaymongoPayment = async (conn, orderId) => {
   const [[payment]] = await conn.query(
@@ -154,6 +185,24 @@ exports.createOrder = async (req, res) => {
     if (!ALLOWED_PAYMENT_METHODS.includes(normalizedPaymentMethod)) {
       await conn.rollback();
       return res.status(400).json({ message: "Invalid payment method." });
+    }
+
+    if (["cod", "paymongo"].includes(normalizedPaymentMethod)) {
+      const paymentAvailability =
+        await getStandardCheckoutPaymentAvailability(conn);
+
+      const isAvailable =
+        normalizedPaymentMethod === "cod"
+          ? paymentAvailability.cod
+          : paymentAvailability.paymongo;
+
+      if (!isAvailable) {
+        await conn.rollback();
+        return res.status(400).json({
+          message:
+            "The selected payment method is currently unavailable. Please choose another method.",
+        });
+      }
     }
 
     // COD and PayMongo (Pay Online) are both delivery orders, so an

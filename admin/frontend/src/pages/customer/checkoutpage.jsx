@@ -24,9 +24,27 @@ const PAYMENT_METHODS = [
     value: "paymongo",
     icon: "💳",
     label: "Pay Online",
-    desc: "Pay securely via GCash, Maya, Bank, or Card.",
+    desc: "Pay securely via Card, GCash, or Maya through PayMongo.",
   },
 ];
+
+const DEFAULT_PAYMENT_AVAILABILITY = Object.freeze({
+  cod: true,
+  paymongo: true,
+});
+
+const readEnabledPaymentSetting = (value, fallback = true) => {
+  if (value === undefined || value === null || String(value).trim() === "") {
+    return fallback;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+
+  if (["true", "1", "yes", "on"].includes(normalized)) return true;
+  if (["false", "0", "no", "off"].includes(normalized)) return false;
+
+  return fallback;
+};
 
 const isBlueprintItem = (item = {}) =>
   String(item?.cart_type || item?.item_type || "")
@@ -106,15 +124,27 @@ export default function CheckoutPage() {
   const [assemblyChoice, setAssemblyChoice] = useState("");
 
   const [checkoutNote, setCheckoutNote] = useState("");
+  const [paymentAvailability, setPaymentAvailability] = useState(
+    DEFAULT_PAYMENT_AVAILABILITY,
+  );
+
   useEffect(() => {
     api
       .get("/website/settings")
       .then((res) => {
-        const note =
-          res.data?.email?.checkout_note || res.data?.checkout_note || "";
+        const data = res.data || {};
+        const note = data?.email?.checkout_note || data?.checkout_note || "";
+        const payment = data?.payment || {};
+
         setCheckoutNote(note);
+        setPaymentAvailability({
+          cod: readEnabledPaymentSetting(payment.cod_enabled, true),
+          paymongo: readEnabledPaymentSetting(payment.paymongo_enabled, true),
+        });
       })
-      .catch((err) => console.error("Could not load checkout note:", err));
+      .catch((err) => {
+        console.error("Could not load checkout settings:", err);
+      });
   }, []);
 
   const [isPageLoading, setIsPageLoading] = useState(true);
@@ -288,6 +318,16 @@ export default function CheckoutPage() {
 
   const total = subtotal;
 
+  const availablePaymentMethods = useMemo(
+    () =>
+      PAYMENT_METHODS.filter((method) => {
+        if (method.value === "cod") return paymentAvailability.cod;
+        if (method.value === "paymongo") return paymentAvailability.paymongo;
+        return false;
+      }),
+    [paymentAvailability],
+  );
+
   const savedDefaultPin = toValidDeliveryPin(
     user?.address_lat,
     user?.address_lng,
@@ -318,8 +358,26 @@ export default function CheckoutPage() {
       return;
     }
 
+    if (!availablePaymentMethods.length) {
+      toast.error(
+        "No payment methods are currently available. Please contact Spiral Wood Services.",
+      );
+      return;
+    }
+
     if (!String(form.payment_method || "").trim()) {
       toast.error("Please select a payment method.");
+      return;
+    }
+
+    if (
+      !availablePaymentMethods.some(
+        (method) => method.value === form.payment_method,
+      )
+    ) {
+      toast.error(
+        "The selected payment method is currently unavailable. Please choose another method.",
+      );
       return;
     }
 
@@ -916,7 +974,24 @@ export default function CheckoutPage() {
 
               <div className="checkout-section-body">
                 <div className="payment-methods">
-                  {PAYMENT_METHODS.map((method) => (
+                  {availablePaymentMethods.length === 0 && (
+                    <div
+                      style={{
+                        width: "100%",
+                        padding: "14px 16px",
+                        border: "1px solid #e5e7eb",
+                        background: "#fafafa",
+                        color: "#4b5563",
+                        fontSize: 14,
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      No payment methods are currently available. Please contact
+                      Spiral Wood Services.
+                    </div>
+                  )}
+
+                  {availablePaymentMethods.map((method) => (
                     <div
                       key={method.value}
                       className={`payment-method-card ${

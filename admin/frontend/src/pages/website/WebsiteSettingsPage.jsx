@@ -30,7 +30,7 @@ const SECTION_META = {
   payment: {
     label: "Payments",
     icon: "💳",
-    description: "Payment methods and customer payment details.",
+    description: "Customer-facing payment methods for ready-made checkout.",
   },
   email: {
     label: "Email Notifications",
@@ -152,43 +152,12 @@ const KEY_META = {
   cod_enabled: {
     label: "Cash on Delivery",
     type: "toggle",
-    hint: "Allow customers to select Cash on Delivery at checkout.",
+    hint: "Allow customers to pay in cash when a ready-made order is delivered.",
   },
-  cop_enabled: {
-    label: "Cash on Pickup",
+  paymongo_enabled: {
+    label: "Online Payment (PayMongo)",
     type: "toggle",
-    hint: "Allow customers to select Cash on Pickup.",
-  },
-  gcash_enabled: {
-    label: "GCash",
-    type: "toggle",
-    hint: "Allow GCash as a payment option.",
-  },
-  bank_transfer_enabled: {
-    label: "Bank Transfer",
-    type: "toggle",
-    hint: "Allow Bank Transfer as a payment option.",
-  },
-  gcash_number: {
-    label: "GCash Number",
-    type: "text",
-    hint: "Shown to customers during GCash checkout.",
-    width: "phone",
-    pattern: /^09\d{9}$/,
-    patternMessage:
-      "GCash number must be exactly 11 digits and start with '09'.",
-  },
-  bank_account_name: {
-    label: "Bank Account Name",
-    type: "text",
-    hint: "Account name shown during bank transfer checkout.",
-    width: "accountName",
-  },
-  bank_account_number: {
-    label: "Bank Account Number",
-    type: "text",
-    hint: "Account number shown during bank transfer checkout.",
-    width: "accountNumber",
+    hint: "Allow secure online payment by Card, GCash, or Maya through PayMongo.",
   },
 
   admin_alert_email: {
@@ -286,15 +255,7 @@ const TAB_KEYS = {
     "social_telegram",
     "operating_hours",
   ],
-  payment: [
-    "cod_enabled",
-    "cop_enabled",
-    "gcash_enabled",
-    "bank_transfer_enabled",
-    "gcash_number",
-    "bank_account_name",
-    "bank_account_number",
-  ],
+  payment: ["cod_enabled", "paymongo_enabled"],
   email: [
     "admin_alert_email",
     "email_order_confirmed",
@@ -335,6 +296,13 @@ export default function WebsiteSettingsPage() {
         Object.values(data || {}).forEach((group) => {
           if (group && typeof group === "object") Object.assign(flat, group);
         });
+
+        if (!Object.prototype.hasOwnProperty.call(flat, "cod_enabled")) {
+          flat.cod_enabled = "true";
+        }
+        if (!Object.prototype.hasOwnProperty.call(flat, "paymongo_enabled")) {
+          flat.paymongo_enabled = "true";
+        }
 
         const warrantyDays = Number(flat.warranty_period_days);
         if (
