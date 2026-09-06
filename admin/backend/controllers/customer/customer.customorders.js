@@ -3510,24 +3510,26 @@ exports.postCustomOrderMessage = async (req, res) => {
       });
     }
 
-    const [bpRows] = await conn.execute(
-      `SELECT creator_id
-       FROM blueprints
-       WHERE id = ?
-       LIMIT 1`,
-      [order.blueprint_id],
+    // Customer discussion messages are actionable by any active Admin.
+    // Do not depend on orders.blueprint_id here: pending Custom Requests
+    // intentionally have no working Blueprint yet, which previously caused
+    // the notification recipient to resolve to null and silently disappear.
+    const [activeAdmins] = await conn.execute(
+      `SELECT id
+       FROM users
+       WHERE role = 'admin' AND is_active = 1`,
     );
 
-    const blueprint = bpRows[0] || null;
-
-    await insertNotificationSafe(conn, blueprint?.creator_id, {
-      type: "custom_request_new_message",
-      title: "New Customer Discussion Message",
-      message: `Customer sent a new discussion message for ${order.order_number}.`,
-      targetType: "order",
-      targetId: order.id,
-      targetOrderId: order.id,
-    });
+    for (const admin of activeAdmins) {
+      await insertNotificationSafe(conn, admin.id, {
+        type: "custom_request_new_message",
+        title: "New Customer Discussion Message",
+        message: `${String(req.user?.name || "Customer").trim() || "Customer"} sent a new discussion message for ${order.order_number}.`,
+        targetType: "order",
+        targetId: order.id,
+        targetOrderId: order.id,
+      });
+    }
 
     await conn.commit();
     transactionActive = false;
