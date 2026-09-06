@@ -46,8 +46,11 @@ export default function CustomerNotificationBell() {
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [historyHasMore, setHistoryHasMore] = useState(true);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
-  const unreadCount = notifications.filter((n) => !n.is_read).length;
+  const CUSTOMER_NOTIFICATION_PAGE_SIZE = 20;
 
   const markingInFlightRef = useRef(new Set());
   const isMountedRef = useRef(true);
@@ -59,28 +62,91 @@ export default function CustomerNotificationBell() {
     };
   }, []);
 
-  const fetchNotifications = useCallback(async () => {
+  const mergeNotifications = useCallback((current, incoming) => {
+    const byId = new Map(current.map((item) => [item.id, item]));
+    incoming.forEach((item) => byId.set(item.id, item));
+
+    return Array.from(byId.values()).sort((a, b) => {
+      const timeDiff =
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      return timeDiff || Number(b.id) - Number(a.id);
+    });
+  }, []);
+
+  const fetchUnreadCount = useCallback(async () => {
     try {
-      const { data } = await api.get("/customer/notifications");
-      if (isMountedRef.current) setNotifications(data);
+      const { data } = await api.get("/customer/notifications/unread-count");
+      if (isMountedRef.current) {
+        setUnreadCount(Number(data?.notification_count) || 0);
+      }
     } catch {
-      // A failed notification fetch must never break the surrounding page.
+      // Badge failure must never break the surrounding customer page.
     }
   }, []);
 
-  useEffect(() => {
-    fetchNotifications();
-  }, [fetchNotifications]);
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const { data } = await api.get(
+        `/customer/notifications?limit=${CUSTOMER_NOTIFICATION_PAGE_SIZE}&offset=0`,
+      );
+      if (isMountedRef.current) {
+        setNotifications((current) => mergeNotifications(current, data));
+        // Once the complete historical list has been reached, normal polling
+        // must not re-enable "Load older" just because the first page is full.
+        setHistoryHasMore(
+          (hasMore) =>
+            hasMore && data.length === CUSTOMER_NOTIFICATION_PAGE_SIZE,
+        );
+      }
+    } catch {
+      // A failed notification fetch must never break the surrounding page.
+    }
+  }, [mergeNotifications]);
+
+  const loadOlderNotifications = useCallback(async () => {
+    if (historyLoading || !historyHasMore) return;
+
+    setHistoryLoading(true);
+    try {
+      const offset = notifications.length;
+      const { data } = await api.get(
+        `/customer/notifications?limit=${CUSTOMER_NOTIFICATION_PAGE_SIZE}&offset=${offset}`,
+      );
+
+      if (isMountedRef.current) {
+        setNotifications((current) => mergeNotifications(current, data));
+        setHistoryHasMore(data.length === CUSTOMER_NOTIFICATION_PAGE_SIZE);
+      }
+    } catch {
+      // Loading history is best-effort and must not break the customer page.
+    } finally {
+      if (isMountedRef.current) setHistoryLoading(false);
+    }
+  }, [
+    historyHasMore,
+    historyLoading,
+    mergeNotifications,
+    notifications.length,
+  ]);
 
   useEffect(() => {
-    const iv = setInterval(fetchNotifications, 30000);
+    fetchNotifications();
+    fetchUnreadCount();
+  }, [fetchNotifications, fetchUnreadCount]);
+
+  useEffect(() => {
+    const iv = setInterval(() => {
+      fetchNotifications();
+      fetchUnreadCount();
+    }, 30000);
     return () => clearInterval(iv);
-  }, [fetchNotifications]);
+  }, [fetchNotifications, fetchUnreadCount]);
 
   const markAllRead = async () => {
     try {
       await api.patch("/customer/notifications/read-all");
       setNotifications((p) => p.map((n) => ({ ...n, is_read: 1 })));
+      setUnreadCount(0);
     } catch {}
   };
 
@@ -99,6 +165,7 @@ export default function CustomerNotificationBell() {
           setNotifications((p) =>
             p.map((n) => (n.id === id ? { ...n, is_read: 1 } : n)),
           );
+          setUnreadCount((count) => Math.max(0, count - 1));
         }
       } catch {
         // Best-effort ΓÇö a failed mark-as-read must never block navigation
@@ -283,6 +350,44 @@ export default function CustomerNotificationBell() {
                   )}
                 </div>
               ))
+            )}
+
+            {notifications.length > 0 && historyHasMore && (
+              <button
+                type="button"
+                onClick={loadOlderNotifications}
+                disabled={historyLoading}
+                style={{
+                  width: "100%",
+                  minHeight: 36,
+                  marginTop: 4,
+                  border: "1px solid #d4d4d8",
+                  borderRadius: 8,
+                  background: "#ffffff",
+                  color: historyLoading ? "#a1a1aa" : "#3f3f46",
+                  fontFamily: "inherit",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: historyLoading ? "wait" : "pointer",
+                }}
+              >
+                {historyLoading
+                  ? "Loading older notifications..."
+                  : "Load older notifications"}
+              </button>
+            )}
+
+            {notifications.length > 0 && !historyHasMore && (
+              <div
+                style={{
+                  padding: "10px 4px 2px",
+                  color: "#a1a1aa",
+                  fontSize: 11,
+                  textAlign: "center",
+                }}
+              >
+                No older notifications.
+              </div>
             )}
           </div>
         </>

@@ -9,6 +9,12 @@ router.get(
   requireCustomer,
   notificationsController.getNotifications,
 );
+router.get(
+  "/unread-count",
+  authenticate,
+  requireCustomer,
+  notificationsController.getUnreadCount,
+);
 router.patch(
   "/read-all",
   authenticate,

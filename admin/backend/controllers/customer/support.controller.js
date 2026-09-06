@@ -487,9 +487,32 @@ const replyToTicket = async (req, res) => {
 
     try {
       const customerName = req.user.name || "The customer";
+
+      // Historical tickets may still contain an assignee that is inactive or
+      // belongs to a staff type that cannot access Support. Never send the
+      // customer's reply only to an unusable recipient. Active admins remain
+      // valid historical assignees; active cashier staff are the supported
+      // staff assignees going forward.
+      let assignedSupportUser = null;
       if (ticket.assigned_to) {
+        const [[assignee]] = await connection.query(
+          `SELECT id
+           FROM users
+           WHERE id = ?
+             AND is_active = 1
+             AND (
+               role = 'admin'
+               OR (role = 'staff' AND staff_type = 'cashier')
+             )
+           LIMIT 1`,
+          [ticket.assigned_to],
+        );
+        assignedSupportUser = assignee || null;
+      }
+
+      if (assignedSupportUser) {
         await createNotificationSafe(connection, {
-          userId: ticket.assigned_to,
+          userId: assignedSupportUser.id,
           type: "support_customer_reply",
           title: "Customer Replied to Support",
           message: `${customerName} replied to “${ticket.subject}”. Open the ticket to continue the conversation.`,
@@ -497,6 +520,8 @@ const replyToTicket = async (req, res) => {
           targetId: ticketId,
         });
       } else {
+        // Treat a missing/stale/invalid assignee like an unassigned ticket so
+        // the reply still reaches active admins for reassignment and action.
         const [admins] = await connection.query(
           `SELECT id FROM users WHERE role = 'admin' AND is_active = 1`,
         );
