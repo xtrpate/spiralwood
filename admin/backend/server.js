@@ -103,6 +103,7 @@ app.use(
   ),
 );
 app.use("/api/public", require("./routes/public"));
+app.use("/api/public/ar", require("./routes/public.ar"));
 
 app.use("/api", require("./routes/admin.oversized-delivery-guard"));
 app.use("/api", adminRoutes);

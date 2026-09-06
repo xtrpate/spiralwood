@@ -78,6 +78,7 @@ import PrivacyPolicyPage from "./pages/customer/PrivacyPolicyPage";
 import CustomerStaticPage from "./pages/customer/customerstaticpage";
 import SupportPage from "./pages/customer/supportpage";
 import AdminSupportPage from "./pages/support/SupportPage";
+import ARViewPage from "./pages/customer/ar/ARViewPage";
 
 import POSLayout from "./pages/staff/POSLayout.jsx";
 import POSDashboard from "./pages/staff/Dashboard";
@@ -279,6 +280,8 @@ export default function App() {
             <SessionLoginFeedback />
 
             <Routes>
+              <Route path="/ar/:sessionId" element={<ARViewPage />} />
+
               <Route
                 path="/change-temporary-password"
                 element={

@@ -1,0 +1,429 @@
+.wisdom-ar-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(2px);
+}
+
+.wisdom-ar-modal {
+  position: relative;
+  width: min(884px, 96vw);
+  min-height: 414px;
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.2);
+}
+
+.wisdom-ar-modal-close {
+  position: absolute;
+  top: 16px;
+  right: 18px;
+  z-index: 3;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  background: transparent;
+  color: #111827;
+  font-size: 27px;
+  font-weight: 300;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.wisdom-ar-state-panel {
+  min-height: 414px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  text-align: center;
+}
+
+.wisdom-ar-state-panel h2,
+.wisdom-ar-ready-copy h2 {
+  margin: 18px 0 10px;
+  color: #111827;
+  font-size: 30px;
+  line-height: 1.15;
+  font-weight: 700;
+}
+
+.wisdom-ar-state-panel p,
+.wisdom-ar-lead {
+  max-width: 520px;
+  margin: 0;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.wisdom-ar-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #111827;
+  border-radius: 999px;
+  animation: wisdom-ar-spin 0.8s linear infinite;
+}
+
+@keyframes wisdom-ar-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.wisdom-ar-error-mark {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid #fecaca;
+  border-radius: 999px;
+  background: #fef2f2;
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.wisdom-ar-primary-button,
+.wisdom-ar-launch-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  border: 1px solid #111827;
+  background: #111827;
+  color: #ffffff;
+  padding: 0 26px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.wisdom-ar-primary-button {
+  margin-top: 24px;
+}
+
+.wisdom-ar-ready-grid {
+  display: grid;
+  grid-template-columns: 0.92fr 1.08fr;
+  min-height: 414px;
+}
+
+.wisdom-ar-qr-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 414px;
+  padding: 42px;
+  background: #f7f7f5;
+}
+
+.wisdom-ar-qr-frame {
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: #ffffff;
+}
+
+.wisdom-ar-ready-copy {
+  padding: 54px 48px 42px;
+}
+
+.wisdom-ar-ready-copy h2 {
+  margin-top: 0;
+}
+
+.wisdom-ar-size-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 22px;
+  padding: 14px 16px;
+  border: 1px solid #e5e7eb;
+  background: #fafafa;
+}
+
+.wisdom-ar-size-card span {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.wisdom-ar-size-card strong {
+  color: #111827;
+  font-size: 14px;
+}
+
+.wisdom-ar-url-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-top: 22px;
+  border-bottom: 1px solid #cbd5e1;
+  padding-bottom: 9px;
+}
+
+.wisdom-ar-url-row span {
+  min-width: 0;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wisdom-ar-url-row button {
+  border: 0;
+  background: transparent;
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.wisdom-ar-open-device-link {
+  display: inline-block;
+  margin-top: 18px;
+  color: #111827;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.wisdom-ar-local-note,
+.wisdom-ar-ready-note,
+.wisdom-ar-expiry-note {
+  margin: 16px 0 0;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.wisdom-ar-local-note {
+  color: #b45309;
+}
+
+.wisdom-ar-ready-note,
+.wisdom-ar-expiry-note {
+  color: #94a3b8;
+}
+
+/* WISDOM AR PROTOTYPE NOTICE */
+.wisdom-ar-prototype-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 12px 13px;
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.wisdom-ar-prototype-note p {
+  margin: 0;
+}
+
+.wisdom-ar-prototype-note strong {
+  color: #475569;
+  font-weight: 700;
+}
+
+.wisdom-ar-prototype-icon {
+  display: inline-grid;
+  flex: 0 0 18px;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  box-sizing: border-box;
+  border: 1px solid #94a3b8;
+  border-radius: 999px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.wisdom-ar-tool-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  color: currentColor;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.wisdom-ar-mobile-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #f5f5f2;
+}
+
+.wisdom-ar-mobile-card {
+  width: min(520px, 100%);
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  padding: 30px;
+}
+
+.wisdom-ar-mobile-brand {
+  color: #111827;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+.wisdom-ar-mobile-heading {
+  margin-top: 32px;
+}
+
+.wisdom-ar-mobile-heading > span {
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+}
+
+.wisdom-ar-mobile-heading h1,
+.wisdom-ar-mobile-state h1 {
+  margin: 10px 0 10px;
+  color: #111827;
+  font-size: 29px;
+  line-height: 1.14;
+}
+
+.wisdom-ar-mobile-heading p,
+.wisdom-ar-mobile-state p,
+.wisdom-ar-mobile-tips p,
+.wisdom-ar-device-note {
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.wisdom-ar-mobile-size {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 24px 0;
+  padding: 15px 16px;
+  border: 1px solid #e5e7eb;
+  background: #fafafa;
+}
+
+.wisdom-ar-mobile-size span {
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.wisdom-ar-mobile-size strong {
+  color: #111827;
+  font-size: 16px;
+}
+
+.wisdom-ar-mobile-card .wisdom-ar-launch-button {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.wisdom-ar-quicklook-link {
+  position: relative;
+}
+
+.wisdom-ar-quicklook-link img {
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.wisdom-ar-quicklook-link::after {
+  content: "View in your room";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+  pointer-events: none;
+}
+
+.wisdom-ar-mobile-tips {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.wisdom-ar-mobile-tips strong {
+  color: #111827;
+  font-size: 13px;
+}
+
+.wisdom-ar-mobile-tips p {
+  margin-bottom: 0;
+}
+
+.wisdom-ar-mobile-state {
+  min-height: 360px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+@media (max-width: 720px) {
+  .wisdom-ar-modal-backdrop {
+    padding: 10px;
+  }
+
+  .wisdom-ar-modal {
+    max-height: 94vh;
+    overflow-y: auto;
+  }
+
+  .wisdom-ar-ready-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .wisdom-ar-qr-panel {
+    min-height: auto;
+    padding: 46px 24px 28px;
+  }
+
+  .wisdom-ar-ready-copy {
+    padding: 30px 24px 34px;
+  }
+
+  .wisdom-ar-state-panel {
+    min-height: 380px;
+    padding: 36px 24px;
+  }
+
+  .wisdom-ar-mobile-page {
+    padding: 0;
+    background: #ffffff;
+  }
+
+  .wisdom-ar-mobile-card {
+    min-height: 100vh;
+    border: 0;
+    padding: 28px 22px;
+    box-sizing: border-box;
+  }
+}
