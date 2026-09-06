@@ -9,6 +9,7 @@ const helmet = require("helmet");
 const cors = require("cors");
 const rateLimit = require("express-rate-limit");
 const path = require("path");
+const { clientIpContextMiddleware } = require("./utils/clientIp");
 
 const adminRoutes = require("./routes/admin");
 const customerCustomOrdersRoutes = require("./routes/customer.custom-orders");
@@ -20,6 +21,10 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 app.set("trust proxy", 1);
+
+// Capture the visitor address once per request. On Render, the resolver uses
+// Cloudflare's trusted visitor-IP header instead of the internal proxy address.
+app.use(clientIpContextMiddleware);
 
 app.use(compression());
 
