@@ -848,6 +848,35 @@ exports.createCustomOrder = async (req, res) => {
       ipAddress: req.ip || null,
     });
 
+    // The custom request is already committed at this point. Surface it in
+    // the in-app Admin notification bell as a best-effort alert, matching the
+    // existing standard online-order alert behavior without affecting request
+    // success if notification delivery itself fails.
+    try {
+      const [activeAdmins] = await conn.execute(
+        `SELECT id
+         FROM users
+         WHERE role = 'admin' AND is_active = 1`,
+      );
+
+      for (const admin of activeAdmins) {
+        await createNotificationSafe(conn, {
+          userId: admin.id,
+          type: "new_custom_request",
+          title: "New Custom Request",
+          message: `Custom request ${order_number} from ${String(name).trim()} was submitted for quotation. Review the request and prepare the estimation.`,
+          targetType: "order",
+          targetId: order_id,
+          targetOrderId: order_id,
+        });
+      }
+    } catch (notificationErr) {
+      console.error(
+        "[New Custom Request Notification Error]",
+        notificationErr.message || notificationErr,
+      );
+    }
+
     try {
       const [[adminEmailSetting]] = await conn.execute(
         "SELECT content FROM website_content WHERE content_key = 'admin_alert_email' LIMIT 1",
