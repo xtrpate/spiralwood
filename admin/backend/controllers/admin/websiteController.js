@@ -7,6 +7,10 @@ const {
   persistSiteLogo,
   cleanupPersistedSiteLogo,
 } = require("../../config/upload");
+const {
+  getBackupDirectory,
+  runDatabaseBackup,
+} = require("../../services/databaseBackupService");
 
 // Setting-key categorization for audit metadata only — does not affect
 // validation or business behavior. Values are never logged, only which
@@ -947,92 +951,39 @@ exports.updatePage = async (req, res) => {
 };
 
 // ── BACKUP ───────────────────────────────────────────────────────────────────
-async function generateSQLDump(filePath) {
-  const conn = await pool.getConnection();
-  const lines = [];
-
-  lines.push("-- WISDOM Database Backup");
-  lines.push(`-- Generated: ${new Date().toISOString()}`);
-  lines.push(`-- Database: ${process.env.DB_NAME || "wisdom_db"}`);
-  lines.push("");
-  lines.push("SET FOREIGN_KEY_CHECKS=0;");
-  lines.push('SET SQL_MODE="NO_AUTO_VALUE_ON_ZERO";');
-  lines.push("");
-
-  try {
-    // Get all tables
-    const [tables] = await conn.query("SHOW TABLES", []);
-    const tableNames = tables.map((t) => Object.values(t)[0]);
-
-    for (const table of tableNames) {
-      // DROP + CREATE TABLE
-      const [[createRow]] = await conn.query(
-        `SHOW CREATE TABLE \`${table}\``,
-        [],
-      );
-      const createSQL = createRow["Create Table"];
-      lines.push(`-- Table: ${table}`);
-      lines.push(`DROP TABLE IF EXISTS \`${table}\`;`);
-      lines.push(createSQL + ";");
-      lines.push("");
-
-      // Row data
-      const [rows] = await conn.query(`SELECT * FROM \`${table}\``, []);
-      if (rows.length > 0) {
-        const cols = Object.keys(rows[0])
-          .map((c) => `\`${c}\``)
-          .join(", ");
-        const chunkSize = 100;
-        for (let i = 0; i < rows.length; i += chunkSize) {
-          const chunk = rows.slice(i, i + chunkSize);
-          const values = chunk
-            .map(
-              (row) =>
-                "(" +
-                Object.values(row)
-                  .map((v) => {
-                    if (v === null) return "NULL";
-                    if (typeof v === "number") return v;
-                    if (v instanceof Date)
-                      return `'${v.toISOString().slice(0, 19).replace("T", " ")}'`;
-                    return `'${String(v).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
-                  })
-                  .join(", ") +
-                ")",
-            )
-            .join(",\n");
-          lines.push(`INSERT INTO \`${table}\` (${cols}) VALUES`);
-          lines.push(values + ";");
-        }
-        lines.push("");
-      }
-    }
-
-    lines.push("SET FOREIGN_KEY_CHECKS=1;");
-    fs.writeFileSync(filePath, lines.join("\n"), "utf8");
-  } finally {
-    conn.release();
-  }
-}
-
 exports.getBackupLogs = async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT bl.*, u.name AS triggered_by_name,
-              bl.storage_path AS file_url 
+      `SELECT
+         bl.id,
+         bl.type,
+         bl.file_name,
+         bl.file_size_kb,
+         bl.status,
+         bl.notes,
+         bl.created_at,
+         u.name AS triggered_by_name
        FROM backup_logs bl
        LEFT JOIN users u ON u.id = bl.triggered_by
-       ORDER BY bl.created_at DESC LIMIT 50`,
-      [],
+       ORDER BY bl.created_at DESC`,
     );
-    const normalized = rows.map((r) => ({
-      ...r,
-      filename: r.file_name,
-      file_size: r.file_size_kb,
-      file_url: `/backup/download/${r.file_name}`,
-      triggered_by: r.triggered_by_name || "System",
-    }));
-    res.json(normalized);
+
+    res.json(
+      rows.map((row) => ({
+        id: row.id,
+        type: row.type,
+        filename: row.file_name,
+        file_size: row.file_size_kb,
+        status: row.status,
+        created_at: row.created_at,
+        triggered_by: row.triggered_by_name || "System",
+        error_message: row.status === "failed" ? row.notes || null : null,
+        file_url:
+          row.status === "success"
+            ? `/backup/download/${row.file_name}`
+            : null,
+      })),
+    );
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -1040,71 +991,50 @@ exports.getBackupLogs = async (req, res) => {
 
 exports.triggerManualBackup = async (req, res) => {
   try {
-    const backupDir =
-      process.env.BACKUP_DIR || path.join(__dirname, "../../backups");
-    const absDir = path.isAbsolute(backupDir)
-      ? backupDir
-      : path.join(__dirname, "../../", backupDir);
-
-    if (!fs.existsSync(absDir)) fs.mkdirSync(absDir, { recursive: true });
-
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const fileName = `wisdom_backup_manual_${timestamp}.sql`;
-    const filePath = path.join(absDir, fileName);
-
-    // 👉 This is the variable that went missing!
-    let backupError = null;
-    let sizeKb = 0;
+    let result;
 
     try {
-      await generateSQLDump(filePath);
-      sizeKb = fs.existsSync(filePath)
-        ? Math.round(fs.statSync(filePath).size / 1024)
-        : 0;
-    } catch (e) {
-      backupError = e.message;
+      result = await runDatabaseBackup({
+        type: "manual",
+        triggeredBy: req.user.id,
+      });
+    } catch (error) {
+      if (error?.code === "BACKUP_IN_PROGRESS") {
+        return res.status(409).json({
+          message:
+            "Another database backup is already in progress. Please wait for it to finish.",
+        });
+      }
+      throw error;
     }
 
-    const status = backupError ? "failed" : "success";
-
-    const [backupLogResult] = await pool.query(
-      `INSERT INTO backup_logs (type, triggered_by, file_name, file_size_kb, storage_path, status, notes)
-       VALUES ('manual', ?, ?, ?, ?, ?, ?)`,
-      [
-        parseInt(req.user.id),
-        fileName,
-        sizeKb,
-        filePath,
-        status,
-        backupError || null,
-      ],
-    );
-
-    if (backupError) {
+    if (result.status === "failed") {
       await writeAuditLogSafe({
         userId: req.user.id,
         action: "manual_backup_failed",
         tableName: "backup_logs",
-        recordId: backupLogResult.insertId,
+        recordId: result.logId,
         newValues: {
-          file_name: fileName,
-          file_size_kb: sizeKb,
+          file_name: result.fileName,
+          file_size_kb: result.sizeKb,
           result: "failed",
         },
         ipAddress: req.ip || null,
       });
 
-      return res.status(500).json({ message: "Backup failed: " + backupError });
+      return res.status(500).json({
+        message: "Backup failed: " + (result.error || "Unknown backup error."),
+      });
     }
 
     await writeAuditLogSafe({
       userId: req.user.id,
       action: "manual_backup_created",
       tableName: "backup_logs",
-      recordId: backupLogResult.insertId,
+      recordId: result.logId,
       newValues: {
-        file_name: fileName,
-        file_size_kb: sizeKb,
+        file_name: result.fileName,
+        file_size_kb: result.sizeKb,
         result: "success",
       },
       ipAddress: req.ip || null,
@@ -1112,12 +1042,14 @@ exports.triggerManualBackup = async (req, res) => {
 
     res.json({
       message: "Backup completed successfully.",
-      file: fileName,
-      size_kb: sizeKb,
-      file_url: `/backup/download/${fileName}`,
+      file: result.fileName,
+      size_kb: result.sizeKb,
+      file_url: `/backup/download/${result.fileName}`,
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(Number(err?.statusCode) || 500).json({
+      message: err?.message || "Backup failed.",
+    });
   }
 };
 
@@ -1132,12 +1064,7 @@ exports.downloadBackup = async (req, res) => {
       return res.status(400).json({ message: "Invalid backup filename." });
     }
 
-    const backupDir =
-      process.env.BACKUP_DIR || path.join(__dirname, "../../backups");
-    const absDir = path.isAbsolute(backupDir)
-      ? backupDir
-      : path.join(__dirname, "../../", backupDir);
-
+    const absDir = getBackupDirectory();
     const filePath = path.join(absDir, filename);
 
     // Defense in depth: resolved file must still live directly inside absDir.
