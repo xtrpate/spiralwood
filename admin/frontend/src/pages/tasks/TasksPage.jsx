@@ -22,9 +22,7 @@ const REQUIRED_PRODUCTION_ROLES = [
 
 const TASK_ROLE_FILTERS = [
   ...REQUIRED_PRODUCTION_ROLES,
-  ...PRIORITY_ROLES.filter(
-    (role) => !REQUIRED_PRODUCTION_ROLES.includes(role),
-  ),
+  ...PRIORITY_ROLES.filter((role) => !REQUIRED_PRODUCTION_ROLES.includes(role)),
 ];
 
 const STATUS_META = {
@@ -117,7 +115,9 @@ const productionTime = (value) => {
 };
 
 const buildProductionOrderGroups = (taskList = []) => {
-  const requiredKeys = new Set(REQUIRED_PRODUCTION_ROLES.map(normalizeProductionKey));
+  const requiredKeys = new Set(
+    REQUIRED_PRODUCTION_ROLES.map(normalizeProductionKey),
+  );
   const buckets = new Map();
 
   taskList.forEach((task) => {
@@ -141,7 +141,8 @@ const buildProductionOrderGroups = (taskList = []) => {
     const bucket = buckets.get(key);
     bucket.rawTasks.push(task);
     if (!bucket.orderId && task.order_id) bucket.orderId = task.order_id;
-    if (!bucket.orderNumber && task.order_number) bucket.orderNumber = task.order_number;
+    if (!bucket.orderNumber && task.order_number)
+      bucket.orderNumber = task.order_number;
     if (task.customer_name) bucket.customerName = task.customer_name;
   });
 
@@ -228,7 +229,9 @@ const buildProductionOrderGroups = (taskList = []) => {
         : fallbackDueTimes.length
           ? Math.max(...fallbackDueTimes)
           : 0;
-      const completedAt = completedTimes.length ? Math.max(...completedTimes) : 0;
+      const completedAt = completedTimes.length
+        ? Math.max(...completedTimes)
+        : 0;
       const latestAt = latestTimes.length ? Math.max(...latestTimes) : 0;
       const overdue = Boolean(!complete && dueAt && dueAt < Date.now());
 
@@ -241,7 +244,8 @@ const buildProductionOrderGroups = (taskList = []) => {
         overallStatus,
         currentStaff,
         currentStaffLabel:
-          currentStaff.map((person) => person.name).join(", ") || "Not assigned",
+          currentStaff.map((person) => person.name).join(", ") ||
+          "Not assigned",
         assignedAt: assignedAt ? new Date(assignedAt).toISOString() : null,
         startedAt: startedAt ? new Date(startedAt).toISOString() : null,
         dueDate: dueAt ? new Date(dueAt).toISOString() : null,
@@ -249,7 +253,11 @@ const buildProductionOrderGroups = (taskList = []) => {
         latestAt,
       };
     })
-    .sort((a, b) => b.latestAt - a.latestAt || Number(b.orderId || 0) - Number(a.orderId || 0));
+    .sort(
+      (a, b) =>
+        b.latestAt - a.latestAt ||
+        Number(b.orderId || 0) - Number(a.orderId || 0),
+    );
 };
 
 export default function TasksPage() {
@@ -509,7 +517,6 @@ export default function TasksPage() {
     }
   };
 
-
   const productionOrderGroups = useMemo(
     () => buildProductionOrderGroups(tasks),
     [tasks],
@@ -627,12 +634,8 @@ export default function TasksPage() {
 
   const filteredOrders = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const fromTime = dueFrom
-      ? new Date(`${dueFrom}T00:00:00`).getTime()
-      : null;
-    const toTime = dueTo
-      ? new Date(`${dueTo}T23:59:59.999`).getTime()
-      : null;
+    const fromTime = dueFrom ? new Date(`${dueFrom}T00:00:00`).getTime() : null;
+    const toTime = dueTo ? new Date(`${dueTo}T23:59:59.999`).getTime() : null;
 
     return productionOrderGroups.filter((order) => {
       const statusMatches =
@@ -690,7 +693,8 @@ export default function TasksPage() {
   };
 
   const selectedProductionOrder =
-    productionOrderGroups.find((order) => order.key === detailsOrderKey) || null;
+    productionOrderGroups.find((order) => order.key === detailsOrderKey) ||
+    null;
 
   const eligibleProductionOrders = orders.filter((item) => {
     const normalizedStatus = String(item?.status || "")
@@ -723,12 +727,14 @@ export default function TasksPage() {
   };
 
   const isRepeatedProductionDescription = (task) => {
-    const description = String(task?.description || "").trim().toLowerCase();
-    const role = String(task?.task_role || "").trim().toLowerCase();
+    const description = String(task?.description || "")
+      .trim()
+      .toLowerCase();
+    const role = String(task?.task_role || "")
+      .trim()
+      .toLowerCase();
     return Boolean(
-      description &&
-        role &&
-        description === "production step: " + role
+      description && role && description === "production step: " + role,
     );
   };
 
@@ -1084,7 +1090,11 @@ export default function TasksPage() {
         {[
           { label: "Production orders", value: stats.total, color: "#18181b" },
           { label: "Assigned", value: stats.pending, color: "#52525b" },
-          { label: "In production", value: stats.in_progress, color: "#18181b" },
+          {
+            label: "In production",
+            value: stats.in_progress,
+            color: "#18181b",
+          },
           { label: "On hold", value: stats.blocked, color: "#b91c1c" },
           { label: "Overdue", value: stats.overdue, color: "#b91c1c" },
           { label: "Completed", value: stats.completed, color: "#15803d" },
@@ -1104,7 +1114,8 @@ export default function TasksPage() {
           <div>
             <h2 style={S.panelTitle}>Production Orders</h2>
             <p style={S.panelHint}>
-              One row per order. Open Details to review the five production steps.
+              One row per order. Open Details to review the five production
+              steps.
             </p>
           </div>
           <span style={S.countText}>
@@ -1288,16 +1299,16 @@ export default function TasksPage() {
                           {order.currentStaffLabel}
                         </div>
                         {order.currentStaff.length > 1 ? (
-                          <div style={S.secondary}>
-                            Split remaining work
-                          </div>
+                          <div style={S.secondary}>Split remaining work</div>
                         ) : null}
                       </td>
 
                       <td style={S.td}>
                         <div style={{ fontSize: 11.5, lineHeight: 1.5 }}>
                           <div>
-                            <strong style={{ fontWeight: 600 }}>Started:</strong>{" "}
+                            <strong style={{ fontWeight: 600 }}>
+                              Started:
+                            </strong>{" "}
                             {order.startedAt
                               ? formatTaskDateTime(order.startedAt)
                               : "Not started"}
@@ -1326,7 +1337,8 @@ export default function TasksPage() {
 
                       <td style={S.td}>
                         <div style={{ ...S.primary, marginBottom: 6 }}>
-                          {order.completedCount} / {REQUIRED_PRODUCTION_ROLES.length}
+                          {order.completedCount} /{" "}
+                          {REQUIRED_PRODUCTION_ROLES.length}
                         </div>
                         <span style={S.tag(meta.bg, meta.color, meta.border)}>
                           {meta.label}
@@ -1393,7 +1405,8 @@ export default function TasksPage() {
               <div>
                 <div style={S.label}>Progress</div>
                 <div style={S.primary}>
-                  {selectedProductionOrder.completedCount} of {REQUIRED_PRODUCTION_ROLES.length} completed
+                  {selectedProductionOrder.completedCount} of{" "}
+                  {REQUIRED_PRODUCTION_ROLES.length} completed
                 </div>
               </div>
               <div>
@@ -1438,7 +1451,8 @@ export default function TasksPage() {
                 </thead>
                 <tbody>
                   {selectedProductionOrder.steps.map((step) => {
-                    const meta = STATUS_META[step.status] || STATUS_META.pending;
+                    const meta =
+                      STATUS_META[step.status] || STATUS_META.pending;
                     const task = step.task;
                     return (
                       <tr key={step.stepLabel} style={S.tr}>
@@ -1467,13 +1481,23 @@ export default function TasksPage() {
                         <td style={S.td}>
                           {task ? (
                             <div style={{ fontSize: 11, lineHeight: 1.55 }}>
-                              <div>Assigned: {formatTaskDateTime(task.created_at)}</div>
                               <div>
-                                Started: {task.accepted_at ? formatTaskDateTime(task.accepted_at) : "Not started"}
+                                Assigned: {formatTaskDateTime(task.created_at)}
                               </div>
-                              <div>Due: {formatTaskDateTime(task.due_date)}</div>
                               <div>
-                                Completed: {task.completed_at ? formatTaskDateTime(task.completed_at) : "—"}
+                                Started:{" "}
+                                {task.accepted_at
+                                  ? formatTaskDateTime(task.accepted_at)
+                                  : "Not started"}
+                              </div>
+                              <div>
+                                Due: {formatTaskDateTime(task.due_date)}
+                              </div>
+                              <div>
+                                Completed:{" "}
+                                {task.completed_at
+                                  ? formatTaskDateTime(task.completed_at)
+                                  : "—"}
                               </div>
                             </div>
                           ) : (
@@ -1504,7 +1528,9 @@ export default function TasksPage() {
                     type="button"
                     style={{ ...S.btn, ...S.btnPrim }}
                     onClick={() =>
-                      navigate(`/admin/orders/${selectedProductionOrder.orderId}`)
+                      navigate(
+                        `/admin/orders/${selectedProductionOrder.orderId}`,
+                      )
                     }
                   >
                     Reassign staff
@@ -1675,6 +1701,24 @@ export default function TasksPage() {
                       style={S.mInput}
                       value={productionAssignForm.due_date}
                       required
+                      min={(() => {
+                        const now = new Date();
+                        now.setSeconds(0, 0);
+
+                        const year = now.getFullYear();
+                        const month = String(now.getMonth() + 1).padStart(
+                          2,
+                          "0",
+                        );
+                        const day = String(now.getDate()).padStart(2, "0");
+                        const hours = String(now.getHours()).padStart(2, "0");
+                        const minutes = String(now.getMinutes()).padStart(
+                          2,
+                          "0",
+                        );
+
+                        return `${year}-${month}-${day}T${hours}:${minutes}`;
+                      })()}
                       onChange={(e) =>
                         setProductionAssignForm((current) => ({
                           ...current,

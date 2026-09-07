@@ -35,6 +35,25 @@ const DEFAULT_ZOOM_NO_PIN = 12;
 const SEARCH_DEBOUNCE_MS = 450;
 const SEARCH_MIN_CHARS = 3;
 const TILE_ERROR_THRESHOLD = 6;
+
+const romanizeTrailingNumber = (text) => {
+  const romanNumbers = [
+    "I",
+    "II",
+    "III",
+    "IV",
+    "V",
+    "VI",
+    "VII",
+    "VIII",
+    "IX",
+    "X",
+  ];
+
+  return text.replace(/\s+([1-9]|10)$/i, (_, number) => {
+    return ` ${romanNumbers[Number(number) - 1]}`;
+  });
+};
 const POOR_ACCURACY_METERS = 100;
 
 // Rough Philippines bounding box — wide enough to include all provinces,
@@ -202,15 +221,37 @@ export default function LocationPicker({
       abortRef.current = controller;
       setSearchStatus("loading");
       try {
+        const searchQuery = romanizeTrailingNumber(trimmed);
+
         const url =
-          "https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=ph&q=" +
-          encodeURIComponent(trimmed);
+          "https://nominatim.openstreetmap.org/search?format=json&limit=20&countrycodes=ph&q=" +
+          encodeURIComponent(searchQuery);
+
         const res = await fetch(url, { signal: controller.signal });
         if (!res.ok) throw new Error("search request failed");
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
-          setResults(data);
-          setSearchStatus("results");
+          const uniqueResults = data.filter((item, index, array) => {
+            const normalizedName = String(item.display_name || "")
+              .trim()
+              .replace(/\s+/g, " ")
+              .toLowerCase();
+
+            return (
+              index ===
+              array.findIndex((other) => {
+                const otherName = String(other.display_name || "")
+                  .trim()
+                  .replace(/\s+/g, " ")
+                  .toLowerCase();
+
+                return otherName === normalizedName;
+              })
+            );
+          });
+
+          setResults(uniqueResults);
+          setSearchStatus(uniqueResults.length > 0 ? "results" : "no-results");
           // Follow the top match automatically as the customer types —
           // the full list stays visible below so they can pick a
           // different one if the top match isn't the right spot.
