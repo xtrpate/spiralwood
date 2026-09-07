@@ -7,16 +7,17 @@ import * as XLSX from "xlsx-js-style";
 import { FileDown } from "lucide-react";
 
 const STOCK_COLORS = {
-  in_stock: ["#f0fdf4", "#15803d", "#bbf7d0"],
+  healthy_stock: ["#f0fdf4", "#15803d", "#bbf7d0"],
   low_stock: ["#fffbeb", "#a16207", "#fde68a"],
-  out_of_stock: ["#fef2f2", "#b91c1c", "#fecaca"],
+  critical_stock: ["#fef2f2", "#b91c1c", "#fecaca"],
+  out_of_stock: ["#f4f4f5", "#52525b", "#d4d4d8"],
 };
 
 const formatQuantity = (value) => {
   const number = Number(value);
   if (!Number.isFinite(number)) return "0";
-  return number.toLocaleString("en-PH", {
-    maximumFractionDigits: 4,
+  return Math.round(number).toLocaleString("en-PH", {
+    maximumFractionDigits: 0,
   });
 };
 
@@ -114,10 +115,20 @@ export default function RawMaterialsPage() {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
+
+  const getTodayString = () => {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().split("T")[0];
+  };
+
   const [filters, setFilters] = useState({
     search: "",
     status: "",
     archive_status: "active",
+    date_preset: "today",
+    from: getTodayString(),
+    to: getTodayString(),
     page: 1,
   });
   const [modal, setModal] = useState(null);
@@ -128,18 +139,60 @@ export default function RawMaterialsPage() {
   const [actionMenuId, setActionMenuId] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
   const [exporting, setExporting] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportScope, setExportScope] = useState("filtered");
 
-  const handleExport = async () => {
+  const handleDatePreset = (preset) => {
+    const today = new Date();
+    today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+    let fromStr = "";
+    let toStr = "";
+
+    if (preset === "today") {
+      fromStr = today.toISOString().split("T")[0];
+      toStr = fromStr;
+    } else if (preset === "yesterday") {
+      const y = new Date(today);
+      y.setDate(y.getDate() - 1);
+      fromStr = y.toISOString().split("T")[0];
+      toStr = fromStr;
+    } else if (preset === "last_7_days") {
+      const y = new Date(today);
+      y.setDate(y.getDate() - 7);
+      fromStr = y.toISOString().split("T")[0];
+      toStr = today.toISOString().split("T")[0];
+    } else if (preset === "last_30_days") {
+      const y = new Date(today);
+      y.setDate(y.getDate() - 30);
+      fromStr = y.toISOString().split("T")[0];
+      toStr = today.toISOString().split("T")[0];
+    }
+
+    setFilters((current) => ({
+      ...current,
+      date_preset: preset,
+      from: fromStr,
+      to: toStr,
+      page: 1,
+    }));
+  };
+
+  const handleExportReport = async () => {
     setExporting(true);
     try {
-      const { data } = await api.get("/inventory/raw", {
-        params: {
-          limit: 5000,
-          search: filters.search,
-          status: filters.status,
-          archive_status: filters.archive_status,
-        },
-      });
+      const params =
+        exportScope === "filtered"
+          ? {
+              limit: 5000,
+              search: filters.search || undefined,
+              status: filters.status || undefined,
+              archive_status: filters.archive_status || undefined,
+              from: filters.from || undefined,
+              to: filters.to || undefined,
+            }
+          : { limit: 5000, archive_status: "all" };
+
+      const { data } = await api.get("/inventory/raw", { params });
       const rows = data.rows || [];
       if (!rows.length) {
         toast.error("No materials found to export.");
@@ -153,14 +206,14 @@ export default function RawMaterialsPage() {
         [
           "Material Name",
           "Supplier",
-          "Unit",
+          "Unit of Measure",
           "On Hand",
           "Reserved",
           "Available",
           "Needed for Orders",
           "Reorder Point",
-          "Unit Cost",
-          "Total Value",
+          "Supplier Price",
+          "Stock Level",
         ].map((t) => ({
           v: t,
           s: {
@@ -189,7 +242,9 @@ export default function RawMaterialsPage() {
           needed,
           Number(row.reorder_point || 0),
           cost,
-          onHand * cost,
+          String(row.stock_status || "")
+            .replace(/_/g, " ")
+            .toUpperCase(),
         ]);
       });
 
@@ -197,13 +252,13 @@ export default function RawMaterialsPage() {
       ws["!cols"] = [
         { wch: 35 },
         { wch: 25 },
-        { wch: 10 },
+        { wch: 16 },
         { wch: 12 },
         { wch: 12 },
         { wch: 12 },
         { wch: 18 },
         { wch: 15 },
-        { wch: 12 },
+        { wch: 15 },
         { wch: 15 },
       ];
       XLSX.utils.book_append_sheet(wb, ws, "Raw Materials");
@@ -231,6 +286,8 @@ export default function RawMaterialsPage() {
     load();
   }, [load]);
 
+  const pageCount = Math.max(1, Math.ceil(total / 20));
+
   useEffect(() => {
     api.get("/suppliers").then((r) => setSuppliers(r.data || []));
   }, []);
@@ -247,6 +304,8 @@ export default function RawMaterialsPage() {
         thickness_mm: "",
         quantity: 0,
         reorder_point: 0,
+        safety_stock: 0,
+        lead_time_days: 0,
         unit_cost: 0,
         supplier_id: "",
       },
@@ -405,8 +464,7 @@ export default function RawMaterialsPage() {
         </div>
         <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
           <button
-            onClick={handleExport}
-            disabled={exporting}
+            onClick={() => setExportOpen(true)}
             style={{
               padding: "9px 18px",
               background: "#ffffff",
@@ -466,9 +524,10 @@ export default function RawMaterialsPage() {
             style={inputSm}
           >
             <option value="">All stock levels</option>
-            <option value="in_stock">In stock</option>
-            <option value="low_stock">Low stock</option>
             <option value="out_of_stock">Out of stock</option>
+            <option value="critical_stock">Critical stock</option>
+            <option value="low_stock">Low stock</option>
+            <option value="healthy_stock">Healthy stock</option>
           </select>
         </div>
         <div style={filterField}>
@@ -489,6 +548,58 @@ export default function RawMaterialsPage() {
             <option value="all">All materials</option>
           </select>
         </div>
+
+        <div style={filterField}>
+          <label style={filterLabel}>Date Added</label>
+          <select
+            value={filters.date_preset}
+            onChange={(e) => handleDatePreset(e.target.value)}
+            style={inputSm}
+          >
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="last_7_days">Last 7 Days</option>
+            <option value="last_30_days">Last 30 Days</option>
+            <option value="all_time">All Time</option>
+            <option value="custom">Custom Range</option>
+          </select>
+        </div>
+
+        {filters.date_preset === "custom" && (
+          <>
+            <div style={filterField}>
+              <label style={filterLabel}>From</label>
+              <input
+                type="date"
+                value={filters.from}
+                onChange={(e) =>
+                  setFilters((current) => ({
+                    ...current,
+                    from: e.target.value,
+                    page: 1,
+                  }))
+                }
+                style={inputSm}
+              />
+            </div>
+            <div style={filterField}>
+              <label style={filterLabel}>To</label>
+              <input
+                type="date"
+                value={filters.to}
+                onChange={(e) =>
+                  setFilters((current) => ({
+                    ...current,
+                    to: e.target.value,
+                    page: 1,
+                  }))
+                }
+                style={inputSm}
+              />
+            </div>
+          </>
+        )}
+
         <span style={resultCount}>
           {total.toLocaleString("en-PH")} material{total === 1 ? "" : "s"}
         </span>
@@ -498,6 +609,7 @@ export default function RawMaterialsPage() {
         <table
           style={{
             width: "100%",
+            minWidth: "1150px", // Forces extra width so headers never crush
             borderCollapse: "collapse",
             tableLayout: "fixed",
             fontSize: 13,
@@ -505,18 +617,17 @@ export default function RawMaterialsPage() {
           }}
         >
           <colgroup>
-            <col style={{ width: "20.5%" }} />
-            <col style={{ width: "9.5%" }} />
-            <col style={{ width: "5%" }} />
-            <col style={{ width: "5%" }} />
-            <col style={{ width: "5%" }} />
-            <col style={{ width: "5.5%" }} />
-            <col style={{ width: "8%" }} />
+            <col style={{ width: "21%" }} />
+            <col style={{ width: "12%" }} />
             <col style={{ width: "7%" }} />
-            <col style={{ width: "7.5%" }} />
-            <col style={{ width: "9%" }} />
+            <col style={{ width: "7%" }} />
+            <col style={{ width: "7%" }} />
+            <col style={{ width: "7%" }} />
+            <col style={{ width: "7%" }} />
+            <col style={{ width: "7%" }} />
             <col style={{ width: "8%" }} />
-            <col style={{ width: "10%" }} />
+            <col style={{ width: "8%" }} />
+            <col style={{ width: "9%" }} />
           </colgroup>
           <thead>
             <tr style={{ background: "#fafafa" }}>
@@ -527,10 +638,9 @@ export default function RawMaterialsPage() {
                 "On Hand",
                 "Reserved",
                 "Available",
-                "Needed for Orders",
-                "Reorder Point",
-                "Unit Cost",
-                "Inventory Value",
+                "Needed",
+                "Reorder",
+                "Price",
                 "Stock Level",
                 "Actions",
               ].map((heading) => (
@@ -538,7 +648,7 @@ export default function RawMaterialsPage() {
                   key={heading}
                   style={{
                     ...th,
-                    ...(heading === "Reserved" ? { whiteSpace: "nowrap" } : {}),
+                    ...(heading === "Actions" ? { paddingRight: "16px" } : {}),
                   }}
                 >
                   {heading}
@@ -647,12 +757,6 @@ export default function RawMaterialsPage() {
                       {item.reorder_point}
                     </td>
                     <td style={td}>₱ {Number(item.unit_cost).toFixed(2)}</td>
-                    <td style={{ ...td, fontWeight: 600 }}>
-                      ₱{" "}
-                      {(Number(item.quantity) * Number(item.unit_cost)).toFixed(
-                        2,
-                      )}
-                    </td>
                     <td style={td}>
                       <span
                         style={{
@@ -669,7 +773,13 @@ export default function RawMaterialsPage() {
                         {formatStatus(availabilityStatus)}
                       </span>
                     </td>
-                    <td style={{ ...td, whiteSpace: "normal" }}>
+                    <td
+                      style={{
+                        ...td,
+                        whiteSpace: "normal",
+                        paddingRight: "16px",
+                      }}
+                    >
                       <div style={rowActions}>
                         {isActive ? (
                           <button
@@ -779,6 +889,41 @@ export default function RawMaterialsPage() {
         </table>
       </div>
 
+      {total > 20 && (
+        <div style={paginationRow}>
+          <span style={{ fontSize: 12, color: "#71717a" }}>
+            Page {filters.page} of {pageCount} · {total.toLocaleString("en-PH")}{" "}
+            material{total === 1 ? "" : "s"}
+          </span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              disabled={filters.page <= 1}
+              onClick={() =>
+                setFilters((current) => ({
+                  ...current,
+                  page: current.page - 1,
+                }))
+              }
+              style={filters.page <= 1 ? btnDisabled : btnGhost}
+            >
+              Previous
+            </button>
+            <button
+              disabled={filters.page >= pageCount}
+              onClick={() =>
+                setFilters((current) => ({
+                  ...current,
+                  page: current.page + 1,
+                }))
+              }
+              style={filters.page >= pageCount ? btnDisabled : btnGhost}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+
       {modal && (
         <div style={overlay}>
           <div style={modalBox}>
@@ -792,171 +937,239 @@ export default function RawMaterialsPage() {
               </div>
             )}
             <form onSubmit={handleSave}>
-              {[
-                ["Name *", "name", "text", true],
-                ["Unit *", "unit", "text", true],
-                ...(modal.mode === "edit"
-                  ? [["Quantity", "quantity", "number"]]
-                  : []),
-                ["Reorder Point", "reorder_point", "number"],
-                ["Unit Cost (₱)", "unit_cost", "number"],
-              ].map(([label, key, type, required]) => {
-                const quantityLocked =
-                  modal.mode === "edit" && key === "quantity";
-
-                return (
-                  <div key={key} style={{ marginBottom: 12 }}>
-                    <label style={labelSm}>{label}</label>
-                    <input
-                      type={type || "text"}
-                      required={required}
-                      min={type === "number" ? "0" : undefined}
-                      step={
-                        type === "number"
-                          ? key === "unit_cost"
-                            ? "0.01"
-                            : "1"
-                          : undefined
-                      }
-                      readOnly={quantityLocked}
-                      aria-readonly={quantityLocked}
-                      onKeyDown={(e) => {
-                        if (
-                          quantityLocked ||
-                          ((key === "quantity" || key === "reorder_point") &&
-                            (e.key === "." ||
-                              e.key.toLowerCase() === "e" ||
-                              e.key === "-"))
-                        ) {
-                          e.preventDefault();
-                        }
-                      }}
-                      value={modal.data[key] ?? ""}
-                      onChange={(e) => {
-                        if (!quantityLocked) setField(key, e.target.value);
-                      }}
-                      style={{
-                        ...inputFull,
-                        ...(quantityLocked ? lockedInput : {}),
-                      }}
-                    />
-                    {quantityLocked && (
-                      <div style={fieldHelp}>
-                        Use Stock Movement to change on-hand quantity so the
-                        physical stock change is recorded.
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
               <div
                 style={{
-                  marginBottom: 14,
-                  padding: "12px 13px",
-                  border: "1px solid #e4e4e7",
-                  background: "#fafafa",
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "14px 18px",
+                  marginBottom: "18px",
                 }}
               >
-                <label style={labelSm}>Material Type</label>
-                <select
-                  value={currentMaterialForm}
-                  onChange={(e) => {
-                    const nextForm = e.target.value;
-                    setModal((current) => ({
-                      ...current,
-                      data: {
-                        ...current.data,
-                        material_form: nextForm,
-                        ...(["hardware", "other"].includes(nextForm)
-                          ? {
-                              length_mm: "",
-                              width_mm: "",
-                              thickness_mm: "",
-                            }
-                          : {}),
-                      },
-                    }));
-                  }}
-                  style={inputFull}
-                >
-                  {MATERIAL_FORM_OPTIONS.map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-
-                <div style={{ ...fieldHelp, marginTop: 6 }}>
-                  Choose how one inventory unit is measured. This does not
-                  change the physical stock quantity.
+                {/* 1. Name (Full Width) */}
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label style={labelSm}>Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={modal.data.name ?? ""}
+                    onChange={(e) => setField("name", e.target.value)}
+                    style={inputFull}
+                  />
                 </div>
 
+                {/* 2. Unit & Material Type (Side by Side) */}
+                <div>
+                  <label style={labelSm}>Unit of measure *</label>
+                  <select
+                    required
+                    value={modal.data.unit ?? ""}
+                    onChange={(e) => setField("unit", e.target.value)}
+                    style={inputFull}
+                  >
+                    <option value="">Select unit of measure</option>
+                    <option value="pcs">Pieces (pcs)</option>
+                    <option value="sheet">Sheet</option>
+                    <option value="meter">Meter</option>
+                    <option value="kg">Kilogram (kg)</option>
+                    <option value="liter">Liter (L)</option>
+                    <option value="set">Set</option>
+                    <option value="box">Box</option>
+                    <option value="roll">Roll</option>
+                    <option value="gallon">Gallon</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={labelSm}>Material Type</label>
+                  <select
+                    value={currentMaterialForm}
+                    onChange={(e) => {
+                      const nextForm = e.target.value;
+                      setModal((current) => ({
+                        ...current,
+                        data: {
+                          ...current.data,
+                          material_form: nextForm,
+                          ...(["hardware", "other"].includes(nextForm)
+                            ? { length_mm: "", width_mm: "", thickness_mm: "" }
+                            : {}),
+                        },
+                      }));
+                    }}
+                    style={inputFull}
+                  >
+                    {MATERIAL_FORM_OPTIONS.map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 3. Optional Physical Dimensions (Full Width, Nested Grid) */}
                 {showPhysicalDimensions && (
-                  <>
+                  <div
+                    style={{
+                      gridColumn: "1 / -1",
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr 1fr",
+                      gap: "10px",
+                      padding: "12px",
+                      background: "#fafafa",
+                      border: "1px solid #e4e4e7",
+                      borderRadius: "2px",
+                    }}
+                  >
+                    {[
+                      ["Length (mm)", "length_mm"],
+                      ["Width (mm)", "width_mm"],
+                      ["Thickness (mm)", "thickness_mm"],
+                    ].map(([label, key]) => (
+                      <div key={key}>
+                        <label style={labelSm}>
+                          {label} {requiresCompletePhysicalSize ? " *" : ""}
+                        </label>
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          required={requiresCompletePhysicalSize}
+                          value={modal.data[key] ?? ""}
+                          onChange={(e) => setField(key, e.target.value)}
+                          onKeyDown={(e) => {
+                            if (
+                              e.key.toLowerCase() === "e" ||
+                              e.key === "-" ||
+                              e.key === "+"
+                            )
+                              e.preventDefault();
+                          }}
+                          style={inputFull}
+                        />
+                      </div>
+                    ))}
                     <div
                       style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                        gap: 10,
-                        marginTop: 12,
+                        ...fieldHelp,
+                        gridColumn: "1 / -1",
+                        marginTop: 4,
                       }}
                     >
-                      {[
-                        ["Length (mm)", "length_mm"],
-                        ["Width (mm)", "width_mm"],
-                        ["Thickness (mm)", "thickness_mm"],
-                      ].map(([label, key]) => (
-                        <div key={key}>
-                          <label style={labelSm}>
-                            {label}
-                            {requiresCompletePhysicalSize ? " *" : ""}
-                          </label>
-                          <input
-                            type="number"
-                            min="0.01"
-                            step="0.01"
-                            required={requiresCompletePhysicalSize}
-                            value={modal.data[key] ?? ""}
-                            onChange={(e) => setField(key, e.target.value)}
-                            onKeyDown={(e) => {
-                              if (
-                                e.key.toLowerCase() === "e" ||
-                                e.key === "-" ||
-                                e.key === "+"
-                              ) {
-                                e.preventDefault();
-                              }
-                            }}
-                            style={inputFull}
-                          />
-                        </div>
-                      ))}
-                    </div>
-
-                    <div style={{ ...fieldHelp, marginTop: 8 }}>
                       {currentMaterialForm === "sheet"
                         ? "Example: standard plywood may be 2440 × 1220 × 18 mm."
                         : "Optional stock size. Use millimeters when a standard physical size applies."}
                     </div>
-                  </>
+                  </div>
                 )}
+
+                {/* 4. Pricing & Limits (Side by side) */}
+                <div>
+                  <label style={labelSm}>Supplier Price (₱)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={modal.data.unit_cost ?? ""}
+                    onChange={(e) => setField("unit_cost", e.target.value)}
+                    style={inputFull}
+                  />
+                </div>
+
+                <div>
+                  <label style={labelSm}>Lead Time (Days)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={modal.data.lead_time_days ?? ""}
+                    onChange={(e) => setField("lead_time_days", e.target.value)}
+                    onKeyDown={(e) => {
+                      if (
+                        e.key === "." ||
+                        e.key.toLowerCase() === "e" ||
+                        e.key === "-"
+                      )
+                        e.preventDefault();
+                    }}
+                    style={inputFull}
+                  />
+                </div>
+
+                <div>
+                  <label style={labelSm}>Reorder Point</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={modal.data.reorder_point ?? ""}
+                    onChange={(e) => setField("reorder_point", e.target.value)}
+                    onKeyDown={(e) => {
+                      if (
+                        e.key === "." ||
+                        e.key.toLowerCase() === "e" ||
+                        e.key === "-"
+                      )
+                        e.preventDefault();
+                    }}
+                    style={inputFull}
+                  />
+                </div>
+
+                <div>
+                  <label style={labelSm}>Safety Stock</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={modal.data.safety_stock ?? ""}
+                    onChange={(e) => setField("safety_stock", e.target.value)}
+                    onKeyDown={(e) => {
+                      if (
+                        e.key === "." ||
+                        e.key.toLowerCase() === "e" ||
+                        e.key === "-"
+                      )
+                        e.preventDefault();
+                    }}
+                    style={inputFull}
+                  />
+                </div>
+
+                {/* 5. Quantity (Only shown on Edit) */}
+                {modal.mode === "edit" && (
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <label style={labelSm}>Quantity</label>
+                    <input
+                      type="number"
+                      readOnly
+                      value={modal.data.quantity ?? ""}
+                      style={{ ...inputFull, ...lockedInput }}
+                    />
+                    <div style={fieldHelp}>
+                      Use Stock Movement to change on-hand quantity so the
+                      physical stock change is recorded.
+                    </div>
+                  </div>
+                )}
+
+                {/* 6. Supplier (Full Width) */}
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label style={labelSm}>Supplier</label>
+                  <select
+                    value={modal.data.supplier_id || ""}
+                    onChange={(e) => setField("supplier_id", e.target.value)}
+                    style={inputFull}
+                  >
+                    <option value="">None</option>
+                    {suppliers.map((supplier) => (
+                      <option key={supplier.id} value={supplier.id}>
+                        {supplier.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
-              <div style={{ marginBottom: 12 }}>
-                <label style={labelSm}>Supplier</label>
-                <select
-                  value={modal.data.supplier_id || ""}
-                  onChange={(e) => setField("supplier_id", e.target.value)}
-                  style={inputFull}
-                >
-                  <option value="">None</option>
-                  {suppliers.map((supplier) => (
-                    <option key={supplier.id} value={supplier.id}>
-                      {supplier.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
               <div style={modalActions}>
                 <button
                   type="button"
@@ -1242,6 +1455,101 @@ export default function RawMaterialsPage() {
           </div>
         </div>
       )}
+      {exportOpen && (
+        <div style={modalBackdrop}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="export-materials-title"
+            style={{ ...dialog, width: "min(520px, 100%)" }}
+          >
+            <div style={dialogEyebrow}>Report Generation</div>
+
+            <h2 id="export-materials-title" style={dialogTitle}>
+              Export raw materials report
+            </h2>
+
+            <p style={{ ...dialogText, marginBottom: 16 }}>
+              Create an Excel report using the selected raw-material scope.
+            </p>
+
+            <div style={exportScopeList}>
+              <button
+                type="button"
+                onClick={() => setExportScope("filtered")}
+                style={{
+                  ...exportScopeOption,
+                  ...(exportScope === "filtered"
+                    ? exportScopeOptionSelected
+                    : {}),
+                }}
+                disabled={exporting}
+              >
+                <span style={exportScopeTitle}>Current filters</span>
+
+                <span style={exportScopeMeta}>
+                  {total.toLocaleString("en-PH")} matching material
+                  {total === 1 ? "" : "s"}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setExportScope("all")}
+                style={{
+                  ...exportScopeOption,
+                  ...(exportScope === "all" ? exportScopeOptionSelected : {}),
+                }}
+                disabled={exporting}
+              >
+                <span style={exportScopeTitle}>All materials</span>
+
+                <span style={exportScopeMeta}>
+                  Export entire active catalog
+                </span>
+              </button>
+            </div>
+
+            <div style={exportContents}>
+              <div style={exportContentsLabel}>Included in Excel</div>
+
+              <div style={exportContentsText}>
+                Catalog summary, availability, needed limits, reorder point, and
+                total physical value.
+              </div>
+            </div>
+
+            <div style={dialogActions}>
+              <button
+                type="button"
+                onClick={() => setExportOpen(false)}
+                style={btnSecondaryExport}
+                disabled={exporting}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExportReport}
+                style={{
+                  ...btnPrimaryExport,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 7,
+                  opacity: exporting ? 0.65 : 1,
+                  cursor: exporting ? "wait" : "pointer",
+                }}
+                disabled={exporting}
+              >
+                <FileDown size={14} strokeWidth={1.8} aria-hidden="true" />
+
+                {exporting ? "Preparing..." : "Export Excel"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1294,7 +1602,7 @@ const tableCard = {
   borderRadius: 2,
   border: "1px solid #e4e4e7",
   boxShadow: "0 1px 2px rgba(0,0,0,.02)",
-  overflowX: "hidden",
+  overflowX: "auto",
 };
 const th = {
   textAlign: "left",
@@ -1306,8 +1614,7 @@ const th = {
   textTransform: "uppercase",
   letterSpacing: "0.08em",
   lineHeight: 1.3,
-  whiteSpace: "normal",
-  overflowWrap: "anywhere",
+  whiteSpace: "nowrap",
 };
 const td = {
   padding: "12px 8px",
@@ -1317,7 +1624,6 @@ const td = {
   fontWeight: 400,
   fontFamily: "inherit",
   lineHeight: 1.35,
-  overflowWrap: "anywhere",
 };
 const emptyCell = { ...td, textAlign: "center", color: "#71717a", padding: 32 };
 const inputSm = {
@@ -1446,7 +1752,10 @@ const overlay = {
 const modalBox = {
   background: "#fff",
   borderRadius: 2,
-  width: 380,
+  width: 680,
+  maxWidth: "95vw",
+  maxHeight: "90vh",
+  overflowY: "auto",
   padding: 28,
   boxShadow: "0 20px 60px rgba(0,0,0,.25)",
 };
@@ -1637,6 +1946,14 @@ const orderMeta = {
   color: "#71717a",
 };
 
+const paginationRow = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  marginTop: 14,
+};
+
 const rowActions = {
   display: "flex",
   alignItems: "center",
@@ -1705,4 +2022,129 @@ const moreActionsItemDisabled = {
 
 const moreActionsDanger = {
   color: "#b42318",
+};
+
+const exportScopeList = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 8,
+  marginBottom: 12,
+};
+const exportScopeOption = {
+  minHeight: 76,
+  padding: "12px 13px",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-start",
+  justifyContent: "center",
+  gap: 5,
+  background: "#ffffff",
+  color: "#27272a",
+  border: "1px solid #d4d4d8",
+  borderRadius: 2,
+  fontFamily: "inherit",
+  textAlign: "left",
+  cursor: "pointer",
+};
+const exportScopeOptionSelected = {
+  background: "#fafafa",
+  borderColor: "#18181b",
+  boxShadow: "inset 0 0 0 1px #18181b",
+};
+const exportScopeTitle = {
+  color: "#18181b",
+  fontSize: 12.5,
+  fontWeight: 600,
+  lineHeight: 1.25,
+};
+const exportScopeMeta = {
+  color: "#71717a",
+  fontSize: 10.5,
+  fontWeight: 400,
+  lineHeight: 1.35,
+};
+const exportContents = {
+  marginBottom: 18,
+  padding: "11px 12px",
+  background: "#fafafa",
+  border: "1px solid #e4e4e7",
+  borderRadius: 2,
+};
+const exportContentsLabel = {
+  marginBottom: 4,
+  color: "#3f3f46",
+  fontSize: 9.5,
+  fontWeight: 600,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+};
+const exportContentsText = {
+  color: "#71717a",
+  fontSize: 11.5,
+  fontWeight: 400,
+  lineHeight: 1.45,
+};
+const dialog = {
+  width: "min(430px, 100%)",
+  padding: 20,
+  background: "#ffffff",
+  border: "1px solid #d4d4d8",
+  borderRadius: 2,
+  boxShadow: "0 18px 48px rgba(0,0,0,0.18)",
+};
+const dialogEyebrow = {
+  marginBottom: 6,
+  color: "#71717a",
+  fontSize: 9.5,
+  fontWeight: 600,
+  letterSpacing: "0.1em",
+  textTransform: "uppercase",
+};
+const dialogTitle = {
+  margin: 0,
+  color: "#18181b",
+  fontSize: 18,
+  fontWeight: 700,
+};
+const dialogText = {
+  margin: "8px 0 20px",
+  color: "#52525b",
+  fontSize: 13,
+  fontWeight: 400,
+  lineHeight: 1.5,
+};
+const dialogActions = { display: "flex", justifyContent: "flex-end", gap: 8 };
+const btnSecondaryExport = {
+  minHeight: 36,
+  padding: "0 14px",
+  background: "#ffffff",
+  color: "#27272a",
+  border: "1px solid #d4d4d8",
+  borderRadius: 2,
+  fontFamily: "inherit",
+  fontSize: 12,
+  fontWeight: 500,
+  cursor: "pointer",
+};
+const btnPrimaryExport = {
+  minHeight: 36,
+  padding: "0 14px",
+  background: "#18181b",
+  color: "#ffffff",
+  border: "1px solid #18181b",
+  borderRadius: 2,
+  fontFamily: "inherit",
+  fontSize: 12,
+  fontWeight: 600,
+  cursor: "pointer",
+};
+const modalBackdrop = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 1000,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 20,
+  background: "rgba(0,0,0,0.42)",
 };

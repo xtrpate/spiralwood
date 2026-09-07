@@ -12,18 +12,20 @@ const {
 } = require("../../utils/validators");
 const POSITIVE_MOVEMENT_TYPES = new Set(["in", "return"]);
 
-const computeStockStatus = (quantity, reorderPoint = 0) => {
+const computeStockStatus = (quantity, reorderPoint = 0, safetyStock = 0) => {
   const qty = Number(quantity) || 0;
   const reorder = Number(reorderPoint) || 0;
+  const safety = Number(safetyStock) || 0;
 
   if (qty <= 0) return "out_of_stock";
+  if (qty <= safety) return "critical_stock";
   if (qty <= reorder) return "low_stock";
-  return "in_stock";
+  return "healthy_stock";
 };
 
 const normalizeQuantity = (value) => {
   const number = Number(value);
-  return Number.isFinite(number) ? number : 0;
+  return Number.isFinite(number) ? Math.round(number) : 0;
 };
 
 const formatQuantityForMessage = (value) =>
@@ -297,6 +299,8 @@ exports.getRawMaterials = async (req, res) => {
       archive_status = "active",
       supplier_id,
       category_id,
+      from,
+      to,
       page = 1,
       limit = 20,
     } = req.query;
@@ -319,8 +323,9 @@ exports.getRawMaterials = async (req, res) => {
       "GREATEST(COALESCE(rm.quantity, 0) - COALESCE(bmr_summary.reserved_quantity, 0), 0)";
     const availabilityStatusSql = `CASE
       WHEN ${availableQuantitySql} <= 0 THEN 'out_of_stock'
+      WHEN ${availableQuantitySql} <= COALESCE(rm.safety_stock, 0) THEN 'critical_stock'
       WHEN ${availableQuantitySql} <= COALESCE(rm.reorder_point, 0) THEN 'low_stock'
-      ELSE 'in_stock'
+      ELSE 'healthy_stock'
     END`;
 
     if (search) {
@@ -338,6 +343,14 @@ exports.getRawMaterials = async (req, res) => {
     if (category_id) {
       where.push("rm.category_id = ?");
       params.push(category_id);
+    }
+    if (from) {
+      where.push("DATE(rm.created_at) >= ?");
+      params.push(from);
+    }
+    if (to) {
+      where.push("DATE(rm.created_at) <= ?");
+      params.push(to);
     }
 
     const archiveFilter = String(archive_status || "active").toLowerCase();
@@ -380,7 +393,16 @@ exports.getRawMaterials = async (req, res) => {
        LEFT JOIN suppliers s  ON s.id  = rm.supplier_id
        LEFT JOIN categories c ON c.id  = rm.category_id
        WHERE ${where.join(" AND ")}
-       ORDER BY rm.is_active DESC, rm.name ASC
+       ORDER BY 
+         rm.is_active DESC,
+         CASE ${availabilityStatusSql}
+           WHEN 'out_of_stock' THEN 1
+           WHEN 'critical_stock' THEN 2
+           WHEN 'low_stock' THEN 3
+           WHEN 'healthy_stock' THEN 4
+           ELSE 5
+         END ASC,
+         rm.name ASC
        LIMIT ? OFFSET ?`,
       [...params, limitNumber, offset],
     );
@@ -415,12 +437,16 @@ exports.createRawMaterial = async (req, res) => {
       thickness_mm = null,
       quantity = 0,
       reorder_point = 0,
+      safety_stock = 0,
+      lead_time_days = 0,
       unit_cost = 0,
       supplier_id = null,
     } = req.body;
 
     const qty = Number(quantity);
     const reorderPoint = Number(reorder_point);
+    const safetyStock = Number(safety_stock);
+    const leadTime = Number(lead_time_days);
     const unitCost = Number(unit_cost);
     const physicalSpec = buildRawMaterialPhysicalSpec({
       material_form,
@@ -439,10 +465,11 @@ exports.createRawMaterial = async (req, res) => {
       return res.status(400).json({ message: "Unit is required." });
     }
 
-    if (!isValidUnitLabel(unit)) {
+    // Validation relaxed to allow the new dropdown options like 'gallon', 'roll', 'box'
+    if (String(unit).trim().length === 0) {
       await conn.rollback();
       return res.status(400).json({
-        message: "Unit must be a valid text label such as pcs, kg, meter, or sheet.",
+        message: "Unit of measure is required.",
       });
     }
 
@@ -452,14 +479,14 @@ exports.createRawMaterial = async (req, res) => {
     }
 
     if (
-      [qty, reorderPoint, unitCost].some(
+      [qty, reorderPoint, safetyStock, leadTime, unitCost].some(
         (value) => !Number.isFinite(value) || value < 0,
       )
     ) {
       await conn.rollback();
       return res.status(400).json({
         message:
-          "Quantity, reorder point, and unit cost must be valid non-negative numbers.",
+          "Quantity, reorder point, safety stock, lead time, and unit cost must be valid non-negative numbers.",
       });
     }
 
@@ -487,13 +514,13 @@ exports.createRawMaterial = async (req, res) => {
       });
     }
 
-    const status = computeStockStatus(qty, reorderPoint);
+    const status = computeStockStatus(qty, reorderPoint, safetyStock);
 
     const [materialResult] = await conn.query(
       `INSERT INTO raw_materials
          (name, category_id, unit, material_form, length_mm, width_mm, thickness_mm,
-          quantity, reorder_point, unit_cost, supplier_id, stock_status)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+          quantity, reorder_point, safety_stock, lead_time_days, unit_cost, supplier_id, stock_status)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         String(name).trim(),
         category_id ? parseInt(category_id, 10) : null,
@@ -504,6 +531,8 @@ exports.createRawMaterial = async (req, res) => {
         physicalSpec.thicknessMm,
         qty,
         reorderPoint,
+        safetyStock,
+        leadTime,
         unitCost,
         supplier_id ? parseInt(supplier_id, 10) : null,
         status,
@@ -579,12 +608,16 @@ exports.updateRawMaterial = async (req, res) => {
       thickness_mm = null,
       quantity,
       reorder_point = 0,
+      safety_stock = 0,
+      lead_time_days = 0,
       unit_cost = 0,
       supplier_id = null,
     } = req.body;
 
     const materialId = parseInt(req.params.id, 10);
     const reorderPoint = Number(reorder_point);
+    const safetyStock = Number(safety_stock);
+    const leadTime = Number(lead_time_days);
     const unitCost = Number(unit_cost);
     const physicalSpec = buildRawMaterialPhysicalSpec({
       material_form,
@@ -605,9 +638,10 @@ exports.updateRawMaterial = async (req, res) => {
       return res.status(400).json({ message: "Unit is required." });
     }
 
-    if (!isValidUnitLabel(unit)) {
+    // Validation relaxed to allow the new dropdown options like 'gallon', 'roll', 'box'
+    if (String(unit).trim().length === 0) {
       return res.status(400).json({
-        message: "Unit must be a valid text label such as pcs, kg, meter, or sheet.",
+        message: "Unit of measure is required.",
       });
     }
 
@@ -618,11 +652,16 @@ exports.updateRawMaterial = async (req, res) => {
     if (
       !Number.isFinite(reorderPoint) ||
       reorderPoint < 0 ||
+      !Number.isFinite(safetyStock) ||
+      safetyStock < 0 ||
+      !Number.isFinite(leadTime) ||
+      leadTime < 0 ||
       !Number.isFinite(unitCost) ||
       unitCost < 0
     ) {
       return res.status(400).json({
-        message: "Reorder point and unit cost must be valid non-negative numbers.",
+        message:
+          "Reorder point, safety stock, lead time, and unit cost must be valid non-negative numbers.",
       });
     }
 
@@ -682,12 +721,12 @@ exports.updateRawMaterial = async (req, res) => {
       });
     }
 
-    const status = computeStockStatus(currentQty, reorderPoint);
+    const status = computeStockStatus(currentQty, reorderPoint, safetyStock);
 
     const [updateResult] = await pool.query(
       `UPDATE raw_materials
        SET name=?, category_id=?, unit=?, material_form=?, length_mm=?, width_mm=?,
-           thickness_mm=?, reorder_point=?, unit_cost=?, supplier_id=?, stock_status=?
+           thickness_mm=?, reorder_point=?, safety_stock=?, lead_time_days=?, unit_cost=?, supplier_id=?, stock_status=?
        WHERE id=?`,
       [
         String(name).trim(),
@@ -698,6 +737,8 @@ exports.updateRawMaterial = async (req, res) => {
         physicalSpec.widthMm,
         physicalSpec.thicknessMm,
         reorderPoint,
+        safetyStock,
+        leadTime,
         unitCost,
         supplier_id ? parseInt(supplier_id, 10) : null,
         status,
@@ -977,7 +1018,9 @@ exports.getStockMovements = async (req, res) => {
     if (type) {
       const normalizedType = String(type).trim().toLowerCase();
       if (!["in", "out", "adjustment", "return"].includes(normalizedType)) {
-        return res.status(400).json({ message: "Invalid stock movement type filter." });
+        return res
+          .status(400)
+          .json({ message: "Invalid stock movement type filter." });
       }
       where.push("sm.type = ?");
       params.push(normalizedType);
@@ -993,7 +1036,9 @@ exports.getStockMovements = async (req, res) => {
         "manual",
       ]);
       if (!allowedSources.has(normalizedSource)) {
-        return res.status(400).json({ message: "Invalid stock movement source filter." });
+        return res
+          .status(400)
+          .json({ message: "Invalid stock movement source filter." });
       }
       where.push(`(${movementSourceSql}) = ?`);
       params.push(normalizedSource);
@@ -1026,7 +1071,15 @@ exports.getStockMovements = async (req, res) => {
         OR sm.reference LIKE ?
         OR sm.notes LIKE ?
       )`);
-      params.push(pattern, pattern, pattern, pattern, pattern, pattern, pattern);
+      params.push(
+        pattern,
+        pattern,
+        pattern,
+        pattern,
+        pattern,
+        pattern,
+        pattern,
+      );
     }
 
     const whereSql = where.join(" AND ");
@@ -1093,9 +1146,7 @@ exports.getStockMovements = async (req, res) => {
         ),
         build_production_count: Number(summary?.build_production_count || 0),
         ready_made_stock_count: Number(summary?.ready_made_stock_count || 0),
-        order_fulfillment_count: Number(
-          summary?.order_fulfillment_count || 0,
-        ),
+        order_fulfillment_count: Number(summary?.order_fulfillment_count || 0),
         manual_count: Number(summary?.manual_count || 0),
       },
     });
@@ -1157,7 +1208,9 @@ exports.createStockMovement = async (req, res) => {
       (!isValidNonNegativeInteger(supplier_id) || Number(supplier_id) <= 0)
     ) {
       await conn.rollback();
-      return res.status(400).json({ message: "Supplier must be a valid selection." });
+      return res
+        .status(400)
+        .json({ message: "Supplier must be a valid selection." });
     }
 
     if (
@@ -1167,12 +1220,10 @@ exports.createStockMovement = async (req, res) => {
       (!isValidNonNegativeInteger(order_id) || Number(order_id) <= 0)
     ) {
       await conn.rollback();
-      return res.status(400).json({ message: "Order reference must be a valid selection." });
+      return res
+        .status(400)
+        .json({ message: "Order reference must be a valid selection." });
     }
-
-    const delta = POSITIVE_MOVEMENT_TYPES.has(type)
-      ? movementQty
-      : -movementQty;
 
     // ───────────────────────────────────────────────────────────
     // RAW MATERIAL DIRECT MOVEMENT
@@ -1211,32 +1262,28 @@ exports.createStockMovement = async (req, res) => {
       const reservedQty = reservedByMaterial.get(materialId) || 0;
       const currentQty = normalizeQuantity(material.quantity);
       const availableQty = Math.max(0, currentQty - reservedQty);
-      const isPhysicalDecrease = !POSITIVE_MOVEMENT_TYPES.has(type);
 
-      if (isPhysicalDecrease && movementQty > availableQty + 0.0000001) {
+      let newQty;
+      if (type === "adjustment") {
+        newQty = movementQty; // Set absolute quantity!
+      } else {
+        const delta = POSITIVE_MOVEMENT_TYPES.has(type)
+          ? movementQty
+          : -movementQty;
+        newQty = currentQty + delta;
+      }
+
+      if (newQty < reservedQty - 0.0000001) {
         await conn.rollback();
         return res.status(409).json({
-          message: `${material.name} has only ${formatQuantityForMessage(
-            availableQty,
-          )} ${material.unit || "unit"} available for manual withdrawal. ${formatQuantityForMessage(
+          message: `${material.name} has ${formatQuantityForMessage(
             reservedQty,
-          )} ${material.unit || "unit"} is protected for paid blueprint orders.`,
+          )} ${material.unit || "unit"} reserved for paid blueprint orders. You cannot reduce the total stock below this reserved amount.`,
           material_id: materialId,
           on_hand: currentQty,
           reserved: reservedQty,
           available: availableQty,
           requested: movementQty,
-        });
-      }
-
-      const newQty = currentQty + delta;
-
-      if (newQty < -0.0000001) {
-        await conn.rollback();
-        return res.status(400).json({
-          message: `Insufficient stock for ${material.name}. On hand: ${formatQuantityForMessage(
-            currentQty,
-          )}, needed: ${formatQuantityForMessage(movementQty)}.`,
         });
       }
 
@@ -1282,11 +1329,13 @@ exports.createStockMovement = async (req, res) => {
       let reservationRecovery = null;
       if (POSITIVE_MOVEMENT_TYPES.has(type)) {
         try {
-          reservationRecovery =
-            await retryPendingStockReservationsForMaterial(pool, {
+          reservationRecovery = await retryPendingStockReservationsForMaterial(
+            pool,
+            {
               materialId,
               actorUserId: parseInt(req.user.id, 10),
-            });
+            },
+          );
         } catch (recoveryError) {
           // The stock increase is already committed. Report a warning instead
           // of asking the user to repeat the physical stock movement.
@@ -1309,8 +1358,7 @@ exports.createStockMovement = async (req, res) => {
             failures: [
               {
                 order_id: null,
-                code:
-                  recoveryError?.code || "PENDING_STOCK_RECOVERY_FAILED",
+                code: recoveryError?.code || "PENDING_STOCK_RECOVERY_FAILED",
                 message:
                   recoveryError?.message ||
                   "Pending-stock recovery failed after stock increased.",
@@ -1341,11 +1389,8 @@ exports.createStockMovement = async (req, res) => {
         },
       };
 
-      const recoveredCount = Number(
-        reservationRecovery?.recovered_count || 0,
-      );
-      const recoveryFailed =
-        Number(reservationRecovery?.failed_count || 0) > 0;
+      const recoveredCount = Number(reservationRecovery?.recovered_count || 0);
+      const recoveryFailed = Number(reservationRecovery?.failed_count || 0) > 0;
 
       let responseMessage = "Stock movement recorded.";
       if (recoveryFailed) {
@@ -1460,12 +1505,20 @@ exports.createStockMovement = async (req, res) => {
     }
 
     // PRODUCT STOCK-OUT / RETURN / ADJUSTMENT
-    const newProductStock = currentProductStock + delta;
+    let newProductStock;
+    if (type === "adjustment") {
+      newProductStock = movementQty; // Set absolute quantity!
+    } else {
+      const delta = POSITIVE_MOVEMENT_TYPES.has(type)
+        ? movementQty
+        : -movementQty;
+      newProductStock = currentProductStock + delta;
+    }
 
     if (newProductStock < 0) {
       await conn.rollback();
       return res.status(400).json({
-        message: `Insufficient stock for ${product.name}. Available: ${currentProductStock}, needed: ${movementQty}.`,
+        message: `Insufficient stock for ${product.name}. Available: ${currentProductStock}, requested deduction causes negative stock.`,
       });
     }
 
@@ -1573,7 +1626,9 @@ exports.createSupplier = async (req, res) => {
       email !== "" &&
       !isValidEmail(email)
     ) {
-      return res.status(400).json({ message: "Email must be a valid email address." });
+      return res
+        .status(400)
+        .json({ message: "Email must be a valid email address." });
     }
 
     const [r] = await pool.query(
@@ -1622,7 +1677,9 @@ exports.updateSupplier = async (req, res) => {
       email !== "" &&
       !isValidEmail(email)
     ) {
-      return res.status(400).json({ message: "Email must be a valid email address." });
+      return res
+        .status(400)
+        .json({ message: "Email must be a valid email address." });
     }
 
     const supplierId = parseInt(req.params.id);

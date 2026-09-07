@@ -76,18 +76,63 @@ export default function StockMovementPage() {
   const [total, setTotal] = useState(0);
   const [summary, setSummary] = useState(EMPTY_SUMMARY);
   const [loading, setLoading] = useState(false);
+
+  const getTodayString = () => {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().split("T")[0];
+  };
+
   const [filters, setFilters] = useState({
     search: "",
     type: "",
     source: "",
-    from: "",
-    to: "",
+    date_preset: "today",
+    from: getTodayString(),
+    to: getTodayString(),
     page: 1,
   });
   const [modal, setModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportScope, setExportScope] = useState("filtered");
   const [itemKind, setItemKind] = useState("material");
+
+  const handleDatePreset = (preset) => {
+    const today = new Date();
+    today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+    let fromStr = "";
+    let toStr = "";
+
+    if (preset === "today") {
+      fromStr = today.toISOString().split("T")[0];
+      toStr = fromStr;
+    } else if (preset === "yesterday") {
+      const y = new Date(today);
+      y.setDate(y.getDate() - 1);
+      fromStr = y.toISOString().split("T")[0];
+      toStr = fromStr;
+    } else if (preset === "last_7_days") {
+      const y = new Date(today);
+      y.setDate(y.getDate() - 7);
+      fromStr = y.toISOString().split("T")[0];
+      toStr = today.toISOString().split("T")[0];
+    } else if (preset === "last_30_days") {
+      const y = new Date(today);
+      y.setDate(y.getDate() - 30);
+      fromStr = y.toISOString().split("T")[0];
+      toStr = today.toISOString().split("T")[0];
+    }
+
+    setFilters((current) => ({
+      ...current,
+      date_preset: preset,
+      from: fromStr,
+      to: toStr,
+      page: 1,
+    }));
+  };
   const [form, setForm] = useState({
     material_id: "",
     product_id: "",
@@ -165,8 +210,9 @@ export default function StockMovementPage() {
       search: "",
       type: "",
       source: "",
-      from: "",
-      to: "",
+      date_preset: "today",
+      from: getTodayString(),
+      to: getTodayString(),
       page: 1,
     });
   };
@@ -191,12 +237,15 @@ export default function StockMovementPage() {
     }));
   };
 
-  const handleExport = async () => {
+  const handleExportReport = async () => {
     setExporting(true);
     try {
-      const { data } = await api.get("/inventory/movements", {
-        params: { ...filters, limit: 5000 },
-      });
+      const params =
+        exportScope === "filtered"
+          ? { ...filters, limit: 5000 }
+          : { limit: 5000 };
+
+      const { data } = await api.get("/inventory/movements", { params });
       const exportRows = data.rows || [];
       if (!exportRows.length) {
         toast.error("No movements found to export.");
@@ -294,22 +343,18 @@ export default function StockMovementPage() {
     selectedMaterial?.available_quantity ??
       Math.max(0, selectedOnHand - selectedReserved),
   );
-  const protectsReservedStock =
-    isMaterialTarget && (form.type === "out" || form.type === "adjustment");
 
   const helperMessage =
     isProductTarget && form.type === "in"
-      ? "Stock in adds the selected item to inventory. Existing production rules remain unchanged."
-      : isProductTarget && form.type === "out"
-        ? "Stock out removes the selected item from inventory."
+      ? "Stock in adds the selected item to inventory."
+      : isProductTarget && form.type === "adjustment"
+        ? "Adjustment completely replaces the stock count with the exact quantity you enter below."
         : isMaterialTarget && form.type === "in"
           ? "Use Stock in for supplier deliveries or restocking."
           : isMaterialTarget && form.type === "return"
             ? "Use Return when material is placed back into inventory."
-            : protectsReservedStock
-              ? `Available for this movement: ${formatQuantity(
-                  selectedAvailable,
-                )} ${selectedMaterial?.unit || "unit"}. Reserved blueprint stock cannot be withdrawn.`
+            : isMaterialTarget && form.type === "adjustment"
+              ? `Adjustment completely replaces the stock count. Due to active reservations, you cannot set it lower than ${formatQuantity(selectedReserved)} ${selectedMaterial?.unit || "unit"}.`
               : itemKind === "material"
                 ? "Choose a raw material to continue."
                 : "Choose a ready-made product to continue.";
@@ -323,16 +368,14 @@ export default function StockMovementPage() {
     }
 
     const requestedQuantity = Number(form.quantity);
-    if (
-      protectsReservedStock &&
-      Number.isFinite(requestedQuantity) &&
-      requestedQuantity > selectedAvailable + 0.0000001
-    ) {
-      toast.error(
-        `Only ${formatQuantity(selectedAvailable)} ${
-          selectedMaterial?.unit || "unit"
-        } is available. Reserved blueprint stock cannot be withdrawn.`,
-      );
+
+    if (!/^[0-9]+$/.test(form.quantity)) {
+      toast.error("Please put only a whole number on quantity.");
+      return;
+    }
+
+    if (requestedQuantity < 1) {
+      toast.error("Quantity must be at least 1.");
       return;
     }
 
@@ -372,7 +415,7 @@ export default function StockMovementPage() {
         </div>
         <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
           <button
-            onClick={handleExport}
+            onClick={() => setExportOpen(true)}
             disabled={exporting}
             style={{
               padding: "9px 18px",
@@ -428,7 +471,6 @@ export default function StockMovementPage() {
           >
             <option value="">All movements</option>
             <option value="in">Stock in</option>
-            <option value="out">Stock out</option>
             <option value="adjustment">Adjustment</option>
             <option value="return">Return</option>
           </select>
@@ -451,26 +493,46 @@ export default function StockMovementPage() {
         </div>
 
         <div style={filterField}>
-          <label style={filterLabel}>From</label>
-          <input
-            type="date"
-            value={filters.from}
-            onChange={(event) => updateFilter("from", event.target.value)}
+          <label style={filterLabel}>Date Range</label>
+          <select
+            value={filters.date_preset}
+            onChange={(e) => handleDatePreset(e.target.value)}
             style={inputSm}
-            aria-label="From date"
-          />
+          >
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="last_7_days">Last 7 Days</option>
+            <option value="last_30_days">Last 30 Days</option>
+            <option value="all_time">All Time</option>
+            <option value="custom">Custom Range</option>
+          </select>
         </div>
 
-        <div style={filterField}>
-          <label style={filterLabel}>To</label>
-          <input
-            type="date"
-            value={filters.to}
-            onChange={(event) => updateFilter("to", event.target.value)}
-            style={inputSm}
-            aria-label="To date"
-          />
-        </div>
+        {filters.date_preset === "custom" && (
+          <>
+            <div style={filterField}>
+              <label style={filterLabel}>From</label>
+              <input
+                type="date"
+                value={filters.from}
+                onChange={(event) => updateFilter("from", event.target.value)}
+                style={inputSm}
+                aria-label="From date"
+              />
+            </div>
+
+            <div style={filterField}>
+              <label style={filterLabel}>To</label>
+              <input
+                type="date"
+                value={filters.to}
+                onChange={(event) => updateFilter("to", event.target.value)}
+                style={inputSm}
+                aria-label="To date"
+              />
+            </div>
+          </>
+        )}
 
         <div style={{ ...filterField, justifyContent: "flex-end" }}>
           <span style={{ ...filterLabel, visibility: "hidden" }}>Action</span>
@@ -684,7 +746,6 @@ export default function StockMovementPage() {
                   style={inputFull}
                 >
                   <option value="in">Stock in</option>
-                  <option value="out">Stock out</option>
                   <option value="adjustment">Adjustment</option>
                   <option value="return">Return</option>
                 </select>
@@ -769,22 +830,39 @@ export default function StockMovementPage() {
               <div style={fieldGroup}>
                 <label style={label}>Quantity *</label>
                 <input
-                  type="number"
-                  step="0.01"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   required
-                  min="0.01"
-                  max={
-                    protectsReservedStock
-                      ? Math.max(0, selectedAvailable)
-                      : undefined
-                  }
                   value={form.quantity}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const wholeNumberOnly = event.target.value.replace(
+                      /[^0-9]/g,
+                      "",
+                    );
+
                     setForm((current) => ({
                       ...current,
-                      quantity: event.target.value,
-                    }))
-                  }
+                      quantity: wholeNumberOnly,
+                    }));
+                  }}
+                  onKeyDown={(event) => {
+                    if (
+                      !/[0-9]/.test(event.key) &&
+                      ![
+                        "Backspace",
+                        "Delete",
+                        "ArrowLeft",
+                        "ArrowRight",
+                        "Tab",
+                        "Home",
+                        "End",
+                      ].includes(event.key) &&
+                      !(event.ctrlKey || event.metaKey)
+                    ) {
+                      event.preventDefault();
+                    }
+                  }}
                   style={inputFull}
                 />
               </div>
@@ -840,6 +918,102 @@ export default function StockMovementPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {exportOpen && (
+        <div style={modalBackdrop}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="export-movement-title"
+            style={{ ...dialog, width: "min(520px, 100%)" }}
+          >
+            <div style={dialogEyebrow}>Report Generation</div>
+
+            <h2 id="export-movement-title" style={dialogTitle}>
+              Export movement history
+            </h2>
+
+            <p style={{ ...dialogText, marginBottom: 16 }}>
+              Create an Excel report mapping the exact physical stock
+              adjustments within the warehouse.
+            </p>
+
+            <div style={exportScopeList}>
+              <button
+                type="button"
+                onClick={() => setExportScope("filtered")}
+                style={{
+                  ...exportScopeOption,
+                  ...(exportScope === "filtered"
+                    ? exportScopeOptionSelected
+                    : {}),
+                }}
+                disabled={exporting}
+              >
+                <span style={exportScopeTitle}>Current filters</span>
+
+                <span style={exportScopeMeta}>
+                  {total.toLocaleString("en-PH")} matching record
+                  {total === 1 ? "" : "s"}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setExportScope("all")}
+                style={{
+                  ...exportScopeOption,
+                  ...(exportScope === "all" ? exportScopeOptionSelected : {}),
+                }}
+                disabled={exporting}
+              >
+                <span style={exportScopeTitle}>All records</span>
+
+                <span style={exportScopeMeta}>
+                  Export entire historical log
+                </span>
+              </button>
+            </div>
+
+            <div style={exportContents}>
+              <div style={exportContentsLabel}>Included in Excel</div>
+
+              <div style={exportContentsText}>
+                Date, movement type, source context, material/product, adjusted
+                quantity, related order, and auditing notes.
+              </div>
+            </div>
+
+            <div style={dialogActions}>
+              <button
+                type="button"
+                onClick={() => setExportOpen(false)}
+                style={btnSecondaryExport}
+                disabled={exporting}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExportReport}
+                style={{
+                  ...btnPrimaryExport,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 7,
+                  opacity: exporting ? 0.65 : 1,
+                  cursor: exporting ? "wait" : "pointer",
+                }}
+                disabled={exporting}
+              >
+                <FileDown size={14} strokeWidth={1.8} aria-hidden="true" />
+
+                {exporting ? "Preparing..." : "Export Excel"}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1079,6 +1253,17 @@ const overlay = {
   background: "rgba(0,0,0,.55)",
   padding: 20,
 };
+
+const modalBackdrop = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 1100,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "rgba(0,0,0,.55)",
+  padding: 20,
+};
 const modalBox = {
   width: 500,
   maxWidth: "100%",
@@ -1151,4 +1336,119 @@ const modalActions = {
   display: "flex",
   justifyContent: "flex-end",
   gap: 10,
+};
+
+const exportScopeList = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 8,
+  marginBottom: 12,
+};
+const exportScopeOption = {
+  minHeight: 76,
+  padding: "12px 13px",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-start",
+  justifyContent: "center",
+  gap: 5,
+  background: "#ffffff",
+  color: "#27272a",
+  border: "1px solid #d4d4d8",
+  borderRadius: 2,
+  fontFamily: "inherit",
+  textAlign: "left",
+  cursor: "pointer",
+};
+const exportScopeOptionSelected = {
+  background: "#fafafa",
+  borderColor: "#18181b",
+  boxShadow: "inset 0 0 0 1px #18181b",
+};
+const exportScopeTitle = {
+  color: "#18181b",
+  fontSize: 12.5,
+  fontWeight: 600,
+  lineHeight: 1.25,
+};
+const exportScopeMeta = {
+  color: "#71717a",
+  fontSize: 10.5,
+  fontWeight: 400,
+  lineHeight: 1.35,
+};
+const exportContents = {
+  marginBottom: 18,
+  padding: "11px 12px",
+  background: "#fafafa",
+  border: "1px solid #e4e4e7",
+  borderRadius: 2,
+};
+const exportContentsLabel = {
+  marginBottom: 4,
+  color: "#3f3f46",
+  fontSize: 9.5,
+  fontWeight: 600,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+};
+const exportContentsText = {
+  color: "#71717a",
+  fontSize: 11.5,
+  fontWeight: 400,
+  lineHeight: 1.45,
+};
+const dialog = {
+  width: "min(430px, 100%)",
+  padding: 20,
+  background: "#ffffff",
+  border: "1px solid #d4d4d8",
+  borderRadius: 2,
+  boxShadow: "0 18px 48px rgba(0,0,0,0.18)",
+};
+const dialogEyebrow = {
+  marginBottom: 6,
+  color: "#71717a",
+  fontSize: 9.5,
+  fontWeight: 600,
+  letterSpacing: "0.1em",
+  textTransform: "uppercase",
+};
+const dialogTitle = {
+  margin: 0,
+  color: "#18181b",
+  fontSize: 18,
+  fontWeight: 700,
+};
+const dialogText = {
+  margin: "8px 0 20px",
+  color: "#52525b",
+  fontSize: 13,
+  fontWeight: 400,
+  lineHeight: 1.5,
+};
+const dialogActions = { display: "flex", justifyContent: "flex-end", gap: 8 };
+const btnSecondaryExport = {
+  minHeight: 36,
+  padding: "0 14px",
+  background: "#ffffff",
+  color: "#27272a",
+  border: "1px solid #d4d4d8",
+  borderRadius: 2,
+  fontFamily: "inherit",
+  fontSize: 12,
+  fontWeight: 500,
+  cursor: "pointer",
+};
+const btnPrimaryExport = {
+  minHeight: 36,
+  padding: "0 14px",
+  background: "#18181b",
+  color: "#ffffff",
+  border: "1px solid #18181b",
+  borderRadius: 2,
+  fontFamily: "inherit",
+  fontSize: 12,
+  fontWeight: 600,
+  cursor: "pointer",
 };
