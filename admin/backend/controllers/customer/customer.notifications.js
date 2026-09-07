@@ -15,19 +15,47 @@ const parseStrictPositiveInt = (value) => {
 /* ── Get Customer Notifications ── */
 exports.getNotifications = async (req, res) => {
   try {
+    // Keep the existing array response shape while allowing the customer
+    // notification center to progressively load older history.
+    const requestedLimit = Number.parseInt(req.query.limit, 10);
+    const requestedOffset = Number.parseInt(req.query.offset, 10);
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(Math.max(requestedLimit, 1), 100)
+      : 20;
+    const offset = Number.isFinite(requestedOffset)
+      ? Math.max(requestedOffset, 0)
+      : 0;
+
     const [notifications] = await db.query(
       `SELECT id, type, title, message, is_read, created_at,
               target_type, target_id, target_order_id
        FROM notifications
        WHERE user_id = ?
-       ORDER BY created_at DESC
-       LIMIT 20`,
-      [req.user.id],
+       ORDER BY created_at DESC, id DESC
+       LIMIT ? OFFSET ?`,
+      [req.user.id, limit, offset],
     );
     res.json(notifications);
   } catch (err) {
     console.error("[customer.notifications GET /]", err);
     res.status(500).json({ message: "Error fetching notifications" });
+  }
+};
+
+/* ── Get Customer Unread Notification Count ── */
+exports.getUnreadCount = async (req, res) => {
+  try {
+    const [[row]] = await db.query(
+      `SELECT COUNT(*) AS count
+       FROM notifications
+       WHERE user_id = ? AND is_read = 0`,
+      [req.user.id],
+    );
+
+    res.json({ notification_count: Number(row?.count) || 0 });
+  } catch (err) {
+    console.error("[customer.notifications GET /unread-count]", err);
+    res.status(500).json({ message: "Error fetching unread count" });
   }
 };
 

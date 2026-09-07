@@ -48,7 +48,7 @@ export default function StaticPagesPage() {
     setLoading(true);
     setLoadError("");
     try {
-      const { data } = await api.get("/website/pages");
+      const { data } = await api.get("/website/pages/admin");
       const map = {};
 
       (Array.isArray(data) ? data : []).forEach((page) => {
@@ -111,14 +111,21 @@ export default function StaticPagesPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await api.put(`/website/pages/${active}`, form);
+      const payload =
+        active === "faq"
+          ? { title: form.title, content: form.content }
+          : form;
+
+      await api.put(`/website/pages/${active}`, payload);
       toast.success(`${PAGE_META[active]?.label} page saved.`);
       setPages((current) => ({
         ...current,
         [active]: {
           ...current[active],
           slug: active,
-          ...form,
+          title: form.title,
+          content: form.content,
+          ...(active === "faq" ? {} : { is_visible: form.is_visible }),
         },
       }));
       setDirty(false);
@@ -218,12 +225,20 @@ export default function StaticPagesPage() {
                 <span className="website-page-selector-copy">
                   <strong>{item.label}</strong>
                   <small>
-                    <span
-                      className={`website-visibility-dot ${
-                        page?.is_visible ? "is-visible" : "is-hidden"
-                      }`}
-                    />
-                    {page?.is_visible ? "Visible on site" : "Hidden from site"}
+                    {slug === "faq" ? (
+                      "Visibility managed in FAQ Management"
+                    ) : (
+                      <>
+                        <span
+                          className={`website-visibility-dot ${
+                            page?.is_visible ? "is-visible" : "is-hidden"
+                          }`}
+                        />
+                        {page?.is_visible
+                          ? "Visible on site"
+                          : "Hidden from site"}
+                      </>
+                    )}
                   </small>
                 </span>
               </button>
@@ -244,21 +259,27 @@ export default function StaticPagesPage() {
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setF("is_visible", !form.is_visible)}
-              className="website-editor-visibility"
-            >
-              <span>Visible on site</span>
-              <span
-                className={`website-switch ${
-                  form.is_visible ? "is-on" : ""
-                }`}
-                aria-hidden="true"
+            {active !== "faq" ? (
+              <button
+                type="button"
+                onClick={() => setF("is_visible", !form.is_visible)}
+                className="website-editor-visibility"
               >
-                <span />
+                <span>Visible on site</span>
+                <span
+                  className={`website-switch ${
+                    form.is_visible ? "is-on" : ""
+                  }`}
+                  aria-hidden="true"
+                >
+                  <span />
+                </span>
+              </button>
+            ) : (
+              <span className="website-panel-count">
+                Visibility managed in FAQ Management
               </span>
-            </button>
+            )}
           </div>
 
           <div className="website-editor-body">

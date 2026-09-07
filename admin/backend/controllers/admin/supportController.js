@@ -196,12 +196,13 @@ exports.getAssignableUsers = async (req, res) => {
         id,
         name,
         role,
-        staff_type
+        staff_type,
+        is_active
       FROM users
-      WHERE role IN ('admin', 'staff')
-      ORDER BY
-        role ASC,
-        name ASC
+      WHERE role = 'staff'
+        AND staff_type = 'cashier'
+        AND is_active = 1
+      ORDER BY name ASC
       `,
     );
 
@@ -254,12 +255,14 @@ exports.assignTicket = async (req, res) => {
       });
     }
 
-    // Check assignee exists and is admin/staff
+    // Support tickets are handled by active cashier staff. Enforce this on
+    // the server even if a stale/cached frontend submits another user id.
     const [userRows] = await conn.query(
       `
-      SELECT id, role
+      SELECT id, role, staff_type, is_active
       FROM users
       WHERE id = ?
+      LIMIT 1
       `,
       [assigned_to],
     );
@@ -272,11 +275,16 @@ exports.assignTicket = async (req, res) => {
       });
     }
 
-    if (!["admin", "staff"].includes(userRows[0].role)) {
+    const assignee = userRows[0];
+    if (
+      assignee.role !== "staff" ||
+      assignee.staff_type !== "cashier" ||
+      Number(assignee.is_active) !== 1
+    ) {
       await conn.rollback();
 
       return res.status(400).json({
-        message: "Ticket can only be assigned to an admin or staff.",
+        message: "Ticket can only be assigned to an active cashier.",
       });
     }
 

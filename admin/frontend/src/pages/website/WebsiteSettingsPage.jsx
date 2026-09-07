@@ -25,12 +25,12 @@ const SECTION_META = {
   display: {
     label: "Website Details",
     icon: "🖼️",
-    description: "Brand, website sections, and public business information.",
+    description: "Brand, storefront, checkout message, and public business information.",
   },
   payment: {
     label: "Payments",
     icon: "💳",
-    description: "Payment methods and customer payment details.",
+    description: "Customer-facing payment methods for ready-made checkout.",
   },
   email: {
     label: "Email Notifications",
@@ -38,9 +38,9 @@ const SECTION_META = {
     description: "Admin alerts and customer email updates.",
   },
   policy: {
-    label: "Policies",
-    icon: "📋",
-    description: "Customer warranty settings.",
+    label: "Warranty",
+    icon: "🛡️",
+    description: "Configure warranty coverage period for customer orders.",
   },
   delivery: {
     label: "Truck Capacity",
@@ -62,21 +62,6 @@ const KEY_META = {
     type: "text",
     hint: "Displayed in the browser tab and customer-facing website details.",
     width: "wide",
-  },
-  show_faq_section: {
-    label: "FAQ Section",
-    type: "toggle",
-    hint: "Show or hide the FAQ section on the customer website.",
-  },
-  show_about_section: {
-    label: "About Us Section",
-    type: "toggle",
-    hint: "Show or hide the About Us section.",
-  },
-  show_contact_section: {
-    label: "Contact Us Section",
-    type: "toggle",
-    hint: "Show or hide the Contact Us section.",
   },
   business_address: {
     label: "Business Address",
@@ -152,43 +137,12 @@ const KEY_META = {
   cod_enabled: {
     label: "Cash on Delivery",
     type: "toggle",
-    hint: "Allow customers to select Cash on Delivery at checkout.",
+    hint: "Allow customers to pay in cash when a ready-made order is delivered.",
   },
-  cop_enabled: {
-    label: "Cash on Pickup",
+  paymongo_enabled: {
+    label: "Online Payment (PayMongo)",
     type: "toggle",
-    hint: "Allow customers to select Cash on Pickup.",
-  },
-  gcash_enabled: {
-    label: "GCash",
-    type: "toggle",
-    hint: "Allow GCash as a payment option.",
-  },
-  bank_transfer_enabled: {
-    label: "Bank Transfer",
-    type: "toggle",
-    hint: "Allow Bank Transfer as a payment option.",
-  },
-  gcash_number: {
-    label: "GCash Number",
-    type: "text",
-    hint: "Shown to customers during GCash checkout.",
-    width: "phone",
-    pattern: /^09\d{9}$/,
-    patternMessage:
-      "GCash number must be exactly 11 digits and start with '09'.",
-  },
-  bank_account_name: {
-    label: "Bank Account Name",
-    type: "text",
-    hint: "Account name shown during bank transfer checkout.",
-    width: "accountName",
-  },
-  bank_account_number: {
-    label: "Bank Account Number",
-    type: "text",
-    hint: "Account number shown during bank transfer checkout.",
-    width: "accountNumber",
+    hint: "Allow secure online payment by Card, GCash, or Maya through PayMongo.",
   },
 
   admin_alert_email: {
@@ -221,7 +175,7 @@ const KEY_META = {
   checkout_note: {
     label: "Checkout Note",
     type: "textarea",
-    hint: "Message shown to customers during checkout.",
+    hint: "Message shown to customers during ready-made checkout.",
     width: "message",
   },
 
@@ -232,7 +186,7 @@ const KEY_META = {
     min: 1,
     max: 3650,
     step: 1,
-    hint: "Warranty period counted from the delivery date.",
+    hint: "Number of days covered from the delivery date.",
     width: "number",
   },
 
@@ -272,9 +226,6 @@ const TAB_KEYS = {
   display: [
     "site_logo",
     "site_name",
-    "show_faq_section",
-    "show_about_section",
-    "show_contact_section",
     "business_address",
     "business_latitude",
     "business_longitude",
@@ -285,23 +236,15 @@ const TAB_KEYS = {
     "social_instagram",
     "social_telegram",
     "operating_hours",
+    "checkout_note",
   ],
-  payment: [
-    "cod_enabled",
-    "cop_enabled",
-    "gcash_enabled",
-    "bank_transfer_enabled",
-    "gcash_number",
-    "bank_account_name",
-    "bank_account_number",
-  ],
+  payment: ["cod_enabled", "paymongo_enabled"],
   email: [
     "admin_alert_email",
     "email_order_confirmed",
     "email_production_started",
     "email_out_for_delivery",
     "email_footer",
-    "checkout_note",
   ],
   policy: ["warranty_period_days"],
   delivery: DELIVERY_LIMIT_KEYS,
@@ -328,13 +271,20 @@ export default function WebsiteSettingsPage() {
     const loadSettings = async () => {
       try {
         setLoadError("");
-        const { data } = await api.get("/website/settings");
+        const { data } = await api.get("/website/settings/admin");
         if (cancelled) return;
 
         const flat = {};
         Object.values(data || {}).forEach((group) => {
           if (group && typeof group === "object") Object.assign(flat, group);
         });
+
+        if (!Object.prototype.hasOwnProperty.call(flat, "cod_enabled")) {
+          flat.cod_enabled = "true";
+        }
+        if (!Object.prototype.hasOwnProperty.call(flat, "paymongo_enabled")) {
+          flat.paymongo_enabled = "true";
+        }
 
         const warrantyDays = Number(flat.warranty_period_days);
         if (
@@ -998,7 +948,7 @@ export default function WebsiteSettingsPage() {
           <h1 className="website-settings-title">Website Settings</h1>
           <p className="website-settings-subtitle">
             Configure customer website details, payments, email notifications,
-            policies, and standard truck capacity.
+            warranty, and standard truck capacity.
           </p>
         </div>
 

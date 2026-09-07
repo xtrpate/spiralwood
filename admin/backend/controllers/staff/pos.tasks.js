@@ -138,13 +138,41 @@ exports.getNotifications = async (req, res) => {
 /* ── Mark Notification as Read ── */
 exports.markNotificationRead = async (req, res) => {
   try {
-    // ── FIXED: Switched to .query and parsed IDs ──
-    await db.query(
-      `UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?`,
-      [parseInt(req.params.id), parseInt(req.user.id)],
+    const rawId = String(req.params.id ?? "").trim();
+    if (!/^\d+$/.test(rawId)) {
+      return res.status(400).json({ message: "Invalid notification ID." });
+    }
+
+    const notificationId = Number(rawId);
+    if (!Number.isSafeInteger(notificationId) || notificationId <= 0) {
+      return res.status(400).json({ message: "Invalid notification ID." });
+    }
+
+    const [[owned]] = await db.query(
+      `SELECT id, is_read
+       FROM notifications
+       WHERE id = ? AND user_id = ?
+       LIMIT 1`,
+      [notificationId, parseInt(req.user.id)],
     );
+
+    if (!owned) {
+      return res.status(404).json({ message: "Notification not found." });
+    }
+
+    // Idempotent: an already-read notification is still a successful result.
+    if (!owned.is_read) {
+      await db.query(
+        `UPDATE notifications
+         SET is_read = 1
+         WHERE id = ? AND user_id = ? AND is_read = 0`,
+        [notificationId, parseInt(req.user.id)],
+      );
+    }
+
     res.json({ message: "Notification marked as read" });
   } catch (err) {
+    console.error("[pos.tasks PATCH /notifications/:id/read]", err);
     res.status(500).json({ message: "Error updating notification" });
   }
 };

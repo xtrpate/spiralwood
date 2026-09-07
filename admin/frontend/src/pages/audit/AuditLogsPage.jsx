@@ -74,6 +74,7 @@ const ACTION_LABELS = {
   archive_blueprint: "Archived blueprint",
   restore_blueprint: "Restored blueprint",
   permanently_delete_blueprint: "Permanently deleted blueprint",
+  system_purge_expired_blueprint: "Auto-purged expired blueprint",
   create_blueprint_estimation: "Created blueprint quotation",
   send_blueprint_estimation: "Sent blueprint quotation",
   generate_contract: "Generated contract",

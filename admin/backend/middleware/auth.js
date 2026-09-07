@@ -24,7 +24,8 @@ async function authenticate(req, res, next) {
          role,
          staff_type,
          is_active,
-         is_verified
+         is_verified,
+         must_change_password
        FROM users
        WHERE id = ?`,
       [decoded.id],
@@ -38,6 +39,22 @@ async function authenticate(req, res, next) {
       return res
         .status(403)
         .json({ message: "Account deactivated. Contact support." });
+    }
+
+    const internalMustChange =
+      (user.role === "admin" || user.role === "staff") &&
+      Number(decoded.must_change_password) === 1 &&
+      Number(user.must_change_password) === 1;
+    const requestPath = String(req.originalUrl || req.path || "").split("?")[0];
+    const passwordChangeAllowed =
+      requestPath.endsWith("/auth/me") ||
+      requestPath.endsWith("/auth/change-password");
+
+    if (internalMustChange && !passwordChangeAllowed) {
+      return res.status(403).json({
+        message: "Change your temporary password before continuing.",
+        code: "PASSWORD_CHANGE_REQUIRED",
+      });
     }
 
     req.user = user;

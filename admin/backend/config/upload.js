@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const { v2: cloudinary } = require("cloudinary");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const { verifyBufferSignature } = require("../utils/verifyFileSignature");
 
 // 1. Configure Cloudinary with your .env keys
 cloudinary.config({
@@ -160,6 +161,135 @@ exports.uploadProductImage = (req, res, next) => {
   });
 };
 
+// WISDOM INTERNAL USER PROFILE PHOTO UPLOAD V1
+// Admin-created Admin/Staff photos reuse the same Cloudinary-backed pattern as
+// customer avatars. Multipart parsing and magic-byte validation happen before
+// controller validation; Cloudinary persistence is deferred until the account
+// payload and duplicate checks have passed.
+const INTERNAL_PROFILE_EXTENSIONS = new Set([
+  ".jpg",
+  ".jpeg",
+  ".jfif",
+  ".png",
+  ".webp",
+]);
+const INTERNAL_PROFILE_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+const INTERNAL_PROFILE_MAX_BYTES = 2 * 1024 * 1024;
+
+const internalProfileRawUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: INTERNAL_PROFILE_MAX_BYTES },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || "").toLowerCase();
+    const mime = String(file.mimetype || "")
+      .trim()
+      .toLowerCase();
+
+    if (
+      INTERNAL_PROFILE_EXTENSIONS.has(ext) &&
+      INTERNAL_PROFILE_MIME_TYPES.has(mime)
+    ) {
+      cb(null, true);
+      return;
+    }
+
+    const error = new Error(
+      "Profile photo must be a JPG, JPEG, JFIF, PNG, or WEBP image.",
+    );
+    error.status = 400;
+    cb(error);
+  },
+}).single("profile_photo");
+
+const uploadInternalProfileBufferToCloudinary = (file) =>
+  new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: "wisdom_uploads/avatars",
+        resource_type: "image",
+      },
+      (error, result) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(result);
+      },
+    );
+
+    stream.end(file.buffer);
+  });
+
+exports.uploadUserProfilePhoto = (req, res, next) => {
+  internalProfileRawUpload(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(400).json({
+            message: "Profile photo must be 2MB or smaller.",
+          });
+        }
+        if (err.code === "LIMIT_UNEXPECTED_FILE") {
+          return res.status(400).json({
+            message: "Invalid profile photo upload.",
+          });
+        }
+      }
+
+      if (Number(err.status) === 400) {
+        return res.status(400).json({ message: err.message });
+      }
+
+      console.error("[internal profile photo parse]", err);
+      return res.status(500).json({
+        message: "Profile photo could not be read.",
+      });
+    }
+
+    if (!req.file) {
+      next();
+      return;
+    }
+
+    const ext = path.extname(req.file.originalname || "").toLowerCase();
+    if (!verifyBufferSignature(req.file.buffer, ext)) {
+      return res.status(400).json({
+        message: "Profile photo content does not match its image file type.",
+      });
+    }
+
+    next();
+  });
+};
+
+exports.persistUserProfilePhoto = async (file) => {
+  if (!file) return null;
+
+  try {
+    const result = await uploadInternalProfileBufferToCloudinary(file);
+    if (!result?.secure_url) {
+      throw new Error("Cloudinary did not return a secure image URL.");
+    }
+
+    return {
+      url: result.secure_url,
+      public_id: result.public_id || null,
+    };
+  } catch (uploadError) {
+    console.error(
+      "[internal profile photo cloudinary]",
+      uploadError?.message || uploadError,
+    );
+    const error = new Error("Profile photo upload failed. Please try again.");
+    error.code = "INTERNAL_PROFILE_UPLOAD_FAILED";
+    throw error;
+  }
+};
+
 const blueprintUpload = multer({
   storage: cloudStorage("blueprints", ALLOWED_BLUEPRINTS),
   limits: { fileSize: MAX_MB * 1024 * 1024 },
@@ -233,10 +363,17 @@ exports.uploadSupportAttachment = multer({
   },
 }).array("attachments", 5);
 
-// WISDOM SITE LOGO LOCAL DEV STORAGE V1
-// Local development should not depend on an external Cloudinary request just
-// to update the customer-facing site logo. Production keeps Cloudinary so the
-// deployed logo remains durable across server restarts/deploys.
+// WISDOM SITE LOGO HARDENING V1.0.0
+// Parse into memory first so extension/MIME/magic bytes can be checked BEFORE
+// the logo is written to local storage or sent to Cloudinary.
+const SITE_LOGO_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
+const SITE_LOGO_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+const SITE_LOGO_MAX_BYTES = 5 * 1024 * 1024;
+
 const configuredUploadDir =
   process.env.UPLOAD_DIR || path.join(__dirname, "..", "uploads");
 const siteUploadRoot = path.isAbsolute(configuredUploadDir)
@@ -246,15 +383,18 @@ const siteLogoLocalDir = path.join(siteUploadRoot, "settings");
 
 fs.mkdirSync(siteLogoLocalDir, { recursive: true });
 
-const siteLogoFileFilter = (req, file, cb) => {
-  const ext = path
-    .extname(file.originalname || "")
-    .toLowerCase()
-    .replace(".", "");
-  const mime = String(file.mimetype || "").toLowerCase();
-  const allowedMime = ["image/jpeg", "image/png", "image/webp"];
+const useLocalSiteLogoStorage = process.env.NODE_ENV !== "production";
 
-  if (ALLOWED_IMAGES.includes(ext) && allowedMime.includes(mime)) {
+const siteLogoFileFilter = (req, file, cb) => {
+  const ext = path.extname(file.originalname || "").toLowerCase();
+  const mime = String(file.mimetype || "")
+    .trim()
+    .toLowerCase();
+
+  if (
+    SITE_LOGO_EXTENSIONS.has(ext) &&
+    SITE_LOGO_MIME_TYPES.has(mime)
+  ) {
     cb(null, true);
     return;
   }
@@ -264,46 +404,156 @@ const siteLogoFileFilter = (req, file, cb) => {
   cb(error);
 };
 
-const siteLogoLocalStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, siteLogoLocalDir),
-  filename: (req, file, cb) => {
-    const rawExt = path.extname(file.originalname || "").toLowerCase();
-    const ext = ALLOWED_IMAGES.includes(rawExt.replace(".", ""))
-      ? rawExt
-      : ".png";
-    cb(
-      null,
-      `site-logo-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`,
-    );
-  },
-});
-
-const useLocalSiteLogoStorage = process.env.NODE_ENV !== "production";
-
-const siteLogoUpload = multer({
-  storage: useLocalSiteLogoStorage
-    ? siteLogoLocalStorage
-    : cloudStorage("settings", ALLOWED_IMAGES),
-  limits: {
-    // WISDOM SITE LOGO 5MB LIMIT V1
-    fileSize: 5 * 1024 * 1024,
-  },
+const siteLogoRawUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: SITE_LOGO_MAX_BYTES },
   fileFilter: siteLogoFileFilter,
 }).single("site_logo");
 
 exports.uploadSiteLogo = (req, res, next) => {
-  siteLogoUpload(req, res, (err) => {
+  siteLogoRawUpload(req, res, (err) => {
     if (err) {
-      next(err);
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(400).json({
+            message: "Site logo must be 5MB or smaller.",
+          });
+        }
+
+        if (err.code === "LIMIT_UNEXPECTED_FILE") {
+          return res.status(400).json({
+            message: "Invalid site logo upload field.",
+          });
+        }
+      }
+
+      if (Number(err.status) === 400) {
+        return res.status(400).json({ message: err.message });
+      }
+
+      return next(err);
+    }
+
+    if (!req.file) {
+      next();
       return;
     }
 
-    if (req.file && useLocalSiteLogoStorage) {
-      // websiteController stores req.file.path. Use a public URL path instead
-      // of the machine's absolute Windows/Linux filesystem path.
-      req.file.path = `/uploads/settings/${req.file.filename}`;
+    const ext = path.extname(req.file.originalname || "").toLowerCase();
+    const mime = String(req.file.mimetype || "")
+      .trim()
+      .toLowerCase();
+
+    const extensionMatchesMime =
+      ([".jpg", ".jpeg"].includes(ext) && mime === "image/jpeg") ||
+      (ext === ".png" && mime === "image/png") ||
+      (ext === ".webp" && mime === "image/webp");
+
+    if (
+      !extensionMatchesMime ||
+      !verifyBufferSignature(req.file.buffer, ext)
+    ) {
+      return res.status(400).json({
+        message: "Site logo content does not match its image file type.",
+      });
     }
 
     next();
   });
+};
+
+const uploadSiteLogoBufferToCloudinary = (file) =>
+  new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: "wisdom_uploads/settings",
+        resource_type: "image",
+      },
+      (error, result) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        if (!result?.secure_url) {
+          reject(new Error("Cloudinary did not return a site logo URL."));
+          return;
+        }
+
+        resolve({
+          url: result.secure_url,
+          storage: "cloudinary",
+          publicId: result.public_id || null,
+          resourceType: result.resource_type || "image",
+          localPath: null,
+        });
+      },
+    );
+
+    stream.end(file.buffer);
+  });
+
+exports.persistSiteLogo = async (file) => {
+  if (!file || !Buffer.isBuffer(file.buffer) || !file.buffer.length) {
+    const error = new Error("The selected site logo is empty.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (useLocalSiteLogoStorage) {
+    const ext = path.extname(file.originalname || "").toLowerCase();
+    const filename =
+      `site-logo-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+    const absolutePath = path.join(siteLogoLocalDir, filename);
+
+    try {
+      await fs.promises.writeFile(absolutePath, file.buffer);
+    } catch (writeErr) {
+      const error = new Error("Site logo could not be saved.");
+      error.statusCode = 500;
+      error.cause = writeErr;
+      throw error;
+    }
+
+    return {
+      url: `/uploads/settings/${filename}`,
+      storage: "local",
+      publicId: null,
+      resourceType: null,
+      localPath: absolutePath,
+    };
+  }
+
+  try {
+    return await uploadSiteLogoBufferToCloudinary(file);
+  } catch (uploadErr) {
+    console.error(
+      "[site logo cloudinary]",
+      uploadErr?.message || uploadErr,
+    );
+    const error = new Error("Site logo upload failed. Please try again.");
+    error.statusCode = 502;
+    error.cause = uploadErr;
+    throw error;
+  }
+};
+
+exports.cleanupPersistedSiteLogo = async (asset) => {
+  if (!asset) return;
+
+  if (asset.storage === "local" && asset.localPath) {
+    try {
+      await fs.promises.unlink(asset.localPath);
+    } catch (err) {
+      if (err.code !== "ENOENT") throw err;
+    }
+    return;
+  }
+
+  if (asset.storage === "cloudinary" && asset.publicId) {
+    await cloudinary.uploader.destroy(asset.publicId, {
+      resource_type: asset.resourceType || "image",
+      invalidate: true,
+    });
+  }
 };

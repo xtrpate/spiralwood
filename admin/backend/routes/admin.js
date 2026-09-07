@@ -476,12 +476,14 @@ router.get("/users", adminOnly, mgmt.getUsers);
 router.post(
   "/users",
   adminOnly,
+  upload.uploadUserProfilePhoto,
   logAction("create_user", "users"),
   mgmt.createUser,
 );
 router.put(
   "/users/:id",
   adminOnly,
+  upload.uploadUserProfilePhoto,
   logAction("update_user", "users"),
   mgmt.updateUser,
 );
@@ -494,7 +496,7 @@ router.patch(
 router.delete(
   "/users/:id",
   adminOnly,
-  logAction("delete_user", "users"),
+  logAction("deactivate_user", "users"),
   mgmt.deleteUser,
 );
 
@@ -506,55 +508,21 @@ router.get("/audit-logs", adminOnly, mgmt.getAuditLogs);
 // ══════════════════════════════════════════════════════════════════════════════
 // WEBSITE MAINTENANCE
 // ══════════════════════════════════════════════════════════════════════════════
-// PUBLIC ROUTES (Customers need to read this data)
+// PUBLIC ROUTES (storefront-safe, visible content only)
 router.get("/website/settings", website.getSettings);
 router.get("/website/faqs", website.getFaqs);
 router.get("/website/pages", website.getPages);
+
+// PROTECTED READ ROUTES
+// Register the exact /pages/admin route before the public /pages/:slug route.
+router.get("/website/settings/admin", adminOnly, website.getAdminSettings);
+router.get("/website/faqs/admin", adminOnly, website.getAdminFaqs);
+router.get("/website/pages/admin", adminOnly, website.getAdminPages);
+
+// Public single-page reader must not shadow /website/pages/admin.
 router.get("/website/pages/:slug", website.getPage);
 
-// PROTECTED ROUTES (Only Admins can update this data)
-router.put(
-  "/website/settings",
-  adminOnly,
-  upload.uploadSiteLogo,
-  logAction("update_website_settings", "website_content"),
-  website.updateSettings,
-);
-
-router.post(
-  "/website/faqs",
-  adminOnly,
-  logAction("create_faq", "faqs"),
-  website.createFaq,
-);
-router.put(
-  "/website/faqs/:id",
-  adminOnly,
-  logAction("update_faq", "faqs"),
-  website.updateFaq,
-);
-router.delete(
-  "/website/faqs/:id",
-  adminOnly,
-  logAction("delete_faq", "faqs"),
-  website.deleteFaq,
-);
-
-router.put(
-  "/website/pages/:slug",
-  adminOnly,
-  logAction("update_page", "website_content"),
-  website.updatePage,
-); // ══════════════════════════════════════════════════════════════════════════════
-// WEBSITE MAINTENANCE
-// ══════════════════════════════════════════════════════════════════════════════
-// PUBLIC ROUTES (Customers need to read this data)
-router.get("/website/settings", website.getSettings);
-router.get("/website/faqs", website.getFaqs);
-router.get("/website/pages", website.getPages);
-router.get("/website/pages/:slug", website.getPage);
-
-// PROTECTED ROUTES (Only Admins can update this data)
+// PROTECTED WRITE ROUTES
 router.put(
   "/website/settings",
   adminOnly,

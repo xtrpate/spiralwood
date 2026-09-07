@@ -6,6 +6,12 @@ const {
   resolveLifecycleByOrder,
 } = require("../../services/blueprintLifecycleService");
 const { calcDownPaymentAmount } = require("../../utils/paymentAmounts");
+const { persistUserProfilePhoto } = require("../../config/upload");
+const {
+  normalizePhilippinePhone,
+  getPhoneLookupVariants,
+  phoneDigitsSql,
+} = require("../../utils/phone");
 
 // ══ WARRANTY ══════════════════════════════════════════════════════════════════
 exports.getAll = async (req, res) => {
@@ -440,7 +446,7 @@ exports.getCustomers = async (req, res) => {
     }
 
     const [rows] = await pool.query(
-      `SELECT id, name, email, phone, address, is_active, is_verified,
+      `SELECT id, name, email, phone, address, is_active, is_verified, phone_verified,
               approval_status, profile_photo, created_at, last_login
        FROM users WHERE ${where.join(" AND ")}
        ORDER BY created_at DESC
@@ -453,7 +459,8 @@ exports.getCustomers = async (req, res) => {
     );
     res.json({ rows, total });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("[getCustomers]", err);
+    res.status(500).json({ message: "Unable to load customer accounts." });
   }
 };
 
@@ -514,9 +521,89 @@ exports.updateCustomerStatus = async (req, res) => {
 
     res.json({ message: `Customer ${actionMessage}.` });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("[updateCustomerStatus]", err);
+    res.status(500).json({ message: "Unable to update customer account." });
   }
 };
+
+const INTERNAL_ROLES = new Set(["admin", "staff"]);
+const INTERNAL_STAFF_TYPES = new Set(["cashier", "indoor", "delivery_rider"]);
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const parseRequestedActive = (value, defaultValue = true) => {
+  if (value === undefined || value === null || value === "") return defaultValue;
+  if (value === true || value === 1 || value === "1" || value === "true") return true;
+  if (value === false || value === 0 || value === "0" || value === "false") return false;
+  return defaultValue;
+};
+
+const normalizeInternalUserPayload = (body, { requirePassword = false } = {}) => {
+  const name = String(body?.name || "").trim();
+  const email = String(body?.email || "").trim().toLowerCase();
+  const address = String(body?.address || "").trim();
+  const role = String(body?.role || "").trim().toLowerCase();
+  const staffType = String(body?.staff_type || "").trim().toLowerCase();
+  const password = String(body?.password || body?.new_password || "");
+
+  if (!name || !email || !address || !body?.phone) {
+    return { error: "Full name, email, phone, and address are required." };
+  }
+  if (!EMAIL_RE.test(email)) return { error: "Enter a valid email address." };
+  if (!INTERNAL_ROLES.has(role)) {
+    return { error: "Account type must be Administrator or Staff." };
+  }
+  if (role === "staff" && !INTERNAL_STAFF_TYPES.has(staffType)) {
+    return { error: "Choose a valid staff role." };
+  }
+  if (requirePassword && password.length < 8) {
+    return { error: "Temporary password must be at least 8 characters." };
+  }
+
+  let phone;
+  try {
+    phone = normalizePhilippinePhone(body.phone);
+  } catch {
+    return { error: "Enter a valid Philippine mobile number." };
+  }
+
+  return {
+    value: {
+      name,
+      email,
+      address,
+      phone,
+      role,
+      staff_type: role === "staff" ? staffType : null,
+      is_active: parseRequestedActive(body?.is_active, true),
+      password,
+    },
+  };
+};
+
+const findInternalDuplicate = async ({ email, phone, excludeId = null }) => {
+  const variants = getPhoneLookupVariants(phone);
+  const params = [email, ...variants];
+  let excludeSql = "";
+  if (excludeId) {
+    excludeSql = " AND id <> ?";
+    params.push(excludeId);
+  }
+
+  const [rows] = await pool.query(
+    `SELECT id, email, phone
+       FROM users
+      WHERE (LOWER(email) = ? OR ${phoneDigitsSql("phone")} IN (?, ?, ?))
+        ${excludeSql}
+      LIMIT 1`,
+    params,
+  );
+  return rows[0] || null;
+};
+
+const duplicateMessage = (duplicate, email) =>
+  String(duplicate?.email || "").toLowerCase() === email
+    ? "Email already in use."
+    : "Phone number already in use.";
 
 // ══ USERS ════════════════════════════════════════════════════════════════════
 exports.getUsers = async (req, res) => {
@@ -530,8 +617,10 @@ exports.getUsers = async (req, res) => {
          role,
          staff_type,
          phone,
+         address,
          profile_photo,
          is_active,
+         must_change_password,
          last_login,
          created_at
        FROM users
@@ -541,142 +630,251 @@ exports.getUsers = async (req, res) => {
     );
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("[getUsers]", err);
+    res.status(500).json({ message: "Unable to load accounts." });
   }
 };
 
 exports.createUser = async (req, res) => {
   try {
-    const { name, email, password, role, staff_type, phone } = req.body;
+    const parsed = normalizeInternalUserPayload(req.body, { requirePassword: true });
+    if (parsed.error) return res.status(400).json({ message: parsed.error });
 
-    if (role === "staff" && !staff_type) {
-      return res.status(400).json({
-        message: "Staff type is required for staff accounts.",
+    const user = parsed.value;
+    const duplicate = await findInternalDuplicate(user);
+    if (duplicate) {
+      return res.status(409).json({
+        message: duplicateMessage(duplicate, user.email),
       });
     }
 
-    const hashed = await bcrypt.hash(password, 12);
-    const normalizedStaffType = role === "staff" ? staff_type : null;
-
-    const [r] = await pool.query(
+    const hashed = await bcrypt.hash(user.password, 12);
+    const uploadedProfile = await persistUserProfilePhoto(req.file);
+    const profilePhoto = uploadedProfile?.url || null;
+    const [result] = await pool.query(
       `INSERT INTO users
-        (name, email, password, role, staff_type, phone, is_verified, approval_status, is_active)
-       VALUES (?,?,?,?,?,?,1,'approved',1)`,
-      [name, email, hashed, role, normalizedStaffType, phone],
+        (name, email, password, must_change_password, role, staff_type, phone, address,
+         profile_photo, approval_status, is_active)
+       VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, 'approved', ?)`,
+      [
+        user.name,
+        user.email,
+        hashed,
+        user.role,
+        user.staff_type,
+        user.phone,
+        user.address,
+        profilePhoto,
+        user.is_active ? 1 : 0,
+      ],
     );
 
-    // Audit: never include the hashed/plaintext password in log data.
     req.auditRecord = {
-      id: r.insertId,
-      new: { name, email, role, staff_type: normalizedStaffType, phone },
+      id: result.insertId,
+      new: {
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        staff_type: user.staff_type,
+        phone: user.phone,
+        address_configured: true,
+        profile_photo_configured: Boolean(profilePhoto),
+        contact_otp_verification: "not_required_for_internal_account_creation",
+        is_active: user.is_active ? 1 : 0,
+        must_change_password: 1,
+      },
     };
-    res.status(201).json({ message: "User created.", id: r.insertId });
+
+    return res.status(201).json({
+      message: "Account created. The user must change the temporary password on first login.",
+      id: result.insertId,
+    });
   } catch (err) {
+    console.error("[createUser]", err);
     if (err.code === "ER_DUP_ENTRY") {
-      return res.status(400).json({ message: "Email already in use." });
+      return res.status(409).json({ message: "Email or phone number is already in use." });
     }
-    res.status(500).json({ message: err.message });
+    if (err.code === "INTERNAL_PROFILE_UPLOAD_FAILED") {
+      return res.status(502).json({ message: err.message });
+    }
+    return res.status(500).json({ message: "Unable to create account." });
   }
 };
 
 exports.updateUser = async (req, res) => {
   try {
-    const { name, email, role, staff_type, phone, is_active } = req.body;
+    const targetId = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(targetId) || targetId <= 0) {
+      return res.status(400).json({ message: "Invalid account ID." });
+    }
 
-    if (role === "staff" && !staff_type) {
-      return res.status(400).json({
-        message: "Staff type is required for staff accounts.",
+    const [[before]] = await pool.query(
+      `SELECT id, name, email, role, staff_type, phone, address, is_active
+         FROM users
+        WHERE id = ? AND role IN ('admin','staff')
+        LIMIT 1`,
+      [targetId],
+    );
+    if (!before) return res.status(404).json({ message: "Account not found." });
+
+    const parsed = normalizeInternalUserPayload(req.body);
+    if (parsed.error) return res.status(400).json({ message: parsed.error });
+    const user = parsed.value;
+
+    if (targetId === Number.parseInt(req.user.id, 10)) {
+      if (user.role !== "admin") {
+        return res.status(400).json({ message: "You cannot demote your own administrator account." });
+      }
+      if (!user.is_active) {
+        return res.status(400).json({ message: "You cannot deactivate your own account." });
+      }
+    }
+
+    const duplicate = await findInternalDuplicate({
+      email: user.email,
+      phone: user.phone,
+      excludeId: targetId,
+    });
+    if (duplicate) {
+      return res.status(409).json({
+        message: duplicateMessage(duplicate, user.email),
       });
     }
 
-    const normalizedStaffType = role === "staff" ? staff_type : null;
-    const targetId = parseInt(req.params.id);
+    const uploadedProfile = await persistUserProfilePhoto(req.file);
+    const profilePhoto = uploadedProfile?.url || null;
 
-    const [[before]] = await pool.query(
-      "SELECT name, email, role, staff_type, phone, is_active FROM users WHERE id = ?",
-      [targetId],
-    );
+    const updateFields = [
+      "name = ?",
+      "email = ?",
+      "role = ?",
+      "staff_type = ?",
+      "phone = ?",
+      "address = ?",
+      "is_active = ?",
+    ];
+    const updateValues = [
+      user.name,
+      user.email,
+      user.role,
+      user.staff_type,
+      user.phone,
+      user.address,
+      user.is_active ? 1 : 0,
+    ];
 
+    if (profilePhoto) {
+      updateFields.push("profile_photo = ?");
+      updateValues.push(profilePhoto);
+    }
+
+    updateValues.push(targetId);
     await pool.query(
       `UPDATE users
-       SET name = ?, email = ?, role = ?, staff_type = ?, phone = ?, is_active = ?
-       WHERE id = ? AND role != 'customer'`,
-      [
-        name,
-        email,
-        role,
-        normalizedStaffType,
-        phone,
-        is_active ? 1 : 0,
-        targetId,
-      ],
+          SET ${updateFields.join(", ")}
+        WHERE id = ? AND role IN ('admin','staff')`,
+      updateValues,
     );
 
     req.auditRecord = {
       id: targetId,
-      old: before || null,
+      old: before,
       new: {
-        name,
-        email,
-        role,
-        staff_type: normalizedStaffType,
-        phone,
-        is_active: is_active ? 1 : 0,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        staff_type: user.staff_type,
+        phone: user.phone,
+        address: user.address,
+        profile_photo_changed: Boolean(profilePhoto),
+        contact_otp_verification: "unchanged",
+        is_active: user.is_active ? 1 : 0,
       },
     };
-    res.json({ message: "User updated." });
+    return res.json({ message: "Account updated." });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("[updateUser]", err);
+    if (err.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ message: "Email or phone number is already in use." });
+    }
+    if (err.code === "INTERNAL_PROFILE_UPLOAD_FAILED") {
+      return res.status(502).json({ message: err.message });
+    }
+    return res.status(500).json({ message: "Unable to update account." });
   }
 };
 
 exports.resetUserPassword = async (req, res) => {
   try {
-    const { new_password } = req.body;
-    const hashed = await bcrypt.hash(new_password, 12);
-    const targetId = parseInt(req.params.id);
-    // ── FIXED: Parsed ID ──
-    await pool.query("UPDATE users SET password = ? WHERE id = ?", [
-      hashed,
-      targetId,
-    ]);
-    // Audit: record that a reset happened, never the password itself.
-    req.auditRecord = { id: targetId, new: { password_reset: true } };
-    res.json({ message: "Password reset." });
+    const targetId = Number.parseInt(req.params.id, 10);
+    const newPassword = String(req.body?.new_password || "");
+    if (!Number.isInteger(targetId) || targetId <= 0) {
+      return res.status(400).json({ message: "Invalid account ID." });
+    }
+    if (targetId === Number.parseInt(req.user.id, 10)) {
+      return res.status(400).json({
+        message: "Use your own account password settings to change your password.",
+      });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ message: "Password must be at least 8 characters." });
+    }
+
+    const [[target]] = await pool.query(
+      "SELECT id FROM users WHERE id = ? AND role IN ('admin','staff') LIMIT 1",
+      [targetId],
+    );
+    if (!target) return res.status(404).json({ message: "Account not found." });
+
+    const hashed = await bcrypt.hash(newPassword, 12);
+    await pool.query(
+      "UPDATE users SET password = ?, must_change_password = 1 WHERE id = ? AND role IN ('admin','staff')",
+      [hashed, targetId],
+    );
+
+    req.auditRecord = {
+      id: targetId,
+      new: { password_reset: true, must_change_password: 1 },
+    };
+    return res.json({
+      message: "Temporary password reset. The user must change it on next login.",
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("[resetUserPassword]", err);
+    return res.status(500).json({ message: "Unable to reset password." });
   }
 };
 
 exports.deleteUser = async (req, res) => {
   try {
-    const targetId = parseInt(req.params.id);
-    // ── FIXED: Parsed ID and strict equality ──
-    if (targetId === parseInt(req.user.id))
-      return res
-        .status(400)
-        .json({ message: "Cannot delete your own account." });
+    const targetId = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(targetId) || targetId <= 0) {
+      return res.status(400).json({ message: "Invalid account ID." });
+    }
+    if (targetId === Number.parseInt(req.user.id, 10)) {
+      return res.status(400).json({ message: "You cannot deactivate your own account." });
+    }
 
     const [[before]] = await pool.query(
-      "SELECT name, email, role, is_active FROM users WHERE id = ?",
+      "SELECT name, email, role, is_active FROM users WHERE id = ? AND role IN ('admin','staff') LIMIT 1",
       [targetId],
     );
+    if (!before) return res.status(404).json({ message: "Account not found." });
 
-    // Soft delete: deactivate instead of hard-deleting, to preserve
-    // task/blueprint/receipt/etc. history tied to this user via FK.
     await pool.query(
-      "UPDATE users SET is_active = 0 WHERE id = ? AND role != 'customer'",
+      "UPDATE users SET is_active = 0 WHERE id = ? AND role IN ('admin','staff')",
       [targetId],
     );
 
     req.auditRecord = {
       id: targetId,
-      old: before || null,
-      new: { is_active: 0 },
+      old: before,
+      new: { is_active: 0, deactivated: true },
     };
-    res.json({ message: "User deactivated." });
+    return res.json({ message: "Account deactivated." });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("[deactivateUser]", err);
+    return res.status(500).json({ message: "Unable to deactivate account." });
   }
 };
 

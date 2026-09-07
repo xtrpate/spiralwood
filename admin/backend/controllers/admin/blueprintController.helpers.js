@@ -7,6 +7,7 @@ const {
   resolveLifecycleByOrder,
 } = require("../../services/blueprintLifecycleService");
 const { createNotificationSafe } = require("../../utils/notificationHelper");
+const { writeAuditLogSafe } = require("../../middleware/auditLog");
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function safeJsonParse(value, fallback = {}) {
@@ -1116,7 +1117,7 @@ async function purgeExpiredArchivedBlueprints() {
     await conn.beginTransaction();
 
     const [expiredRows] = await conn.query(
-      `SELECT b.id
+      `SELECT b.id, b.title, b.archived_at
        FROM blueprints b
        LEFT JOIN orders o ON o.blueprint_id = b.id
        WHERE b.is_deleted = 1
@@ -1136,6 +1137,28 @@ async function purgeExpiredArchivedBlueprints() {
     await deleteBlueprintCascade(conn, blueprintIds);
 
     await conn.commit();
+
+    // The purge above is an automatic, irreversible system action. Record it
+    // only after the deletion transaction succeeds so failed/rolled-back
+    // purges never appear as successful Audit Log entries.
+    for (const blueprint of expiredRows) {
+      await writeAuditLogSafe({
+        userId: null,
+        action: "system_purge_expired_blueprint",
+        tableName: "blueprints",
+        recordId: blueprint.id,
+        oldValues: {
+          title: blueprint.title || null,
+          archived_at: blueprint.archived_at || null,
+        },
+        newValues: {
+          result: "permanently_deleted",
+          reason: "archive_retention_expired",
+          retention_days: 30,
+        },
+        ipAddress: null,
+      });
+    }
   } catch (err) {
     await conn.rollback();
     throw err;

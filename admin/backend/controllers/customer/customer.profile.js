@@ -4,19 +4,14 @@ const bcrypt = require("bcryptjs");
 const path = require("path");
 const fs = require("fs");
 const { sendSms } = require("../../services/semaphore.service");
+const {
+  normalizePhilippinePhone,
+  getPhoneLookupVariants,
+  phoneDigitsSql,
+} = require("../../utils/phone");
 
 /* ── OTP generator ── */
 const genOtp = () => Math.floor(100000 + Math.random() * 900000).toString();
-
-/* ── Phone normalization helper ── */
-const normalizePhilippinePhone = (phone) => {
-  let value = String(phone || "").replace(/\D/g, "");
-  if (value.startsWith("09") && value.length === 11)
-    return "63" + value.slice(1);
-  if (value.startsWith("639") && value.length === 12) return value;
-  if (value.startsWith("9") && value.length === 10) return "63" + value;
-  return value;
-};
 
 /* ── Directory for deleting old avatars ── */
 const avatarDir = path.join(__dirname, "../../uploads/avatars");
@@ -337,9 +332,15 @@ exports.verifyEmailChange = async (req, res) => {
 ──────────────────────────────────────── */
 exports.updatePhone = async (req, res) => {
   const { phone } = req.body;
-
-  if (!phone || !phone.trim()) {
+  if (!phone || !String(phone).trim()) {
     return res.status(400).json({ message: "Phone number is required." });
+  }
+
+  let normalizedPhone;
+  try {
+    normalizedPhone = normalizePhilippinePhone(phone);
+  } catch {
+    return res.status(400).json({ message: "Enter a valid Philippine mobile number." });
   }
 
   try {
@@ -347,32 +348,58 @@ exports.updatePhone = async (req, res) => {
       "SELECT phone FROM users WHERE id = ?",
       [req.user.id],
     );
-
-    const trimmedPhone = phone.trim();
     const existingPhone = String(existingUser?.phone || "").trim();
-    const phoneChanged = trimmedPhone !== existingPhone;
+    let normalizedExisting = existingPhone;
+    try {
+      normalizedExisting = existingPhone
+        ? normalizePhilippinePhone(existingPhone)
+        : "";
+    } catch {
+      // Legacy malformed value: allow replacement with a valid canonical number.
+    }
+
+    const variants = getPhoneLookupVariants(normalizedPhone);
+    const [duplicate] = await db.query(
+      `SELECT id FROM users
+        WHERE ${phoneDigitsSql("phone")} IN (?, ?, ?)
+          AND id <> ?
+        LIMIT 1`,
+      [...variants, req.user.id],
+    );
+    if (duplicate.length) {
+      return res.status(409).json({
+        message: "This phone number is already linked to another account.",
+      });
+    }
 
     const [updateResult] = await db.query(
       "UPDATE users SET phone=? WHERE id=?",
-      [trimmedPhone, req.user.id],
+      [normalizedPhone, req.user.id],
     );
 
-    if (existingUser && phoneChanged && updateResult?.affectedRows === 1) {
+    if (
+      existingUser &&
+      normalizedPhone !== normalizedExisting &&
+      updateResult?.affectedRows === 1
+    ) {
       req.auditRecord = {
         id: req.user.id,
         old: { phone_configured: Boolean(existingPhone) },
         new: {
           phone_changed: true,
-          phone_configured: Boolean(trimmedPhone),
+          phone_configured: true,
           changed_fields: ["phone"],
         },
       };
     }
 
-    res.json({ message: "Phone number updated successfully." });
+    return res.json({
+      message: "Phone number updated successfully.",
+      phone: normalizedPhone,
+    });
   } catch (err) {
     console.error("[profile/phone]", err);
-    res.status(500).json({ message: "Failed to update phone number." });
+    return res.status(500).json({ message: "Failed to update phone number." });
   }
 };
 
@@ -503,26 +530,44 @@ exports.requestPhoneChange = async (req, res) => {
     return res.status(400).json({ message: "New phone number is required." });
   }
 
-  const trimmedPhone = new_phone.trim();
-  if (trimmedPhone.length !== 11 || !trimmedPhone.startsWith("09")) {
+  let normalizedPhone;
+  try {
+    normalizedPhone = normalizePhilippinePhone(new_phone);
+  } catch {
     return res.status(400).json({
-      message:
-        "Phone number must be an 11-digit mobile number starting with 09.",
-    });
-  }
-
-  if (trimmedPhone === req.user.phone) {
-    return res.status(400).json({
-      message:
-        "New phone number must be different from your current phone number.",
+      message: "Enter a valid Philippine mobile number.",
     });
   }
 
   try {
-    // Check if phone number is already in use
+    const [[currentUser]] = await db.query(
+      "SELECT phone FROM users WHERE id = ? LIMIT 1",
+      [req.user.id],
+    );
+    if (!currentUser) {
+      return res.status(404).json({ message: "Account not found." });
+    }
+
+    let currentPhone = String(currentUser.phone || "").trim();
+    try {
+      currentPhone = currentPhone ? normalizePhilippinePhone(currentPhone) : "";
+    } catch {
+      // Legacy malformed value can be replaced by a valid new number.
+    }
+
+    if (normalizedPhone === currentPhone) {
+      return res.status(400).json({
+        message: "New phone number must be different from your current phone number.",
+      });
+    }
+
+    const variants = getPhoneLookupVariants(normalizedPhone);
     const [exists] = await db.query(
-      "SELECT id FROM users WHERE phone = ? AND id != ?",
-      [trimmedPhone, req.user.id],
+      `SELECT id FROM users
+        WHERE ${phoneDigitsSql("phone")} IN (?, ?, ?)
+          AND id <> ?
+        LIMIT 1`,
+      [...variants, req.user.id],
     );
     if (exists.length > 0) {
       return res.status(409).json({
@@ -532,23 +577,22 @@ exports.requestPhoneChange = async (req, res) => {
 
     const otp = genOtp();
     const expires = new Date(Date.now() + 15 * 60 * 1000);
-
     await db.query(
       `UPDATE users
-       SET otp_code=?, otp_expires=?, otp_purpose='change_phone'
+       SET otp_code=?, otp_expires=?, otp_purpose='change_phone', pending_phone=?
        WHERE id=?`,
-      [otp, expires, req.user.id],
+      [otp, expires, normalizedPhone, req.user.id],
     );
 
     await sendSms({
-      phone: normalizePhilippinePhone(trimmedPhone),
+      phone: normalizedPhone,
       message: `Your Spiral Wood Services verification code to update your phone number is ${otp}. Valid for 15 minutes.`,
     });
 
-    res.json({ message: "OTP sent to new phone number." });
+    return res.json({ message: "OTP sent to new phone number." });
   } catch (err) {
     console.error("[profile/request-phone-change]", err);
-    res.status(500).json({ message: "Failed to send SMS verification code." });
+    return res.status(500).json({ message: "Failed to send SMS verification code." });
   }
 };
 
@@ -558,57 +602,91 @@ exports.requestPhoneChange = async (req, res) => {
 exports.verifyPhoneChange = async (req, res) => {
   const { otp, new_phone } = req.body;
   if (!otp || !new_phone) {
-    return res
-      .status(400)
-      .json({ message: "OTP and new phone number are required." });
+    return res.status(400).json({ message: "OTP and new phone number are required." });
+  }
+
+  let normalizedPhone;
+  try {
+    normalizedPhone = normalizePhilippinePhone(new_phone);
+  } catch {
+    return res.status(400).json({ message: "Enter a valid Philippine mobile number." });
   }
 
   try {
     const [rows] = await db.query(
-      "SELECT phone, otp_code, otp_expires, otp_purpose FROM users WHERE id=?",
+      "SELECT phone, pending_phone, otp_code, otp_expires, otp_purpose FROM users WHERE id=?",
       [req.user.id],
     );
     const u = rows[0];
-
-    if (!u || u.otp_code !== otp || u.otp_purpose !== "change_phone") {
+    if (!u || String(u.otp_code) !== String(otp).trim() || u.otp_purpose !== "change_phone") {
       return res.status(400).json({ message: "Invalid OTP code." });
     }
-    if (new Date(u.otp_expires) < new Date()) {
-      return res
-        .status(400)
-        .json({ message: "OTP has expired. Please request a new one." });
+    if (!u.otp_expires || new Date(u.otp_expires) < new Date()) {
+      return res.status(400).json({ message: "OTP has expired. Please request a new one." });
     }
 
-    const trimmedPhone = new_phone.trim();
-    const existingPhone = String(u.phone || "").trim();
-    const phoneChanged = trimmedPhone !== existingPhone;
+    let pendingPhone;
+    try {
+      pendingPhone = normalizePhilippinePhone(u.pending_phone || "");
+    } catch {
+      return res.status(400).json({
+        message: "No verified phone-change request is pending. Please request a new code.",
+      });
+    }
+    if (pendingPhone !== normalizedPhone) {
+      return res.status(400).json({
+        message: "The phone number does not match the number that received this code.",
+      });
+    }
+
+    const variants = getPhoneLookupVariants(pendingPhone);
+    const [duplicate] = await db.query(
+      `SELECT id FROM users
+        WHERE ${phoneDigitsSql("phone")} IN (?, ?, ?)
+          AND id <> ?
+        LIMIT 1`,
+      [...variants, req.user.id],
+    );
+    if (duplicate.length) {
+      return res.status(409).json({
+        message: "This phone number is already linked to another account.",
+      });
+    }
+
+    let existingPhone = String(u.phone || "").trim();
+    try {
+      existingPhone = existingPhone ? normalizePhilippinePhone(existingPhone) : "";
+    } catch {
+      // Preserve only for audit comparison.
+    }
 
     const [updateResult] = await db.query(
       `UPDATE users
-       SET phone=?, otp_code=NULL, otp_expires=NULL, otp_purpose=NULL, phone_verified=TRUE
+       SET phone=?, pending_phone=NULL, otp_code=NULL, otp_expires=NULL, otp_purpose=NULL, phone_verified=TRUE
        WHERE id=?`,
-      [trimmedPhone, req.user.id],
+      [pendingPhone, req.user.id],
     );
 
-    if (phoneChanged && updateResult?.affectedRows === 1) {
+    if (pendingPhone !== existingPhone && updateResult?.affectedRows === 1) {
       req.auditRecord = {
         id: req.user.id,
         old: { phone_configured: Boolean(existingPhone) },
         new: {
           phone_changed: true,
           phone_configured: true,
+          phone_verified: true,
           changed_fields: ["phone"],
         },
       };
     }
 
-    res.json({
+    return res.json({
       message: "Phone number updated successfully.",
-      phone: trimmedPhone,
+      phone: pendingPhone,
     });
   } catch (err) {
     console.error("[profile/verify-phone-change]", err);
-    res.status(500).json({ message: "Verification failed." });
+    return res.status(500).json({ message: "Verification failed." });
   }
 };
 

@@ -60,6 +60,132 @@ const DELIVERY_TRANSITIONS = {
 };
 const normalizeText = (value) => String(value || "").trim();
 
+const DELIVERY_ACKNOWLEDGEMENT_TEXT =
+  "I acknowledge receipt of this order at the delivery address.";
+const DELIVERY_RECIPIENT_TYPES = new Set([
+  "customer",
+  "authorized_representative",
+]);
+const DELIVERY_SIGNATURE_MAX_BYTES = 512 * 1024;
+const DELIVERY_SIGNATURE_MAX_DATA_URL_LENGTH = 750 * 1024;
+
+const validateDeliverySignatureData = (value) => {
+  const raw = normalizeText(value);
+
+  if (!raw) {
+    return { error: "Recipient signature is required." };
+  }
+
+  if (raw.length > DELIVERY_SIGNATURE_MAX_DATA_URL_LENGTH) {
+    return {
+      error:
+        "Recipient signature is too large. Please clear it and sign again.",
+    };
+  }
+
+  const match = /^data:image\/png;base64,([A-Za-z0-9+/]+={0,2})$/.exec(raw);
+  if (!match) {
+    return { error: "Recipient signature must be a valid PNG signature." };
+  }
+
+  const base64Body = match[1];
+  const buffer = Buffer.from(base64Body, "base64");
+
+  if (
+    buffer.length < 24 ||
+    buffer.length > DELIVERY_SIGNATURE_MAX_BYTES
+  ) {
+    return { error: "Recipient signature image size is invalid." };
+  }
+
+  const pngHeader = Buffer.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+  ]);
+
+  if (!buffer.subarray(0, 8).equals(pngHeader)) {
+    return {
+      error: "Recipient signature does not contain valid PNG data.",
+    };
+  }
+
+  const width = buffer.readUInt32BE(16);
+  const height = buffer.readUInt32BE(20);
+
+  if (
+    width < 100 ||
+    height < 40 ||
+    width > 1600 ||
+    height > 800
+  ) {
+    return {
+      error: "Recipient signature canvas dimensions are invalid.",
+    };
+  }
+
+  const canonicalBase64 = buffer.toString("base64");
+  if (
+    canonicalBase64.replace(/=+$/, "") !==
+    base64Body.replace(/=+$/, "")
+  ) {
+    return { error: "Recipient signature encoding is invalid." };
+  }
+
+  return {
+    value: `data:image/png;base64,${canonicalBase64}`,
+    mime: "image/png",
+  };
+};
+
+const parseDeliveryAcknowledgementInput = (body = {}) => {
+  const receivedByName = normalizeText(body.received_by_name);
+  const recipientType = normalizeText(body.recipient_type).toLowerCase();
+  const note = normalizeText(body.delivery_acknowledgement_note) || null;
+  const accepted = ["1", "true", "yes", "on"].includes(
+    normalizeText(body.acknowledgement_accepted).toLowerCase(),
+  );
+
+  if (receivedByName.length < 2 || receivedByName.length > 150) {
+    return {
+      error: "Received By must be between 2 and 150 characters.",
+    };
+  }
+
+  if (!DELIVERY_RECIPIENT_TYPES.has(recipientType)) {
+    return {
+      error:
+        "Recipient must be the customer or an authorized representative.",
+    };
+  }
+
+  if (note && note.length > 500) {
+    return {
+      error:
+        "Delivery acknowledgement note must be 500 characters or fewer.",
+    };
+  }
+
+  if (!accepted) {
+    return {
+      error:
+        "The recipient must acknowledge receipt before completing the delivery.",
+    };
+  }
+
+  const signature = validateDeliverySignatureData(body.signature_data);
+  if (signature.error) return signature;
+
+  return {
+    value: {
+      receivedByName,
+      recipientType,
+      note,
+      signatureData: signature.value,
+      signatureMime: signature.mime,
+      acknowledgementText: DELIVERY_ACKNOWLEDGEMENT_TEXT,
+    },
+  };
+};
+
 const REQUIRED_BLUEPRINT_DELIVERY_TASK_ROLES = [
   "cutting_machine",
   "edge_banding",
@@ -388,6 +514,29 @@ exports.getDeliveries = async (req, res) => {
         d.signed_receipt,
         d.updated_at,
 
+        da.id AS delivery_acknowledgement_id,
+        da.received_by_name AS delivery_received_by_name,
+        da.recipient_type AS delivery_recipient_type,
+        da.acknowledged_at AS delivery_acknowledged_at,
+
+        EXISTS(
+          SELECT 1
+          FROM delivery_acknowledgements dav
+          WHERE dav.delivery_id = d.id
+            AND dav.voided_at IS NOT NULL
+        ) AS delivery_has_voided_acknowledgement,
+
+        EXISTS(
+          SELECT 1
+          FROM payment_transactions ptr
+          WHERE ptr.order_id = o.id
+            AND LOWER(ptr.status) = 'pending'
+            AND LOWER(ptr.payment_method) = 'cash'
+            AND ptr.proof_url IS NOT NULL
+            AND ptr.proof_url = d.signed_receipt
+            AND TRIM(COALESCE(ptr.notes, '')) = 'Collected on delivery.'
+        ) AS delivery_has_reusable_pending_blueprint_collection,
+
         o.order_number,
         o.total,
         o.payment_method,
@@ -476,6 +625,15 @@ exports.getDeliveries = async (req, res) => {
       INNER JOIN orders o ON o.id = d.order_id
       LEFT JOIN users customer ON customer.id = o.customer_id
       LEFT JOIN users driver ON driver.id = d.driver_id
+      LEFT JOIN delivery_acknowledgements da
+        ON da.id = (
+          SELECT da2.id
+          FROM delivery_acknowledgements da2
+          WHERE da2.delivery_id = d.id
+            AND da2.voided_at IS NULL
+          ORDER BY da2.id DESC
+          LIMIT 1
+        )
     `;
 
     const params = [];
@@ -496,6 +654,77 @@ exports.getDeliveries = async (req, res) => {
   } catch (err) {
     console.error("GET /api/pos/deliveries error:", err);
     res.status(500).json({ message: "Failed to load deliveries" });
+  }
+};
+
+exports.getDeliveryAcknowledgement = async (req, res) => {
+  const deliveryId = toNullableInt(req.params.id);
+
+  if (!deliveryId) {
+    return res.status(400).json({ message: "Invalid delivery id." });
+  }
+
+  try {
+    const params = [deliveryId];
+
+    let sql = `
+      SELECT
+        da.id,
+        da.delivery_id,
+        da.received_by_name,
+        da.recipient_type,
+        da.signature_data,
+        da.signature_mime,
+        da.acknowledgement_text,
+        da.note,
+        da.acknowledged_at,
+        da.captured_by,
+        captured.name AS captured_by_name
+      FROM deliveries d
+      INNER JOIN delivery_acknowledgements da
+        ON da.delivery_id = d.id
+       AND da.voided_at IS NULL
+      LEFT JOIN users captured ON captured.id = da.captured_by
+      WHERE d.id = ?
+    `;
+
+    if (req.user.role === "staff") {
+      sql += ` AND d.driver_id = ? `;
+      params.push(req.user.id);
+    }
+
+    sql += ` ORDER BY da.id DESC LIMIT 1 `;
+
+    const [[acknowledgement]] = await db.query(sql, params);
+
+    if (!acknowledgement) {
+      return res.status(404).json({
+        message:
+          "No active e-signature acknowledgement was found for this delivery.",
+      });
+    }
+
+    res.json({
+      id: acknowledgement.id,
+      delivery_id: acknowledgement.delivery_id,
+      received_by_name: acknowledgement.received_by_name,
+      recipient_type: acknowledgement.recipient_type,
+      signature_data: acknowledgement.signature_data,
+      signature_mime: acknowledgement.signature_mime,
+      acknowledgement_text: acknowledgement.acknowledgement_text,
+      note: acknowledgement.note,
+      acknowledged_at: acknowledgement.acknowledged_at,
+      captured_by: acknowledgement.captured_by,
+      captured_by_name: acknowledgement.captured_by_name || null,
+    });
+  } catch (err) {
+    console.error(
+      "GET /api/pos/deliveries/:id/acknowledgement error:",
+      err,
+    );
+    res.status(500).json({
+      message: "Failed to load delivery e-signature acknowledgement.",
+    });
   }
 };
 
@@ -1356,6 +1585,23 @@ exports.updateDeliveryStatus = async (req, res) => {
     // ready-to-ship completions never enter this block and are
     // completely unaffected by it.
     let blueprintCashCollection = null;
+    let deliveryAcknowledgementInput = null;
+    let hasPriorVoidedDeliveryAcknowledgement = false;
+
+    if (isCompletingDeliveryNow) {
+      const [[ackHistoryRow]] = await conn.query(
+        `SELECT EXISTS(
+           SELECT 1
+           FROM delivery_acknowledgements
+           WHERE delivery_id = ?
+             AND voided_at IS NOT NULL
+         ) AS has_voided_acknowledgement`,
+        [deliveryId],
+      );
+
+      hasPriorVoidedDeliveryAcknowledgement =
+        Number(ackHistoryRow?.has_voided_acknowledgement || 0) === 1;
+    }
 
     if (isBlueprintOrder && isCompletingDeliveryNow) {
       // 1) Assigned-rider authorization — checked FIRST, before the
@@ -1414,7 +1660,7 @@ exports.updateDeliveryStatus = async (req, res) => {
       // (locked above) -> payment_transactions (locked here). The
       // backend, never the client, computes the exact remaining balance.
       const [blueprintPaymentRows] = await conn.query(
-        `SELECT id, amount, status
+        `SELECT id, amount, status, payment_method, proof_url, notes
          FROM payment_transactions
          WHERE order_id = ?
          ORDER BY id
@@ -1424,6 +1670,8 @@ exports.updateDeliveryStatus = async (req, res) => {
 
       let verifiedCentsBlueprint = 0;
       let hasPendingPaymentBlueprint = false;
+      let pendingBlueprintPaymentCount = 0;
+      let reusablePendingBlueprintCollectionId = null;
       let hasInvalidAmountBlueprint = false;
 
       for (const row of blueprintPaymentRows) {
@@ -1433,8 +1681,24 @@ exports.updateDeliveryStatus = async (req, res) => {
           continue;
         }
         const st = normalizeText(row.status).toLowerCase();
-        if (st === "verified") verifiedCentsBlueprint += cents;
-        else if (st === "pending") hasPendingPaymentBlueprint = true;
+        if (st === "verified") {
+          verifiedCentsBlueprint += cents;
+        } else if (st === "pending") {
+          hasPendingPaymentBlueprint = true;
+          pendingBlueprintPaymentCount += 1;
+
+          const matchesPriorDeliveryCollection =
+            hasPriorVoidedDeliveryAcknowledgement &&
+            normalizeText(row.payment_method).toLowerCase() === "cash" &&
+            Boolean(normalizeText(existing.signed_receipt)) &&
+            normalizeText(row.proof_url) ===
+              normalizeText(existing.signed_receipt) &&
+            normalizeText(row.notes) === "Collected on delivery.";
+
+          if (matchesPriorDeliveryCollection) {
+            reusablePendingBlueprintCollectionId = row.id;
+          }
+        }
       }
 
       if (hasInvalidAmountBlueprint) {
@@ -1494,7 +1758,15 @@ exports.updateDeliveryStatus = async (req, res) => {
           });
         }
 
-        if (hasPendingPaymentBlueprint) {
+        const canReusePendingBlueprintDeliveryCollection =
+          hasPendingPaymentBlueprint &&
+          pendingBlueprintPaymentCount === 1 &&
+          Number(reusablePendingBlueprintCollectionId) > 0;
+
+        if (
+          hasPendingPaymentBlueprint &&
+          !canReusePendingBlueprintDeliveryCollection
+        ) {
           await conn.rollback();
           cleanupFreshUpload(req.file);
           return res.status(409).json({
@@ -1503,10 +1775,15 @@ exports.updateDeliveryStatus = async (req, res) => {
           });
         }
 
-        blueprintCashCollection = {
-          amountCents: remainingCentsBlueprint,
-          verifiedCentsBefore: verifiedCentsBlueprint,
-        };
+        // Undo Delivery correction: the first handoff already created the
+        // one pending rider cash transaction. Keep that transaction for
+        // Admin review and do NOT create another payment row.
+        if (!hasPendingPaymentBlueprint) {
+          blueprintCashCollection = {
+            amountCents: remainingCentsBlueprint,
+            verifiedCentsBefore: verifiedCentsBlueprint,
+          };
+        }
       } else if (
         remainingMethod === "paymongo" &&
         normalizeText(order.payment_status || "").toLowerCase() !== "paid"
@@ -1518,6 +1795,22 @@ exports.updateDeliveryStatus = async (req, res) => {
           message: "Awaiting Online Payment Confirmation.",
         });
       }
+    }
+
+    if (isCompletingDeliveryNow) {
+      const acknowledgementResult = parseDeliveryAcknowledgementInput(
+        req.body,
+      );
+
+      if (acknowledgementResult.error) {
+        await conn.rollback();
+        cleanupFreshUpload(req.file);
+        return res.status(400).json({
+          message: acknowledgementResult.error,
+        });
+      }
+
+      deliveryAcknowledgementInput = acknowledgementResult.value;
     }
 
     if (
@@ -1685,6 +1978,49 @@ exports.updateDeliveryStatus = async (req, res) => {
         : failureLine;
     }
 
+    const isUndoingDeliveryForAcknowledgement =
+      requestedStatus === "in_transit" && currentStatus === "delivered";
+
+    let voidedDeliveryAcknowledgementCount = 0;
+
+    if (isCompletingDeliveryNow) {
+      const [activeAcknowledgements] = await conn.query(
+        `SELECT id
+         FROM delivery_acknowledgements
+         WHERE delivery_id = ?
+           AND voided_at IS NULL
+         ORDER BY id
+         FOR UPDATE`,
+        [deliveryId],
+      );
+
+      if (activeAcknowledgements.length > 0) {
+        await conn.rollback();
+        cleanupFreshUpload(req.file);
+        return res.status(409).json({
+          message:
+            "This delivery already has an active recipient acknowledgement. Refresh and try again.",
+        });
+      }
+    }
+
+    if (isUndoingDeliveryForAcknowledgement) {
+      const [voidResult] = await conn.query(
+        `UPDATE delivery_acknowledgements
+         SET
+           voided_at = NOW(),
+           voided_by = ?,
+           void_reason = 'Delivery reverted to In Transit for correction.'
+         WHERE delivery_id = ?
+           AND voided_at IS NULL`,
+        [req.user.id, deliveryId],
+      );
+
+      voidedDeliveryAcknowledgementCount = Number(
+        voidResult.affectedRows || 0,
+      );
+    }
+
     await conn.query(
       `
       UPDATE deliveries
@@ -1704,6 +2040,38 @@ exports.updateDeliveryStatus = async (req, res) => {
         deliveryId,
       ],
     );
+
+    let deliveryAcknowledgementId = null;
+
+    if (isCompletingDeliveryNow && deliveryAcknowledgementInput) {
+      const [acknowledgementInsert] = await conn.query(
+        `INSERT INTO delivery_acknowledgements
+          (
+            delivery_id,
+            received_by_name,
+            recipient_type,
+            signature_data,
+            signature_mime,
+            acknowledgement_text,
+            note,
+            captured_by,
+            acknowledged_at
+          )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+        [
+          deliveryId,
+          deliveryAcknowledgementInput.receivedByName,
+          deliveryAcknowledgementInput.recipientType,
+          deliveryAcknowledgementInput.signatureData,
+          deliveryAcknowledgementInput.signatureMime,
+          deliveryAcknowledgementInput.acknowledgementText,
+          deliveryAcknowledgementInput.note,
+          req.user.id,
+        ],
+      );
+
+      deliveryAcknowledgementId = acknowledgementInsert.insertId;
+    }
 
     if (shouldRecordDeliveryCollection) {
       const paymentNotes = [
@@ -1914,6 +2282,29 @@ exports.updateDeliveryStatus = async (req, res) => {
         d.signed_receipt,
         d.updated_at,
 
+        da.id AS delivery_acknowledgement_id,
+        da.received_by_name AS delivery_received_by_name,
+        da.recipient_type AS delivery_recipient_type,
+        da.acknowledged_at AS delivery_acknowledged_at,
+
+        EXISTS(
+          SELECT 1
+          FROM delivery_acknowledgements dav
+          WHERE dav.delivery_id = d.id
+            AND dav.voided_at IS NOT NULL
+        ) AS delivery_has_voided_acknowledgement,
+
+        EXISTS(
+          SELECT 1
+          FROM payment_transactions ptr
+          WHERE ptr.order_id = o.id
+            AND LOWER(ptr.status) = 'pending'
+            AND LOWER(ptr.payment_method) = 'cash'
+            AND ptr.proof_url IS NOT NULL
+            AND ptr.proof_url = d.signed_receipt
+            AND TRIM(COALESCE(ptr.notes, '')) = 'Collected on delivery.'
+        ) AS delivery_has_reusable_pending_blueprint_collection,
+
         o.order_number,
         o.total,
         o.payment_method,
@@ -1970,6 +2361,15 @@ exports.updateDeliveryStatus = async (req, res) => {
       INNER JOIN orders o ON o.id = d.order_id
       LEFT JOIN users customer ON customer.id = o.customer_id
       LEFT JOIN users driver ON driver.id = d.driver_id
+      LEFT JOIN delivery_acknowledgements da
+        ON da.id = (
+          SELECT da2.id
+          FROM delivery_acknowledgements da2
+          WHERE da2.delivery_id = d.id
+            AND da2.voided_at IS NULL
+          ORDER BY da2.id DESC
+          LIMIT 1
+        )
       WHERE d.id = ?
       LIMIT 1
       `,
@@ -2055,6 +2455,10 @@ exports.updateDeliveryStatus = async (req, res) => {
           : null,
         collection_skipped_due_to_pending_payment:
           collectionSkippedForPendingPayment,
+        delivery_acknowledgement_created:
+          Boolean(deliveryAcknowledgementId),
+        delivery_acknowledgement_voided_count:
+          voidedDeliveryAcknowledgementCount,
       },
     };
 
@@ -2071,9 +2475,10 @@ exports.updateDeliveryStatus = async (req, res) => {
         "Delivery completed. An existing payment proof is already pending admin verification, so no additional collection was recorded.";
     } else if (requestedStatus === "delivered" && uploadedReceiptPath) {
       message =
-        "Delivery marked as delivered and signed receipt uploaded successfully";
+        "Delivery marked as delivered with proof and recipient acknowledgement.";
     } else if (requestedStatus === "delivered") {
-      message = "Delivery marked as delivered successfully";
+      message =
+        "Delivery marked as delivered with recipient acknowledgement.";
     } else if (requestedStatus === "failed") {
       message = "Delivery marked as failed successfully";
     } else if (uploadedReceiptPath) {
@@ -2092,11 +2497,10 @@ exports.updateDeliveryStatus = async (req, res) => {
     });
   } catch (err) {
     if (conn) await conn.rollback();
-    // PHASE 5 corrective patch: only for a blueprint completion attempt
-    // that had already passed its own gate and uploaded a fresh photo —
-    // never for standard/COD/COP requests, and never touches an
-    // existing deliveries.signed_receipt.
-    if (isBlueprintOrder && isCompletingDeliveryNow) {
+    // If a completion attempt uploaded a fresh proof but the database
+    // transaction failed, remove only that request's new upload. Existing
+    // deliveries.signed_receipt files are never touched.
+    if (isCompletingDeliveryNow && uploadedReceiptPath) {
       cleanupFreshUpload(req.file);
     }
     console.error("PATCH /api/pos/deliveries/:id/status error:", err);

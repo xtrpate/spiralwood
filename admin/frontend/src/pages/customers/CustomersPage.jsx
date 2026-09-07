@@ -5,7 +5,6 @@ import toast from "react-hot-toast";
 import {
   BadgeCheck,
   Eye,
-  MailWarning,
   MoreHorizontal,
   Search,
   UserRoundCheck,
@@ -17,6 +16,7 @@ import {
 const FILTERS = {
   search: "",
   email_status: "",
+  phone_status: "",
   account_status: "",
   page: 1,
 };
@@ -80,6 +80,13 @@ const formatDate = (value, includeTime = false) => {
       });
 };
 
+const formatPhoneForDisplay = (value) => {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (/^639\d{9}$/.test(digits)) return `0${digits.slice(2)}`;
+  if (/^9\d{9}$/.test(digits)) return `0${digits}`;
+  return value || "Phone not provided";
+};
+
 export default function CustomersPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -138,6 +145,9 @@ export default function CustomersPage() {
       });
 
       setRows(combined);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Unable to load customer accounts.");
+      setRows([]);
     } finally {
       setLoading(false);
     }
@@ -171,8 +181,8 @@ export default function CustomersPage() {
     [rows],
   );
 
-  const notVerifiedCount = useMemo(
-    () => rows.filter((row) => Number(row.is_verified) !== 1).length,
+  const phoneVerifiedCount = useMemo(
+    () => rows.filter((row) => Number(row.phone_verified) === 1).length,
     [rows],
   );
 
@@ -185,12 +195,18 @@ export default function CustomersPage() {
     const search = filters.search.trim().toLowerCase();
 
     return rows.filter((row) => {
-      const searchable = [row.name, row.email, row.phone]
+      const searchable = [
+        row.name,
+        row.email,
+        row.phone,
+        formatPhoneForDisplay(row.phone),
+      ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
 
       const verified = Number(row.is_verified) === 1;
+      const phoneVerified = Number(row.phone_verified) === 1;
       const active = !!row.is_active;
 
       const matchesSearch = !search || searchable.includes(search);
@@ -198,14 +214,18 @@ export default function CustomersPage() {
         !filters.email_status ||
         (filters.email_status === "verified" && verified) ||
         (filters.email_status === "not_verified" && !verified);
+      const matchesPhone =
+        !filters.phone_status ||
+        (filters.phone_status === "verified" && phoneVerified) ||
+        (filters.phone_status === "not_verified" && !phoneVerified);
       const matchesAccount =
         !filters.account_status ||
         (filters.account_status === "active" && active) ||
         (filters.account_status === "inactive" && !active);
 
-      return matchesSearch && matchesEmail && matchesAccount;
+      return matchesSearch && matchesEmail && matchesPhone && matchesAccount;
     });
-  }, [rows, filters.search, filters.email_status, filters.account_status]);
+  }, [rows, filters.search, filters.email_status, filters.phone_status, filters.account_status]);
 
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
 
@@ -223,6 +243,7 @@ export default function CustomersPage() {
   const activeFilterCount = [
     filters.search,
     filters.email_status,
+    filters.phone_status,
     filters.account_status,
   ].filter(Boolean).length;
 
@@ -261,10 +282,9 @@ export default function CustomersPage() {
           icon={<BadgeCheck size={18} strokeWidth={1.9} />}
         />
         <SummaryCard
-          label="Not Verified"
-          value={notVerifiedCount}
-          icon={<MailWarning size={18} strokeWidth={1.9} />}
-          alert={notVerifiedCount > 0}
+          label="Phone Verified"
+          value={phoneVerifiedCount}
+          icon={<UserRoundCheck size={18} strokeWidth={1.9} />}
         />
         <SummaryCard
           label="Inactive Accounts"
@@ -313,6 +333,18 @@ export default function CustomersPage() {
           </label>
 
           <label className="cm-field">
+            <span>Phone Status</span>
+            <select
+              value={filters.phone_status}
+              onChange={(event) => setFilter("phone_status", event.target.value)}
+            >
+              <option value="">All Phone Statuses</option>
+              <option value="verified">Verified</option>
+              <option value="not_verified">Not Verified</option>
+            </select>
+          </label>
+
+          <label className="cm-field">
             <span>Account Status</span>
             <select
               value={filters.account_status}
@@ -346,6 +378,7 @@ export default function CustomersPage() {
                 <th>Registered</th>
                 <th>Last Login</th>
                 <th>Email Status</th>
+                <th>Phone Status</th>
                 <th>Account Status</th>
                 <th className="cm-actions-heading">Actions</th>
               </tr>
@@ -354,13 +387,13 @@ export default function CustomersPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="cm-empty">
+                  <td colSpan={8} className="cm-empty">
                     Loading customer accounts...
                   </td>
                 </tr>
               ) : pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="cm-empty">
+                  <td colSpan={8} className="cm-empty">
                     <strong>No matching customers</strong>
                     <span>Adjust the search or filters to view more accounts.</span>
                   </td>
@@ -476,7 +509,7 @@ function CustomerRow({
       <td>
         <div className="cm-contact">
           <span>{row.email || "Email not provided"}</span>
-          <small>{row.phone || "Phone not provided"}</small>
+          <small>{formatPhoneForDisplay(row.phone)}</small>
         </div>
       </td>
 
@@ -491,6 +524,14 @@ function CustomerRow({
       <td>
         <StatusText
           positive={verified}
+          positiveLabel="Verified"
+          negativeLabel="Not Verified"
+        />
+      </td>
+
+      <td>
+        <StatusText
+          positive={Number(row.phone_verified) === 1}
           positiveLabel="Verified"
           negativeLabel="Not Verified"
         />
@@ -576,6 +617,7 @@ function StatusText({
 function CustomerDetailModal({ row, onClose, onAction }) {
   const active = !!row.is_active;
   const verified = Number(row.is_verified) === 1;
+  const phoneVerified = Number(row.phone_verified) === 1;
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -624,7 +666,7 @@ function CustomerDetailModal({ row, onClose, onAction }) {
             <div className="cm-section-title">Contact Information</div>
             <div className="cm-detail-grid">
               <DetailItem label="Email" value={row.email || "Not provided"} />
-              <DetailItem label="Phone" value={row.phone || "Not provided"} />
+              <DetailItem label="Phone" value={formatPhoneForDisplay(row.phone)} />
               <DetailItem
                 label="Address"
                 value={row.address || "Not provided"}
@@ -649,6 +691,16 @@ function CustomerDetailModal({ row, onClose, onAction }) {
                 value={
                   <StatusText
                     positive={verified}
+                    positiveLabel="Verified"
+                    negativeLabel="Not Verified"
+                  />
+                }
+              />
+              <DetailItem
+                label="Phone Status"
+                value={
+                  <StatusText
+                    positive={phoneVerified}
                     positiveLabel="Verified"
                     negativeLabel="Not Verified"
                   />
@@ -848,9 +900,10 @@ const styles = `
   .cm-toolbar {
     display: grid;
     grid-template-columns:
-      minmax(300px, 1.7fr)
-      minmax(180px, 0.75fr)
-      minmax(180px, 0.75fr)
+      minmax(260px, 1.55fr)
+      minmax(150px, 0.72fr)
+      minmax(150px, 0.72fr)
+      minmax(150px, 0.72fr)
       auto;
     align-items: end;
     gap: 10px;
@@ -976,7 +1029,7 @@ const styles = `
 
   .cm-table {
     width: 100%;
-    min-width: 1110px;
+    min-width: 1260px;
     border-collapse: collapse;
     table-layout: fixed;
   }
@@ -994,13 +1047,14 @@ const styles = `
     text-transform: uppercase;
   }
 
-  .cm-table th:nth-child(1) { width: 21%; }
-  .cm-table th:nth-child(2) { width: 24%; }
-  .cm-table th:nth-child(3) { width: 11%; }
-  .cm-table th:nth-child(4) { width: 11%; }
-  .cm-table th:nth-child(5) { width: 11%; }
-  .cm-table th:nth-child(6) { width: 11%; }
-  .cm-table th:nth-child(7) { width: 11%; }
+  .cm-table th:nth-child(1) { width: 19%; }
+  .cm-table th:nth-child(2) { width: 21%; }
+  .cm-table th:nth-child(3) { width: 10%; }
+  .cm-table th:nth-child(4) { width: 10%; }
+  .cm-table th:nth-child(5) { width: 10%; }
+  .cm-table th:nth-child(6) { width: 10%; }
+  .cm-table th:nth-child(7) { width: 10%; }
+  .cm-table th:nth-child(8) { width: 10%; }
 
   .cm-table td {
     padding: 12px 13px;

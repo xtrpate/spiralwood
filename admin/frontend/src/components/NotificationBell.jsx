@@ -158,6 +158,53 @@ function resolveNotificationRoute(
   }
 }
 
+async function preflightDirectNotificationTarget(
+  n,
+  { isAdmin },
+) {
+  if (!isAdmin) {
+    return { available: true, fallback: null };
+  }
+
+  const targetType = n?.target_type || null;
+  const targetId = Number(n?.target_id);
+
+  let endpoint = null;
+  let fallback = null;
+
+  if (targetType === "order" || targetType === "custom_request") {
+    fallback = "/admin/orders";
+    if (!Number.isSafeInteger(targetId) || targetId <= 0) {
+      return { available: false, fallback };
+    }
+    endpoint = `/orders/${targetId}`;
+  } else if (targetType === "blueprint_estimation") {
+    fallback = "/admin/blueprints";
+    if (!Number.isSafeInteger(targetId) || targetId <= 0) {
+      return { available: false, fallback };
+    }
+    endpoint = `/blueprints/${targetId}`;
+  } else {
+    // Task, delivery, support, appointment, and warranty notifications already
+    // land on safe list pages with a focus query parameter.
+    return { available: true, fallback: null };
+  }
+
+  try {
+    await api.get(endpoint);
+    return { available: true, fallback };
+  } catch (err) {
+    const status = Number(err?.response?.status);
+    if ([403, 404, 410].includes(status)) {
+      return { available: false, fallback };
+    }
+
+    // Never turn a transient network/server failure into a false "deleted"
+    // result. Preserve the existing navigation behavior in that case.
+    return { available: true, fallback };
+  }
+}
+
 export default function NotificationBell({
   compact = false,
   headerCompact = false,
@@ -309,10 +356,21 @@ export default function NotificationBell({
       return;
     }
 
-    // Once the notification is already read, one click opens its exact
-    // related record. Legacy notifications still use the safe role-based
-    // fallback defined by resolveNotificationRoute.
+    // Direct detail targets are preflighted before navigation. If the
+    // underlying record was deleted or is no longer accessible, route to a
+    // safe list page instead of opening a broken/empty detail screen.
+    const targetState = await preflightDirectNotificationTarget(n, {
+      isAdmin,
+    });
+
     setOpen(false);
+
+    if (!targetState.available) {
+      toast.error("The related record is no longer available.");
+      navigate(targetState.fallback || "/admin/dashboard");
+      return;
+    }
+
     const dest = resolveNotificationRoute(n, {
       isAdmin,
       isCashier,

@@ -848,6 +848,35 @@ exports.createCustomOrder = async (req, res) => {
       ipAddress: req.ip || null,
     });
 
+    // The custom request is already committed at this point. Surface it in
+    // the in-app Admin notification bell as a best-effort alert, matching the
+    // existing standard online-order alert behavior without affecting request
+    // success if notification delivery itself fails.
+    try {
+      const [activeAdmins] = await conn.execute(
+        `SELECT id
+         FROM users
+         WHERE role = 'admin' AND is_active = 1`,
+      );
+
+      for (const admin of activeAdmins) {
+        await createNotificationSafe(conn, {
+          userId: admin.id,
+          type: "new_custom_request",
+          title: "New Custom Request",
+          message: `Custom request ${order_number} from ${String(name).trim()} was submitted for quotation. Review the request and prepare the estimation.`,
+          targetType: "order",
+          targetId: order_id,
+          targetOrderId: order_id,
+        });
+      }
+    } catch (notificationErr) {
+      console.error(
+        "[New Custom Request Notification Error]",
+        notificationErr.message || notificationErr,
+      );
+    }
+
     try {
       const [[adminEmailSetting]] = await conn.execute(
         "SELECT content FROM website_content WHERE content_key = 'admin_alert_email' LIMIT 1",
@@ -1490,6 +1519,27 @@ const insertNotificationSafe = async (
   });
 };
 
+const notifyActiveAdminsSafe = async (conn, notification) => {
+  try {
+    const [activeAdmins] = await conn.execute(
+      `SELECT id
+       FROM users
+       WHERE role = 'admin' AND is_active = 1`,
+    );
+
+    for (const admin of activeAdmins) {
+      await insertNotificationSafe(conn, admin.id, notification);
+    }
+  } catch (err) {
+    // Notification delivery is best-effort and must never invalidate a
+    // customer action that otherwise passed its business transaction checks.
+    console.error(
+      "[customer.customorders ACTIVE ADMIN NOTIFICATION]",
+      err.message || err,
+    );
+  }
+};
+
 // Safely deletes an uploaded file from disk when the request that
 // accepted it does not end up successfully committing (validation
 // failure, lifecycle conflict, rolled-back transaction, or any other
@@ -1760,12 +1810,7 @@ exports.cancelUnpaidProject = async (req, res) => {
       });
     }
 
-    const [[creatorRow]] = await conn.execute(
-      `SELECT creator_id FROM blueprints WHERE id = ? LIMIT 1`,
-      [blueprint.id],
-    );
-
-    await insertNotificationSafe(conn, creatorRow?.creator_id || null, {
+    await notifyActiveAdminsSafe(conn, {
       type: "custom_project_cancelled",
       title: "Project Cancelled by Customer",
       message: `Customer cancelled ${order.order_number} before any verified payment.`,
@@ -1981,12 +2026,7 @@ exports.acceptProjectAgreement = async (req, res) => {
     );
 
     if (!alreadyAccepted) {
-      const [[creatorRow]] = await conn.execute(
-        `SELECT creator_id FROM blueprints WHERE id = ? LIMIT 1`,
-        [lifecycle.blueprint.id],
-      );
-
-      await insertNotificationSafe(conn, creatorRow?.creator_id || null, {
+      await notifyActiveAdminsSafe(conn, {
         type: "project_agreement_accepted",
         title: "Project Agreement Accepted",
         message: `Customer accepted the Project Agreement for ${order.order_number}.`,
@@ -2239,12 +2279,7 @@ exports.acceptEstimation = async (req, res) => {
       });
     }
 
-    const [[creatorRow]] = await conn.execute(
-      `SELECT creator_id FROM blueprints WHERE id = ? LIMIT 1`,
-      [blueprint.id],
-    );
-
-    await insertNotificationSafe(conn, creatorRow?.creator_id || null, {
+    await notifyActiveAdminsSafe(conn, {
       type: "estimation_customer_approved",
       title: "Quotation Approved by Customer",
       message: `Customer approved the quotation for ${order.order_number}. Required 30% down payment: ₱${downPaymentAmount.toFixed(2)}.`,
@@ -2438,12 +2473,7 @@ exports.requestEstimationRevision = async (req, res) => {
       [blueprint.id],
     );
 
-    const [[creatorRow]] = await conn.execute(
-      `SELECT creator_id FROM blueprints WHERE id = ? LIMIT 1`,
-      [blueprint.id],
-    );
-
-    await insertNotificationSafe(conn, creatorRow?.creator_id || null, {
+    await notifyActiveAdminsSafe(conn, {
       type: "estimation_revision_requested",
       title: "Customer Requested Quotation Revision",
       message: note
@@ -2646,12 +2676,7 @@ exports.rejectEstimation = async (req, res) => {
       });
     }
 
-    const [[creatorRow]] = await conn.execute(
-      `SELECT creator_id FROM blueprints WHERE id = ? LIMIT 1`,
-      [blueprint.id],
-    );
-
-    await insertNotificationSafe(conn, creatorRow?.creator_id || null, {
+    await notifyActiveAdminsSafe(conn, {
       type: "estimation_rejected",
       title: "Customer Rejected Quotation",
       message: reason
@@ -2944,12 +2969,7 @@ exports.submitDownPayment = async (req, res) => {
       });
     }
 
-    const [[creatorRow]] = await conn.execute(
-      `SELECT creator_id FROM blueprints WHERE id = ? LIMIT 1`,
-      [blueprint.id],
-    );
-
-    await insertNotificationSafe(conn, creatorRow?.creator_id || null, {
+    await notifyActiveAdminsSafe(conn, {
       type: "blueprint_down_payment_submitted",
       title: "30% Down Payment Submitted",
       message: `Customer submitted the 30% down payment for ${order.order_number}. Please verify the payment proof.`,
@@ -3481,24 +3501,26 @@ exports.postCustomOrderMessage = async (req, res) => {
       });
     }
 
-    const [bpRows] = await conn.execute(
-      `SELECT creator_id
-       FROM blueprints
-       WHERE id = ?
-       LIMIT 1`,
-      [order.blueprint_id],
+    // Customer discussion messages are actionable by any active Admin.
+    // Do not depend on orders.blueprint_id here: pending Custom Requests
+    // intentionally have no working Blueprint yet, which previously caused
+    // the notification recipient to resolve to null and silently disappear.
+    const [activeAdmins] = await conn.execute(
+      `SELECT id
+       FROM users
+       WHERE role = 'admin' AND is_active = 1`,
     );
 
-    const blueprint = bpRows[0] || null;
-
-    await insertNotificationSafe(conn, blueprint?.creator_id, {
-      type: "custom_request_new_message",
-      title: "New Customer Discussion Message",
-      message: `Customer sent a new discussion message for ${order.order_number}.`,
-      targetType: "order",
-      targetId: order.id,
-      targetOrderId: order.id,
-    });
+    for (const admin of activeAdmins) {
+      await insertNotificationSafe(conn, admin.id, {
+        type: "custom_request_new_message",
+        title: "New Customer Discussion Message",
+        message: `${String(req.user?.name || "Customer").trim() || "Customer"} sent a new discussion message for ${order.order_number}.`,
+        targetType: "order",
+        targetId: order.id,
+        targetOrderId: order.id,
+      });
+    }
 
     await conn.commit();
     transactionActive = false;

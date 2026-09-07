@@ -26,7 +26,11 @@ export default function BackupPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
   const [expandedErrorId, setExpandedErrorId] = useState(null);
+  const PAGE_SIZE = 50;
 
   const load = async () => {
     setLoading(true);
@@ -92,16 +96,48 @@ export default function BackupPage() {
   const lastSuccess =
     sortedLogs.find((log) => log.status === "success") || null;
 
+  const hasActiveFilters =
+    Boolean(searchQuery.trim()) ||
+    typeFilter !== "all" ||
+    statusFilter !== "all" ||
+    Boolean(dateFrom) ||
+    Boolean(dateTo);
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setTypeFilter("all");
+    setStatusFilter("all");
+    setDateFrom("");
+    setDateTo("");
+    setCurrentPage(1);
+  };
+
   const filteredLogs = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
+    const fromBoundary = dateFrom
+      ? new Date(`${dateFrom}T00:00:00`)
+      : null;
+    const toBoundary = dateTo
+      ? new Date(`${dateTo}T23:59:59.999`)
+      : null;
 
     return sortedLogs.filter((log) => {
       const matchesType =
-        typeFilter === "all" || String(log.type || "").toLowerCase() === typeFilter;
+        typeFilter === "all" ||
+        String(log.type || "").toLowerCase() === typeFilter;
 
       const matchesStatus =
         statusFilter === "all" ||
         String(log.status || "").toLowerCase() === statusFilter;
+
+      const createdAt = new Date(log.created_at || 0);
+      const createdMs = createdAt.getTime();
+      const matchesFrom =
+        !fromBoundary ||
+        (Number.isFinite(createdMs) && createdMs >= fromBoundary.getTime());
+      const matchesTo =
+        !toBoundary ||
+        (Number.isFinite(createdMs) && createdMs <= toBoundary.getTime());
 
       const searchableText = [
         log.filename,
@@ -116,9 +152,44 @@ export default function BackupPage() {
 
       const matchesSearch = !query || searchableText.includes(query);
 
-      return matchesType && matchesStatus && matchesSearch;
+      return (
+        matchesType &&
+        matchesStatus &&
+        matchesFrom &&
+        matchesTo &&
+        matchesSearch
+      );
     });
-  }, [searchQuery, sortedLogs, statusFilter, typeFilter]);
+  }, [
+    dateFrom,
+    dateTo,
+    searchQuery,
+    sortedLogs,
+    statusFilter,
+    typeFilter,
+  ]);
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredLogs.length / PAGE_SIZE),
+  );
+
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pageStartIndex = (safeCurrentPage - 1) * PAGE_SIZE;
+  const paginatedLogs = filteredLogs.slice(
+    pageStartIndex,
+    pageStartIndex + PAGE_SIZE,
+  );
+  const pageStartNumber =
+    filteredLogs.length === 0 ? 0 : pageStartIndex + 1;
+  const pageEndNumber = Math.min(
+    pageStartIndex + PAGE_SIZE,
+    filteredLogs.length,
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, typeFilter, statusFilter, dateFrom, dateTo]);
 
   const formatDate = (value, includeTime = true) => {
     if (!value) return "—";
@@ -505,7 +576,13 @@ export default function BackupPage() {
 
         .backup-toolbar {
           display: grid;
-          grid-template-columns: minmax(280px, 1fr) 145px 145px;
+          grid-template-columns:
+            minmax(220px, 1fr)
+            140px
+            140px
+            150px
+            150px
+            auto;
           gap: 8px;
           padding: 10px 12px;
           border-bottom: 1px solid var(--backup-border);
@@ -526,7 +603,8 @@ export default function BackupPage() {
         }
 
         .backup-search-input,
-        .backup-filter-select {
+        .backup-filter-select,
+        .backup-date-input {
           width: 100%;
           height: 38px;
           border: 1px solid #d8dde5;
@@ -545,15 +623,43 @@ export default function BackupPage() {
           padding: 0 12px 0 35px;
         }
 
-        .backup-filter-select {
+        .backup-filter-select,
+        .backup-date-input {
           padding: 0 10px;
+        }
+
+        .backup-filter-select {
           cursor: pointer;
         }
 
+        .backup-date-input {
+          color-scheme: light;
+        }
+
         .backup-search-input:focus,
-        .backup-filter-select:focus {
+        .backup-filter-select:focus,
+        .backup-date-input:focus {
           border-color: #111111;
           box-shadow: 0 0 0 2px rgba(17, 17, 17, 0.08);
+        }
+
+        .backup-clear-filters-btn {
+          min-height: 38px;
+          padding: 0 12px;
+          border: 1px solid #d8dde5;
+          border-radius: 3px;
+          background: #ffffff;
+          color: #4b5563;
+          font-size: 11.5px;
+          font-weight: 600;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+
+        .backup-clear-filters-btn:hover {
+          border-color: #aeb6c2;
+          background: #f9fafb;
+          color: #111111;
         }
 
         .backup-table-scroll {
@@ -716,6 +822,58 @@ export default function BackupPage() {
           color: #59616d;
           font-size: 13px;
           font-weight: 650;
+        }
+
+        .backup-pagination {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 11px 12px;
+          border-top: 1px solid var(--backup-border);
+          background: #ffffff;
+        }
+
+        .backup-pagination-info {
+          font-size: 11px;
+          color: var(--backup-muted);
+          white-space: nowrap;
+        }
+
+        .backup-pagination-controls {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .backup-pagination-page {
+          min-width: 92px;
+          text-align: center;
+          font-size: 11px;
+          font-weight: 600;
+          color: #3f4652;
+        }
+
+        .backup-pagination-btn {
+          min-height: 32px;
+          padding: 0 11px;
+          border: 1px solid #cfd4da;
+          border-radius: 3px;
+          background: #ffffff;
+          color: #1f2328;
+          font-size: 11px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+
+        .backup-pagination-btn:hover:not(:disabled) {
+          border-color: #aeb6c2;
+          background: #f9fafb;
+        }
+
+        .backup-pagination-btn:disabled {
+          cursor: not-allowed;
+          opacity: 0.45;
         }
 
         .backup-modal-backdrop {
@@ -950,8 +1108,8 @@ export default function BackupPage() {
             <p>Review automated and manual database backups.</p>
           </div>
           <div className="backup-history-count">
-            {filteredLogs.length} of {logs.length} backup
-            {logs.length === 1 ? "" : "s"}
+            {pageStartNumber}-{pageEndNumber} of {filteredLogs.length} backup
+            {filteredLogs.length === 1 ? "" : "s"}
           </div>
         </div>
 
@@ -989,6 +1147,36 @@ export default function BackupPage() {
             <option value="success">Successful</option>
             <option value="failed">Failed</option>
           </select>
+
+          <input
+            type="date"
+            className="backup-date-input"
+            value={dateFrom}
+            max={dateTo || undefined}
+            onChange={(event) => setDateFrom(event.target.value)}
+            aria-label="Filter backups from date"
+            title="From date"
+          />
+
+          <input
+            type="date"
+            className="backup-date-input"
+            value={dateTo}
+            min={dateFrom || undefined}
+            onChange={(event) => setDateTo(event.target.value)}
+            aria-label="Filter backups to date"
+            title="To date"
+          />
+
+          {hasActiveFilters && (
+            <button
+              type="button"
+              className="backup-clear-filters-btn"
+              onClick={clearFilters}
+            >
+              Clear Filters
+            </button>
+          )}
         </div>
 
         <div className="backup-table-scroll">
@@ -1023,7 +1211,7 @@ export default function BackupPage() {
                   </td>
                 </tr>
               ) : (
-                filteredLogs.map((log) => {
+                paginatedLogs.map((log) => {
                   const isSuccess = log.status === "success";
                   const isFailed = log.status === "failed";
                   const showError =
@@ -1138,6 +1326,42 @@ export default function BackupPage() {
             </tbody>
           </table>
         </div>
+
+        {filteredLogs.length > 0 && (
+          <div className="backup-pagination">
+            <div className="backup-pagination-info">
+              Showing {pageStartNumber}-{pageEndNumber} of {filteredLogs.length}
+            </div>
+
+            <div className="backup-pagination-controls">
+              <button
+                type="button"
+                className="backup-pagination-btn"
+                onClick={() =>
+                  setCurrentPage((page) => Math.max(1, page - 1))
+                }
+                disabled={safeCurrentPage <= 1}
+              >
+                Previous
+              </button>
+
+              <span className="backup-pagination-page">
+                Page {safeCurrentPage} of {totalPages}
+              </span>
+
+              <button
+                type="button"
+                className="backup-pagination-btn"
+                onClick={() =>
+                  setCurrentPage((page) => Math.min(totalPages, page + 1))
+                }
+                disabled={safeCurrentPage >= totalPages}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
       {confirmOpen && (

@@ -3,9 +3,12 @@ import { useSearchParams } from "react-router-dom";
 import { Navigation, UploadCloud, FileText } from "lucide-react";
 import api, { buildAssetUrl } from "../../services/api";
 import useAuthStore from "../../store/authStore";
+import DeliverySignaturePad from "./DeliverySignaturePad";
 import "./RiderScreen.css";
 
 const normalize = (value) => String(value || "").toLowerCase();
+const DELIVERY_ACKNOWLEDGEMENT_TEXT =
+  "I acknowledge receipt of this order at the delivery address.";
 
 const parseMapCoordinate = (value) => {
   if (typeof value === "number") {
@@ -115,6 +118,8 @@ export default function DeliveryManagement() {
   const [savingId, setSavingId] = useState(null);
   const [receiptFiles, setReceiptFiles] = useState({});
   const [collectionForms, setCollectionForms] = useState({});
+  const [acknowledgementForms, setAcknowledgementForms] = useState({});
+  const [signatureViewer, setSignatureViewer] = useState(null);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -292,6 +297,67 @@ export default function DeliveryManagement() {
     });
   };
 
+  const getAcknowledgementForm = (delivery) => {
+    const saved = acknowledgementForms[delivery.id] || {};
+
+    return {
+      received_by_name: saved.received_by_name || "",
+      recipient_type: saved.recipient_type || "customer",
+      note: saved.note || "",
+      acknowledgement_accepted: Boolean(saved.acknowledgement_accepted),
+      signature_data: saved.signature_data || "",
+    };
+  };
+
+  const updateAcknowledgementForm = (deliveryId, key, value) => {
+    setAcknowledgementForms((prev) => ({
+      ...prev,
+      [deliveryId]: {
+        received_by_name: "",
+        recipient_type: "customer",
+        note: "",
+        acknowledgement_accepted: false,
+        signature_data: "",
+        ...(prev[deliveryId] || {}),
+        [key]: value,
+      },
+    }));
+  };
+
+  const openDeliverySignature = async (delivery) => {
+    setSignatureViewer({
+      delivery,
+      loading: true,
+      data: null,
+      error: "",
+    });
+
+    try {
+      const { data } = await api.get(
+        `/pos/deliveries/${delivery.id}/acknowledgement`,
+      );
+
+      setSignatureViewer((current) =>
+        Number(current?.delivery?.id) === Number(delivery.id)
+          ? { ...current, loading: false, data, error: "" }
+          : current,
+      );
+    } catch (err) {
+      setSignatureViewer((current) =>
+        Number(current?.delivery?.id) === Number(delivery.id)
+          ? {
+              ...current,
+              loading: false,
+              data: null,
+              error:
+                err?.response?.data?.message ||
+                "Failed to load the recipient e-signature.",
+            }
+          : current,
+      );
+    }
+  };
+
   const validateReceiptFile = (file) => {
     if (!file) return null;
 
@@ -376,6 +442,54 @@ export default function DeliveryManagement() {
     const currentStatus = normalize(delivery.status || "scheduled");
     const targetStatus = normalize(nextStatus || currentStatus);
     const collectionForm = getCollectionForm(delivery);
+    const acknowledgementForm = getAcknowledgementForm(delivery);
+    const isCompletingDelivery =
+      targetStatus === "delivered" && currentStatus !== "delivered";
+
+    if (isCompletingDelivery) {
+      const receiverName = acknowledgementForm.received_by_name.trim();
+      const recipientType = normalize(acknowledgementForm.recipient_type);
+
+      if (receiverName.length < 2 || receiverName.length > 150) {
+        setError("Received By must be between 2 and 150 characters.");
+        setSuccess("");
+        return;
+      }
+
+      if (
+        !["customer", "authorized_representative"].includes(recipientType)
+      ) {
+        setError(
+          "Select whether the recipient is the customer or an authorized representative.",
+        );
+        setSuccess("");
+        return;
+      }
+
+      if (!acknowledgementForm.signature_data) {
+        setError(
+          "Please ask the recipient to sign before completing delivery.",
+        );
+        setSuccess("");
+        return;
+      }
+
+      if (!acknowledgementForm.acknowledgement_accepted) {
+        setError(
+          "The recipient must acknowledge receipt before completing delivery.",
+        );
+        setSuccess("");
+        return;
+      }
+
+      if (acknowledgementForm.note.trim().length > 500) {
+        setError(
+          "Delivery acknowledgement note must be 500 characters or fewer.",
+        );
+        setSuccess("");
+        return;
+      }
+    }
 
     // PHASE 5: blueprint orders have their own backend-computed
     // balance/method gating (see updateDeliveryStatus's isolated
@@ -447,6 +561,26 @@ export default function DeliveryManagement() {
         fd.append("collection_notes", collectionForm.collection_notes || "");
       }
 
+      if (isCompletingDelivery) {
+        fd.append(
+          "received_by_name",
+          acknowledgementForm.received_by_name.trim(),
+        );
+        fd.append(
+          "recipient_type",
+          normalize(acknowledgementForm.recipient_type),
+        );
+        fd.append(
+          "delivery_acknowledgement_note",
+          acknowledgementForm.note.trim(),
+        );
+        fd.append(
+          "acknowledgement_accepted",
+          acknowledgementForm.acknowledgement_accepted ? "true" : "false",
+        );
+        fd.append("signature_data", acknowledgementForm.signature_data);
+      }
+
       if (selectedFile) {
         fd.append("receipt", selectedFile);
       }
@@ -469,6 +603,19 @@ export default function DeliveryManagement() {
             amount: "",
             payment_method: "cash",
             collection_notes: "",
+          },
+        }));
+      }
+
+      if (isCompletingDelivery) {
+        setAcknowledgementForms((prev) => ({
+          ...prev,
+          [delivery.id]: {
+            received_by_name: "",
+            recipient_type: "customer",
+            note: "",
+            acknowledgement_accepted: false,
+            signature_data: "",
           },
         }));
       }
@@ -604,6 +751,16 @@ export default function DeliveryManagement() {
 
             const paymentBalance = Number(delivery.payment_balance || 0);
             const collectionForm = getCollectionForm(delivery);
+            const acknowledgementForm = getAcknowledgementForm(delivery);
+            const acknowledgementReady =
+              acknowledgementForm.received_by_name.trim().length >= 2 &&
+              acknowledgementForm.received_by_name.trim().length <= 150 &&
+              ["customer", "authorized_representative"].includes(
+                normalize(acknowledgementForm.recipient_type),
+              ) &&
+              Boolean(acknowledgementForm.signature_data) &&
+              acknowledgementForm.acknowledgement_accepted &&
+              acknowledgementForm.note.trim().length <= 500;
 
             // PHASE 5 — Blueprint Rider Final Cash Collection. This
             // entire block only ever changes behavior for blueprint
@@ -640,6 +797,22 @@ export default function DeliveryManagement() {
               pendingPaymentCount > 0;
             const blueprintHasPendingCollection =
               isBlueprintDelivery && pendingPaymentCount > 0;
+
+            const isCorrectedBlueprintWithReusablePendingCollection =
+              isBlueprintDelivery &&
+              pendingPaymentCount === 1 &&
+              Number(
+                delivery.delivery_has_voided_acknowledgement || 0,
+              ) === 1 &&
+              Number(
+                delivery.delivery_has_reusable_pending_blueprint_collection ||
+                  0,
+              ) === 1;
+
+            const blueprintPendingCollectionBlocksCompletion =
+              blueprintHasPendingCollection &&
+              !isCorrectedBlueprintWithReusablePendingCollection;
+
             const blueprintAwaitingOnline =
               isBlueprintDelivery &&
               remainingPaymentMethod === "paymongo" &&
@@ -679,10 +852,10 @@ export default function DeliveryManagement() {
                 parsedCollectedAmount - Number(paymentBalance.toFixed(2)),
               ) > 0.009;
 
-            const completeDeliveryDisabled = isBlueprintDelivery
+            const baseCompleteDeliveryDisabled = isBlueprintDelivery
               ? savingId === delivery.id ||
                 !selectedFile || // PHASE 5: always a FRESH photo, never hasReceipt fallback
-                blueprintHasPendingCollection ||
+                blueprintPendingCollectionBlocksCompletion ||
                 blueprintAwaitingOnline ||
                 blueprintMethodRequired
               : savingId === delivery.id ||
@@ -694,6 +867,10 @@ export default function DeliveryManagement() {
                     collectedAmountInvalid ||
                     collectedAmountExceedsBalance ||
                     collectedAmountDoesNotMatchCodBalance));
+
+            const completeDeliveryDisabled =
+              baseCompleteDeliveryDisabled ||
+              (canCompleteDelivery && !acknowledgementReady);
 
             const canUploadProof = isBlueprintDelivery
               ? true
@@ -990,7 +1167,9 @@ export default function DeliveryManagement() {
                               </>
                             ) : blueprintHasPendingCollection ? (
                               <div style={helperText}>
-                                Cash collection is awaiting admin verification.
+                                {isCorrectedBlueprintWithReusablePendingCollection
+                                  ? "The previous delivery cash collection is still awaiting Admin review. This corrected handoff can be completed with a fresh proof and signature; no duplicate payment will be created."
+                                  : "Cash collection is awaiting admin verification."}
                               </div>
                             ) : blueprintReadyForCashConfirm ? (
                               <>
@@ -1253,6 +1432,146 @@ export default function DeliveryManagement() {
                           )}
                         </div>
 
+                        <div
+                          style={{
+                            ...proofPanel,
+                            marginTop: "16px",
+                            borderStyle: "solid",
+                          }}
+                        >
+                          <div style={sectionTitle}>
+                            Recipient Acknowledgement
+                          </div>
+                          <div style={helperText}>
+                            Have the person receiving the order enter their
+                            name and sign before completing the handoff.
+                          </div>
+
+                          <div
+                            style={{
+                              marginTop: "14px",
+                              display: "grid",
+                              gridTemplateColumns:
+                                "repeat(auto-fit, minmax(200px, 1fr))",
+                              gap: "12px",
+                            }}
+                          >
+                            <div>
+                              <label style={infoLabel}>Received By</label>
+                              <input
+                                type="text"
+                                maxLength={150}
+                                value={acknowledgementForm.received_by_name}
+                                onChange={(event) =>
+                                  updateAcknowledgementForm(
+                                    delivery.id,
+                                    "received_by_name",
+                                    event.target.value,
+                                  )
+                                }
+                                disabled={savingId === delivery.id}
+                                style={searchInput}
+                                placeholder="Full name of recipient"
+                              />
+                            </div>
+
+                            <div>
+                              <label style={infoLabel}>Recipient</label>
+                              <select
+                                value={acknowledgementForm.recipient_type}
+                                onChange={(event) =>
+                                  updateAcknowledgementForm(
+                                    delivery.id,
+                                    "recipient_type",
+                                    event.target.value,
+                                  )
+                                }
+                                disabled={savingId === delivery.id}
+                                style={searchInput}
+                              >
+                                <option value="customer">Customer</option>
+                                <option value="authorized_representative">
+                                  Authorized Representative
+                                </option>
+                              </select>
+                            </div>
+
+                            <div style={{ gridColumn: "1 / -1" }}>
+                              <label style={infoLabel}>
+                                Delivery Note (optional)
+                              </label>
+                              <textarea
+                                rows={2}
+                                maxLength={500}
+                                value={acknowledgementForm.note}
+                                onChange={(event) =>
+                                  updateAcknowledgementForm(
+                                    delivery.id,
+                                    "note",
+                                    event.target.value,
+                                  )
+                                }
+                                disabled={savingId === delivery.id}
+                                style={{
+                                  ...searchInput,
+                                  minHeight: 76,
+                                  resize: "vertical",
+                                  fontFamily: "inherit",
+                                }}
+                                placeholder="Optional turnover note or recipient remark"
+                              />
+                            </div>
+                          </div>
+
+                          <div style={{ marginTop: "14px" }}>
+                            <label style={infoLabel}>Recipient Signature</label>
+                            <DeliverySignaturePad
+                              value={acknowledgementForm.signature_data}
+                              disabled={savingId === delivery.id}
+                              onChange={(signatureData) =>
+                                updateAcknowledgementForm(
+                                  delivery.id,
+                                  "signature_data",
+                                  signatureData,
+                                )
+                              }
+                            />
+                          </div>
+
+                          <label
+                            style={{
+                              display: "flex",
+                              alignItems: "flex-start",
+                              gap: "8px",
+                              marginTop: "14px",
+                              fontSize: "12px",
+                              lineHeight: 1.5,
+                              color: "#3f3f46",
+                              cursor:
+                                savingId === delivery.id
+                                  ? "not-allowed"
+                                  : "pointer",
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={
+                                acknowledgementForm.acknowledgement_accepted
+                              }
+                              onChange={(event) =>
+                                updateAcknowledgementForm(
+                                  delivery.id,
+                                  "acknowledgement_accepted",
+                                  event.target.checked,
+                                )
+                              }
+                              disabled={savingId === delivery.id}
+                              style={{ marginTop: 2 }}
+                            />
+                            <span>{DELIVERY_ACKNOWLEDGEMENT_TEXT}</span>
+                          </label>
+                        </div>
+
                         <div className="rider-button-row">
                           <button
                             onClick={() =>
@@ -1311,6 +1630,33 @@ export default function DeliveryManagement() {
                               {formatDateTime(delivery.delivered_date)}
                             </span>
                           </div>
+
+                          {delivery.delivery_acknowledgement_id ? (
+                            <>
+                              <div style={summaryItem}>
+                                <span style={summaryLabel}>Received By</span>
+                                <span style={summaryValue}>
+                                  {delivery.delivery_received_by_name || "—"}
+                                </span>
+                              </div>
+                              <div style={summaryItem}>
+                                <span style={summaryLabel}>Recipient</span>
+                                <span style={summaryValue}>
+                                  {formatStatus(
+                                    delivery.delivery_recipient_type,
+                                  )}
+                                </span>
+                              </div>
+                              <div style={summaryItem}>
+                                <span style={summaryLabel}>Signed On</span>
+                                <span style={summaryValue}>
+                                  {formatDateTime(
+                                    delivery.delivery_acknowledged_at,
+                                  )}
+                                </span>
+                              </div>
+                            </>
+                          ) : null}
                         </div>
 
                         <div style={{ marginTop: 12 }}>
@@ -1326,6 +1672,24 @@ export default function DeliveryManagement() {
                           ) : (
                             <div style={helperText}>
                               This older record has no uploaded proof yet.
+                            </div>
+                          )}
+
+                          {delivery.delivery_acknowledgement_id ? (
+                            <div style={{ marginTop: 10 }}>
+                              <button
+                                type="button"
+                                className="rider-btn rider-btn-secondary"
+                                onClick={() =>
+                                  openDeliverySignature(delivery)
+                                }
+                              >
+                                View E-Signature
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ ...helperText, marginTop: 10 }}>
+                              Legacy delivery — no e-signature was captured.
                             </div>
                           )}
 
@@ -1457,6 +1821,119 @@ export default function DeliveryManagement() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {signatureViewer && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1100,
+            padding: "16px",
+          }}
+          onClick={() => setSignatureViewer(null)}
+        >
+          <div
+            style={{
+              background: "#ffffff",
+              borderRadius: 0,
+              padding: "24px",
+              width: "100%",
+              maxWidth: "620px",
+              maxHeight: "88vh",
+              overflowY: "auto",
+              boxShadow: "0 20px 50px rgba(0,0,0,0.2)",
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div style={sectionTitle}>Delivery E-Signature</div>
+            <div style={{ ...helperText, marginBottom: 16 }}>
+              {signatureViewer.delivery?.order_number || "Delivery"}
+            </div>
+
+            {signatureViewer.loading ? (
+              <div style={helperText}>Loading e-signature...</div>
+            ) : signatureViewer.error ? (
+              <div style={alertError}>{signatureViewer.error}</div>
+            ) : signatureViewer.data ? (
+              <>
+                <div style={summaryRow}>
+                  <div style={summaryItem}>
+                    <span style={summaryLabel}>Received By</span>
+                    <span style={summaryValue}>
+                      {signatureViewer.data.received_by_name || "—"}
+                    </span>
+                  </div>
+                  <div style={summaryItem}>
+                    <span style={summaryLabel}>Recipient</span>
+                    <span style={summaryValue}>
+                      {formatStatus(signatureViewer.data.recipient_type)}
+                    </span>
+                  </div>
+                  <div style={summaryItem}>
+                    <span style={summaryLabel}>Signed On</span>
+                    <span style={summaryValue}>
+                      {formatDateTime(
+                        signatureViewer.data.acknowledged_at,
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 16,
+                    border: "1px solid #e4e4e7",
+                    background: "#ffffff",
+                    padding: 12,
+                  }}
+                >
+                  <img
+                    src={signatureViewer.data.signature_data}
+                    alt="Recipient e-signature"
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      maxHeight: 240,
+                      objectFit: "contain",
+                      background: "#ffffff",
+                    }}
+                  />
+                </div>
+
+                <div style={{ ...helperText, marginTop: 12 }}>
+                  {signatureViewer.data.acknowledgement_text}
+                </div>
+
+                {signatureViewer.data.note ? (
+                  <div style={{ ...notesBox, marginTop: 12 }}>
+                    <div style={notesLabel}>Delivery Note</div>
+                    <div style={notesText}>
+                      {signatureViewer.data.note}
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+
+            <div
+              className="rider-button-row"
+              style={{ marginTop: 20, justifyContent: "flex-end" }}
+            >
+              <button
+                type="button"
+                className="rider-btn rider-btn-secondary"
+                onClick={() => setSignatureViewer(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

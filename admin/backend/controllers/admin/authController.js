@@ -6,6 +6,11 @@ const jwt = require("jsonwebtoken");
 // const nodemailer = require("nodemailer");
 const pool = require("../../config/db");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
+const {
+  normalizePhilippinePhone,
+  getPhoneLookupVariants,
+  phoneDigitsSql,
+} = require("../../utils/phone");
 
 require("dotenv").config();
 
@@ -192,13 +197,34 @@ exports.login = async (req, res) => {
         role: user.role,
         name: user.name,
         staff_type: user.staff_type || null,
+        must_change_password:
+          Number(user.must_change_password) === 1 ? 1 : 0,
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || "8h" },
     );
 
-    // Strip out all sensitive data before sending to frontend
-    const { password: _, otp_code: __, reset_otp: ___, ...safeUser } = user;
+    // Return only the session/profile fields the frontend actually needs.
+    // OTP hashes, reset tokens, pending contact changes, and password material
+    // never leave the backend.
+    const safeUser = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      staff_type: user.staff_type || null,
+      phone: user.phone || null,
+      address: user.address || null,
+      address_lat: user.address_lat ?? null,
+      address_lng: user.address_lng ?? null,
+      profile_photo: user.profile_photo || null,
+      is_active: Number(user.is_active) === 1 ? 1 : 0,
+      is_verified: Number(user.is_verified) === 1 ? 1 : 0,
+      phone_verified: Number(user.phone_verified) === 1 ? 1 : 0,
+      approval_status: user.approval_status || null,
+      last_login: user.last_login || null,
+      must_change_password: Number(user.must_change_password) === 1 ? 1 : 0,
+    };
     res.json({ token, user: safeUser });
   } catch (err) {
     console.error("[Unified Login Error]", err);
@@ -214,33 +240,90 @@ exports.login = async (req, res) => {
 exports.getMe = async (req, res) => {
   try {
     const [[user]] = await pool.query(
-      `SELECT id, name, email, role, staff_type, phone, address, profile_photo, last_login 
+      `SELECT id, name, email, role, staff_type, phone, address, profile_photo, last_login, must_change_password
        FROM users WHERE id = ?`,
       [req.user.id],
     );
     res.json(user);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("[getMe]", err);
+    res.status(500).json({ message: "Unable to load account profile." });
   }
 };
 
 // ── PUT /api/auth/profile ──
 exports.updateProfile = async (req, res) => {
   try {
-    const { name, phone, address } = req.body;
-    const photo = req.file
-      ? `/uploads/profiles/${req.file.filename}`
-      : undefined;
+    if (req.user.role !== "admin" && req.user.role !== "staff") {
+      return res.status(403).json({
+        message: "This profile endpoint is only for administrator and staff accounts.",
+      });
+    }
 
-    const fields = { name, phone, address };
-    if (photo) fields.profile_photo = photo;
+    const { name, phone, address } = req.body || {};
+    const fields = [];
+    const values = [];
+    const changedFields = [];
 
-    const sets = Object.keys(fields)
-      .map((k) => `${k} = ?`)
-      .join(", ");
-    const vals = [...Object.values(fields), req.user.id];
+    if (name !== undefined) {
+      const cleanName = String(name || "").trim();
+      if (!cleanName) {
+        return res.status(400).json({ message: "Name cannot be blank." });
+      }
+      fields.push("name = ?");
+      values.push(cleanName);
+      changedFields.push("name");
+    }
 
-    await pool.query(`UPDATE users SET ${sets} WHERE id = ?`, vals);
+    if (address !== undefined) {
+      const cleanAddress = String(address || "").trim();
+      if (!cleanAddress) {
+        return res.status(400).json({ message: "Address cannot be blank." });
+      }
+      fields.push("address = ?");
+      values.push(cleanAddress);
+      changedFields.push("address");
+    }
+
+    if (phone !== undefined) {
+      let normalizedPhone;
+      try {
+        normalizedPhone = normalizePhilippinePhone(phone);
+      } catch {
+        return res.status(400).json({
+          message: "Enter a valid Philippine mobile number.",
+        });
+      }
+
+      const variants = getPhoneLookupVariants(normalizedPhone);
+      const [duplicate] = await pool.query(
+        `SELECT id
+           FROM users
+          WHERE ${phoneDigitsSql("phone")} IN (?, ?, ?)
+            AND id <> ?
+          LIMIT 1`,
+        [...variants, req.user.id],
+      );
+      if (duplicate.length) {
+        return res.status(409).json({
+          message: "Phone number already in use.",
+        });
+      }
+
+      fields.push("phone = ?");
+      values.push(normalizedPhone);
+      changedFields.push("phone");
+    }
+
+    if (!fields.length) {
+      return res.status(400).json({ message: "No profile changes were provided." });
+    }
+
+    values.push(req.user.id);
+    await pool.query(
+      `UPDATE users SET ${fields.join(", ")} WHERE id = ? AND role IN ('admin','staff')`,
+      values,
+    );
 
     await writeAuditLogSafe({
       userId: req.user.id,
@@ -248,53 +331,100 @@ exports.updateProfile = async (req, res) => {
       tableName: "users",
       recordId: req.user.id,
       newValues: {
-        name_changed: name !== undefined,
-        phone_changed: phone !== undefined,
-        address_changed: address !== undefined,
-        profile_photo_changed: Boolean(photo),
+        changed_fields: changedFields,
+        phone_changed: changedFields.includes("phone"),
+        address_changed: changedFields.includes("address"),
+        name_changed: changedFields.includes("name"),
       },
       ipAddress: req.ip || null,
     });
 
-    res.json({ message: "Profile updated." });
+    return res.json({ message: "Profile updated." });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("[updateProfile]", err);
+    return res.status(500).json({ message: "Unable to update profile." });
   }
 };
 
 // ── PUT /api/auth/change-password ──
 exports.changePassword = async (req, res) => {
   try {
-    const { current_password, new_password } = req.body;
+    if (req.user.role !== "admin" && req.user.role !== "staff") {
+      return res.status(403).json({
+        message: "This password endpoint is only for administrator and staff accounts.",
+      });
+    }
+
+    const currentPassword = String(req.body?.current_password || "");
+    const newPassword = String(req.body?.new_password || "");
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        message: "Current password and new password are required.",
+      });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        message: "New password must be at least 8 characters.",
+      });
+    }
 
     const [[user]] = await pool.query(
-      "SELECT password FROM users WHERE id = ?",
+      `SELECT id, password, role, email, name, staff_type
+         FROM users
+        WHERE id = ?
+        LIMIT 1`,
       [req.user.id],
     );
+    if (!user) return res.status(404).json({ message: "Account not found." });
 
-    const match = await bcrypt.compare(current_password, user.password);
-    if (!match)
-      return res
-        .status(400)
-        .json({ message: "Current password is incorrect." });
+    const match = await bcrypt.compare(currentPassword, user.password || "");
+    if (!match) {
+      return res.status(400).json({ message: "Current password is incorrect." });
+    }
 
-    const hashed = await bcrypt.hash(new_password, 12);
-    await pool.query("UPDATE users SET password = ? WHERE id = ?", [
-      hashed,
-      req.user.id,
-    ]);
+    const sameAsCurrent = await bcrypt.compare(newPassword, user.password || "");
+    if (sameAsCurrent) {
+      return res.status(400).json({
+        message: "New password must be different from your current password.",
+      });
+    }
+
+    const hashed = await bcrypt.hash(newPassword, 12);
+    await pool.query(
+      "UPDATE users SET password = ?, must_change_password = 0 WHERE id = ?",
+      [hashed, req.user.id],
+    );
 
     await writeAuditLogSafe({
       userId: req.user.id,
       action: "password_changed",
       tableName: "users",
       recordId: req.user.id,
-      newValues: { password_changed: true },
+      newValues: { password_changed: true, must_change_password: 0 },
       ipAddress: req.ip || null,
     });
 
-    res.json({ message: "Password changed successfully." });
+    const token = jwt.sign(
+      {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        name: user.name,
+        staff_type: user.staff_type || null,
+        must_change_password: 0,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || "8h" },
+    );
+
+    return res.json({
+      message: "Password changed successfully.",
+      must_change_password: 0,
+      token,
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("[changePassword]", err);
+    return res.status(500).json({ message: "Unable to change password." });
   }
 };

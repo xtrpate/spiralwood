@@ -1,5 +1,9 @@
 // middleware/auditLog.js – Central audit trail helpers for WISDOM
 const pool = require("../config/db");
+const {
+  getRequestClientIp,
+  normalizeClientIp,
+} = require("../utils/clientIp");
 
 // Never persist credentials, authentication tokens, OTP values, cookies, or
 // secrets in audit metadata. Exact-key matching keeps useful boolean flags such
@@ -74,9 +78,11 @@ async function writeAuditLogSafe({
     Number.isInteger(parsedRecordId) && parsedRecordId > 0
       ? parsedRecordId
       : null;
-  const safeIp = ipAddress
-    ? String(ipAddress).trim().slice(0, 45) || null
-    : null;
+  // Prefer the visitor address captured by the request middleware.
+  // This fixes existing audit callers centrally, even if they still pass
+  // req.ip (which can be a Render/private proxy address in production).
+  const requestClientIp = getRequestClientIp();
+  const safeIp = normalizeClientIp(requestClientIp || ipAddress);
 
   try {
     await pool.query(

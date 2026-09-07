@@ -2577,6 +2577,11 @@ export default function OrderDetailPage() {
                     }
                   />
 
+                  <AdminDeliveryAcknowledgement
+                    deliveryId={order.delivery.id}
+                    deliveryStatus={order.delivery.status}
+                  />
+
                   {!order.delivery.signed_receipt &&
                     ["shipping", "delivered"].includes(
                       normalizedOrderStatus,
@@ -3298,6 +3303,371 @@ function Section({ title, children }) {
       </div>
       {children}
     </div>
+  );
+}
+
+function AdminDeliveryAcknowledgement({
+  deliveryId,
+  deliveryStatus,
+}) {
+  const [state, setState] = useState({
+    loading: false,
+    missing: false,
+    data: null,
+    error: "",
+  });
+  const [open, setOpen] = useState(false);
+
+  const terminalDelivery = ["delivered", "completed"].includes(
+    normalize(deliveryStatus),
+  );
+
+  useEffect(() => {
+    let active = true;
+
+    if (!deliveryId || !terminalDelivery) {
+      setState({
+        loading: false,
+        missing: false,
+        data: null,
+        error: "",
+      });
+      return () => {
+        active = false;
+      };
+    }
+
+    setState({
+      loading: true,
+      missing: false,
+      data: null,
+      error: "",
+    });
+
+    api
+      .get(`/pos/deliveries/${deliveryId}/acknowledgement`)
+      .then(({ data }) => {
+        if (!active) return;
+        setState({
+          loading: false,
+          missing: false,
+          data,
+          error: "",
+        });
+      })
+      .catch((err) => {
+        if (!active) return;
+
+        if (Number(err?.response?.status) === 404) {
+          setState({
+            loading: false,
+            missing: true,
+            data: null,
+            error: "",
+          });
+          return;
+        }
+
+        setState({
+          loading: false,
+          missing: false,
+          data: null,
+          error:
+            err?.response?.data?.message ||
+            "Unable to load the delivery e-signature.",
+        });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [deliveryId, terminalDelivery]);
+
+  if (!terminalDelivery) return null;
+
+  if (state.loading) {
+    return <InfoRow label="E-Signature" value="Checking acknowledgement..." />;
+  }
+
+  if (state.missing) {
+    return (
+      <InfoRow
+        label="E-Signature"
+        value="Legacy delivery — no e-signature was captured."
+      />
+    );
+  }
+
+  if (state.error) {
+    return <InfoRow label="E-Signature" value={state.error} />;
+  }
+
+  if (!state.data) return null;
+
+  return (
+    <>
+      <InfoRow
+        label="Received By"
+        value={state.data.received_by_name || "—"}
+      />
+      <InfoRow
+        label="Recipient"
+        value={prettify(state.data.recipient_type || "") || "—"}
+      />
+      <InfoRow
+        label="Signed On"
+        value={formatDateTime(state.data.acknowledged_at)}
+      />
+      <InfoRow
+        label="E-Signature"
+        value={
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            style={previewLinkButton}
+          >
+            View E-Signature
+          </button>
+        }
+      />
+
+      {open && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1200,
+            background: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
+          onClick={() => setOpen(false)}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 620,
+              maxHeight: "88vh",
+              overflowY: "auto",
+              background: "#ffffff",
+              border: "1px solid #d4d4d8",
+              padding: 20,
+              boxShadow: "0 20px 50px rgba(0,0,0,0.2)",
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 800,
+                color: "#111827",
+                marginBottom: 4,
+              }}
+            >
+              Delivery E-Signature
+            </div>
+            <div
+              style={{
+                fontSize: 13,
+                color: "#6b7280",
+                marginBottom: 16,
+              }}
+            >
+              Recipient acknowledgement captured at delivery handoff.
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit, minmax(160px, 1fr))",
+                gap: 10,
+              }}
+            >
+              <div
+                style={{
+                  border: "1px solid #e5e7eb",
+                  background: "#fafafa",
+                  padding: 12,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 800,
+                    color: "#6b7280",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                    marginBottom: 5,
+                  }}
+                >
+                  Received By
+                </div>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: "#111827",
+                  }}
+                >
+                  {state.data.received_by_name || "—"}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  border: "1px solid #e5e7eb",
+                  background: "#fafafa",
+                  padding: 12,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 800,
+                    color: "#6b7280",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                    marginBottom: 5,
+                  }}
+                >
+                  Recipient
+                </div>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: "#111827",
+                  }}
+                >
+                  {prettify(state.data.recipient_type || "") || "—"}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  border: "1px solid #e5e7eb",
+                  background: "#fafafa",
+                  padding: 12,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 800,
+                    color: "#6b7280",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                    marginBottom: 5,
+                  }}
+                >
+                  Signed On
+                </div>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: "#111827",
+                  }}
+                >
+                  {formatDateTime(state.data.acknowledged_at)}
+                </div>
+              </div>
+            </div>
+
+            <div
+              style={{
+                marginTop: 16,
+                padding: 12,
+                border: "1px solid #e5e7eb",
+                background: "#ffffff",
+              }}
+            >
+              <img
+                src={state.data.signature_data}
+                alt="Recipient e-signature"
+                style={{
+                  display: "block",
+                  width: "100%",
+                  maxHeight: 240,
+                  objectFit: "contain",
+                  background: "#ffffff",
+                }}
+              />
+            </div>
+
+            <div
+              style={{
+                marginTop: 12,
+                fontSize: 13,
+                lineHeight: 1.6,
+                color: "#4b5563",
+              }}
+            >
+              {state.data.acknowledgement_text}
+            </div>
+
+            {state.data.note ? (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: 12,
+                  border: "1px solid #e5e7eb",
+                  background: "#fafafa",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                    color: "#6b7280",
+                    marginBottom: 6,
+                  }}
+                >
+                  Delivery Note
+                </div>
+                <div
+                  style={{
+                    fontSize: 13,
+                    lineHeight: 1.6,
+                    color: "#111827",
+                  }}
+                >
+                  {state.data.note}
+                </div>
+              </div>
+            ) : null}
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                marginTop: 18,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                style={{
+                  padding: "9px 16px",
+                  border: "1px solid #d4d4d8",
+                  background: "#ffffff",
+                  color: "#111827",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

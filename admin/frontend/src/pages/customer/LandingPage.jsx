@@ -790,13 +790,6 @@ export default function LandingPage() {
 
 
   useEffect(() => {
-    HOME_FINISH_OPTIONS.slice(1).forEach((option) => {
-      const image = new Image();
-      image.src = option.image;
-    });
-  }, []);
-
-  useEffect(() => {
     let active = true;
 
     api
@@ -1446,9 +1439,8 @@ export default function LandingPage() {
           /* WISDOM HOMEPAGE WOOD FINISH ALIGNMENT FIX V6.4.5.2 */
           .wisdom-home-editorial__finish-stage {
             width: min(100%, 520px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            display: grid;
+            place-items: center;
             transform-origin: 50% 50%;
             transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
             will-change: transform;
@@ -1480,10 +1472,16 @@ export default function LandingPage() {
           }
 
           .wisdom-home-editorial__image.is-finish-preview {
+            grid-area: 1 / 1;
+            opacity: 0;
+            pointer-events: none;
             transform-origin: 50% 88%;
-            animation: wisdom-home-finish-swap 280ms
-              cubic-bezier(0.22, 1, 0.36, 1);
-            will-change: opacity, transform;
+            transition: opacity 170ms ease;
+            will-change: opacity;
+          }
+
+          .wisdom-home-editorial__image.is-finish-preview.is-active {
+            opacity: 1;
           }
 
           .wisdom-home-editorial__swatch {
@@ -1517,24 +1515,13 @@ export default function LandingPage() {
             outline-offset: 3px;
           }
 
-          @keyframes wisdom-home-finish-swap {
-            from {
-              opacity: 0.38;
-              transform: translateY(4px) scale(0.985);
-            }
-            to {
-              opacity: 1;
-              transform: translateY(0) scale(1);
-            }
-          }
-
           @media (prefers-reduced-motion: reduce) {
             .wisdom-home-editorial__finish-stage {
               transition: none;
             }
 
             .wisdom-home-editorial__image.is-finish-preview {
-              animation: none;
+              transition: none;
             }
 
             .wisdom-home-editorial__swatch {
@@ -2248,12 +2235,25 @@ export default function LandingPage() {
               <div
                 className={`wisdom-home-editorial__finish-stage is-${activeHomeFinish.key}`}
               >
-                <img
-                  key={activeHomeFinish.key}
-                  src={activeHomeFinish.image}
-                  alt={`${activeHomeFinish.label} cabinet finish preview`}
-                  className="wisdom-home-editorial__image is-tall is-finish-preview"
-                />
+                {HOME_FINISH_OPTIONS.map((option) => {
+                  const isActive = option.key === homeFinishKey;
+
+                  return (
+                    <img
+                      key={option.key}
+                      src={option.image}
+                      alt={
+                        isActive
+                          ? `${option.label} cabinet finish preview`
+                          : ""
+                      }
+                      aria-hidden={!isActive}
+                      className={`wisdom-home-editorial__image is-tall is-finish-preview${
+                        isActive ? " is-active" : ""
+                      }`}
+                    />
+                  );
+                })}
               </div>
               <div
                 className="wisdom-home-editorial__control is-finish"
