@@ -9,14 +9,28 @@ import "./authpages.css";
 import useAuthStore from "../../store/authStore";
 
 export default function VerifyOtpPage() {
-  const { verifyOtp, verifyResetOtp, resendOtp, forgotPassword } =
-    useAuthStore();
+  const {
+    verifyOtp,
+    verifyResetOtp,
+    resendOtp,
+    forgotPassword,
+    verifyPhoneOtp,
+    resendPhoneOtp,
+    login, // <--- Import login
+  } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
   const isFromLogin = location.state?.fromLogin;
 
-  /* email passed via navigate state or fallback to empty */
+  // Get password passed from login page
+  const [password] = useState(location.state?.password || "");
+
   const [email] = useState(location.state?.email || "");
+  const [verificationStep, setVerificationStep] = useState(
+    location.state?.startingStep || "email",
+  );
+
+  const [uiState, setUiState] = useState("form");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -77,16 +91,44 @@ export default function VerifyOtpPage() {
             resetToken: result.resetToken,
           },
         });
-      } else {
+      } else if (verificationStep === "email") {
         await verifyOtp(email, code);
-
-        setSuccess("Email verified successfully. You can now sign in.");
-
+        setSuccess("Email verified successfully.");
         setTimeout(() => {
-          navigate("/login");
+          setSuccess("");
+          setOtp(["", "", "", "", "", ""]);
+          setVerificationStep("phone");
+          setResendCooldown(60);
+          setTimeout(() => otpRefs.current[0]?.focus(), 100);
+        }, 1200);
+      } else if (verificationStep === "phone") {
+        // Trigger full-screen "Verifying..." overlay immediately
+        setUiState("verifying");
+
+        await verifyPhoneOtp(email, code);
+
+        // Transition to "Verification successful" screen
+        setUiState("success");
+
+        setTimeout(async () => {
+          // Transition to "Logging you in..." screen
+          setUiState("logging_in");
+
+          // Auto-Login using the password passed from the login page
+          if (isFromLogin && password) {
+            try {
+              await login(email, password);
+              navigate("/", { replace: true });
+            } catch (loginErr) {
+              navigate("/login");
+            }
+          } else {
+            navigate("/login");
+          }
         }, 1500);
       }
     } catch (err) {
+      setUiState("form");
       setError(err.response?.data?.message || "Invalid or expired code.");
     } finally {
       setLoading(false);
@@ -101,8 +143,10 @@ export default function VerifyOtpPage() {
     try {
       if (isForgotPassword) {
         await forgotPassword(email);
-      } else {
+      } else if (verificationStep === "email") {
         await resendOtp(email);
+      } else {
+        await resendPhoneOtp(email);
       }
 
       setResendCooldown(60);
@@ -112,6 +156,156 @@ export default function VerifyOtpPage() {
       setError(err.response?.data?.message || "Could not resend code.");
     }
   };
+
+  if (uiState === "verifying") {
+    return (
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 9999,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "rgba(255, 255, 255, 0.85)",
+          backdropFilter: "blur(5px)",
+          WebkitBackdropFilter: "blur(5px)",
+        }}
+      >
+        <svg
+          className="spinner-icon"
+          style={{
+            width: "36px",
+            height: "36px",
+            color: "#111",
+            marginBottom: "14px",
+          }}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        >
+          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+        </svg>
+        <h3
+          style={{
+            fontSize: "14px",
+            fontWeight: "500",
+            color: "#111",
+            margin: 0,
+            fontFamily: "'Montserrat', sans-serif",
+          }}
+        >
+          Verifying...
+        </h3>
+      </div>
+    );
+  }
+
+  if (uiState === "success") {
+    return (
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 9999,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "rgba(255, 255, 255, 0.85)",
+          backdropFilter: "blur(5px)",
+          WebkitBackdropFilter: "blur(5px)",
+        }}
+      >
+        <div
+          style={{
+            width: "52px",
+            height: "52px",
+            borderRadius: "50%",
+            border: "2px solid #111",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: "14px",
+          }}
+        >
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#111"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </div>
+        <h3
+          style={{
+            fontSize: "14px",
+            fontWeight: "500",
+            color: "#111",
+            margin: 0,
+            fontFamily: "'Montserrat', sans-serif",
+          }}
+        >
+          Verification successful
+        </h3>
+      </div>
+    );
+  }
+
+  if (uiState === "logging_in") {
+    return (
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 9999,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "rgba(255, 255, 255, 0.85)",
+          backdropFilter: "blur(5px)",
+          WebkitBackdropFilter: "blur(5px)",
+        }}
+      >
+        <svg
+          className="spinner-icon"
+          style={{
+            width: "36px",
+            height: "36px",
+            color: "#111",
+            marginBottom: "14px",
+          }}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        >
+          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+        </svg>
+        <h3
+          style={{
+            fontSize: "14px",
+            fontWeight: "500",
+            color: "#111",
+            margin: 0,
+            fontFamily: "'Montserrat', sans-serif",
+          }}
+        >
+          Logging you in...
+        </h3>
+      </div>
+    );
+  }
 
   return (
     <div className="auth-root">
@@ -125,6 +319,12 @@ export default function VerifyOtpPage() {
                 <br />
                 <span>Reset Code</span>
               </>
+            ) : verificationStep === "phone" ? (
+              <>
+                Verify Your
+                <br />
+                <span>Phone</span>
+              </>
             ) : (
               <>
                 Verify Your
@@ -136,24 +336,32 @@ export default function VerifyOtpPage() {
           <p>
             {isForgotPassword
               ? "We sent a 6-digit password reset code to your email. Enter it below to continue."
-              : "We sent a 6-digit verification code to your email address. Enter it below to confirm your identity."}
+              : verificationStep === "phone"
+                ? "We sent a 6-digit verification code to your phone. Enter it below to confirm your identity."
+                : "We sent a 6-digit verification code to your email address. Enter it below to confirm your identity."}
           </p>
         </div>
 
         <div className="auth-card-panel" style={{ justifyContent: "center" }}>
           <div className="otp-header">
-            <div className="otp-icon">📧</div>
+            <div className="otp-icon">
+              {verificationStep === "phone" ? "📱" : "📧"}
+            </div>
             <h2>
               {isForgotPassword
                 ? "Verify Reset Code"
-                : isFromLogin
-                  ? "Verify to Continue"
-                  : "Check Your Email"}
+                : verificationStep === "phone"
+                  ? "Verify Your Phone"
+                  : isFromLogin
+                    ? "Verify to Continue"
+                    : "Check Your Email"}
             </h2>
             <p>
               {isForgotPassword
                 ? "Enter the reset code we sent to your email."
-                : "Enter the verification code we sent to your email."}
+                : verificationStep === "phone"
+                  ? "Enter the 6-digit verification code we sent to your phone."
+                  : "Enter the verification code we sent to your email."}
               <br />
               <strong>{email}</strong>
             </p>
@@ -209,6 +417,8 @@ export default function VerifyOtpPage() {
               </>
             ) : isForgotPassword ? (
               "Verify Reset Code"
+            ) : verificationStep === "phone" ? (
+              "Verify Phone"
             ) : (
               "Verify Email"
             )}
@@ -221,7 +431,7 @@ export default function VerifyOtpPage() {
               </span>
             ) : (
               <>
-                Didn't receive it?{" "}
+                Didn't receive the code?{" "}
                 <button onClick={handleResend} disabled={!email}>
                   Resend Code
                 </button>

@@ -117,9 +117,8 @@ const useAuthStore = create((set, get) => ({
     const cleanEmail = String(email || "").trim();
 
     try {
-      // 1. ONE single request to a unified endpoint
-      // (Check your api.js baseURL, it usually adds /api automatically)
-      const { data } = await api.post("/auth/login", {
+      // Point this to the customer auth controller we just updated!
+      const { data } = await api.post("/customer/auth/login", {
         email: cleanEmail,
         password,
         recaptcha_token: recaptchaToken,

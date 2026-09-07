@@ -670,24 +670,53 @@ export default function CartPage() {
                       <button
                         type="button"
                         className="fm-cart-qty-btn"
-                        onClick={() => updateQty(item.key, -1)}
+                        onClick={() => {
+                          if (item.quantity > 1) updateQty(item.key, -1);
+                        }}
+                        disabled={item.quantity <= 1}
                       >
                         <Minus size={14} />
                       </button>
 
                       <input
-                        type="number"
+                        key={`${item.key}-${item.quantity}`}
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
                         className="fm-cart-qty-value"
-                        value={item.quantity || 1}
-                        min="1"
-                        onChange={(e) => {
-                          const newQty = parseInt(e.target.value, 10);
+                        defaultValue={item.quantity || 1}
+                        onFocus={(e) => e.target.select()}
+                        onInput={(e) => {
+                          // Prevent typing letters instantly
+                          const digits = e.target.value.replace(/[^0-9]/g, "");
+                          if (e.target.value !== digits) {
+                            e.target.value = digits;
+                          }
+                        }}
+                        onBlur={(e) => {
+                          // Apply the new quantity when the user clicks away
+                          const parsed = parseInt(e.target.value, 10);
+                          const stockLimit =
+                            !blueprint && item.max_stock
+                              ? Math.max(1, Math.floor(item.max_stock))
+                              : null;
 
-                          // Only update if it's a valid number greater than 0
-                          if (!isNaN(newQty) && newQty > 0) {
-                            // Calculate the difference because updateQty adds/subtracts
-                            const delta = newQty - item.quantity;
-                            updateQty(item.key, delta);
+                          let finalQty =
+                            isNaN(parsed) || parsed < 1 ? 1 : parsed;
+                          if (stockLimit && finalQty > stockLimit)
+                            finalQty = stockLimit;
+
+                          e.target.value = String(finalQty);
+                          if (finalQty !== item.quantity) {
+                            updateQty(item.key, finalQty - item.quantity);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          // Apply the new quantity when the user presses Enter
+                          if (e.key === "Enter") e.target.blur();
+                          if (e.key === "Escape") {
+                            e.target.value = String(item.quantity || 1);
+                            e.target.blur();
                           }
                         }}
                         style={{
@@ -706,6 +735,11 @@ export default function CartPage() {
                         type="button"
                         className="fm-cart-qty-btn"
                         onClick={() => updateQty(item.key, 1)}
+                        disabled={
+                          !blueprint &&
+                          item.max_stock &&
+                          item.quantity >= item.max_stock
+                        }
                       >
                         <Plus size={14} />
                       </button>

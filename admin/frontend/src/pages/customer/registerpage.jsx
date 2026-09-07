@@ -24,6 +24,10 @@ export default function RegisterPage() {
     resendOtp,
     changeRegistrationEmail,
     invalidateRegistrationEmailOtp,
+    verifyPhoneOtp,
+    resendPhoneOtp,
+    changeRegistrationPhone,
+    invalidateRegistrationPhoneOtp,
   } = useAuthStore();
   const navigate = useNavigate();
 
@@ -44,6 +48,10 @@ export default function RegisterPage() {
   const [newEmail, setNewEmail] = useState("");
   const [changeEmailError, setChangeEmailError] = useState("");
   const [changeEmailLoading, setChangeEmailLoading] = useState(false);
+  const [changingPhone, setChangingPhone] = useState(false);
+  const [newPhone, setNewPhone] = useState("");
+  const [changePhoneError, setChangePhoneError] = useState("");
+  const [changePhoneLoading, setChangePhoneLoading] = useState(false);
   const otpRefs = useRef([]);
   const recaptchaRef = useRef(null);
 
@@ -211,12 +219,11 @@ export default function RegisterPage() {
     try {
       await verifyOtp(registeredEmail, code);
 
-      navigate("/phone-otp", {
-        state: {
-          email: registeredEmail,
-          phone: "0" + form.phone,
-        },
-      });
+      setStep("phoneOtp");
+      setOtp(["", "", "", "", "", ""]);
+      setOtpError("");
+      setResendCooldown(60);
+      setTimeout(() => otpRefs.current[0]?.focus(), 100);
     } catch (err) {
       setOtpError(
         err.response?.data?.message ||
@@ -224,6 +231,80 @@ export default function RegisterPage() {
       );
     } finally {
       setOtpLoading(false);
+    }
+  };
+
+  const handleVerifyPhoneOtp = async () => {
+    const code = otp.join("");
+    if (code.length < 6) return setOtpError("Please enter all 6 digits.");
+
+    setOtpError("");
+    setOtpLoading(true);
+
+    try {
+      await verifyPhoneOtp(registeredEmail, code);
+      setStep("success");
+    } catch (err) {
+      setOtpError(
+        err.response?.data?.message ||
+          "Invalid or expired phone verification code.",
+      );
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const handleChangePhone = async () => {
+    let value = newPhone.replace(/\D/g, "");
+    if (value.startsWith("0")) value = value.slice(1);
+    if (value.length > 10) value = value.slice(0, 10);
+
+    setChangePhoneError("");
+    if (value.length !== 10 || value[0] !== "9") {
+      return setChangePhoneError(
+        "Please enter a valid 10-digit mobile number.",
+      );
+    }
+
+    setChangePhoneLoading(true);
+    try {
+      const response = await changeRegistrationPhone(registeredEmail, value);
+
+      const returnedPhone = response.phone || `63${value}`;
+      const displayPhone = returnedPhone.startsWith("63")
+        ? `0${returnedPhone.slice(2)}`
+        : returnedPhone;
+
+      set(
+        "phone",
+        displayPhone.startsWith("0") ? displayPhone.slice(1) : displayPhone,
+      );
+
+      setOtp(["", "", "", "", "", ""]);
+      setOtpError("");
+      setChangePhoneError("");
+      setChangingPhone(false);
+      setNewPhone("");
+      setResendCooldown(60);
+      otpRefs.current[0]?.focus();
+    } catch (err) {
+      setChangePhoneError(
+        err.response?.data?.message || "Could not change your phone number.",
+      );
+    } finally {
+      setChangePhoneLoading(false);
+    }
+  };
+
+  const handleResendPhone = async () => {
+    if (resendCooldown > 0) return;
+    try {
+      await resendPhoneOtp(registeredEmail);
+      setResendCooldown(60);
+      setOtp(["", "", "", "", "", ""]);
+      otpRefs.current[0]?.focus();
+    } catch (err) {
+      setOtpError(err.response?.data?.message || "Could not resend OTP.");
     }
   };
 
@@ -281,6 +362,211 @@ export default function RegisterPage() {
       );
     }
   };
+
+  if (step === "phoneOtp") {
+    return (
+      <div className="auth-root">
+        <div className="auth-split">
+          <div className="auth-card-panel">
+            <button
+              type="button"
+              className="auth-close"
+              onClick={() => navigate("/")}
+            >
+              ×
+            </button>
+            <div className="step-indicator">
+              <div className="step-dot done" />
+              <div className="step-dot done" />
+            </div>
+
+            {!changingPhone ? (
+              <>
+                <div className="auth-card-header">
+                  <h2>Verify Your Phone</h2>
+                  <p>
+                    Enter the 6-digit code sent to
+                    <br />
+                    <strong>0{form.phone}</strong>
+                  </p>
+                </div>
+
+                {otpError && (
+                  <div
+                    className="alert alert-error"
+                    style={{ marginBottom: 16 }}
+                  >
+                    {otpError}
+                  </div>
+                )}
+
+                <div className="otp-inputs" onPaste={handleOtpPaste}>
+                  {otp.map((digit, i) => (
+                    <input
+                      key={i}
+                      ref={(el) => (otpRefs.current[i] = el)}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={1}
+                      value={digit}
+                      onChange={(e) => handleOtpChange(i, e.target.value)}
+                      onKeyDown={(e) => handleOtpKeyDown(i, e)}
+                      autoFocus={i === 0}
+                    />
+                  ))}
+                </div>
+
+                <button
+                  className="btn-auth"
+                  onClick={handleVerifyPhoneOtp}
+                  disabled={otpLoading || otp.join("").length < 6}
+                >
+                  {otpLoading ? "Verifying..." : "Verify Phone"}
+                </button>
+
+                <div className="otp-resend">
+                  {resendCooldown > 0 ? (
+                    <span>
+                      Resend code in <strong>{resendCooldown}s</strong>
+                    </span>
+                  ) : (
+                    <>
+                      Didn't receive the code?{" "}
+                      <button type="button" onClick={handleResendPhone}>
+                        Resend Code
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                <div className="auth-switch">
+                  Wrong phone number?{" "}
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setChangePhoneError("");
+                      try {
+                        await invalidateRegistrationPhoneOtp(registeredEmail);
+                        setOtp(["", "", "", "", "", ""]);
+                        setOtpError("");
+                        setResendCooldown(0);
+                        setChangingPhone(true);
+                        setNewPhone("");
+                      } catch (err) {
+                        setChangePhoneError(
+                          err.response?.data?.message ||
+                            "Error opening change phone screen.",
+                        );
+                      }
+                    }}
+                    disabled={changePhoneLoading}
+                  >
+                    Change phone number
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="auth-card-header">
+                  <h2>Change Phone Number</h2>
+                  <p>
+                    Enter your new phone number to receive a new verification
+                    code.
+                  </p>
+                </div>
+                <div style={{ marginTop: 16 }}>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: 6,
+                      fontSize: 13,
+                      fontWeight: 600,
+                    }}
+                  >
+                    New Phone Number
+                  </label>
+                  <div style={{ display: "flex", border: "1px solid #ddd" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        padding: "0 10px",
+                        background: "#f8f8f8",
+                        borderRight: "1px solid #ddd",
+                        fontSize: 14,
+                      }}
+                    >
+                      🇵🇭 +63
+                    </div>
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      maxLength={10}
+                      value={newPhone}
+                      onChange={(e) => {
+                        let val = e.target.value.replace(/\D/g, "");
+                        if (val.startsWith("0")) val = val.slice(1);
+                        if (val.length > 10) val = val.slice(0, 10);
+                        setNewPhone(val);
+                      }}
+                      placeholder="9XXXXXXXXX"
+                      disabled={changePhoneLoading}
+                      style={{
+                        flex: 1,
+                        border: "none",
+                        outline: "none",
+                        padding: "11px 12px",
+                        fontSize: 14,
+                      }}
+                    />
+                  </div>
+                  {changePhoneError && (
+                    <div className="alert alert-error" style={{ marginTop: 8 }}>
+                      {changePhoneError}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    className="btn-auth"
+                    onClick={handleChangePhone}
+                    disabled={changePhoneLoading}
+                    style={{ marginTop: 10 }}
+                  >
+                    {changePhoneLoading ? "Sending OTP..." : "Send OTP"}
+                  </button>
+                  <div className="auth-switch" style={{ marginTop: 10 }}>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setChangePhoneError("");
+                        try {
+                          await resendPhoneOtp(registeredEmail);
+                          setChangingPhone(false);
+                          setNewPhone("");
+                          setOtp(["", "", "", "", "", ""]);
+                          setOtpError("");
+                          setResendCooldown(60);
+                          setTimeout(() => otpRefs.current[0]?.focus(), 100);
+                        } catch (err) {
+                          setChangePhoneError(
+                            err.response?.data?.message ||
+                              "Error sending new code.",
+                          );
+                        }
+                      }}
+                      disabled={changePhoneLoading}
+                    >
+                      Back to Verify Phone
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (step === "success") {
     return (
@@ -434,7 +720,7 @@ export default function RegisterPage() {
                     </span>
                   ) : (
                     <>
-                      Didn't receive it?{" "}
+                      Didn't receive the code?{" "}
                       <button type="button" onClick={handleResend}>
                         Resend Code
                       </button>

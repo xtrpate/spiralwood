@@ -154,6 +154,7 @@ exports.getAllProducts = async (req, res) => {
       LEFT JOIN products p
         ON p.category_id = c.id
        AND p.type = 'standard'
+       AND p.is_published = 1
       GROUP BY c.id, c.name
       HAVING COUNT(p.id) > 0
       ORDER BY c.name ASC

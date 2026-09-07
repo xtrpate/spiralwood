@@ -46,10 +46,14 @@ export default function LoginPage() {
       const message = err.response?.data?.message;
       const emailFromServer = err.response?.data?.email;
 
-      if (code === "EMAIL_NOT_VERIFIED") {
+      if (code === "EMAIL_NOT_VERIFIED" || code === "PHONE_NOT_VERIFIED") {
         navigate("/verify-otp", {
-          state: { email: emailFromServer || form.email },
-          fromLogin: true
+          state: {
+            email: emailFromServer || form.email,
+            password: form.password,
+            startingStep: code === "PHONE_NOT_VERIFIED" ? "phone" : "email",
+          },
+          fromLogin: true,
         });
         return;
       }

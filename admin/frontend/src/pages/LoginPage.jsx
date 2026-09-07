@@ -40,9 +40,7 @@ const getCustomerPostLoginRoute = (redirectTo) => {
     "/custom-requests/",
   ];
 
-  return protectedCustomerPrefixes.some((prefix) =>
-    target.startsWith(prefix),
-  )
+  return protectedCustomerPrefixes.some((prefix) => target.startsWith(prefix))
     ? target
     : "/";
 };
@@ -93,7 +91,12 @@ export default function LoginPage() {
       : location.state?.redirectTo || null;
 
     try {
-      const user = await login(form.email, form.password, rememberMe, captchaToken);
+      const user = await login(
+        form.email,
+        form.password,
+        rememberMe,
+        captchaToken,
+      );
 
       try {
         sessionStorage.setItem("wisdom_login_feedback", "success");
@@ -117,11 +120,16 @@ export default function LoginPage() {
       const code = err?.response?.data?.code;
       const emailFromServer = err?.response?.data?.email;
 
-      if (code === "EMAIL_NOT_VERIFIED") {
+      if (code === "EMAIL_NOT_VERIFIED" || code === "PHONE_NOT_VERIFIED") {
         navigate("/verify-otp", {
-          state: { email: emailFromServer || form.email, fromLogin: true },
+          state: {
+            email: emailFromServer || form.email,
+            password: form.password, // Pass password so it can auto-login after phone verification!
+            startingStep: code === "PHONE_NOT_VERIFIED" ? "phone" : "email",
+            fromLogin: true,
+          },
         });
-        return; 
+        return;
       }
       const isRequestTimeout =
         err?.code === "ECONNABORTED" ||
@@ -249,14 +257,19 @@ export default function LoginPage() {
               />
             </div> */}
 
-            <button
-              type="submit"
-              className="btn-auth"
-              disabled={loading}
-            >
+            <button type="submit" className="btn-auth" disabled={loading}>
               {loading ? (
                 <>
-                  <svg className="spinner-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                  <svg
+                    className="spinner-icon"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                  >
                     <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                   </svg>
                   Logging in...

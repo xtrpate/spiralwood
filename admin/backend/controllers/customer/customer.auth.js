@@ -281,6 +281,59 @@ const sendResetOtpEmail = async (email, otp, name) => {
    EXPORTS
 ══════════════════════════════════════════════════════════════ */
 
+exports.checkAvailability = async (req, res) => {
+  const { email, phone } = req.body;
+
+  if (!email || !phone) {
+    return res.status(400).json({ message: "Email and phone are required." });
+  }
+
+  try {
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    // Normalize phone identically to your register function
+    let normalizedPhone;
+    try {
+      normalizedPhone = normalizePhilippinePhone(phone);
+    } catch {
+      return res
+        .status(400)
+        .json({ message: "Invalid Philippine mobile number." });
+    }
+
+    // Check Email
+    const [existingEmail] = await db.query(
+      "SELECT id FROM users WHERE email = ? LIMIT 1",
+      [normalizedEmail],
+    );
+
+    if (existingEmail.length > 0) {
+      return res.status(409).json({
+        message: "An account with this email already exists. Please sign in.",
+      });
+    }
+
+    // Check Phone
+    const [existingPhone] = await db.query(
+      "SELECT id FROM users WHERE phone = ? LIMIT 1",
+      [normalizedPhone],
+    );
+
+    if (existingPhone.length > 0) {
+      return res.status(409).json({
+        message:
+          "An account with this phone number already exists. Please sign in.",
+      });
+    }
+
+    // If both are clear, return success
+    return res.json({ available: true });
+  } catch (err) {
+    console.error("[check-availability]", err);
+    return res.status(500).json({ message: "Server error. Please try again." });
+  }
+};
+
 exports.register = async (req, res) => {
   const {
     first_name,
@@ -345,16 +398,32 @@ exports.register = async (req, res) => {
   try {
     const normalizedEmail = String(email).trim().toLowerCase();
     const fullName = `${String(first_name).trim()} ${String(last_name).trim()}`;
+    const normalizedPhone = normalizePhilippinePhone(phone); // Normalize phone early
 
-    const [existing] = await db.query(
+    // 1. Check for Duplicate Email
+    const [existingEmail] = await db.query(
       "SELECT id FROM users WHERE email = ? LIMIT 1",
       [normalizedEmail],
     );
 
-    if (existing.length > 0) {
-      return res
-        .status(409)
-        .json({ message: "An account with this email already exists." });
+    if (existingEmail.length > 0) {
+      return res.status(409).json({
+        message:
+          "An account with this email already exists. Please log in to continue.",
+      });
+    }
+
+    // 2. Check for Duplicate Phone Number
+    const [existingPhone] = await db.query(
+      "SELECT id FROM users WHERE phone = ? LIMIT 1",
+      [normalizedPhone],
+    );
+
+    if (existingPhone.length > 0) {
+      return res.status(409).json({
+        message:
+          "An account with this phone number already exists. Please log in to continue.",
+      });
     }
 
     const hashed = await bcrypt.hash(password, 12);
@@ -371,8 +440,6 @@ exports.register = async (req, res) => {
     const phoneOtpExpires = new Date(
       Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000,
     );
-
-    const normalizedPhone = normalizePhilippinePhone(phone);
 
     const [result] = await db.query(
       `
@@ -425,18 +492,12 @@ exports.register = async (req, res) => {
     try {
       const firstName = String(first_name).trim();
 
-      // 1. Send email OTP
+      // 1. Send email OTP ONLY
       await sendOtpEmail(normalizedEmail, emailOtp, firstName);
-
-      // 2. Send phone OTP
-      await sendSms({
-        phone: normalizedPhone,
-        message: `Your Spiral Wood Services phone verification code is ${phoneOtp}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
-      });
 
       return res.status(201).json({
         message:
-          "Registration successful. Verification codes were sent to your email and phone.",
+          "Registration successful. A verification code was sent to your email.",
         user_id: result.insertId,
       });
     } catch (verificationError) {
@@ -640,7 +701,7 @@ exports.verifyOtp = async (req, res) => {
 
     const [rows] = await db.query(
       `
-      SELECT id, otp_code, otp_purpose, otp_expires, is_verified
+      SELECT id, phone, otp_code, otp_purpose, otp_expires, is_verified
       FROM users
       WHERE email = ? AND role = 'customer'
       LIMIT 1
@@ -679,18 +740,40 @@ exports.verifyOtp = async (req, res) => {
       });
     }
 
+    // Generate a fresh Phone OTP now that email is verified
+    const phoneOtp = generateOtp();
+    const phoneOtpHash = await bcrypt.hash(phoneOtp, 10);
+    const phoneOtpExpires = new Date(
+      Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000,
+    );
+
     await db.query(
       `
-  UPDATE users
-  SET
-    is_verified = TRUE,
-    otp_code = NULL,
-    otp_purpose = NULL,
-    otp_expires = NULL
-  WHERE id = ?
-  `,
-      [user.id],
+      UPDATE users
+      SET
+        is_verified = TRUE,
+        otp_code = NULL,
+        otp_purpose = NULL,
+        otp_expires = NULL,
+        phone_otp_hash = ?,
+        phone_otp_expires = ?
+      WHERE id = ?
+      `,
+      [phoneOtpHash, phoneOtpExpires, user.id],
     );
+
+    // Now send the SMS!
+    console.log("[OTP SOURCE] verifyOtp -> sending phone OTP", {
+      email: normalizedEmail,
+      userId: user.id,
+      otp: phoneOtp,
+      time: new Date().toISOString(),
+    });
+
+    await sendSms({
+      phone: user.phone,
+      message: `Your Spiral Wood Services phone verification code is ${phoneOtp}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
+    });
 
     return res.json({
       message:
@@ -806,6 +889,13 @@ exports.changeRegistrationPhone = async (req, res) => {
       `,
       [normalizedPhone, phoneOtpHash, phoneOtpExpires, user.id],
     );
+
+    console.log("[OTP SOURCE] changeRegistrationPhone -> sending phone OTP", {
+      email: normalizedEmail,
+      userId: user.id,
+      otp: phoneOtp,
+      time: new Date().toISOString(),
+    });
 
     // Send the new OTP to the new phone number.
     await sendSms({
@@ -1187,6 +1277,13 @@ exports.resendPhoneOtp = async (req, res) => {
       [phoneOtpHash, phoneOtpExpires, user.id],
     );
 
+    console.log("[OTP SOURCE] resendPhoneOtp -> sending phone OTP", {
+      email: normalizedEmail,
+      userId: user.id,
+      otp: phoneOtp,
+      time: new Date().toISOString(),
+    });
+
     await sendSms({
       phone: user.phone,
       message: `Your Spiral Wood Services phone verification code is ${phoneOtp}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
@@ -1396,13 +1493,14 @@ exports.login = async (req, res) => {
         email,
         password,
         role,
-        staff_type, /* Added staff_type for the JWT */
+        staff_type,
         phone,
         address,
         address_lat,
         address_lng,
         profile_photo,
         is_verified,
+        phone_verified,
         is_active
       FROM users
       WHERE email = ? 
@@ -1424,20 +1522,33 @@ exports.login = async (req, res) => {
 
     // 2. ROLE-SPECIFIC CHECKS
 
-    // A. Customer Recovery Flow
-    if (user.role === "customer" && !user.is_verified) {
+    // Bulletproof database boolean conversions
+    const isEmailVerified =
+      user.is_verified === 1 ||
+      user.is_verified === true ||
+      user.is_verified === "1" ||
+      (Buffer.isBuffer(user.is_verified) && user.is_verified[0] === 1);
+
+    const isPhoneVerified =
+      user.phone_verified === 1 ||
+      user.phone_verified === true ||
+      user.phone_verified === "1" ||
+      (Buffer.isBuffer(user.phone_verified) && user.phone_verified[0] === 1);
+
+    // A. Customer Recovery Flow - Email (Added .trim() just in case!)
+    if (String(user.role).trim() === "customer" && !isEmailVerified) {
       const newOtp = generateOtp();
       const expiry = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
       await db.query(
         `
-  UPDATE users
-  SET
-    otp_code = ?,
-    otp_purpose = 'verify_email',
-    otp_expires = ?
-  WHERE id = ?
-  `,
+        UPDATE users
+        SET
+          otp_code = ?,
+          otp_purpose = 'verify_email',
+          otp_expires = ?
+        WHERE id = ?
+        `,
         [newOtp, expiry, user.id],
       );
 
@@ -1445,15 +1556,56 @@ exports.login = async (req, res) => {
       await sendOtpEmail(user.email, newOtp, firstName);
 
       return res.status(403).json({
-        message:
-          "Account not verified. A new verification code has been sent to your email.",
+        message: "Email not verified. A new verification code has been sent.",
         code: "EMAIL_NOT_VERIFIED",
         email: user.email,
       });
     }
 
+    // A2. Customer Recovery Flow - Phone (Added .trim() just in case!)
+    if (
+      String(user.role).trim() === "customer" &&
+      isEmailVerified &&
+      !isPhoneVerified
+    ) {
+      const phoneOtp = generateOtp();
+      const phoneOtpHash = await bcrypt.hash(phoneOtp, 10);
+      const phoneOtpExpires = new Date(
+        Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000,
+      );
+
+      await db.query(
+        `
+        UPDATE users
+        SET
+          phone_otp_hash = ?,
+          phone_otp_expires = ?
+        WHERE id = ?
+        `,
+        [phoneOtpHash, phoneOtpExpires, user.id],
+      );
+
+      console.log("[OTP SOURCE] login -> sending phone OTP", {
+        email: normalizedEmail,
+        userId: user.id,
+        otp: phoneOtp,
+        time: new Date().toISOString(),
+      });
+
+      await sendSms({
+        phone: user.phone,
+        message: `Your Spiral Wood Services phone verification code is ${phoneOtp}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
+      });
+
+      return res.status(403).json({
+        message: "Phone not verified. A new verification code has been sent.",
+        code: "PHONE_NOT_VERIFIED",
+        email: user.email,
+      });
+    }
+
     // B. Staff Configuration Check
-    if (user.role === "staff" && !user.staff_type) {
+    if (String(user.role).trim() === "staff" && !user.staff_type) {
       return res.status(403).json({
         message: "Staff account type is not configured yet. Contact admin.",
       });

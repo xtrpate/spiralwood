@@ -552,9 +552,21 @@ export default function ProductCatalog() {
     <div className="catalog-page-shell">
       <div className="premium-toast-container">
         {toastMsg && (
-          <div className={`premium-toast ${isHiding ? "hiding" : ""}`}>
+          <div
+            className={`premium-toast ${isHiding ? "hiding" : ""}`}
+            onClick={() => {
+              setToastMsg("");
+              navigate("/cart");
+            }}
+            style={{ cursor: "pointer" }}
+            title="Click to view your cart"
+          >
             <CheckCircle2 size={20} color="#111111" />
-            <span>{toastMsg}</span>
+            <div
+              style={{ display: "flex", flexDirection: "column", gap: "2px" }}
+            >
+              <span>{toastMsg}</span>
+            </div>
           </div>
         )}
       </div>

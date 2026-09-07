@@ -2,6 +2,8 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
+import * as XLSX from "xlsx-js-style";
+import { FileDown } from "lucide-react";
 
 import "./BuildMaterialsPage.css";
 // WISDOM BUILD MATERIALS UI POLISH V1.0.1
@@ -50,6 +52,93 @@ export default function BuildMaterialsPage() {
   const [publishing, setPublishing] = useState(false);
   const [bulkPublishModal, setBulkPublishModal] = useState(false);
   const [bulkPublishing, setBulkPublishing] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const { data } = await api.get("/products", {
+        params: {
+          limit: 5000,
+          search: filters.search || undefined,
+          category_id: filters.categoryFilter || undefined,
+          status: filters.stockFilter || undefined,
+          type: "standard",
+        },
+      });
+
+      const rows = data.products || [];
+      if (!rows.length) {
+        toast.error("No materials found to export.");
+        return;
+      }
+
+      const wb = XLSX.utils.book_new();
+      const exportData = [
+        [
+          {
+            v: "BUILD MATERIALS INVENTORY REPORT",
+            s: { font: { bold: true } },
+          },
+        ],
+        [],
+        [
+          "Material Name",
+          "Category",
+          "Walk-in Price",
+          "Product Cost",
+          "Available Stock",
+          "Reorder Point",
+          "Status",
+          "Published",
+          "Active",
+        ].map((t) => ({
+          v: t,
+          s: {
+            font: { bold: true, color: { rgb: "FFFFFF" } },
+            fill: { fgColor: { rgb: "000000" } },
+          },
+        })),
+      ];
+
+      rows.forEach((row) => {
+        exportData.push([
+          row.name,
+          row.category_name || "—",
+          Number(row.walkin_price || 0),
+          Number(row.production_cost || 0),
+          Number(row.stock || 0),
+          Number(row.reorder_point || 0),
+          String(row.stock_status || "").replace(/_/g, " "),
+          Number(row.is_published) === 1 ? "Yes" : "No",
+          Number(row.is_active) === 1 ? "Yes" : "No",
+        ]);
+      });
+
+      const ws = XLSX.utils.aoa_to_sheet(exportData);
+      ws["!cols"] = [
+        { wch: 35 },
+        { wch: 20 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 10 },
+        { wch: 10 },
+      ];
+      XLSX.utils.book_append_sheet(wb, ws, "Build Materials");
+      XLSX.writeFile(
+        wb,
+        `Build-Materials-Report-${new Date().toISOString().slice(0, 10)}.xlsx`,
+      );
+      toast.success("Excel report exported successfully.");
+    } catch (err) {
+      toast.error("Failed to export report.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   useEffect(() => {
     sessionStorage.removeItem("wisdom_navigating_to_build_edit");
@@ -313,13 +402,32 @@ export default function BuildMaterialsPage() {
             product cost, profit, and stock level.
           </p>
         </div>
-        <button
-          type="button"
-          className="build-materials-primary-button"
-          onClick={() => navigate("/admin/inventory/build/new")}
-        >
-          + Add item
-        </button>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+          <button
+            type="button"
+            className="build-materials-view-button"
+            onClick={handleExport}
+            disabled={exporting}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              background: "#ffffff",
+              color: "#18181b",
+              border: "1px solid #d4d4d8",
+            }}
+          >
+            <FileDown size={14} />
+            {exporting ? "Exporting..." : "Export Report"}
+          </button>
+          <button
+            type="button"
+            className="build-materials-primary-button"
+            onClick={() => navigate("/admin/inventory/build/new")}
+          >
+            + Add item
+          </button>
+        </div>
       </div>
 
       <div className="build-materials-toolbar">

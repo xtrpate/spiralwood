@@ -3,6 +3,8 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import toast from "react-hot-toast";
+import * as XLSX from "xlsx-js-style";
+import { FileDown } from "lucide-react";
 
 const STOCK_COLORS = {
   in_stock: ["#f0fdf4", "#15803d", "#bbf7d0"],
@@ -32,7 +34,9 @@ const formatDateTime = (value) => {
 };
 
 const formatStatus = (value) => {
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
   if (!normalized) return "";
   if (normalized === "consumed") return "Used";
   if (normalized === "pending_stock") return "Waiting for stock";
@@ -123,6 +127,97 @@ export default function RawMaterialsPage() {
   const [reservationFilter, setReservationFilter] = useState("all");
   const [actionMenuId, setActionMenuId] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const { data } = await api.get("/inventory/raw", {
+        params: {
+          limit: 5000,
+          search: filters.search,
+          status: filters.status,
+          archive_status: filters.archive_status,
+        },
+      });
+      const rows = data.rows || [];
+      if (!rows.length) {
+        toast.error("No materials found to export.");
+        return;
+      }
+
+      const wb = XLSX.utils.book_new();
+      const exportData = [
+        [{ v: "RAW MATERIALS INVENTORY REPORT", s: { font: { bold: true } } }],
+        [],
+        [
+          "Material Name",
+          "Supplier",
+          "Unit",
+          "On Hand",
+          "Reserved",
+          "Available",
+          "Needed for Orders",
+          "Reorder Point",
+          "Unit Cost",
+          "Total Value",
+        ].map((t) => ({
+          v: t,
+          s: {
+            font: { bold: true, color: { rgb: "FFFFFF" } },
+            fill: { fgColor: { rgb: "000000" } },
+          },
+        })),
+      ];
+
+      rows.forEach((row) => {
+        const onHand = Number(row.on_hand_quantity ?? row.quantity ?? 0);
+        const reserved = Number(row.reserved_quantity || 0);
+        const available = Number(
+          row.available_quantity ?? Math.max(0, onHand - reserved),
+        );
+        const needed = Number(row.pending_need_quantity || 0);
+        const cost = Number(row.unit_cost || 0);
+
+        exportData.push([
+          row.name,
+          row.supplier_name || "—",
+          row.unit,
+          onHand,
+          reserved,
+          available,
+          needed,
+          Number(row.reorder_point || 0),
+          cost,
+          onHand * cost,
+        ]);
+      });
+
+      const ws = XLSX.utils.aoa_to_sheet(exportData);
+      ws["!cols"] = [
+        { wch: 35 },
+        { wch: 25 },
+        { wch: 10 },
+        { wch: 12 },
+        { wch: 12 },
+        { wch: 12 },
+        { wch: 18 },
+        { wch: 15 },
+        { wch: 12 },
+        { wch: 15 },
+      ];
+      XLSX.utils.book_append_sheet(wb, ws, "Raw Materials");
+      XLSX.writeFile(
+        wb,
+        `Raw-Materials-Report-${new Date().toISOString().slice(0, 10)}.xlsx`,
+      );
+      toast.success("Excel report exported successfully.");
+    } catch (err) {
+      toast.error("Failed to export report.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const load = useCallback(async () => {
     const { data } = await api.get("/inventory/raw", {
@@ -308,13 +403,41 @@ export default function RawMaterialsPage() {
             Stock Movement whenever physical inventory changes.
           </div>
         </div>
-        <button onClick={openAdd} style={btnPrimary}>
-          Add material
-        </button>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            style={{
+              padding: "9px 18px",
+              background: "#ffffff",
+              color: "#18181b",
+              border: "1px solid #d4d4d8",
+              borderRadius: "2px",
+              fontSize: "13px",
+              fontWeight: "600",
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            <FileDown size={14} />
+            {exporting ? "Exporting..." : "Export Report"}
+          </button>
+          <button onClick={openAdd} style={btnPrimary}>
+            Add material
+          </button>
+        </div>
       </div>
 
       <div style={filterRow}>
-        <div style={{ ...filterField, flex: "0 1 520px", width: "min(520px, 100%)" }}>
+        <div
+          style={{
+            ...filterField,
+            flex: "0 1 520px",
+            width: "min(520px, 100%)",
+          }}
+        >
           <label style={filterLabel}>Search</label>
           <input
             placeholder="Search materials"
@@ -546,7 +669,7 @@ export default function RawMaterialsPage() {
                         {formatStatus(availabilityStatus)}
                       </span>
                     </td>
-<td style={{ ...td, whiteSpace: "normal" }}>
+                    <td style={{ ...td, whiteSpace: "normal" }}>
                       <div style={rowActions}>
                         {isActive ? (
                           <button
@@ -647,7 +770,8 @@ export default function RawMaterialsPage() {
                           )}
                         </div>
                       </div>
-                    </td></tr>
+                    </td>
+                  </tr>
                 );
               })
             )}
@@ -668,7 +792,7 @@ export default function RawMaterialsPage() {
               </div>
             )}
             <form onSubmit={handleSave}>
-              {([
+              {[
                 ["Name *", "name", "text", true],
                 ["Unit *", "unit", "text", true],
                 ...(modal.mode === "edit"
@@ -676,7 +800,7 @@ export default function RawMaterialsPage() {
                   : []),
                 ["Reorder Point", "reorder_point", "number"],
                 ["Unit Cost (₱)", "unit_cost", "number"],
-              ]).map(([label, key, type, required]) => {
+              ].map(([label, key, type, required]) => {
                 const quantityLocked =
                   modal.mode === "edit" && key === "quantity";
 
@@ -842,15 +966,17 @@ export default function RawMaterialsPage() {
                   Cancel
                 </button>
                 <button type="submit" disabled={saving} style={btnPrimary}>
-                  {saving ? "Saving..." : modal.mode === "add" ? "Add material" : "Save changes"}
+                  {saving
+                    ? "Saving..."
+                    : modal.mode === "add"
+                      ? "Add material"
+                      : "Save changes"}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-
-
 
       {confirmAction && (
         <div
@@ -861,7 +987,9 @@ export default function RawMaterialsPage() {
         >
           <div style={confirmModalBox}>
             <div style={confirmEyebrow}>
-              {confirmAction.type === "delete" ? "Permanent action" : "Inventory record"}
+              {confirmAction.type === "delete"
+                ? "Permanent action"
+                : "Inventory record"}
             </div>
             <h3 style={{ ...modalTitle, marginBottom: 8 }}>
               {confirmAction.type === "delete"
@@ -870,11 +998,19 @@ export default function RawMaterialsPage() {
             </h3>
             <p style={confirmCopy}>
               {confirmAction.type === "delete"
-                ? 'Delete "' + confirmAction.item.name + '" permanently? This is only available when the material has no linked or historical records.'
-                : 'Archive "' + confirmAction.item.name + '"? It will be hidden from active inventory and new material selectors, while its history stays available.'}
+                ? 'Delete "' +
+                  confirmAction.item.name +
+                  '" permanently? This is only available when the material has no linked or historical records.'
+                : 'Archive "' +
+                  confirmAction.item.name +
+                  '"? It will be hidden from active inventory and new material selectors, while its history stays available.'}
             </p>
             <div style={modalActions}>
-              <button type="button" onClick={() => setConfirmAction(null)} style={btnGhost}>
+              <button
+                type="button"
+                onClick={() => setConfirmAction(null)}
+                style={btnGhost}
+              >
                 Cancel
               </button>
               <button
@@ -882,7 +1018,9 @@ export default function RawMaterialsPage() {
                 onClick={confirmMaterialAction}
                 style={confirmAction.type === "delete" ? btnDanger : btnPrimary}
               >
-                {confirmAction.type === "delete" ? "Delete permanently" : "Archive material"}
+                {confirmAction.type === "delete"
+                  ? "Delete permanently"
+                  : "Archive material"}
               </button>
             </div>
           </div>
@@ -908,7 +1046,8 @@ export default function RawMaterialsPage() {
                   {reservationModal.material?.name || "Raw material"}
                 </div>
                 <div style={{ fontSize: 11, color: "#71717a", marginTop: 3 }}>
-                  Review how this material was reserved, used, or released for blueprint orders.
+                  Review how this material was reserved, used, or released for
+                  blueprint orders.
                 </div>
               </div>
               <button
@@ -1497,7 +1636,6 @@ const orderMeta = {
   fontSize: 10,
   color: "#71717a",
 };
-
 
 const rowActions = {
   display: "flex",

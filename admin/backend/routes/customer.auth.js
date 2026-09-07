@@ -60,7 +60,8 @@ router.post(
 );
 router.post("/verify-reset-otp", otpLimiter, authController.verifyResetOtp);
 router.post("/reset-password", otpLimiter, authController.resetPassword);
-//router.post("/login", authController.login);
+router.post("/login", authController.login);
+router.post("/check-availability", authController.checkAvailability);
 
 /* ══════════════════════════════════════════════════════════════
    CLOUD CART OMNICHANNEL ROUTES (Protected)

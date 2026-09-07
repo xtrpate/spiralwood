@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import toast from "react-hot-toast";
+import * as XLSX from "xlsx-js-style";
+import { FileDown } from "lucide-react";
 
 const PAGE_SIZE = 30;
 
@@ -84,6 +86,7 @@ export default function StockMovementPage() {
   });
   const [modal, setModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [itemKind, setItemKind] = useState("material");
   const [form, setForm] = useState({
     material_id: "",
@@ -188,6 +191,83 @@ export default function StockMovementPage() {
     }));
   };
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const { data } = await api.get("/inventory/movements", {
+        params: { ...filters, limit: 5000 },
+      });
+      const exportRows = data.rows || [];
+      if (!exportRows.length) {
+        toast.error("No movements found to export.");
+        return;
+      }
+
+      const wb = XLSX.utils.book_new();
+      const exportData = [
+        [{ v: "STOCK MOVEMENT HISTORY REPORT", s: { font: { bold: true } } }],
+        [],
+        [
+          "Date",
+          "Movement",
+          "Source",
+          "Item",
+          "Quantity",
+          "Order",
+          "Reference",
+          "Notes",
+          "Recorded By",
+        ].map((t) => ({
+          v: t,
+          s: {
+            font: { bold: true, color: { rgb: "FFFFFF" } },
+            fill: { fgColor: { rgb: "000000" } },
+          },
+        })),
+      ];
+
+      exportRows.forEach((row) => {
+        const isPositive = row.type === "in" || row.type === "return";
+        const qtyLabel =
+          `${isPositive ? "+" : "-"}${row.quantity} ${row.material_unit || ""}`.trim();
+        exportData.push([
+          new Date(row.created_at).toLocaleString("en-PH"),
+          String(row.type || "").toUpperCase(),
+          row.movement_source || "manual",
+          row.material_name || row.product_name || "—",
+          qtyLabel,
+          row.order_number || row.order_id || "—",
+          row.reference || "—",
+          row.notes || "—",
+          row.created_by_name || "—",
+        ]);
+      });
+
+      const ws = XLSX.utils.aoa_to_sheet(exportData);
+      ws["!cols"] = [
+        { wch: 25 },
+        { wch: 15 },
+        { wch: 20 },
+        { wch: 35 },
+        { wch: 15 },
+        { wch: 20 },
+        { wch: 20 },
+        { wch: 30 },
+        { wch: 20 },
+      ];
+      XLSX.utils.book_append_sheet(wb, ws, "Stock Movements");
+      XLSX.writeFile(
+        wb,
+        `Stock-Movements-Report-${new Date().toISOString().slice(0, 10)}.xlsx`,
+      );
+      toast.success("Excel report exported successfully.");
+    } catch (err) {
+      toast.error("Failed to export report.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleItemKindChange = (value) => {
     setItemKind(value);
     setForm((current) => ({
@@ -285,12 +365,36 @@ export default function StockMovementPage() {
         <div>
           <h1 style={title}>Stock Movements</h1>
           <p style={subtitle}>
-            Review physical stock changes for raw materials and ready-made products. Blueprint production appears when raw materials are consumed.
+            Review physical stock changes for raw materials and ready-made
+            products. Blueprint production appears when raw materials are
+            consumed.
           </p>
         </div>
-        <button onClick={() => setModal(true)} style={btnPrimary}>
-          Record movement
-        </button>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            style={{
+              padding: "9px 18px",
+              background: "#ffffff",
+              color: "#18181b",
+              border: "1px solid #d4d4d8",
+              borderRadius: "2px",
+              fontSize: "12px",
+              fontWeight: "600",
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            <FileDown size={14} />
+            {exporting ? "Exporting..." : "Export Report"}
+          </button>
+          <button onClick={() => setModal(true)} style={btnPrimary}>
+            Record movement
+          </button>
+        </div>
       </div>
 
       <div style={summaryGrid}>
@@ -384,9 +488,7 @@ export default function StockMovementPage() {
               Physical stock changes recorded by the system and staff.
             </div>
           </div>
-          <div style={tableCount}>
-            {total.toLocaleString("en-PH")} records
-          </div>
+          <div style={tableCount}>{total.toLocaleString("en-PH")} records</div>
         </div>
         <table
           style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}
@@ -564,7 +666,8 @@ export default function StockMovementPage() {
           <div style={modalBox}>
             <h3 style={modalTitle}>Record stock movement</h3>
             <p style={modalSubtitle}>
-              Choose the movement, item, and quantity for this physical stock change.
+              Choose the movement, item, and quantity for this physical stock
+              change.
             </p>
             <form onSubmit={handleSave}>
               <div style={fieldGroup}>
@@ -606,7 +709,9 @@ export default function StockMovementPage() {
                   <select
                     required
                     value={form.material_id}
-                    onChange={(event) => handleMaterialChange(event.target.value)}
+                    onChange={(event) =>
+                      handleMaterialChange(event.target.value)
+                    }
                     style={inputFull}
                   >
                     <option value="">Select raw material</option>
@@ -620,7 +725,9 @@ export default function StockMovementPage() {
                   <select
                     required
                     value={form.product_id}
-                    onChange={(event) => handleProductChange(event.target.value)}
+                    onChange={(event) =>
+                      handleProductChange(event.target.value)
+                    }
                     style={inputFull}
                   >
                     <option value="">Select ready-made product</option>
@@ -683,7 +790,9 @@ export default function StockMovementPage() {
               </div>
 
               <div style={fieldGroup}>
-                <label style={label}>Reference <span style={optionalText}>Optional</span></label>
+                <label style={label}>
+                  Reference <span style={optionalText}>Optional</span>
+                </label>
                 <input
                   value={form.reference}
                   onChange={(event) =>
@@ -699,7 +808,9 @@ export default function StockMovementPage() {
               </div>
 
               <div style={{ ...fieldGroup, marginBottom: 20 }}>
-                <label style={label}>Notes <span style={optionalText}>Optional</span></label>
+                <label style={label}>
+                  Notes <span style={optionalText}>Optional</span>
+                </label>
                 <textarea
                   value={form.notes}
                   onChange={(event) =>

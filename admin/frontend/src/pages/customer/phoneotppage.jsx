@@ -225,8 +225,6 @@ export default function PhoneOtpPage() {
           {!changingPhone ? (
             <>
               <div className="otp-header">
-                <div className="otp-icon">📱</div>
-
                 <h2>Verify Your Phone</h2>
 
                 <p>
