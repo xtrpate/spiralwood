@@ -36,7 +36,59 @@ const NAV_ITEMS = [
     roles: ["admin"],
   },
 
-  { section: "Management" },
+  { section: "Maintenance" },
+  {
+    label: "Products",
+    path: "/admin/products",
+    icon: "📦",
+    roles: ["admin", "staff"],
+  },
+  {
+    label: "Raw Materials",
+    path: "/admin/inventory/raw",
+    icon: "🪵",
+    roles: ["admin", "staff"],
+  },
+  {
+    label: "Build Materials",
+    path: "/admin/inventory/build",
+    icon: "🔧",
+    roles: ["admin", "staff"],
+  },
+  {
+    label: "Suppliers",
+    path: "/admin/inventory/suppliers",
+    icon: "🏭",
+    roles: ["admin", "staff"],
+  },
+
+  { section: "Transactions" },
+  {
+    label: "Stock Movements",
+    path: "/admin/inventory/movements",
+    icon: "🔄",
+    roles: ["admin", "staff"],
+  },
+  {
+    label: "Orders",
+    path: "/admin/orders",
+    icon: "🛒",
+    roles: ["admin", "staff"],
+  },
+  {
+    label: "Cancellations & Refunds",
+    path: "/admin/orders/cancellations",
+    icon: "↩️",
+    roles: ["admin"],
+  },
+  {
+    label: "POS QR Recovery",
+    path: "/admin/pos-qr-recovery",
+    icon: "💳",
+    roles: ["admin"],
+  },
+
+  { section: "Operations" },
   {
     label: "Task Assignments",
     path: "/admin/tasks",
@@ -56,40 +108,9 @@ const NAV_ITEMS = [
     roles: ["admin"],
   },
 
+  { section: "Blueprints & Production" },
   {
-    label: "Products",
-    path: "/admin/products",
-    icon: "📦",
-    roles: ["admin", "staff"],
-  },
-  { section: "Inventory" },
-  {
-    label: "Raw Materials",
-    path: "/admin/inventory/raw",
-    icon: "🪵",
-    roles: ["admin", "staff"],
-  },
-  {
-    label: "Build Materials",
-    path: "/admin/inventory/build",
-    icon: "🔧",
-    roles: ["admin", "staff"],
-  },
-  {
-    label: "Stock Movement",
-    path: "/admin/inventory/movements",
-    icon: "🔄",
-    roles: ["admin", "staff"],
-  },
-  {
-    label: "Suppliers",
-    path: "/admin/inventory/suppliers",
-    icon: "🏭",
-    roles: ["admin", "staff"],
-  },
-  { section: "Blueprints" },
-  {
-    label: "Blueprint Mgmt",
+    label: "Blueprint Management",
     path: "/admin/blueprints",
     icon: "🗺️",
     roles: ["admin", "staff"],
@@ -100,25 +121,8 @@ const NAV_ITEMS = [
     icon: "📝",
     roles: ["admin"],
   },
-  { section: "Sales & Orders" },
-  {
-    label: "Orders",
-    path: "/admin/orders",
-    icon: "🛒",
-    roles: ["admin", "staff"],
-  },
-  {
-    label: "Sales Reports",
-    path: "/admin/sales",
-    icon: "📈",
-    roles: ["admin", "staff"],
-  },
-  {
-    label: "POS QR Recovery",
-    path: "/admin/pos-qr-recovery",
-    icon: "💳",
-    roles: ["admin"],
-  },
+
+  { section: "Customer Service" },
   {
     label: "Warranty",
     path: "/admin/warranty",
@@ -131,7 +135,16 @@ const NAV_ITEMS = [
     icon: "💬",
     roles: ["admin", "staff"],
   },
-  { section: "Management" },
+
+  { section: "Reports" },
+  {
+    label: "Sales Report",
+    path: "/admin/sales",
+    icon: "📈",
+    roles: ["admin", "staff"],
+  },
+
+  { section: "Administration" },
   {
     label: "Customers",
     path: "/admin/customers",
@@ -150,6 +163,7 @@ const NAV_ITEMS = [
     icon: "🧾",
     roles: ["admin"],
   },
+
   { section: "Website" },
   {
     label: "Site Settings",
