@@ -16,19 +16,23 @@ exports.getAllInventory = async (req, res) => {
         p.walkin_price,
         p.online_price,
         p.production_cost,
-        p.stock,
-        p.stock_status,
+        COALESCE(rmds.quantity, 0) AS stock,
+        CASE
+          WHEN COALESCE(rmds.quantity, 0) <= 0 THEN 'out_of_stock'
+          WHEN COALESCE(rmds.quantity, 0) <= COALESCE(p.reorder_point, 0) THEN 'low_stock'
+          ELSE 'in_stock'
+        END AS stock_status,
         p.reorder_point,
         p.type,
         c.name AS category
       FROM products p
       LEFT JOIN categories c ON c.id = p.category_id
+      LEFT JOIN ready_made_display_stock rmds ON rmds.product_id = p.id
       ORDER BY
         CASE
-          WHEN p.stock_status = 'in_stock' THEN 1
-          WHEN p.stock_status = 'low_stock' THEN 2
-          WHEN p.stock_status = 'out_of_stock' THEN 3
-          ELSE 4
+          WHEN COALESCE(rmds.quantity, 0) <= 0 THEN 3
+          WHEN COALESCE(rmds.quantity, 0) <= COALESCE(p.reorder_point, 0) THEN 2
+          ELSE 1
         END,
         p.name ASC
     `,
@@ -57,12 +61,17 @@ exports.searchProducts = async (req, res) => {
         p.walkin_price,
         p.online_price,
         p.production_cost,
-        p.stock,
-        p.stock_status,
+        COALESCE(rmds.quantity, 0) AS stock,
+        CASE
+          WHEN COALESCE(rmds.quantity, 0) <= 0 THEN 'out_of_stock'
+          WHEN COALESCE(rmds.quantity, 0) <= COALESCE(p.reorder_point, 0) THEN 'low_stock'
+          ELSE 'in_stock'
+        END AS stock_status,
         p.type,
         c.name AS category
       FROM products p
       LEFT JOIN categories c ON c.id = p.category_id
+      LEFT JOIN ready_made_display_stock rmds ON rmds.product_id = p.id
       WHERE 1=1
     `;
     const params = [];
@@ -86,10 +95,9 @@ exports.searchProducts = async (req, res) => {
     query += `
       ORDER BY
         CASE
-          WHEN p.stock_status = 'in_stock' THEN 1
-          WHEN p.stock_status = 'low_stock' THEN 2
-          WHEN p.stock_status = 'out_of_stock' THEN 3
-          ELSE 4
+          WHEN COALESCE(rmds.quantity, 0) <= 0 THEN 3
+          WHEN COALESCE(rmds.quantity, 0) <= COALESCE(p.reorder_point, 0) THEN 2
+          ELSE 1
         END,
         p.name ASC
       LIMIT 100

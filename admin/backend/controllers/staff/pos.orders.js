@@ -119,16 +119,20 @@ exports.createOrder = async (req, res) => {
     const productPlaceholders = dedupedProductIds.map(() => "?").join(",");
 
     const [productRows] = await conn.query(
-      `SELECT id, stock
-   FROM products
-   WHERE id IN (${productPlaceholders})
-   ORDER BY id ASC
-   FOR UPDATE`,
+      `SELECT
+         p.id,
+         p.stock,
+         COALESCE(ds.quantity, 0) AS display_stock
+       FROM products p
+       LEFT JOIN ready_made_display_stock ds ON ds.product_id = p.id
+       WHERE p.id IN (${productPlaceholders})
+       ORDER BY p.id ASC
+       FOR UPDATE`,
       dedupedProductIds,
     );
 
     const productStockMap = new Map(
-      productRows.map((row) => [row.id, Number(row.stock || 0)]),
+      productRows.map((row) => [row.id, Number(row.display_stock || 0)]),
     );
 
     for (const [productId, totalQty] of dedupedMap.entries()) {
@@ -255,6 +259,21 @@ exports.createOrder = async (req, res) => {
 
       const orderItemId = itemResult.insertId;
 
+      const [displayDecrementResult] = await conn.query(
+        `UPDATE ready_made_display_stock
+         SET quantity = quantity - ?
+         WHERE product_id = ?
+           AND quantity >= ?`,
+        [quantity, item.product_id, quantity],
+      );
+
+      if (displayDecrementResult.affectedRows !== 1) {
+        await conn.rollback();
+        return res.status(409).json({
+          message: `Sales / Display stock changed for ${item.product_name || "item"}. Refresh and try again.`,
+        });
+      }
+
       const [decrementResult] = await conn.query(
         `UPDATE products
    SET stock = stock - ?
@@ -265,8 +284,8 @@ exports.createOrder = async (req, res) => {
 
       if (decrementResult.affectedRows !== 1) {
         await conn.rollback();
-        return res.status(400).json({
-          message: `Insufficient stock for ${item.product_name || "item"}`,
+        return res.status(409).json({
+          message: `Total stock changed for ${item.product_name || "item"}. Refresh and try again.`,
         });
       }
 

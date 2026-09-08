@@ -19,6 +19,7 @@ const dashboard = require("../controllers/admin/dashboardController");
 const products = require("../controllers/admin/productController");
 const inventory = require("../controllers/admin/inventoryController");
 const physicalInventory = require("../controllers/admin/physicalInventoryController");
+const stockTransfers = require("../controllers/admin/stockTransferController");
 const blueprints = require("../controllers/admin/blueprintController");
 const orders = require("../controllers/admin/orderController");
 const sales = require("../controllers/admin/salesController");
@@ -317,6 +318,27 @@ router.post(
   adminOnly,
   logAction("cancel_physical_inventory", "physical_inventory_sessions"),
   physicalInventory.cancelPhysicalInventory,
+);
+
+// INTERNAL STOCK TRANSFER — ready-made products only
+router.get(
+  "/inventory/transfers/inventory",
+  adminOnly,
+  stockTransfers.getTransferInventory,
+);
+router.get("/inventory/transfers", adminOnly, stockTransfers.listTransfers);
+router.get("/inventory/transfers/:id", adminOnly, stockTransfers.getTransfer);
+router.post(
+  "/inventory/transfers",
+  adminOnly,
+  logAction("create_stock_transfer", "stock_transfers"),
+  stockTransfers.createTransfer,
+);
+router.post(
+  "/inventory/transfers/:id/reverse",
+  adminOnly,
+  logAction("reverse_stock_transfer", "stock_transfers"),
+  stockTransfers.reverseTransfer,
 );
 
 // ══════════════════════════════════════════════════════════════════════════════

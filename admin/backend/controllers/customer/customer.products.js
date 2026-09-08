@@ -10,6 +10,19 @@ const toFloat = (value) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const READY_MADE_DISPLAY_STOCK_SQL = `COALESCE((
+  SELECT rmds.quantity
+  FROM ready_made_display_stock rmds
+  WHERE rmds.product_id = p.id
+  LIMIT 1
+), 0)`;
+const READY_MADE_WAREHOUSE_STOCK_SQL = `GREATEST(COALESCE(p.stock, 0) - ${READY_MADE_DISPLAY_STOCK_SQL}, 0)`;
+const READY_MADE_WAREHOUSE_STATUS_SQL = `CASE
+  WHEN ${READY_MADE_WAREHOUSE_STOCK_SQL} <= 0 THEN 'out_of_stock'
+  WHEN ${READY_MADE_WAREHOUSE_STOCK_SQL} <= COALESCE(p.reorder_point, 0) THEN 'low_stock'
+  ELSE 'in_stock'
+END`;
+
 const buildWhereClause = ({
   q,
   category_id,
@@ -38,7 +51,7 @@ const buildWhereClause = ({
   }
 
   if (stock_status) {
-    where += " AND p.stock_status = ?";
+    where += ` AND (${READY_MADE_WAREHOUSE_STATUS_SQL}) = ?`;
     params.push(stock_status);
   }
 
@@ -122,8 +135,8 @@ exports.getAllProducts = async (req, res) => {
         p.is_featured,
         p.online_price,
         p.production_cost,
-        p.stock,
-        p.stock_status,
+        ${READY_MADE_WAREHOUSE_STOCK_SQL} AS stock,
+        ${READY_MADE_WAREHOUSE_STATUS_SQL} AS stock_status,
         p.reorder_point,
         p.created_at,
         c.name AS category
@@ -213,8 +226,8 @@ exports.getProductById = async (req, res) => {
         p.is_featured,
         p.online_price,
         p.production_cost,
-        p.stock,
-        p.stock_status,
+        ${READY_MADE_WAREHOUSE_STOCK_SQL} AS stock,
+        ${READY_MADE_WAREHOUSE_STATUS_SQL} AS stock_status,
         p.reorder_point,
         p.created_at,
         p.updated_at,

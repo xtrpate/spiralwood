@@ -70,6 +70,12 @@ const NAV_ITEMS = [
     roles: ["admin", "staff"],
   },
   {
+    label: "Stock Transfer",
+    path: "/admin/inventory/transfers",
+    icon: "↔️",
+    roles: ["admin"],
+  },
+  {
     label: "Physical Inventory",
     path: "/admin/inventory/physical-inventory",
     icon: "📋",

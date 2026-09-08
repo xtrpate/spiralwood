@@ -317,9 +317,16 @@ exports.createOrder = async (req, res) => {
       // Lock the row for this transaction so two customers checking out
       // at the same time can't both oversell the same stock.
       const [productRows] = await conn.query(
-        `SELECT id, name, online_price, stock, is_published
-         FROM products
-         WHERE id = ?
+        `SELECT
+           p.id,
+           p.name,
+           p.online_price,
+           p.stock,
+           p.is_published,
+           COALESCE(ds.quantity, 0) AS display_stock
+         FROM products p
+         LEFT JOIN ready_made_display_stock ds ON ds.product_id = p.id
+         WHERE p.id = ?
          LIMIT 1
          FOR UPDATE`,
         [productId],
@@ -335,7 +342,10 @@ exports.createOrder = async (req, res) => {
       }
 
       let unitPrice = Number(product.online_price || 0);
-      let availableStock = Number(product.stock || 0);
+      let availableStock = Math.max(
+        0,
+        Number(product.stock || 0) - Number(product.display_stock || 0),
+      );
       let displayName = product.name;
 
       if (qty > availableStock) {
@@ -406,7 +416,7 @@ exports.createOrder = async (req, res) => {
       : null;
 
     for (const item of validatedItems) {
-      await conn.query(
+      const [orderItemResult] = await conn.query(
         `INSERT INTO order_items
           (order_id, product_id,
            product_name, quantity, unit_price, customization_json)
@@ -420,6 +430,7 @@ exports.createOrder = async (req, res) => {
           readyMadeCustomizationJson,
         ],
       );
+      const orderItemId = orderItemResult.insertId;
 
       /* Deduct stock */
       await conn.query(
@@ -427,6 +438,24 @@ exports.createOrder = async (req, res) => {
    SET stock = stock - ?
    WHERE id = ?`,
         [item.quantity, item.product_id],
+      );
+
+      // WISDOM STANDARD ONLINE STOCK MOVEMENT TRACEABILITY V1
+      // products.stock remains the quantity source of truth. This INSERT is
+      // history-only and must never perform a second stock deduction.
+      await conn.query(
+        `INSERT INTO stock_movements
+          (product_id, type, quantity, order_id, order_item_id,
+           reference, notes, created_by)
+         VALUES (?, 'out', ?, ?, ?, ?, 'Online order fulfillment - Warehouse stock', ?)`,
+        [
+          item.product_id,
+          item.quantity,
+          order_id,
+          orderItemId,
+          order_number,
+          req.user.id,
+        ],
       );
 
       /* Update stock_status after deduction */
@@ -1207,9 +1236,17 @@ exports.cancelOrder = async (req, res) => {
       });
     }
 
+    const [[cancelledOrder]] = await conn.query(
+      `SELECT order_number
+       FROM orders
+       WHERE id = ?
+       LIMIT 1`,
+      [orderId],
+    );
+
     // 2. Fetch all items associated with this cancelled order
     const [items] = await conn.query(
-      `SELECT product_id, quantity
+      `SELECT id AS order_item_id, product_id, quantity
    FROM order_items
    WHERE order_id = ?`,
       [orderId],
@@ -1221,6 +1258,23 @@ exports.cancelOrder = async (req, res) => {
      SET stock = stock + ?
      WHERE id = ?`,
         [item.quantity, item.product_id],
+      );
+
+      // History-only return record. The UPDATE above already restores the
+      // Warehouse quantity; this must not mutate stock a second time.
+      await conn.query(
+        `INSERT INTO stock_movements
+          (product_id, type, quantity, order_id, order_item_id,
+           reference, notes, created_by)
+         VALUES (?, 'return', ?, ?, ?, ?, 'Customer cancelled online order - Warehouse stock restored', ?)`,
+        [
+          item.product_id,
+          item.quantity,
+          orderId,
+          item.order_item_id,
+          cancelledOrder?.order_number || `ORDER-${orderId}`,
+          customerId,
+        ],
       );
 
       await conn.query(
@@ -1307,7 +1361,7 @@ exports.autoCancelExpiredOrders = async () => {
           // RECOVERED PAYMENT. Lock + re-check so the cron and customer
           // return flow cannot create two verified rows for the same standard order.
           const [[lockedOrder]] = await conn.query(
-            `SELECT id, order_number, total, payment_status, paymongo_session_id,
+            `SELECT id, order_number, total, status, payment_status, paymongo_session_id,
                     customer_id,
                     COALESCE(
                       (SELECT name FROM users WHERE id = customer_id LIMIT 1),
@@ -1323,6 +1377,19 @@ exports.autoCancelExpiredOrders = async () => {
           );
 
           if (!lockedOrder) {
+            await conn.rollback();
+            continue;
+          }
+
+          // The candidate list was read before the PayMongo network call.
+          // Re-check the locked row so a concurrent cancellation/payment
+          // verification cannot be overwritten by this stale cron candidate.
+          if (
+            String(lockedOrder.status || "").trim().toLowerCase() !==
+              "pending" ||
+            String(lockedOrder.payment_status || "").trim().toLowerCase() !==
+              "unpaid"
+          ) {
             await conn.rollback();
             continue;
           }
@@ -1360,17 +1427,26 @@ exports.autoCancelExpiredOrders = async () => {
             `[Cron] Recovered payment safely for order ${lockedOrder.order_number}`,
           );
         } else {
-          // Cancel the order and return the stock.
-          await conn.query(
+          // Cancel the order and return the stock. The candidate list was
+          // read before the provider lookup, so guard the UPDATE against a
+          // concurrent customer/admin cancellation or payment verification.
+          const [cancelResult] = await conn.query(
             `UPDATE orders
              SET status = 'cancelled',
                  notes = CONCAT(IFNULL(notes, ''), '\n[System]: Auto-cancelled due to payment timeout.')
-             WHERE id = ?`,
+             WHERE id = ?
+               AND status = 'pending'
+               AND payment_status = 'unpaid'`,
             [order.id],
           );
 
+          if (cancelResult.affectedRows !== 1) {
+            await conn.rollback();
+            continue;
+          }
+
           const [items] = await conn.query(
-            `SELECT product_id, quantity
+            `SELECT id AS order_item_id, product_id, quantity
    FROM order_items
    WHERE order_id = ?`,
             [order.id],
@@ -1382,6 +1458,21 @@ exports.autoCancelExpiredOrders = async () => {
      SET stock = stock + ?
      WHERE id = ?`,
               [item.quantity, item.product_id],
+            );
+
+            // System-generated history-only return record.
+            await conn.query(
+              `INSERT INTO stock_movements
+                (product_id, type, quantity, order_id, order_item_id,
+                 reference, notes, created_by)
+               VALUES (?, 'return', ?, ?, ?, ?, 'System auto-cancelled unpaid online order - Warehouse stock restored', NULL)`,
+              [
+                item.product_id,
+                item.quantity,
+                order.id,
+                item.order_item_id,
+                order.order_number,
+              ],
             );
 
             await conn.query(

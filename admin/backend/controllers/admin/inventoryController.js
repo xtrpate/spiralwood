@@ -1756,9 +1756,16 @@ exports.createStockMovement = async (req, res) => {
     // READY-MADE PRODUCT MOVEMENT
     // ───────────────────────────────────────────────────────────
     const [[product]] = await conn.query(
-      `SELECT id, name, type, stock, reorder_point
-       FROM products
-       WHERE id = ?
+      `SELECT
+         p.id,
+         p.name,
+         p.type,
+         p.stock,
+         p.reorder_point,
+         COALESCE(ds.quantity, 0) AS display_stock
+       FROM products p
+       LEFT JOIN ready_made_display_stock ds ON ds.product_id = p.id
+       WHERE p.id = ?
        FOR UPDATE`,
       [parseInt(product_id)],
     );
@@ -1777,6 +1784,7 @@ exports.createStockMovement = async (req, res) => {
     }
 
     const currentProductStock = Number(product.stock) || 0;
+    const currentDisplayStock = Number(product.display_stock) || 0;
 
     // PRODUCT STOCK-IN = RECEIVE READY-MADE FINISHED PRODUCT
     // Ready-made products are treated as complete inventory items.
@@ -1861,6 +1869,16 @@ exports.createStockMovement = async (req, res) => {
       await conn.rollback();
       return res.status(400).json({
         message: `Insufficient stock for ${product.name}. Available: ${currentProductStock}, requested deduction causes negative stock.`,
+      });
+    }
+
+    if (newProductStock < currentDisplayStock) {
+      await conn.rollback();
+      return res.status(409).json({
+        message: `${product.name} has ${currentDisplayStock} unit(s) allocated to Sales / Display. Transfer those units back to Warehouse / Production before lowering total stock below that amount.`,
+        total_stock: currentProductStock,
+        display_stock: currentDisplayStock,
+        requested_total_stock: newProductStock,
       });
     }
 

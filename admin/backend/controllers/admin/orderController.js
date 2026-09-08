@@ -1051,20 +1051,32 @@ exports.getOne = async (req, res) => {
   }
 };
 
-async function restoreStandardOrderStock(conn, orderId) {
+async function restoreStandardOrderStock(
+  conn,
+  orderId,
+  actorUserId = null,
+) {
   const [[order]] = await conn.query(
-    `SELECT order_type FROM orders WHERE id = ? LIMIT 1`,
+    `SELECT order_number, order_type, type
+     FROM orders
+     WHERE id = ?
+     LIMIT 1`,
     [orderId],
   );
 
   if (!order || normalize(order.order_type) === "blueprint") return;
 
   const [items] = await conn.query(
-    `SELECT product_id, quantity
+    `SELECT id AS order_item_id, product_id, quantity
    FROM order_items
    WHERE order_id = ?`,
     [orderId],
   );
+
+  const isWalkInOrder = normalize(order.type) === "walkin";
+  const movementNote = isWalkInOrder
+    ? "Admin cancelled walk-in order - Display stock restored"
+    : "Admin cancelled online order - Warehouse stock restored";
 
   for (const item of items) {
     await conn.query(
@@ -1072,6 +1084,36 @@ async function restoreStandardOrderStock(conn, orderId) {
      SET stock = stock + ?
      WHERE id = ?`,
       [item.quantity, item.product_id],
+    );
+
+    if (isWalkInOrder) {
+      const [displayRestore] = await conn.query(
+        `UPDATE ready_made_display_stock
+         SET quantity = quantity + ?
+         WHERE product_id = ?`,
+        [item.quantity, item.product_id],
+      );
+      if (displayRestore.affectedRows !== 1) {
+        throw new Error("Sales / Display stock could not be restored for the cancelled walk-in order.");
+      }
+    }
+
+    // History-only return record. The stock/location updates above already
+    // restore the quantity and must remain the only quantity mutation.
+    await conn.query(
+      `INSERT INTO stock_movements
+        (product_id, type, quantity, order_id, order_item_id,
+         reference, notes, created_by)
+       VALUES (?, 'return', ?, ?, ?, ?, ?, ?)`,
+      [
+        item.product_id,
+        item.quantity,
+        orderId,
+        item.order_item_id,
+        order.order_number || `ORDER-${orderId}`,
+        movementNote,
+        actorUserId,
+      ],
     );
 
     await conn.query(
@@ -1542,7 +1584,11 @@ exports.updateStatus = async (req, res) => {
     // so cancellation restores that product stock. Blueprint orders use
     // reservation release above and must never run the standard restock path.
     if (nextStatus === "cancelled" && !isBlueprintOrder) {
-      await restoreStandardOrderStock(conn, parseInt(req.params.id));
+      await restoreStandardOrderStock(
+        conn,
+        parseInt(req.params.id),
+        req.user.id,
+      );
     }
 
     // Keep delivery-attempt history immutable when the order reaches a
@@ -1789,7 +1835,7 @@ exports.decline = async (req, res) => {
     // Only restore stock if this call actually changed the row (guards
     // against double-click / already-declined orders).
     if (declineResult.affectedRows > 0) {
-      await restoreStandardOrderStock(conn, orderId);
+      await restoreStandardOrderStock(conn, orderId, req.user.id);
     }
 
     await conn.commit();
