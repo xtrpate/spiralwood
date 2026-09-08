@@ -23,14 +23,47 @@ const computeStockStatus = (quantity, reorderPoint = 0, safetyStock = 0) => {
   return "healthy_stock";
 };
 
-const normalizeQuantity = (value) => {
+const normalizeRawMaterialQuantity = (value) => {
   const number = Number(value);
-  return Number.isFinite(number) ? Math.round(number) : 0;
+  if (!Number.isFinite(number)) return 0;
+  return Math.round(number * 100) / 100;
 };
 
+const hasAtMostTwoDecimalPlaces = (value) => {
+  if (value === undefined || value === null || value === "") return true;
+  const text = String(value).trim();
+  if (!/^\d+(?:\.\d{1,2})?$/.test(text)) return false;
+  return Number.isFinite(Number(text));
+};
+
+const DECIMAL_QUANTITY_UNITS = new Set(["meter", "kg", "liter", "gallon"]);
+
+const normalizeQuantityUnit = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
+
+const unitAllowsDecimalQuantity = (unit) =>
+  DECIMAL_QUANTITY_UNITS.has(normalizeQuantityUnit(unit));
+
+const hasWholeNumberFormat = (value) => {
+  if (value === undefined || value === null || value === "") return true;
+  return /^\d+$/.test(String(value).trim());
+};
+
+const hasValidQuantityPrecisionForUnit = (value, unit) =>
+  unitAllowsDecimalQuantity(unit)
+    ? hasAtMostTwoDecimalPlaces(value)
+    : hasWholeNumberFormat(value);
+
+const quantityRuleMessage = (unit) =>
+  unitAllowsDecimalQuantity(unit)
+    ? `${String(unit || "Raw material").trim()} quantity can have up to 2 decimal places.`
+    : `${String(unit || "Raw material").trim()} quantity must be a whole number.`;
+
 const formatQuantityForMessage = (value) =>
-  normalizeQuantity(value).toLocaleString("en-PH", {
-    maximumFractionDigits: 4,
+  normalizeRawMaterialQuantity(value).toLocaleString("en-PH", {
+    maximumFractionDigits: 2,
   });
 
 // WISDOM Material Physical Specs V1.1
@@ -80,7 +113,7 @@ const buildRawMaterialPhysicalSpec = ({
   ) {
     return {
       error:
-        "Sheet / Board materials require length, width, and thickness in millimeters.",
+        "Sheet materials require length, width, and thickness in millimeters.",
     };
   }
 
@@ -125,7 +158,7 @@ const getReservedQuantityByMaterial = (reservationRows) => {
     if (String(row.status || "").toLowerCase() !== "reserved") continue;
 
     const materialId = Number(row.material_id);
-    const quantity = normalizeQuantity(row.quantity);
+    const quantity = normalizeRawMaterialQuantity(row.quantity);
     reservedByMaterial.set(
       materialId,
       (reservedByMaterial.get(materialId) || 0) + quantity,
@@ -277,6 +310,120 @@ const getRawMaterialReservationHistory = async (materialId) => {
 // RAW MATERIALS
 // ═══════════════════════════════════════════════════════════
 
+const getRawMaterialCategoryById = async (db, categoryId) => {
+  const id = Number(categoryId);
+  if (!Number.isInteger(id) || id <= 0) return null;
+  const [[row]] = await db.query(
+    "SELECT id, name FROM categories WHERE id = ? AND type = 'raw' LIMIT 1",
+    [id],
+  );
+  return row || null;
+};
+
+
+const findDuplicateRawMaterial = async (
+  db,
+  {
+    name,
+    unit,
+    materialForm,
+    lengthMm,
+    widthMm,
+    thicknessMm,
+    excludeId = null,
+  },
+) => {
+  const where = [
+    "LOWER(TRIM(name)) = LOWER(?)",
+    "LOWER(TRIM(unit)) = LOWER(?)",
+    "LOWER(TRIM(material_form)) = LOWER(?)",
+    "length_mm <=> ?",
+    "width_mm <=> ?",
+    "thickness_mm <=> ?",
+  ];
+  const params = [
+    String(name || "").trim(),
+    String(unit || "").trim(),
+    String(materialForm || "other").trim(),
+    lengthMm,
+    widthMm,
+    thicknessMm,
+  ];
+
+  if (excludeId !== null && excludeId !== undefined) {
+    where.push("id <> ?");
+    params.push(Number(excludeId));
+  }
+
+  const [[duplicate]] = await db.query(
+    `SELECT
+       id,
+       name,
+       unit,
+       material_form,
+       length_mm,
+       width_mm,
+       thickness_mm,
+       is_active
+     FROM raw_materials
+     WHERE ${where.join(" AND ")}
+     ORDER BY is_active DESC, id ASC
+     LIMIT 1`,
+    params,
+  );
+
+  return duplicate || null;
+};
+
+const duplicateRawMaterialMessage = (duplicate) =>
+  Number(duplicate?.is_active) === 0
+    ? "An identical raw material already exists in Archived materials. Restore or edit that record instead of creating a duplicate."
+    : "An identical raw material already exists. Use the existing record instead of creating a duplicate.";
+
+exports.getRawMaterialCategories = async (req, res) => {
+  try {
+    const [categories] = await pool.query(
+      "SELECT id, name FROM categories WHERE type = 'raw' ORDER BY name ASC, id ASC",
+    );
+    return res.json({ categories });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+exports.createRawMaterialCategory = async (req, res) => {
+  try {
+    const name = String(req.body?.name || "").trim();
+    if (!name) {
+      return res.status(400).json({ message: "Category name is required." });
+    }
+    if (name.length > 100) {
+      return res.status(400).json({ message: "Category name must be 100 characters or less." });
+    }
+
+    const [[existing]] = await pool.query(
+      "SELECT id, name FROM categories WHERE type = 'raw' AND LOWER(name) = LOWER(?) LIMIT 1",
+      [name],
+    );
+    if (existing) {
+      return res.status(409).json({
+        message: "That raw material category already exists.",
+        category: existing,
+      });
+    }
+
+    const [result] = await pool.query(
+      "INSERT INTO categories (name, type) VALUES (?, 'raw')",
+      [name],
+    );
+    const category = { id: result.insertId, name };
+    req.auditRecord = { id: result.insertId, old: null, new: { ...category, type: "raw" } };
+    return res.status(201).json({ message: "Raw material category added.", category });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
 exports.getRawMaterials = async (req, res) => {
   try {
     if (req.query.reservation_material_id !== undefined) {
@@ -319,13 +466,51 @@ exports.getRawMaterials = async (req, res) => {
         FROM blueprint_material_reservations
         GROUP BY material_id
       ) bmr_summary ON bmr_summary.material_id = rm.id`;
+    const usageSummaryJoin = `
+      LEFT JOIN (
+        SELECT
+          material_id,
+          SUM(quantity) AS used_last_30_days,
+          SUM(quantity) / 30 AS avg_daily_usage_30d
+        FROM stock_movements
+        WHERE material_id IS NOT NULL
+          AND product_id IS NULL
+          AND type = 'out'
+          AND reference LIKE 'BLUEPRINT-RESERVATION-%'
+          AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+        GROUP BY material_id
+      ) usage_summary ON usage_summary.material_id = rm.id`;
+    const onHandQuantitySql = "COALESCE(rm.quantity, 0)";
+    const reservedQuantitySql = "COALESCE(bmr_summary.reserved_quantity, 0)";
+    const pendingNeedQuantitySql = "COALESCE(bmr_summary.pending_need_quantity, 0)";
     const availableQuantitySql =
-      "GREATEST(COALESCE(rm.quantity, 0) - COALESCE(bmr_summary.reserved_quantity, 0), 0)";
+      `GREATEST(${onHandQuantitySql} - ${reservedQuantitySql}, 0)`;
+    const avgDailyUsageSql = "COALESCE(usage_summary.avg_daily_usage_30d, 0)";
+    const leadTimeNeedSql =
+      `(${avgDailyUsageSql} * GREATEST(COALESCE(rm.lead_time_days, 0), 0))`;
     const availabilityStatusSql = `CASE
-      WHEN ${availableQuantitySql} <= 0 THEN 'out_of_stock'
+      WHEN ${onHandQuantitySql} <= 0 THEN 'out_of_stock'
+      WHEN ${pendingNeedQuantitySql} > 0 THEN 'critical_stock'
+      WHEN ${availableQuantitySql} <= 0 THEN 'critical_stock'
       WHEN ${availableQuantitySql} <= COALESCE(rm.safety_stock, 0) THEN 'critical_stock'
+      WHEN COALESCE(rm.lead_time_days, 0) > 0
+        AND ${avgDailyUsageSql} > 0
+        AND ${availableQuantitySql} <= (COALESCE(rm.safety_stock, 0) + ${leadTimeNeedSql})
+        THEN 'critical_stock'
       WHEN ${availableQuantitySql} <= COALESCE(rm.reorder_point, 0) THEN 'low_stock'
       ELSE 'healthy_stock'
+    END`;
+    const stockReasonSql = `CASE
+      WHEN ${onHandQuantitySql} <= 0 THEN 'on_hand_zero'
+      WHEN ${pendingNeedQuantitySql} > 0 THEN 'pending_order_need'
+      WHEN ${availableQuantitySql} <= 0 THEN 'all_stock_reserved'
+      WHEN ${availableQuantitySql} <= COALESCE(rm.safety_stock, 0) THEN 'safety_stock'
+      WHEN COALESCE(rm.lead_time_days, 0) > 0
+        AND ${avgDailyUsageSql} > 0
+        AND ${availableQuantitySql} <= (COALESCE(rm.safety_stock, 0) + ${leadTimeNeedSql})
+        THEN 'lead_time'
+      WHEN ${availableQuantitySql} <= COALESCE(rm.reorder_point, 0) THEN 'reorder_point'
+      ELSE 'healthy'
     END`;
 
     if (search) {
@@ -367,7 +552,11 @@ exports.getRawMaterials = async (req, res) => {
               ${availableQuantitySql} AS available_quantity,
               COALESCE(bmr_summary.pending_need_quantity, 0) AS pending_need_quantity,
               COALESCE(bmr_summary.reservation_record_count, 0) AS reservation_record_count,
+              COALESCE(usage_summary.used_last_30_days, 0) AS used_last_30_days,
+              ${avgDailyUsageSql} AS avg_daily_usage_30d,
+              ${leadTimeNeedSql} AS lead_time_need_quantity,
               ${availabilityStatusSql} AS availability_status,
+              ${stockReasonSql} AS stock_status_reason,
               CASE
                 WHEN EXISTS (
                   SELECT 1 FROM bill_of_materials bom
@@ -390,19 +579,14 @@ exports.getRawMaterials = async (req, res) => {
               END AS has_references
        FROM raw_materials rm
        ${reservationSummaryJoin}
+       ${usageSummaryJoin}
        LEFT JOIN suppliers s  ON s.id  = rm.supplier_id
        LEFT JOIN categories c ON c.id  = rm.category_id
        WHERE ${where.join(" AND ")}
-       ORDER BY 
+       ORDER BY
          rm.is_active DESC,
-         CASE ${availabilityStatusSql}
-           WHEN 'out_of_stock' THEN 1
-           WHEN 'critical_stock' THEN 2
-           WHEN 'low_stock' THEN 3
-           WHEN 'healthy_stock' THEN 4
-           ELSE 5
-         END ASC,
-         rm.name ASC
+         rm.created_at ASC,
+         rm.id ASC
        LIMIT ? OFFSET ?`,
       [...params, limitNumber, offset],
     );
@@ -411,6 +595,7 @@ exports.getRawMaterials = async (req, res) => {
       `SELECT COUNT(*) AS total
        FROM raw_materials rm
        ${reservationSummaryJoin}
+       ${usageSummaryJoin}
        WHERE ${where.join(" AND ")}`,
       params,
     );
@@ -479,26 +664,56 @@ exports.createRawMaterial = async (req, res) => {
     }
 
     if (
-      [qty, reorderPoint, safetyStock, leadTime, unitCost].some(
+      [qty, reorderPoint, safetyStock, unitCost].some(
         (value) => !Number.isFinite(value) || value < 0,
-      )
+      ) ||
+      !Number.isInteger(leadTime) ||
+      leadTime < 0
     ) {
       await conn.rollback();
       return res.status(400).json({
         message:
-          "Quantity, reorder point, safety stock, lead time, and unit cost must be valid non-negative numbers.",
+          "Quantity, reorder point, safety stock, and unit cost must be non-negative numbers. Lead time must be a whole number of days.",
       });
     }
 
     if (
-      category_id !== null &&
-      category_id !== undefined &&
-      category_id !== "" &&
-      (!isValidNonNegativeInteger(category_id) || Number(category_id) <= 0)
+      ![quantity, reorder_point, safety_stock].every((value) =>
+        hasValidQuantityPrecisionForUnit(value, unit),
+      )
     ) {
       await conn.rollback();
       return res.status(400).json({
-        message: "Category must be a valid selection.",
+        message: quantityRuleMessage(unit),
+      });
+    }
+
+    if (!hasAtMostTwoDecimalPlaces(unit_cost)) {
+      await conn.rollback();
+      return res.status(400).json({
+        message: "Supplier price can have up to 2 decimal places.",
+      });
+    }
+
+    if (!hasWholeNumberFormat(lead_time_days)) {
+      await conn.rollback();
+      return res.status(400).json({
+        message: "Lead time must be a whole number of days.",
+      });
+    }
+
+    if (!isValidNonNegativeInteger(category_id) || Number(category_id) <= 0) {
+      await conn.rollback();
+      return res.status(400).json({
+        message: "Select a raw material category.",
+      });
+    }
+
+    const rawCategory = await getRawMaterialCategoryById(conn, category_id);
+    if (!rawCategory) {
+      await conn.rollback();
+      return res.status(400).json({
+        message: "Select a valid raw material category.",
       });
     }
 
@@ -511,6 +726,24 @@ exports.createRawMaterial = async (req, res) => {
       await conn.rollback();
       return res.status(400).json({
         message: "Supplier must be a valid selection.",
+      });
+    }
+
+    const duplicate = await findDuplicateRawMaterial(conn, {
+      name,
+      unit,
+      materialForm: physicalSpec.materialForm,
+      lengthMm: physicalSpec.lengthMm,
+      widthMm: physicalSpec.widthMm,
+      thicknessMm: physicalSpec.thicknessMm,
+    });
+
+    if (duplicate) {
+      await conn.rollback();
+      return res.status(409).json({
+        message: duplicateRawMaterialMessage(duplicate),
+        duplicate_material_id: duplicate.id,
+        duplicate_is_active: Number(duplicate.is_active) === 1,
       });
     }
 
@@ -560,7 +793,8 @@ exports.createRawMaterial = async (req, res) => {
 
     const [[savedMaterial]] = await conn.query(
       `SELECT id, name, category_id, unit, material_form, length_mm, width_mm,
-              thickness_mm, quantity, reorder_point, unit_cost, supplier_id, stock_status
+              thickness_mm, quantity, reorder_point, safety_stock, lead_time_days,
+              unit_cost, supplier_id, stock_status
        FROM raw_materials
        WHERE id = ?
        LIMIT 1`,
@@ -654,26 +888,55 @@ exports.updateRawMaterial = async (req, res) => {
       reorderPoint < 0 ||
       !Number.isFinite(safetyStock) ||
       safetyStock < 0 ||
-      !Number.isFinite(leadTime) ||
+      !Number.isInteger(leadTime) ||
       leadTime < 0 ||
       !Number.isFinite(unitCost) ||
       unitCost < 0
     ) {
       return res.status(400).json({
         message:
-          "Reorder point, safety stock, lead time, and unit cost must be valid non-negative numbers.",
+          "Reorder point, safety stock, and unit cost must be non-negative numbers. Lead time must be a whole number of days.",
+      });
+    }
+
+    if (
+      ![reorder_point, safety_stock].every((value) =>
+        hasValidQuantityPrecisionForUnit(value, unit),
+      )
+    ) {
+      return res.status(400).json({
+        message: quantityRuleMessage(unit),
+      });
+    }
+
+    if (!hasAtMostTwoDecimalPlaces(unit_cost)) {
+      return res.status(400).json({
+        message: "Supplier price can have up to 2 decimal places.",
+      });
+    }
+
+    if (!hasWholeNumberFormat(lead_time_days)) {
+      return res.status(400).json({
+        message: "Lead time must be a whole number of days.",
       });
     }
 
     if (
       category_id !== null &&
       category_id !== undefined &&
-      category_id !== "" &&
-      (!isValidNonNegativeInteger(category_id) || Number(category_id) <= 0)
+      category_id !== ""
     ) {
-      return res.status(400).json({
-        message: "Category must be a valid selection.",
-      });
+      if (!isValidNonNegativeInteger(category_id) || Number(category_id) <= 0) {
+        return res.status(400).json({
+          message: "Category must be a valid selection.",
+        });
+      }
+      const rawCategory = await getRawMaterialCategoryById(pool, category_id);
+      if (!rawCategory) {
+        return res.status(400).json({
+          message: "Select a valid raw material category.",
+        });
+      }
     }
 
     if (
@@ -689,7 +952,8 @@ exports.updateRawMaterial = async (req, res) => {
 
     const [[before]] = await pool.query(
       `SELECT id, name, category_id, unit, material_form, length_mm, width_mm,
-              thickness_mm, quantity, reorder_point, unit_cost, supplier_id, stock_status
+              thickness_mm, quantity, reorder_point, safety_stock, lead_time_days,
+              unit_cost, supplier_id, stock_status
        FROM raw_materials
        WHERE id = ?
        LIMIT 1`,
@@ -700,15 +964,22 @@ exports.updateRawMaterial = async (req, res) => {
       return res.status(404).json({ message: "Raw material not found." });
     }
 
-    const currentQty = normalizeQuantity(before.quantity);
+    const currentQty = normalizeRawMaterialQuantity(before.quantity);
     const requestedQty =
       quantity === undefined || quantity === null || quantity === ""
         ? currentQty
         : Number(quantity);
 
-    if (!Number.isFinite(requestedQty) || requestedQty < 0) {
+    if (
+      !Number.isFinite(requestedQty) ||
+      requestedQty < 0 ||
+      (quantity !== undefined &&
+        quantity !== null &&
+        quantity !== "" &&
+        !hasValidQuantityPrecisionForUnit(quantity, unit))
+    ) {
       return res.status(400).json({
-        message: "Quantity must be a valid non-negative number.",
+        message: quantityRuleMessage(unit),
       });
     }
 
@@ -718,6 +989,24 @@ exports.updateRawMaterial = async (req, res) => {
           "On-hand quantity cannot be changed from Edit Raw Material. Use Stock Movement so every physical stock change is recorded.",
         current_quantity: currentQty,
         requested_quantity: requestedQty,
+      });
+    }
+
+    const duplicate = await findDuplicateRawMaterial(pool, {
+      name,
+      unit,
+      materialForm: physicalSpec.materialForm,
+      lengthMm: physicalSpec.lengthMm,
+      widthMm: physicalSpec.widthMm,
+      thicknessMm: physicalSpec.thicknessMm,
+      excludeId: materialId,
+    });
+
+    if (duplicate) {
+      return res.status(409).json({
+        message: duplicateRawMaterialMessage(duplicate),
+        duplicate_material_id: duplicate.id,
+        duplicate_is_active: Number(duplicate.is_active) === 1,
       });
     }
 
@@ -754,7 +1043,8 @@ exports.updateRawMaterial = async (req, res) => {
 
     const [[after]] = await pool.query(
       `SELECT id, name, category_id, unit, material_form, length_mm, width_mm,
-              thickness_mm, quantity, reorder_point, unit_cost, supplier_id, stock_status
+              thickness_mm, quantity, reorder_point, safety_stock, lead_time_days,
+              unit_cost, supplier_id, stock_status
        FROM raw_materials
        WHERE id = ?
        LIMIT 1`,
@@ -994,8 +1284,15 @@ exports.getStockMovements = async (req, res) => {
     const movementSourceSql = `CASE
       WHEN bmr.id IS NOT NULL THEN 'blueprint_production'
       WHEN sm.material_id IS NOT NULL
+        AND sm.product_id IS NULL
+        AND sm.type = 'out'
+        AND (
+          sm.reference LIKE 'BLUEPRINT-RESERVATION-%'
+          OR sm.notes LIKE 'Blueprint material consumed%'
+        ) THEN 'blueprint_production'
+      WHEN sm.material_id IS NOT NULL
         AND sm.product_id IS NOT NULL
-        AND sm.type = 'out' THEN 'build_production'
+        AND sm.type = 'out' THEN 'legacy_production'
       WHEN sm.material_id IS NULL
         AND sm.product_id IS NOT NULL
         AND sm.order_id IS NULL THEN 'ready_made_stock'
@@ -1030,7 +1327,7 @@ exports.getStockMovements = async (req, res) => {
       const normalizedSource = String(source).trim().toLowerCase();
       const allowedSources = new Set([
         "blueprint_production",
-        "build_production",
+        "legacy_production",
         "ready_made_stock",
         "order_fulfillment",
         "manual",
@@ -1090,6 +1387,10 @@ exports.getStockMovements = async (req, res) => {
           u.name AS created_by_name,
           rm.name AS material_name,
           rm.unit AS material_unit,
+          rm.material_form AS material_form,
+          rm.length_mm AS length_mm,
+          rm.width_mm AS width_mm,
+          rm.thickness_mm AS thickness_mm,
           p.name AS product_name,
           s.name AS supplier_name,
           o.order_number,
@@ -1120,7 +1421,7 @@ exports.getStockMovements = async (req, res) => {
           SUM(CASE WHEN sm.type = 'adjustment' THEN 1 ELSE 0 END) AS adjustment_count,
           SUM(CASE WHEN sm.type = 'return' THEN 1 ELSE 0 END) AS return_count,
           SUM(CASE WHEN (${movementSourceSql}) = 'blueprint_production' THEN 1 ELSE 0 END) AS blueprint_production_count,
-          SUM(CASE WHEN (${movementSourceSql}) = 'build_production' THEN 1 ELSE 0 END) AS build_production_count,
+          SUM(CASE WHEN (${movementSourceSql}) = 'legacy_production' THEN 1 ELSE 0 END) AS legacy_production_count,
           SUM(CASE WHEN (${movementSourceSql}) = 'ready_made_stock' THEN 1 ELSE 0 END) AS ready_made_stock_count,
           SUM(CASE WHEN (${movementSourceSql}) = 'order_fulfillment' THEN 1 ELSE 0 END) AS order_fulfillment_count,
           SUM(CASE WHEN (${movementSourceSql}) = 'manual' THEN 1 ELSE 0 END) AS manual_count
@@ -1144,7 +1445,7 @@ exports.getStockMovements = async (req, res) => {
         blueprint_production_count: Number(
           summary?.blueprint_production_count || 0,
         ),
-        build_production_count: Number(summary?.build_production_count || 0),
+        legacy_production_count: Number(summary?.legacy_production_count || 0),
         ready_made_stock_count: Number(summary?.ready_made_stock_count || 0),
         order_fulfillment_count: Number(summary?.order_fulfillment_count || 0),
         manual_count: Number(summary?.manual_count || 0),
@@ -1179,6 +1480,14 @@ exports.createStockMovement = async (req, res) => {
       return res.status(400).json({ message: "Invalid stock movement type." });
     }
 
+    if (type === "out") {
+      await conn.rollback();
+      return res.status(400).json({
+        message:
+          "Manual Stock Out is disabled. Raw materials are deducted automatically by Blueprint Production, and ready-made products are deducted by order fulfillment.",
+      });
+    }
+
     if (!material_id && !product_id) {
       await conn.rollback();
       return res.status(400).json({
@@ -1194,10 +1503,27 @@ exports.createStockMovement = async (req, res) => {
       });
     }
 
-    if (Number.isNaN(movementQty) || movementQty <= 0) {
+    const isAdjustment = type === "adjustment";
+
+    if (
+      !Number.isFinite(movementQty) ||
+      (isAdjustment ? movementQty < 0 : movementQty <= 0)
+    ) {
       await conn.rollback();
       return res.status(400).json({
-        message: "Quantity must be a valid number greater than 0.",
+        message: isAdjustment
+          ? "Adjustment quantity must be 0 or greater."
+          : "Quantity must be a valid number greater than 0.",
+      });
+    }
+
+    if (
+      product_id &&
+      (!Number.isInteger(movementQty) || !hasWholeNumberFormat(quantity))
+    ) {
+      await conn.rollback();
+      return res.status(400).json({
+        message: "Ready-made product quantity must be a whole number.",
       });
     }
 
@@ -1232,7 +1558,7 @@ exports.createStockMovement = async (req, res) => {
       const materialId = parseInt(material_id, 10);
 
       const [[material]] = await conn.query(
-        `SELECT id, name, unit, quantity, reorder_point, is_active
+        `SELECT id, name, unit, quantity, reorder_point, safety_stock, is_active
          FROM raw_materials
          WHERE id = ?
          LIMIT 1
@@ -1243,6 +1569,13 @@ exports.createStockMovement = async (req, res) => {
       if (!material) {
         await conn.rollback();
         return res.status(404).json({ message: "Raw material not found." });
+      }
+
+      if (!hasValidQuantityPrecisionForUnit(quantity, material.unit)) {
+        await conn.rollback();
+        return res.status(400).json({
+          message: quantityRuleMessage(material.unit),
+        });
       }
 
       if (Number(material.is_active) !== 1) {
@@ -1260,18 +1593,21 @@ exports.createStockMovement = async (req, res) => {
       const reservedByMaterial =
         getReservedQuantityByMaterial(activeReservations);
       const reservedQty = reservedByMaterial.get(materialId) || 0;
-      const currentQty = normalizeQuantity(material.quantity);
+      const currentQty = normalizeRawMaterialQuantity(material.quantity);
       const availableQty = Math.max(0, currentQty - reservedQty);
 
       let newQty;
       if (type === "adjustment") {
-        newQty = movementQty; // Set absolute quantity!
+        newQty = movementQty; // Set absolute quantity.
       } else {
         const delta = POSITIVE_MOVEMENT_TYPES.has(type)
           ? movementQty
           : -movementQty;
         newQty = currentQty + delta;
       }
+
+      newQty = normalizeRawMaterialQuantity(newQty);
+      const stockIncreased = newQty > currentQty + 0.0000001;
 
       if (newQty < reservedQty - 0.0000001) {
         await conn.rollback();
@@ -1311,7 +1647,11 @@ exports.createStockMovement = async (req, res) => {
          WHERE id = ?`,
         [
           Math.max(0, newQty),
-          computeStockStatus(Math.max(0, newQty), material.reorder_point),
+          computeStockStatus(
+            Math.max(0, newQty),
+            material.reorder_point,
+            material.safety_stock,
+          ),
           materialId,
         ],
       );
@@ -1327,7 +1667,7 @@ exports.createStockMovement = async (req, res) => {
       await conn.commit();
 
       let reservationRecovery = null;
-      if (POSITIVE_MOVEMENT_TYPES.has(type)) {
+      if (stockIncreased) {
         try {
           reservationRecovery = await retryPendingStockReservationsForMaterial(
             pool,

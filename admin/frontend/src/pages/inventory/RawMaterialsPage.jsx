@@ -16,9 +16,36 @@ const STOCK_COLORS = {
 const formatQuantity = (value) => {
   const number = Number(value);
   if (!Number.isFinite(number)) return "0";
-  return Math.round(number).toLocaleString("en-PH", {
-    maximumFractionDigits: 0,
+  return number.toLocaleString("en-PH", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
   });
+};
+
+const DECIMAL_QUANTITY_UNITS = new Set(["meter", "kg", "liter", "gallon"]);
+
+const normalizeQuantityUnit = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
+
+const unitAllowsDecimalQuantity = (unit) =>
+  DECIMAL_QUANTITY_UNITS.has(normalizeQuantityUnit(unit));
+
+const sanitizeQuantityInput = (value, allowDecimal) => {
+  let nextValue = String(value || "");
+  if (!allowDecimal) return nextValue.replace(/[^0-9]/g, "");
+
+  nextValue = nextValue.replace(/[^0-9.]/g, "");
+  const firstDot = nextValue.indexOf(".");
+  if (firstDot === -1) return nextValue;
+
+  const whole = nextValue.slice(0, firstDot);
+  const fraction = nextValue
+    .slice(firstDot + 1)
+    .replace(/\./g, "")
+    .slice(0, 2);
+  return `${whole}.${fraction}`;
 };
 
 const formatDateTime = (value) => {
@@ -45,6 +72,23 @@ const formatStatus = (value) => {
   return words.charAt(0).toUpperCase() + words.slice(1);
 };
 
+const formatStockReason = (item = {}) => {
+  const reason = String(item.stock_status_reason || "").toLowerCase();
+  if (reason === "on_hand_zero") return "Physical stock is zero";
+  if (reason === "pending_order_need") return "A blueprint order is waiting for stock";
+  if (reason === "all_stock_reserved") return "All on-hand stock is reserved";
+  if (reason === "safety_stock") return "At or below safety stock";
+  if (reason === "lead_time") {
+    const days = Number(item.lead_time_days || 0);
+    return days > 0
+      ? "May run low during the " + days + "-day restock lead time"
+      : "May run low before restock arrives";
+  }
+  if (reason === "reorder_point") return "At or below reorder point";
+  if (reason === "healthy") return "Above current stock limits";
+  return "";
+};
+
 // WISDOM Material Physical Specs V1.1
 // WISDOM RAW MATERIALS UI POLISH V2
 // WISDOM RAW MATERIALS FINISHING POLISH V3.0.1
@@ -55,11 +99,11 @@ const formatStatus = (value) => {
 // WISDOM RAW MATERIALS SIZE BOOST V1
 // WISDOM RAW MATERIALS READABILITY V1
 const MATERIAL_FORM_OPTIONS = [
-  ["other", "Other material"],
-  ["sheet", "Sheet or Board"],
-  ["linear", "Linear Material"],
-  ["piece", "Solid Stock Piece"],
-  ["hardware", "Hardware or Counted Item"],
+  ["other", "Other"],
+  ["sheet", "Sheet"],
+  ["linear", "Linear"],
+  ["piece", "Solid"],
+  ["hardware", "Hardware"],
 ];
 
 const MATERIAL_FORM_LABELS = Object.fromEntries(MATERIAL_FORM_OPTIONS);
@@ -116,24 +160,20 @@ export default function RawMaterialsPage() {
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
 
-  const getTodayString = () => {
-    const d = new Date();
-    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-    return d.toISOString().split("T")[0];
-  };
-
   const [filters, setFilters] = useState({
     search: "",
+    category_id: "",
     status: "",
     archive_status: "active",
-    date_preset: "today",
-    from: getTodayString(),
-    to: getTodayString(),
+    date_preset: "all_time",
+    from: "",
+    to: "",
     page: 1,
   });
   const [modal, setModal] = useState(null);
   const [saving, setSaving] = useState(false);
   const [suppliers, setSuppliers] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [reservationModal, setReservationModal] = useState(null);
   const [reservationFilter, setReservationFilter] = useState("all");
   const [actionMenuId, setActionMenuId] = useState(null);
@@ -185,6 +225,7 @@ export default function RawMaterialsPage() {
           ? {
               limit: 5000,
               search: filters.search || undefined,
+              category_id: filters.category_id || undefined,
               status: filters.status || undefined,
               archive_status: filters.archive_status || undefined,
               from: filters.from || undefined,
@@ -205,15 +246,21 @@ export default function RawMaterialsPage() {
         [],
         [
           "Material Name",
+          "Category",
           "Supplier",
-          "Unit of Measure",
+          "Unit",
           "On Hand",
           "Reserved",
           "Available",
-          "Needed for Orders",
-          "Reorder Point",
+          "Order Need",
+          "Safety Stock",
+          "Reorder",
+          "Lead Time",
+          "30-Day Avg Use / Day",
+          "Lead-Time Need",
           "Supplier Price",
           "Stock Level",
+          "Status Reason",
         ].map((t) => ({
           v: t,
           s: {
@@ -234,32 +281,44 @@ export default function RawMaterialsPage() {
 
         exportData.push([
           row.name,
+          row.category_name || "Uncategorized",
           row.supplier_name || "—",
           row.unit,
           onHand,
           reserved,
           available,
           needed,
+          Number(row.safety_stock || 0),
           Number(row.reorder_point || 0),
+          Number(row.lead_time_days || 0),
+          Number(row.avg_daily_usage_30d || 0),
+          Number(row.lead_time_need_quantity || 0),
           cost,
-          String(row.stock_status || "")
+          String(row.availability_status || row.stock_status || "")
             .replace(/_/g, " ")
             .toUpperCase(),
+          formatStockReason(row) || "—",
         ]);
       });
 
       const ws = XLSX.utils.aoa_to_sheet(exportData);
       ws["!cols"] = [
         { wch: 35 },
+        { wch: 20 },
         { wch: 25 },
         { wch: 16 },
         { wch: 12 },
         { wch: 12 },
         { wch: 12 },
         { wch: 18 },
+        { wch: 14 },
         { wch: 15 },
-        { wch: 15 },
-        { wch: 15 },
+        { wch: 16 },
+        { wch: 20 },
+        { wch: 16 },
+        { wch: 18 },
+        { wch: 16 },
+        { wch: 34 },
       ];
       XLSX.utils.book_append_sheet(wb, ws, "Raw Materials");
       XLSX.writeFile(
@@ -288,15 +347,22 @@ export default function RawMaterialsPage() {
 
   const pageCount = Math.max(1, Math.ceil(total / 20));
 
+  const loadCategories = useCallback(async () => {
+    const { data } = await api.get("/inventory/raw/categories");
+    setCategories(Array.isArray(data?.categories) ? data.categories : []);
+  }, []);
+
   useEffect(() => {
     api.get("/suppliers").then((r) => setSuppliers(r.data || []));
-  }, []);
+    loadCategories().catch(() => {});
+  }, [loadCategories]);
 
   const openAdd = () =>
     setModal({
       mode: "add",
       data: {
         name: "",
+        category_id: "",
         unit: "",
         material_form: "other",
         length_mm: "",
@@ -311,7 +377,11 @@ export default function RawMaterialsPage() {
       },
     });
 
-  const openEdit = (item) => setModal({ mode: "edit", data: { ...item } });
+  const openEdit = (item) =>
+    setModal({
+      mode: "edit",
+      data: { ...item, category_id: item.category_id || "" },
+    });
 
   const openReservationHistory = async (item, initialFilter = "all") => {
     setReservationFilter(initialFilter);
@@ -345,6 +415,12 @@ export default function RawMaterialsPage() {
 
   const handleSave = async (e) => {
     e.preventDefault();
+
+    if (modal?.mode === "add" && !modal?.data?.category_id) {
+      toast.error("Select a raw material category.");
+      return;
+    }
+
     setSaving(true);
     try {
       if (modal.mode === "add") {
@@ -415,6 +491,36 @@ export default function RawMaterialsPage() {
     }
   };
 
+  const handleCreateCategory = async () => {
+    const value = window.prompt("Enter a new raw material category name:");
+    if (value === null) return;
+
+    const name = value.trim();
+    if (!name) {
+      toast.error("Category name is required.");
+      return;
+    }
+
+    try {
+      const { data } = await api.post("/inventory/raw/categories", { name });
+      const category = data?.category;
+      await loadCategories();
+      if (category?.id) {
+        setModal((current) =>
+          current
+            ? {
+                ...current,
+                data: { ...current.data, category_id: String(category.id) },
+              }
+            : current,
+        );
+      }
+      toast.success(data?.message || "Category added.");
+    } catch (error) {
+      // Global API interceptor shows the server message.
+    }
+  };
+
   const setField = (key, value) =>
     setModal((current) => ({
       ...current,
@@ -449,6 +555,9 @@ export default function RawMaterialsPage() {
     currentMaterialForm,
   );
   const requiresCompletePhysicalSize = currentMaterialForm === "sheet";
+  const modalAllowsDecimalQuantity = unitAllowsDecimalQuantity(
+    modal?.data?.unit,
+  );
 
   return (
     <div>
@@ -510,6 +619,28 @@ export default function RawMaterialsPage() {
             style={{ ...inputSm, width: "100%", boxSizing: "border-box" }}
           />
         </div>
+        <div style={filterField}>
+          <label style={filterLabel}>Category</label>
+          <select
+            value={filters.category_id}
+            onChange={(e) =>
+              setFilters((current) => ({
+                ...current,
+                category_id: e.target.value,
+                page: 1,
+              }))
+            }
+            style={inputSm}
+          >
+            <option value="">All categories</option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <div style={filterField}>
           <label style={filterLabel}>Stock level</label>
           <select
@@ -609,7 +740,7 @@ export default function RawMaterialsPage() {
         <table
           style={{
             width: "100%",
-            minWidth: "1150px", // Forces extra width so headers never crush
+            minWidth: "1260px", // Keep the added category column readable
             borderCollapse: "collapse",
             tableLayout: "fixed",
             fontSize: 13,
@@ -617,30 +748,32 @@ export default function RawMaterialsPage() {
           }}
         >
           <colgroup>
-            <col style={{ width: "21%" }} />
-            <col style={{ width: "12%" }} />
+            <col style={{ width: "18%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "6%" }} />
+            <col style={{ width: "6%" }} />
+            <col style={{ width: "6%" }} />
+            <col style={{ width: "6%" }} />
+            <col style={{ width: "6%" }} />
             <col style={{ width: "7%" }} />
-            <col style={{ width: "7%" }} />
-            <col style={{ width: "7%" }} />
-            <col style={{ width: "7%" }} />
-            <col style={{ width: "7%" }} />
-            <col style={{ width: "7%" }} />
-            <col style={{ width: "8%" }} />
             <col style={{ width: "8%" }} />
             <col style={{ width: "9%" }} />
+            <col style={{ width: "8%" }} />
           </colgroup>
           <thead>
             <tr style={{ background: "#fafafa" }}>
               {[
                 "Material",
+                "Category",
                 "Supplier",
                 "Unit",
                 "On Hand",
                 "Reserved",
                 "Available",
-                "Needed",
+                "Order Need",
                 "Reorder",
-                "Price",
+                "Supplier Price",
                 "Stock Level",
                 "Actions",
               ].map((heading) => (
@@ -712,6 +845,9 @@ export default function RawMaterialsPage() {
                       </div>
                     </td>
                     <td style={{ ...td, color: "#52525b" }}>
+                      {item.category_name || "Uncategorized"}
+                    </td>
+                    <td style={{ ...td, color: "#52525b" }}>
                       {item.supplier_name || "—"}
                     </td>
                     <td style={{ ...td, color: "#71717a" }}>{item.unit}</td>
@@ -754,7 +890,7 @@ export default function RawMaterialsPage() {
                       )}
                     </td>
                     <td style={{ ...td, color: "#52525b" }}>
-                      {item.reorder_point}
+                      {formatQuantity(item.reorder_point)}
                     </td>
                     <td style={td}>₱ {Number(item.unit_cost).toFixed(2)}</td>
                     <td style={td}>
@@ -772,6 +908,18 @@ export default function RawMaterialsPage() {
                       >
                         {formatStatus(availabilityStatus)}
                       </span>
+                      {formatStockReason(item) && (
+                        <div
+                          style={{
+                            marginTop: 4,
+                            fontSize: 10,
+                            lineHeight: 1.3,
+                            color: "#71717a",
+                          }}
+                        >
+                          {formatStockReason(item)}
+                        </div>
+                      )}
                     </td>
                     <td
                       style={{
@@ -932,8 +1080,8 @@ export default function RawMaterialsPage() {
             </h3>
             {modal.mode === "add" && (
               <div style={modalInfo}>
-                Create the material record here. Add the physical quantity later
-                through Stock Movement so every stock change is recorded.
+                Enter the material name only. Add dimensions separately when needed.
+                Add stock through Stock Movements so every change is recorded.
               </div>
             )}
             <form onSubmit={handleSave}>
@@ -947,7 +1095,7 @@ export default function RawMaterialsPage() {
               >
                 {/* 1. Name (Full Width) */}
                 <div style={{ gridColumn: "1 / -1" }}>
-                  <label style={labelSm}>Name *</label>
+                  <label style={labelSm}>Material Name *</label>
                   <input
                     type="text"
                     required
@@ -957,9 +1105,60 @@ export default function RawMaterialsPage() {
                   />
                 </div>
 
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                    }}
+                  >
+                    <label style={labelSm}>
+                      Category {modal.mode === "add" ? "*" : ""}
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleCreateCategory}
+                      style={{
+                        border: "none",
+                        background: "transparent",
+                        padding: 0,
+                        color: "#18181b",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        textDecoration: "underline",
+                      }}
+                    >
+                      + Add category
+                    </button>
+                  </div>
+                  <select
+                    required={modal.mode === "add"}
+                    value={modal.data.category_id ?? ""}
+                    onChange={(e) => setField("category_id", e.target.value)}
+                    style={inputFull}
+                  >
+                    <option value="">
+                      {modal.mode === "add" ? "Select category" : "Uncategorized"}
+                    </option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                  {categories.length === 0 && (
+                    <div style={{ marginTop: 5, fontSize: 11, color: "#71717a" }}>
+                      No raw material categories yet. Use “+ Add category” first.
+                    </div>
+                  )}
+                </div>
+
                 {/* 2. Unit & Material Type (Side by Side) */}
                 <div>
-                  <label style={labelSm}>Unit of measure *</label>
+                  <label style={labelSm}>Unit *</label>
                   <select
                     required
                     value={modal.data.unit ?? ""}
@@ -976,11 +1175,12 @@ export default function RawMaterialsPage() {
                     <option value="box">Box</option>
                     <option value="roll">Roll</option>
                     <option value="gallon">Gallon</option>
+                    <option value="container">Container</option>
                   </select>
                 </div>
 
                 <div>
-                  <label style={labelSm}>Material Type</label>
+                  <label style={labelSm}>Form</label>
                   <select
                     value={currentMaterialForm}
                     onChange={(e) => {
@@ -1056,8 +1256,8 @@ export default function RawMaterialsPage() {
                       }}
                     >
                       {currentMaterialForm === "sheet"
-                        ? "Example: standard plywood may be 2440 × 1220 × 18 mm."
-                        : "Optional stock size. Use millimeters when a standard physical size applies."}
+                        ? "Example: 2440 × 1220 × 18 mm."
+                        : "Optional dimensions in millimeters."}
                     </div>
                   </div>
                 )}
@@ -1076,41 +1276,36 @@ export default function RawMaterialsPage() {
                 </div>
 
                 <div>
-                  <label style={labelSm}>Lead Time (Days)</label>
+                  <label style={labelSm}>Lead Time</label>
                   <input
-                    type="number"
-                    min="0"
-                    step="1"
+                    type="text"
+                    inputMode="numeric"
                     value={modal.data.lead_time_days ?? ""}
-                    onChange={(e) => setField("lead_time_days", e.target.value)}
-                    onKeyDown={(e) => {
-                      if (
-                        e.key === "." ||
-                        e.key.toLowerCase() === "e" ||
-                        e.key === "-"
+                    onChange={(e) =>
+                      setField(
+                        "lead_time_days",
+                        String(e.target.value || "").replace(/[^0-9]/g, ""),
                       )
-                        e.preventDefault();
-                    }}
+                    }
                     style={inputFull}
                   />
                 </div>
 
                 <div>
-                  <label style={labelSm}>Reorder Point</label>
+                  <label style={labelSm}>Reorder</label>
                   <input
-                    type="number"
-                    min="0"
-                    step="1"
+                    type="text"
+                    inputMode={modalAllowsDecimalQuantity ? "decimal" : "numeric"}
                     value={modal.data.reorder_point ?? ""}
-                    onChange={(e) => setField("reorder_point", e.target.value)}
-                    onKeyDown={(e) => {
-                      if (
-                        e.key === "." ||
-                        e.key.toLowerCase() === "e" ||
-                        e.key === "-"
+                    onChange={(e) =>
+                      setField(
+                        "reorder_point",
+                        sanitizeQuantityInput(
+                          e.target.value,
+                          modalAllowsDecimalQuantity,
+                        ),
                       )
-                        e.preventDefault();
-                    }}
+                    }
                     style={inputFull}
                   />
                 </div>
@@ -1118,19 +1313,18 @@ export default function RawMaterialsPage() {
                 <div>
                   <label style={labelSm}>Safety Stock</label>
                   <input
-                    type="number"
-                    min="0"
-                    step="1"
+                    type="text"
+                    inputMode={modalAllowsDecimalQuantity ? "decimal" : "numeric"}
                     value={modal.data.safety_stock ?? ""}
-                    onChange={(e) => setField("safety_stock", e.target.value)}
-                    onKeyDown={(e) => {
-                      if (
-                        e.key === "." ||
-                        e.key.toLowerCase() === "e" ||
-                        e.key === "-"
+                    onChange={(e) =>
+                      setField(
+                        "safety_stock",
+                        sanitizeQuantityInput(
+                          e.target.value,
+                          modalAllowsDecimalQuantity,
+                        ),
                       )
-                        e.preventDefault();
-                    }}
+                    }
                     style={inputFull}
                   />
                 </div>
@@ -1514,7 +1708,7 @@ export default function RawMaterialsPage() {
               <div style={exportContentsLabel}>Included in Excel</div>
 
               <div style={exportContentsText}>
-                Catalog summary, availability, needed limits, reorder point, and
+                Catalog summary, availability, order need, reorder point, and
                 total physical value.
               </div>
             </div>

@@ -412,8 +412,9 @@ async function consumeBlueprintMaterialsForProduction(
       `UPDATE raw_materials
        SET stock_status = CASE
          WHEN quantity <= 0 THEN 'out_of_stock'
-         WHEN quantity <= reorder_point THEN 'low_stock'
-         ELSE 'in_stock'
+         WHEN quantity <= COALESCE(safety_stock, 0) THEN 'critical_stock'
+         WHEN quantity <= COALESCE(reorder_point, 0) THEN 'low_stock'
+         ELSE 'healthy_stock'
        END
        WHERE id = ?`,
       [item.material.id],

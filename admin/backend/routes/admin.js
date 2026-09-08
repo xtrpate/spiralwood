@@ -205,6 +205,17 @@ router.patch(
 // ══════════════════════════════════════════════════════════════════════════════
 // INVENTORY – RAW MATERIALS
 // ══════════════════════════════════════════════════════════════════════════════
+router.get(
+  "/inventory/raw/categories",
+  adminStaff,
+  inventory.getRawMaterialCategories,
+);
+router.post(
+  "/inventory/raw/categories",
+  adminOnly,
+  logAction("create_raw_material_category", "categories"),
+  inventory.createRawMaterialCategory,
+);
 router.get("/inventory/raw", adminStaff, inventory.getRawMaterials);
 router.post(
   "/inventory/raw",

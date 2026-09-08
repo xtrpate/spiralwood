@@ -10,7 +10,7 @@ const PAGE_SIZE = 30;
 // WISDOM STOCK MOVEMENTS UI POLISH V1
 const SOURCE_LABELS = {
   blueprint_production: "Blueprint production",
-  build_production: "Build production",
+  legacy_production: "Historical record",
   ready_made_stock: "Ready-made stock",
   product_production: "Ready-made stock",
   order_fulfillment: "Order fulfillment",
@@ -26,7 +26,7 @@ const MOVEMENT_LABELS = {
 
 const SOURCE_BADGES = {
   blueprint_production: ["#eff6ff", "#1d4ed8", "#bfdbfe"],
-  build_production: ["#f5f3ff", "#6d28d9", "#ddd6fe"],
+  legacy_production: ["#fff7ed", "#9a3412", "#fed7aa"],
   ready_made_stock: ["#ecfdf5", "#166534", "#bbf7d0"],
   product_production: ["#ecfdf5", "#166534", "#bbf7d0"],
   order_fulfillment: ["#fff7ed", "#9a3412", "#fed7aa"],
@@ -40,7 +40,7 @@ const EMPTY_SUMMARY = {
   adjustment_count: 0,
   return_count: 0,
   blueprint_production_count: 0,
-  build_production_count: 0,
+  legacy_production_count: 0,
   ready_made_stock_count: 0,
   order_fulfillment_count: 0,
   manual_count: 0,
@@ -51,6 +51,16 @@ const formatQuantity = (value) => {
   if (!Number.isFinite(number)) return "0";
   return number.toLocaleString("en-PH", { maximumFractionDigits: 4 });
 };
+
+const DECIMAL_QUANTITY_UNITS = new Set(["meter", "kg", "liter", "gallon"]);
+
+const normalizeQuantityUnit = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
+
+const unitAllowsDecimalQuantity = (unit) =>
+  DECIMAL_QUANTITY_UNITS.has(normalizeQuantityUnit(unit));
 
 const formatDateTime = (value) => {
   if (!value) return "—";
@@ -65,6 +75,56 @@ const formatDateTime = (value) => {
   });
 };
 
+const MATERIAL_FORM_LABELS = {
+  sheet: "Sheet",
+  linear: "Linear",
+  piece: "Solid",
+  hardware: "Hardware",
+  other: "Other",
+};
+
+const formatDimension = (value) => {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return "";
+  return number.toLocaleString("en-PH", { maximumFractionDigits: 2 });
+};
+
+const formatMaterialSpecification = (row = {}) => {
+  if (!row.material_name) return "";
+
+  const form = String(row.material_form || "").trim().toLowerCase();
+  const formLabel = MATERIAL_FORM_LABELS[form] || "";
+  const length = formatDimension(row.length_mm);
+  const width = formatDimension(row.width_mm);
+  const thickness = formatDimension(row.thickness_mm);
+
+  if (length && width && thickness) {
+    return `${formLabel ? `${formLabel} · ` : ""}${length} × ${width} × ${thickness} mm`;
+  }
+
+  const partialDimensions = [];
+  if (length) partialDimensions.push(`L ${length} mm`);
+  if (width) partialDimensions.push(`W ${width} mm`);
+  if (thickness) partialDimensions.push(`T ${thickness} mm`);
+
+  if (partialDimensions.length > 0) {
+    return [formLabel, ...partialDimensions].filter(Boolean).join(" · ");
+  }
+
+  return formLabel;
+};
+
+const getMovementQuantityLabel = (row = {}) => {
+  const isPositive = row.type === "in" || row.type === "return";
+  const unit = row.material_unit ? ` ${row.material_unit}` : "";
+
+  if (row.type === "adjustment") {
+    return `Set to ${formatQuantity(row.quantity)}${unit}`;
+  }
+
+  return `${isPositive ? "+" : "-"}${formatQuantity(row.quantity)}${unit}`;
+};
+
 // WISDOM STOCK READY-MADE SEPARATION V1
 // WISDOM STOCK MOVEMENT ORDER LINK CLEANUP V1
 export default function StockMovementPage() {
@@ -77,22 +137,18 @@ export default function StockMovementPage() {
   const [summary, setSummary] = useState(EMPTY_SUMMARY);
   const [loading, setLoading] = useState(false);
 
-  const getTodayString = () => {
-    const d = new Date();
-    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-    return d.toISOString().split("T")[0];
-  };
-
   const [filters, setFilters] = useState({
     search: "",
     type: "",
     source: "",
-    date_preset: "today",
-    from: getTodayString(),
-    to: getTodayString(),
+    date_preset: "all_time",
+    from: "",
+    to: "",
     page: 1,
   });
   const [modal, setModal] = useState(false);
+  const [detailsRow, setDetailsRow] = useState(null);
+  const [hoveredRowId, setHoveredRowId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -182,16 +238,21 @@ export default function StockMovementPage() {
 
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  const summaryCards = useMemo(
-    () => [
-      ["Records shown", summary.record_count],
+  const summaryCards = useMemo(() => {
+    const cards = [
+      ["Records", summary.record_count],
       ["Blueprint production", summary.blueprint_production_count],
       ["Ready-made stock", summary.ready_made_stock_count],
       ["Order fulfillment", summary.order_fulfillment_count],
       ["Manual entries", summary.manual_count],
-    ],
-    [summary],
-  );
+    ];
+
+    if (Number(summary.legacy_production_count || 0) > 0) {
+      cards.push(["Historical records", summary.legacy_production_count]);
+    }
+
+    return cards;
+  }, [summary]);
 
   const resetForm = () => {
     setItemKind("material");
@@ -210,9 +271,9 @@ export default function StockMovementPage() {
       search: "",
       type: "",
       source: "",
-      date_preset: "today",
-      from: getTodayString(),
-      to: getTodayString(),
+      date_preset: "all_time",
+      from: "",
+      to: "",
       page: 1,
     });
   };
@@ -261,6 +322,7 @@ export default function StockMovementPage() {
           "Movement",
           "Source",
           "Item",
+          "Specification",
           "Quantity",
           "Order",
           "Reference",
@@ -276,14 +338,14 @@ export default function StockMovementPage() {
       ];
 
       exportRows.forEach((row) => {
-        const isPositive = row.type === "in" || row.type === "return";
-        const qtyLabel =
-          `${isPositive ? "+" : "-"}${row.quantity} ${row.material_unit || ""}`.trim();
+        const qtyLabel = getMovementQuantityLabel(row);
+        const specification = formatMaterialSpecification(row);
         exportData.push([
           new Date(row.created_at).toLocaleString("en-PH"),
           String(row.type || "").toUpperCase(),
-          row.movement_source || "manual",
+          SOURCE_LABELS[row.movement_source] || "Manual entry",
           row.material_name || row.product_name || "—",
+          specification || "—",
           qtyLabel,
           row.order_number || row.order_id || "—",
           row.reference || "—",
@@ -298,6 +360,7 @@ export default function StockMovementPage() {
         { wch: 15 },
         { wch: 20 },
         { wch: 35 },
+        { wch: 32 },
         { wch: 15 },
         { wch: 20 },
         { wch: 20 },
@@ -326,6 +389,19 @@ export default function StockMovementPage() {
     }));
   };
 
+  const detailsSource = detailsRow?.movement_source || "manual";
+  const detailsSourceColors =
+    SOURCE_BADGES[detailsSource] || SOURCE_BADGES.manual;
+  const detailsItemName =
+    detailsRow?.material_name || detailsRow?.product_name || "—";
+  const detailsSpecification = formatMaterialSpecification(detailsRow || {});
+  const detailsQuantityLabel = detailsRow
+    ? getMovementQuantityLabel(detailsRow)
+    : "—";
+  const detailsIsPositive =
+    detailsRow?.type === "in" || detailsRow?.type === "return";
+  const detailsIsAdjustment = detailsRow?.type === "adjustment";
+
   const isMaterialTarget = Boolean(form.material_id);
   const isProductTarget = Boolean(form.product_id);
   const selectedMaterial = useMemo(
@@ -342,6 +418,9 @@ export default function StockMovementPage() {
   const selectedAvailable = Number(
     selectedMaterial?.available_quantity ??
       Math.max(0, selectedOnHand - selectedReserved),
+  );
+  const selectedMaterialAllowsDecimal = unitAllowsDecimalQuantity(
+    selectedMaterial?.unit,
   );
 
   const helperMessage =
@@ -367,15 +446,46 @@ export default function StockMovementPage() {
       return;
     }
 
-    const requestedQuantity = Number(form.quantity);
+    const quantityText = String(form.quantity || "").trim();
+    const requestedQuantity = Number(quantityText);
+    const isAdjustment = form.type === "adjustment";
 
-    if (!/^[0-9]+$/.test(form.quantity)) {
-      toast.error("Please put only a whole number on quantity.");
+    if (
+      isMaterialTarget &&
+      selectedMaterialAllowsDecimal &&
+      !/^(?:\d+|\d+\.\d{1,2})$/.test(quantityText)
+    ) {
+      toast.error(
+        `${selectedMaterial?.unit || "This unit"} quantity can have up to 2 decimal places.`,
+      );
       return;
     }
 
-    if (requestedQuantity < 1) {
-      toast.error("Quantity must be at least 1.");
+    if (
+      isMaterialTarget &&
+      !selectedMaterialAllowsDecimal &&
+      !/^\d+$/.test(quantityText)
+    ) {
+      toast.error(
+        `${selectedMaterial?.unit || "This unit"} quantity must be a whole number.`,
+      );
+      return;
+    }
+
+    if (isProductTarget && !/^\d+$/.test(quantityText)) {
+      toast.error("Ready-made product quantity must be a whole number.");
+      return;
+    }
+
+    if (
+      !Number.isFinite(requestedQuantity) ||
+      (isAdjustment ? requestedQuantity < 0 : requestedQuantity <= 0)
+    ) {
+      toast.error(
+        isAdjustment
+          ? "Adjustment quantity must be 0 or greater."
+          : "Quantity must be greater than 0.",
+      );
       return;
     }
 
@@ -447,6 +557,11 @@ export default function StockMovementPage() {
             <div style={summaryValue}>
               {Number(value || 0).toLocaleString("en-PH")}
             </div>
+            {label === "Historical records" && (
+              <div style={summaryHelper}>
+                Older stock movements kept for history and audit tracking.
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -471,6 +586,7 @@ export default function StockMovementPage() {
           >
             <option value="">All movements</option>
             <option value="in">Stock in</option>
+            <option value="out">Stock out</option>
             <option value="adjustment">Adjustment</option>
             <option value="return">Return</option>
           </select>
@@ -485,7 +601,7 @@ export default function StockMovementPage() {
           >
             <option value="">All sources</option>
             <option value="blueprint_production">Blueprint production</option>
-            <option value="build_production">Build production</option>
+            <option value="legacy_production">Historical records</option>
             <option value="ready_made_stock">Ready-made stock</option>
             <option value="order_fulfillment">Order fulfillment</option>
             <option value="manual">Manual entry</option>
@@ -563,12 +679,9 @@ export default function StockMovementPage() {
                 "Source",
                 "Item",
                 "Quantity",
-                "Order",
-                "Reference",
-                "Notes",
-                "Recorded by",
-              ].map((heading) => (
-                <th key={heading} style={th}>
+                "",
+              ].map((heading, index) => (
+                <th key={`${heading}-${index}`} style={th}>
                   {heading}
                 </th>
               ))}
@@ -577,13 +690,13 @@ export default function StockMovementPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={9} style={emptyCell}>
+                <td colSpan={6} style={emptyCell}>
                   Loading stock movements...
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={9} style={emptyCell}>
+                <td colSpan={6} style={emptyCell}>
                   No stock movements found for the selected filters.
                 </td>
               </tr>
@@ -593,13 +706,34 @@ export default function StockMovementPage() {
                 const [sourceBg, sourceColor, sourceBorder] =
                   SOURCE_BADGES[source] || SOURCE_BADGES.manual;
                 const isPositive = row.type === "in" || row.type === "return";
+                const isAdjustment = row.type === "adjustment";
                 const itemName = row.material_name || row.product_name || "—";
-                const unit = row.material_unit ? ` ${row.material_unit}` : "";
+                const specification = formatMaterialSpecification(row);
+                const quantityLabel = getMovementQuantityLabel(row);
+                const isHovered = Number(hoveredRowId) === Number(row.id);
 
                 return (
                   <tr
                     key={row.id}
-                    style={{ borderBottom: "1px solid #f4f4f5" }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`View stock movement details for ${itemName}`}
+                    title="View movement details"
+                    onClick={() => setDetailsRow(row)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setDetailsRow(row);
+                      }
+                    }}
+                    onMouseEnter={() => setHoveredRowId(row.id)}
+                    onMouseLeave={() => setHoveredRowId(null)}
+                    style={{
+                      borderBottom: "1px solid #f4f4f5",
+                      background: isHovered ? "#fafafa" : "#ffffff",
+                      cursor: "pointer",
+                      outline: "none",
+                    }}
                   >
                     <td
                       style={{ ...td, color: "#71717a", whiteSpace: "nowrap" }}
@@ -629,10 +763,13 @@ export default function StockMovementPage() {
                         </div>
                       )}
                     </td>
-                    <td style={{ ...td, minWidth: 190 }}>
+                    <td style={{ ...td, minWidth: 230 }}>
                       <div style={{ fontWeight: 600, color: "#0a0a0a" }}>
                         {itemName}
                       </div>
+                      {specification && (
+                        <div style={subMeta}>{specification}</div>
+                      )}
                       {row.product_name && row.material_name && (
                         <div style={subMeta}>For: {row.product_name}</div>
                       )}
@@ -641,52 +778,31 @@ export default function StockMovementPage() {
                       style={{
                         ...td,
                         fontWeight: 700,
-                        color: isPositive ? "#166534" : "#b42318",
+                        color: isAdjustment
+                          ? "#18181b"
+                          : isPositive
+                            ? "#166534"
+                            : "#b42318",
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {isPositive ? "+" : "-"}
-                      {formatQuantity(row.quantity)}
-                      {unit}
-                    </td>
-                    <td style={{ ...td, minWidth: 150 }}>
-                      {row.order_id ? (
-                        <button
-                          onClick={() =>
-                            navigate(`/admin/orders/${row.order_id}`)
-                          }
-                          style={orderLink}
-                        >
-                          {row.order_number || `Order #${row.order_id}`}
-                        </button>
-                      ) : (
-                        "—"
-                      )}
-                      {row.customer_name && (
-                        <div style={subMeta}>{row.customer_name}</div>
-                      )}
-                      {row.order_status && (
-                        <div style={subMeta}>
-                          {row.order_status} ·{" "}
-                          {row.payment_status || "payment unknown"}
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ ...td, minWidth: 170 }}>
-                      {row.reservation_id && (
-                        <div style={{ fontWeight: 600 }}>
-                          Reservation #{row.reservation_id}
-                        </div>
-                      )}
-                      <div style={referenceText}>{row.reference || "—"}</div>
-                    </td>
-                    <td style={{ ...td, minWidth: 240, color: "#52525b" }}>
-                      {row.notes || "—"}
+                      {quantityLabel}
                     </td>
                     <td
-                      style={{ ...td, color: "#71717a", whiteSpace: "nowrap" }}
+                      aria-hidden="true"
+                      style={{
+                        ...td,
+                        width: 34,
+                        paddingLeft: 4,
+                        paddingRight: 14,
+                        textAlign: "right",
+                        color: "#a1a1aa",
+                        fontSize: 20,
+                        lineHeight: 1,
+                        verticalAlign: "middle",
+                      }}
                     >
-                      {row.created_by_name || "—"}
+                      ›
                     </td>
                   </tr>
                 );
@@ -722,6 +838,180 @@ export default function StockMovementPage() {
           </button>
         </div>
       </div>
+
+      {detailsRow && (
+        <div style={overlay}>
+          <div style={detailsModalBox}>
+            <div style={detailsHeader}>
+              <div>
+                <h3 style={modalTitle}>Stock Movement Details</h3>
+                <p style={modalSubtitle}>
+                  Full inventory history and tracking information for this
+                  movement.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetailsRow(null)}
+                style={detailsCloseIcon}
+                aria-label="Close stock movement details"
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={detailsSummaryGrid}>
+              <div style={detailsSummaryCell}>
+                <div style={detailsLabel}>Movement</div>
+                <span style={typeBadge}>
+                  {MOVEMENT_LABELS[detailsRow.type] || "Movement"}
+                </span>
+              </div>
+
+              <div style={detailsSummaryCell}>
+                <div style={detailsLabel}>Source</div>
+                <span
+                  style={{
+                    ...sourceBadge,
+                    background: detailsSourceColors[0],
+                    color: detailsSourceColors[1],
+                    border: `1px solid ${detailsSourceColors[2]}`,
+                  }}
+                >
+                  {SOURCE_LABELS[detailsSource] || "Manual entry"}
+                </span>
+              </div>
+
+              <div style={detailsSummaryCell}>
+                <div style={detailsLabel}>Quantity</div>
+                <div
+                  style={{
+                    ...detailsStrongValue,
+                    color: detailsIsAdjustment
+                      ? "#18181b"
+                      : detailsIsPositive
+                        ? "#166534"
+                        : "#b42318",
+                  }}
+                >
+                  {detailsQuantityLabel}
+                </div>
+              </div>
+
+              <div style={detailsSummaryCell}>
+                <div style={detailsLabel}>Date & Time</div>
+                <div style={detailsValue}>
+                  {formatDateTime(detailsRow.created_at)}
+                </div>
+              </div>
+            </div>
+
+            <div style={detailsSection}>
+              <div style={detailsSectionTitle}>Item</div>
+              <div style={detailsItemNameStyle}>{detailsItemName}</div>
+              {detailsSpecification && (
+                <div style={detailsItemMeta}>{detailsSpecification}</div>
+              )}
+              {detailsRow.product_name && detailsRow.material_name && (
+                <div style={detailsItemMeta}>
+                  For: {detailsRow.product_name}
+                </div>
+              )}
+            </div>
+
+            <div style={detailsSection}>
+              <div style={detailsSectionTitle}>Tracking</div>
+              <div style={detailsGrid}>
+                {detailsRow.order_id && (
+                  <div style={detailsField}>
+                    <div style={detailsLabel}>Order</div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const orderId = detailsRow.order_id;
+                        setDetailsRow(null);
+                        navigate(`/admin/orders/${orderId}`);
+                      }}
+                      style={detailsOrderLink}
+                    >
+                      {detailsRow.order_number ||
+                        `Order #${detailsRow.order_id}`}
+                    </button>
+                    {detailsRow.customer_name && (
+                      <div style={detailsMuted}>
+                        {detailsRow.customer_name}
+                      </div>
+                    )}
+                    {detailsRow.order_status && (
+                      <div style={detailsMuted}>
+                        {detailsRow.order_status}
+                        {detailsRow.payment_status
+                          ? ` · ${detailsRow.payment_status}`
+                          : ""}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {detailsRow.reference && (
+                  <div style={detailsField}>
+                    <div style={detailsLabel}>Reference</div>
+                    <div style={detailsValue}>{detailsRow.reference}</div>
+                  </div>
+                )}
+
+                {detailsRow.reservation_id && (
+                  <div style={detailsField}>
+                    <div style={detailsLabel}>Reservation</div>
+                    <div style={detailsValue}>
+                      #{detailsRow.reservation_id}
+                      {detailsRow.reservation_status
+                        ? ` · ${String(detailsRow.reservation_status).replaceAll(
+                            "_",
+                            " ",
+                          )}`
+                        : ""}
+                    </div>
+                  </div>
+                )}
+
+                {detailsRow.supplier_name && (
+                  <div style={detailsField}>
+                    <div style={detailsLabel}>Supplier</div>
+                    <div style={detailsValue}>
+                      {detailsRow.supplier_name}
+                    </div>
+                  </div>
+                )}
+
+                <div style={detailsField}>
+                  <div style={detailsLabel}>Recorded By</div>
+                  <div style={detailsValue}>
+                    {detailsRow.created_by_name || "—"}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {detailsRow.notes && (
+              <div style={detailsSection}>
+                <div style={detailsSectionTitle}>Notes</div>
+                <div style={detailsNotes}>{detailsRow.notes}</div>
+              </div>
+            )}
+
+            <div style={modalActions}>
+              <button
+                type="button"
+                onClick={() => setDetailsRow(null)}
+                style={btnGhost}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {modal && (
         <div style={overlay}>
@@ -831,37 +1121,38 @@ export default function StockMovementPage() {
                 <label style={label}>Quantity *</label>
                 <input
                   type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
+                  inputMode={
+                    itemKind === "material" && selectedMaterialAllowsDecimal
+                      ? "decimal"
+                      : "numeric"
+                  }
                   required
                   value={form.quantity}
                   onChange={(event) => {
-                    const wholeNumberOnly = event.target.value.replace(
-                      /[^0-9]/g,
-                      "",
-                    );
+                    let nextValue = event.target.value;
+
+                    if (
+                      itemKind === "material" &&
+                      selectedMaterialAllowsDecimal
+                    ) {
+                      nextValue = nextValue.replace(/[^0-9.]/g, "");
+                      const firstDot = nextValue.indexOf(".");
+                      if (firstDot !== -1) {
+                        const whole = nextValue.slice(0, firstDot);
+                        const fraction = nextValue
+                          .slice(firstDot + 1)
+                          .replace(/\./g, "")
+                          .slice(0, 2);
+                        nextValue = `${whole}.${fraction}`;
+                      }
+                    } else {
+                      nextValue = nextValue.replace(/[^0-9]/g, "");
+                    }
 
                     setForm((current) => ({
                       ...current,
-                      quantity: wholeNumberOnly,
+                      quantity: nextValue,
                     }));
-                  }}
-                  onKeyDown={(event) => {
-                    if (
-                      !/[0-9]/.test(event.key) &&
-                      ![
-                        "Backspace",
-                        "Delete",
-                        "ArrowLeft",
-                        "ArrowRight",
-                        "Tab",
-                        "Home",
-                        "End",
-                      ].includes(event.key) &&
-                      !(event.ctrlKey || event.metaKey)
-                    ) {
-                      event.preventDefault();
-                    }
                   }}
                   style={inputFull}
                 />
@@ -981,8 +1272,8 @@ export default function StockMovementPage() {
               <div style={exportContentsLabel}>Included in Excel</div>
 
               <div style={exportContentsText}>
-                Date, movement type, source context, material/product, adjusted
-                quantity, related order, and auditing notes.
+                Date, movement type, source context, item specification,
+                adjusted quantity, related order, and auditing notes.
               </div>
             </div>
 
@@ -1044,7 +1335,7 @@ const subtitle = {
 };
 const summaryGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(5, minmax(135px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
   gap: 10,
   marginBottom: 14,
 };
@@ -1066,6 +1357,13 @@ const summaryValue = {
   fontSize: 21,
   fontWeight: 700,
   color: "#18181b",
+};
+const summaryHelper = {
+  marginTop: 4,
+  maxWidth: 220,
+  fontSize: 10,
+  lineHeight: 1.4,
+  color: "#a1a1aa",
 };
 const filterCard = {
   display: "flex",
@@ -1168,24 +1466,6 @@ const subMeta = {
   color: "#71717a",
   textTransform: "capitalize",
 };
-const referenceText = {
-  marginTop: 3,
-  fontSize: 11,
-  color: "#52525b",
-  wordBreak: "break-word",
-};
-const orderLink = {
-  padding: 0,
-  background: "none",
-  border: "none",
-  color: "#18181b",
-  fontFamily: "inherit",
-  fontSize: 12,
-  fontWeight: 600,
-  textDecoration: "none",
-  cursor: "pointer",
-  textAlign: "left",
-};
 const paginationRow = {
   display: "flex",
   alignItems: "center",
@@ -1273,6 +1553,133 @@ const modalBox = {
   background: "#fff",
   borderRadius: 2,
   boxShadow: "0 18px 50px rgba(0,0,0,.22)",
+};
+const detailsModalBox = {
+  width: 760,
+  maxWidth: "100%",
+  maxHeight: "90vh",
+  overflowY: "auto",
+  padding: 24,
+  background: "#fff",
+  borderRadius: 2,
+  boxShadow: "0 18px 50px rgba(0,0,0,.22)",
+};
+const detailsHeader = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: 16,
+};
+const detailsCloseIcon = {
+  width: 32,
+  height: 32,
+  padding: 0,
+  background: "#fff",
+  color: "#71717a",
+  border: "1px solid #e4e4e7",
+  borderRadius: 2,
+  fontFamily: "inherit",
+  fontSize: 20,
+  lineHeight: 1,
+  cursor: "pointer",
+};
+const detailsSummaryGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+  gap: 0,
+  marginBottom: 16,
+  border: "1px solid #e4e4e7",
+  background: "#fff",
+};
+const detailsSummaryCell = {
+  minHeight: 74,
+  padding: "13px 14px",
+  borderRight: "1px solid #e4e4e7",
+};
+const detailsSection = {
+  marginBottom: 16,
+  padding: "14px 15px",
+  border: "1px solid #e4e4e7",
+  background: "#fff",
+};
+const detailsSectionTitle = {
+  marginBottom: 10,
+  color: "#71717a",
+  fontSize: 10,
+  fontWeight: 600,
+  letterSpacing: 0.7,
+  textTransform: "uppercase",
+};
+const detailsGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  columnGap: 24,
+  rowGap: 16,
+};
+const detailsField = {
+  minWidth: 0,
+};
+const detailsLabel = {
+  marginBottom: 5,
+  color: "#71717a",
+  fontSize: 10,
+  fontWeight: 600,
+  letterSpacing: 0.45,
+  textTransform: "uppercase",
+};
+const detailsValue = {
+  color: "#18181b",
+  fontSize: 12,
+  lineHeight: 1.45,
+  wordBreak: "break-word",
+};
+const detailsStrongValue = {
+  color: "#18181b",
+  fontSize: 13,
+  fontWeight: 700,
+  lineHeight: 1.4,
+};
+const detailsItemNameStyle = {
+  color: "#0a0a0a",
+  fontSize: 15,
+  fontWeight: 700,
+  lineHeight: 1.35,
+};
+const detailsItemMeta = {
+  marginTop: 4,
+  color: "#71717a",
+  fontSize: 11,
+  lineHeight: 1.4,
+};
+const detailsMuted = {
+  marginTop: 3,
+  color: "#71717a",
+  fontSize: 10.5,
+  lineHeight: 1.35,
+  textTransform: "capitalize",
+};
+const detailsOrderLink = {
+  padding: 0,
+  background: "none",
+  color: "#18181b",
+  border: "none",
+  fontFamily: "inherit",
+  fontSize: 12,
+  fontWeight: 700,
+  textAlign: "left",
+  textDecoration: "underline",
+  textUnderlineOffset: 2,
+  cursor: "pointer",
+};
+const detailsNotes = {
+  padding: "10px 12px",
+  background: "#fafafa",
+  border: "1px solid #f4f4f5",
+  color: "#52525b",
+  fontSize: 12,
+  lineHeight: 1.5,
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
 };
 const modalTitle = {
   margin: 0,
