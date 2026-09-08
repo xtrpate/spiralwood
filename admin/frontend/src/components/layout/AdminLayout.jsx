@@ -70,6 +70,12 @@ const NAV_ITEMS = [
     roles: ["admin", "staff"],
   },
   {
+    label: "Physical Inventory",
+    path: "/admin/inventory/physical-inventory",
+    icon: "📋",
+    roles: ["admin"],
+  },
+  {
     label: "Orders",
     path: "/admin/orders",
     icon: "🛒",

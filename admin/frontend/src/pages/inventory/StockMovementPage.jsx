@@ -9,6 +9,7 @@ const PAGE_SIZE = 30;
 
 // WISDOM STOCK MOVEMENTS UI POLISH V1
 const SOURCE_LABELS = {
+  physical_inventory: "Physical inventory",
   blueprint_production: "Blueprint production",
   legacy_production: "Historical record",
   ready_made_stock: "Ready-made stock",
@@ -25,6 +26,7 @@ const MOVEMENT_LABELS = {
 };
 
 const SOURCE_BADGES = {
+  physical_inventory: ["#f5f3ff", "#6d28d9", "#ddd6fe"],
   blueprint_production: ["#eff6ff", "#1d4ed8", "#bfdbfe"],
   legacy_production: ["#fff7ed", "#9a3412", "#fed7aa"],
   ready_made_stock: ["#ecfdf5", "#166534", "#bbf7d0"],
@@ -600,6 +602,7 @@ export default function StockMovementPage() {
             style={inputSm}
           >
             <option value="">All sources</option>
+            <option value="physical_inventory">Physical inventory</option>
             <option value="blueprint_production">Blueprint production</option>
             <option value="legacy_production">Historical records</option>
             <option value="ready_made_stock">Ready-made stock</option>

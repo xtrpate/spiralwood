@@ -28,6 +28,7 @@ import RawMaterialsPage from "./pages/inventory/RawMaterialsPage";
 import BuildMaterialsPage from "./pages/inventory/BuildMaterialsPage";
 import BuildMaterialFormPage from "./pages/inventory/BuildMaterialFormPage";
 import StockMovementPage from "./pages/inventory/StockMovementPage";
+import PhysicalInventoryPage from "./pages/inventory/PhysicalInventoryPage";
 import SuppliersPage from "./pages/inventory/SuppliersPage";
 import BlueprintsPage from "./pages/blueprints/BlueprintsPage";
 import BlueprintDesign from "./pages/blueprints/BlueprintDesign.jsx";
@@ -507,6 +508,11 @@ export default function App() {
                 <Route
                   path="inventory/movements"
                   element={<StockMovementPage />}
+                />
+
+                <Route
+                  path="inventory/physical-inventory"
+                  element={<PhysicalInventoryPage />}
                 />
 
                 <Route path="inventory/suppliers" element={<SuppliersPage />} />

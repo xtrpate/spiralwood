@@ -18,6 +18,7 @@ const auth = require("../controllers/admin/authController");
 const dashboard = require("../controllers/admin/dashboardController");
 const products = require("../controllers/admin/productController");
 const inventory = require("../controllers/admin/inventoryController");
+const physicalInventory = require("../controllers/admin/physicalInventoryController");
 const blueprints = require("../controllers/admin/blueprintController");
 const orders = require("../controllers/admin/orderController");
 const sales = require("../controllers/admin/salesController");
@@ -276,6 +277,46 @@ router.post(
   adminStaff,
   logAction("create_stock_movement", "stock_movements"),
   inventory.createStockMovement,
+);
+
+// PHYSICAL INVENTORY
+router.get(
+  "/inventory/physical-inventory/sessions",
+  adminOnly,
+  physicalInventory.listPhysicalInventorySessions,
+);
+router.post(
+  "/inventory/physical-inventory/sessions",
+  adminOnly,
+  logAction("start_physical_inventory", "physical_inventory_sessions"),
+  physicalInventory.startPhysicalInventory,
+);
+router.get(
+  "/inventory/physical-inventory/report",
+  adminOnly,
+  physicalInventory.getPhysicalInventoryReport,
+);
+router.get(
+  "/inventory/physical-inventory/sessions/:id",
+  adminOnly,
+  physicalInventory.getPhysicalInventorySession,
+);
+router.put(
+  "/inventory/physical-inventory/sessions/:id",
+  adminOnly,
+  physicalInventory.savePhysicalInventoryDraft,
+);
+router.post(
+  "/inventory/physical-inventory/sessions/:id/finalize",
+  adminOnly,
+  logAction("finalize_physical_inventory", "physical_inventory_sessions"),
+  physicalInventory.finalizePhysicalInventory,
+);
+router.post(
+  "/inventory/physical-inventory/sessions/:id/cancel",
+  adminOnly,
+  logAction("cancel_physical_inventory", "physical_inventory_sessions"),
+  physicalInventory.cancelPhysicalInventory,
 );
 
 // ══════════════════════════════════════════════════════════════════════════════

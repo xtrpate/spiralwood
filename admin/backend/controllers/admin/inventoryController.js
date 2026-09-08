@@ -1282,6 +1282,7 @@ exports.getStockMovements = async (req, res) => {
     const params = [];
 
     const movementSourceSql = `CASE
+      WHEN sm.reference LIKE 'PHYSICAL-INVENTORY-%' THEN 'physical_inventory'
       WHEN bmr.id IS NOT NULL THEN 'blueprint_production'
       WHEN sm.material_id IS NOT NULL
         AND sm.product_id IS NULL
@@ -1326,6 +1327,7 @@ exports.getStockMovements = async (req, res) => {
     if (source) {
       const normalizedSource = String(source).trim().toLowerCase();
       const allowedSources = new Set([
+        "physical_inventory",
         "blueprint_production",
         "legacy_production",
         "ready_made_stock",
