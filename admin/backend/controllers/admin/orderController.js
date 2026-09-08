@@ -1286,6 +1286,16 @@ exports.updateStatus = async (req, res) => {
       });
     }
 
+    if (isBlueprintOrder && nextStatus === "cancelled") {
+      await conn.rollback();
+      return res.status(409).json({
+        message:
+          currentStatus === "pending"
+            ? "Use the custom request Decline action during initial review. After agreement acceptance, customer-requested cancellation must be reviewed from Cancellations."
+            : "Custom furniture cancellation must be approved through the Cancellations review page.",
+      });
+    }
+
     const usesManagedDeliveryFlow = hasDeliveryRequirement;
 
     if (usesManagedDeliveryFlow && nextStatus === "shipping") {
@@ -3196,7 +3206,10 @@ exports.updateTaskStatus = async (req, res) => {
     }
 
     const [[task]] = await pool.query(
-      `SELECT * FROM project_tasks WHERE id = ? AND order_id = ?`,
+      `SELECT pt.*, o.status AS order_status
+       FROM project_tasks pt
+       LEFT JOIN orders o ON o.id = pt.order_id
+       WHERE pt.id = ? AND pt.order_id = ?`,
       [taskId, orderId],
     );
 
@@ -3204,6 +3217,13 @@ exports.updateTaskStatus = async (req, res) => {
       return res
         .status(404)
         .json({ message: "Task not found for this order." });
+    }
+
+    if (normalize(task.order_status) === "cancelled") {
+      return res.status(409).json({
+        message:
+          "This custom furniture order is cancelled. Production tasks are locked as history and can no longer be changed.",
+      });
     }
 
     const currentStatus = normalize(task.status);

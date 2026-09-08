@@ -22,6 +22,7 @@ const physicalInventory = require("../controllers/admin/physicalInventoryControl
 const stockTransfers = require("../controllers/admin/stockTransferController");
 const blueprints = require("../controllers/admin/blueprintController");
 const orders = require("../controllers/admin/orderController");
+const cancellations = require("../controllers/admin/cancellationController");
 const sales = require("../controllers/admin/salesController");
 const mgmt = require("../controllers/admin/managementController");
 const website = require("../controllers/admin/websiteController");
@@ -421,6 +422,23 @@ router.patch(
 );
 
 router.get("/orders", adminStaff, orders.getAll);
+
+// Specific cancellation routes must be declared before /orders/:id so the
+// literal word "cancellations" is never treated as an order id.
+router.get("/orders/cancellations", adminOnly, cancellations.listRequests);
+router.post(
+  "/orders/cancellations/:requestId/approve",
+  adminOnly,
+  logAction("approve_custom_cancellation", "custom_cancellation_requests"),
+  cancellations.approveRequest,
+);
+router.post(
+  "/orders/cancellations/:requestId/decline",
+  adminOnly,
+  logAction("decline_custom_cancellation", "custom_cancellation_requests"),
+  cancellations.declineRequest,
+);
+
 router.get("/orders/:id", adminStaff, orders.getOne);
 router.patch(
   "/orders/:id/status",

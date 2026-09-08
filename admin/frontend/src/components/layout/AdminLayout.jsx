@@ -88,7 +88,7 @@ const NAV_ITEMS = [
     roles: ["admin", "staff"],
   },
   {
-    label: "Cancellations & Refunds",
+    label: "Cancellations",
     path: "/admin/orders/cancellations",
     icon: "↩️",
     roles: ["admin"],

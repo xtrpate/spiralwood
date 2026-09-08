@@ -106,6 +106,8 @@ async function releaseBlueprintMaterialsForCancellation(
     "confirmed",
     "contract_released",
     "production",
+    "ready_for_pickup",
+    "shipping",
     "cancelled",
   ]);
 
@@ -274,10 +276,12 @@ async function releaseBlueprintMaterialsForCancellation(
     );
   }
 
-  if (orderStatus === "production") {
+  if (
+    ["production", "ready_for_pickup", "shipping"].includes(orderStatus)
+  ) {
     fail(
       "PRODUCTION_RESERVATIONS_NOT_CONSUMED",
-      "This production order still has unconsumed material reservations and requires manual review before cancellation.",
+      "This order is already in or beyond production but still has unconsumed material reservations. Manual review is required before cancellation.",
     );
   }
 

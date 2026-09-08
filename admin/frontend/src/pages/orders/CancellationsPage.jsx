@@ -1,79 +1,25 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import api from "../../services/api";
 import toast from "react-hot-toast";
-
-const POLICY_STYLE = {
-  full_refund: {
-    bg: "#f4f4f5",
-    color: "#18181b",
-    border: "#e4e4e7",
-    label: "Full Refund",
-  },
-  processing_fee: {
-    bg: "#ffffff",
-    color: "#52525b",
-    border: "#d4d4d8",
-    label: "15% Fee Applied",
-  },
-  non_refundable: {
-    bg: "#fef2f2",
-    color: "#991b1b",
-    border: "#fecaca",
-    label: "Non-Refundable",
-  },
-  rejected: {
-    bg: "#fef2f2",
-    color: "#dc2626",
-    border: "#fecaca",
-    label: "Rejected",
-  },
-};
-
-const DECISION_STYLE = {
-  pending: {
-    bg: "#ffffff",
-    color: "#52525b",
-    border: "#d4d4d8",
-    label: "Pending",
-  },
-  approved: {
-    bg: "#f4f4f5",
-    color: "#18181b",
-    border: "#e4e4e7",
-    label: "Approved",
-  },
-  rejected: {
-    bg: "#fef2f2",
-    color: "#dc2626",
-    border: "#fecaca",
-    label: "Rejected",
-  },
-};
+import api from "../../services/api";
 
 const normalize = (value) =>
   String(value || "")
     .trim()
     .toLowerCase();
 
-const getChannelMeta = (channel) => {
-  const key = normalize(channel);
-  return key === "online"
-    ? { label: "Online", bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" }
-    : { label: "Walk-in", bg: "#ffffff", color: "#52525b", border: "#d4d4d8" };
-};
-
 const formatMoney = (value) =>
-  `₱ ${Number(value || 0).toLocaleString("en-PH", {
+  `₱${Number(value || 0).toLocaleString("en-PH", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
 
 const formatDateTime = (value) => {
   if (!value) return "—";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "—";
-  return parsed.toLocaleString("en-PH", {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("en-PH", {
+    timeZone: "Asia/Manila",
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -82,29 +28,97 @@ const formatDateTime = (value) => {
   });
 };
 
-const getDecisionStatus = (row) => {
-  const explicit = normalize(row?.decision_status);
-  if (explicit) return explicit;
+const prettyStage = (value) => {
+  const key = normalize(value);
+  const labels = {
+    pending: "Pending",
+    confirmed: "Confirmed",
+    contract_released: "Contract Released",
+    production: "Production",
+    ready_for_pickup: "Ready for Pickup",
+    shipping: "Shipping",
+    delivered: "Delivered",
+    completed: "Completed",
+    cancelled: "Cancelled",
+  };
+  return labels[key] || key.replace(/_/g, " ") || "Unknown";
+};
 
-  if (row?.approved_by == null) return "pending";
-  if (normalize(row?.policy_applied) === "rejected") return "rejected";
-  return "approved";
+const TYPE_META = {
+  ready_made: {
+    label: "Ready-made",
+    background: "#f4f4f5",
+    color: "#18181b",
+  },
+  custom_furniture: {
+    label: "Custom Furniture",
+    background: "#ffffff",
+    color: "#18181b",
+  },
+};
+
+const STATUS_META = {
+  pending: {
+    label: "Pending Review",
+    background: "#fff7ed",
+    color: "#9a3412",
+  },
+  approved: {
+    label: "Approved / Cancelled",
+    background: "#f4f4f5",
+    color: "#18181b",
+  },
+  declined: {
+    label: "Declined",
+    background: "#fef2f2",
+    color: "#991b1b",
+  },
+  cancelled: {
+    label: "Cancelled",
+    background: "#f4f4f5",
+    color: "#18181b",
+  },
+};
+
+const APPROVABLE_STAGES = new Set([
+  "confirmed",
+  "contract_released",
+  "production",
+  "ready_for_pickup",
+  "shipping",
+]);
+
+const getStatusGroup = (row) => {
+  const status = normalize(row?.status);
+  if (status === "pending") return "pending";
+  if (status === "declined") return "declined";
+  if (status === "approved" || status === "cancelled") return "cancelled";
+  return status;
+};
+
+const getSourceLabel = (row) => {
+  const source = normalize(row?.record_source);
+  if (source === "custom_request") return "Customer request";
+  if (source === "custom_legacy") return "Historical cancellation";
+  return "Cancellation history";
+};
+
+const showRequestErrorIfNeeded = (err, fallback) => {
+  if (!err?.response || err.response.status === 404) {
+    toast.error(err?.response?.data?.message || fallback);
+  }
 };
 
 export default function CancellationsPage() {
-  useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  }, []);
   const navigate = useNavigate();
-
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState(null);
   const [search, setSearch] = useState("");
-  const [decisionFilter, setDecisionFilter] = useState("");
-  const [showPolicy, setShowPolicy] = useState(false);
+  const [typeFilter, setTypeFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [modal, setModal] = useState(null);
+  const [reviewNote, setReviewNote] = useState("");
   const [processing, setProcessing] = useState(false);
-  const processingLockRef = useRef(false);
 
   const load = async () => {
     setLoading(true);
@@ -112,15 +126,15 @@ export default function CancellationsPage() {
       const { data } = await api.get("/orders/cancellations");
       setRows(Array.isArray(data) ? data : []);
     } catch (err) {
-      toast.error(
-        err?.response?.data?.message || "Failed to load cancellation requests.",
-      );
+      setRows([]);
+      showRequestErrorIfNeeded(err, "Failed to load cancellation records.");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     load();
   }, []);
 
@@ -128,235 +142,220 @@ export default function CancellationsPage() {
     const term = normalize(search);
 
     return rows.filter((row) => {
-      const decision = getDecisionStatus(row);
-      const haystack = [
+      const rowType = normalize(row.record_type);
+      const rowStatus = getStatusGroup(row);
+
+      if (typeFilter && rowType !== typeFilter) return false;
+      if (statusFilter && rowStatus !== statusFilter) return false;
+
+      if (!term) return true;
+
+      return [
         row.order_number,
         row.customer_name,
         row.requested_by_name,
         row.reason,
-        row.policy_applied,
+        row.review_note,
+        row.order_status,
+        row.order_status_at_request,
+        TYPE_META[rowType]?.label,
+        STATUS_META[normalize(row.status)]?.label,
       ]
         .filter(Boolean)
         .join(" ")
-        .toLowerCase();
-
-      return (
-        (!decisionFilter || decision === decisionFilter) &&
-        (!term || haystack.includes(term))
-      );
+        .toLowerCase()
+        .includes(term);
     });
-  }, [rows, search, decisionFilter]);
+  }, [rows, search, typeFilter, statusFilter]);
 
-  const stats = useMemo(() => {
-    const pending = rows.filter(
-      (row) => getDecisionStatus(row) === "pending",
-    ).length;
-    const approved = rows.filter(
-      (row) => getDecisionStatus(row) === "approved",
-    ).length;
-    const rejected = rows.filter(
-      (row) => getDecisionStatus(row) === "rejected",
-    ).length;
-    const refundExposure = rows
-      .filter((row) => getDecisionStatus(row) === "approved")
-      .reduce((sum, row) => sum + Number(row.refund_amount || 0), 0);
+  const stats = useMemo(
+    () => ({
+      total: rows.length,
+      pending: rows.filter((row) => getStatusGroup(row) === "pending").length,
+      cancelled: rows.filter((row) => getStatusGroup(row) === "cancelled").length,
+      declined: rows.filter((row) => getStatusGroup(row) === "declined").length,
+    }),
+    [rows],
+  );
 
-    return [
-      { label: "Total Requests", value: rows.length },
-      { label: "Pending Review", value: pending },
-      { label: "Approved", value: approved },
-      { label: "Rejected", value: rejected },
-      { label: "Refund Exposure", value: formatMoney(refundExposure) },
-    ];
-  }, [rows]);
+  const typeStats = useMemo(
+    () => ({
+      readyMade: rows.filter((row) => normalize(row.record_type) === "ready_made")
+        .length,
+      custom: rows.filter(
+        (row) => normalize(row.record_type) === "custom_furniture",
+      ).length,
+    }),
+    [rows],
+  );
 
-  const handleProcess = async ({ approved, refund_amount, policy_applied }) => {
-    if (!modal?.row?.order_id) return;
-    if (processingLockRef.current) return;
+  const openDecision = (row, action) => {
+    if (
+      normalize(row?.record_source) !== "custom_request" ||
+      normalize(row?.status) !== "pending" ||
+      !row?.request_id
+    ) {
+      return;
+    }
 
-    processingLockRef.current = true;
+    setReviewNote("");
+    setModal({ row, action });
+  };
+
+  const closeDecision = () => {
+    if (processing) return;
+    setModal(null);
+    setReviewNote("");
+  };
+
+  const submitDecision = async () => {
+    const requestId = Number(modal?.row?.request_id || 0);
+    if (!requestId || !modal?.action || processing) return;
+
+    const note = reviewNote.trim();
+    if (modal.action === "decline" && !note) {
+      toast.error("Please provide a reason for declining this request.");
+      return;
+    }
+    if (note.length > 500) {
+      toast.error("Review note must be 500 characters or fewer.");
+      return;
+    }
+
     setProcessing(true);
-
     try {
-      await api.post(`/orders/${modal.row.order_id}/cancellation`, {
-        approved,
-        refund_amount,
-        policy_applied,
-      });
-
-      toast.success(approved ? "Refund approved." : "Refund rejected.");
+      const { data } = await api.post(
+        `/orders/cancellations/${requestId}/${modal.action}`,
+        { review_note: note },
+      );
+      toast.success(
+        data?.message ||
+          (modal.action === "approve"
+            ? "Cancellation approved."
+            : "Cancellation request declined."),
+      );
       setModal(null);
-      load();
+      setReviewNote("");
+      await load();
     } catch (err) {
-      // 400/409/500/network errors are already toasted once by the shared
-      // Axios interceptor. It intentionally skips 404, so handle only
-      // that case here to avoid a duplicate toast.
-      if (err?.response?.status === 404) {
-        toast.error(
-          err?.response?.data?.message || "Cancellation request was not found.",
-        );
-      }
+      showRequestErrorIfNeeded(err, "Failed to process cancellation request.");
     } finally {
-      processingLockRef.current = false;
       setProcessing(false);
     }
   };
 
+  const modalRow = modal?.row || null;
+  const approveBlockedByPayment =
+    Number(modalRow?.pending_payment_count || 0) > 0 ||
+    Number(modalRow?.payment_session_active || 0) === 1;
+  const approveBlockedByStage =
+    Boolean(modalRow) &&
+    !APPROVABLE_STAGES.has(normalize(modalRow.order_status));
+  const approveBlocked = approveBlockedByPayment || approveBlockedByStage;
+
   return (
     <div style={pageShell}>
-      <div style={headerBlock}>
+      <div style={headerRow}>
         <div>
           <div style={eyebrow}>Sales & Orders</div>
-          <h1 style={pageTitle}>Cancellations & Refunds</h1>
+          <h1 style={pageTitle}>Cancellations</h1>
           <p style={pageSubtitle}>
-            Keep review decisions clean, consistent, and tied to the server-side
-            refund policy.
+            Review ready-made cancellation history and custom furniture
+            cancellation requests in one place.
           </p>
         </div>
+        <button type="button" onClick={load} style={secondaryButton}>
+          Refresh
+        </button>
+      </div>
 
-        <div style={summaryPill}>{rows.length} total requests</div>
+      <div style={policyCard}>
+        <strong>No-refund policy</strong>
+        <span>
+          This page does not issue refunds. Ready-made orders keep their existing
+          cancellation and stock-restoration flow. Custom furniture cancellation
+          approval preserves recorded payments in payment history.
+        </span>
       </div>
 
       <div style={statsGrid}>
-        {stats.map((item) => (
-          <div key={item.label} style={statCard}>
-            <div style={statLabel}>{item.label}</div>
-            <div style={statValue}>{item.value}</div>
-          </div>
-        ))}
+        <StatCard label="Total Records" value={stats.total} />
+        <StatCard label="Pending Review" value={stats.pending} />
+        <StatCard label="Cancelled" value={stats.cancelled} />
+        <StatCard label="Declined" value={stats.declined} />
       </div>
 
-      <div style={infoCard}>
-        <div style={infoHeader}>
-          <div>
-            <div style={infoTitle}>Cancellation policy guide</div>
-            <div style={infoSubtitle}>
-              Show only when needed instead of always taking vertical space.
-            </div>
-          </div>
-
-          <button
-            onClick={() => setShowPolicy((prev) => !prev)}
-            style={btnGhost}
-          >
-            {showPolicy ? "Hide Policy" : "View Policy"}
-          </button>
-        </div>
-
-        {showPolicy && (
-          <div style={policyBody}>
-            <div>
-              • Standard orders cancelled before shipment → full refund.
-            </div>
-            <div>
-              • Custom blueprint orders after down payment but before contract
-              release → 15% processing fee.
-            </div>
-            <div>• After contract release → non-refundable.</div>
-            <div>
-              • POS same-day void before the item leaves the premises → full
-              refund.
-            </div>
-          </div>
-        )}
+      <div style={typeSummary}>
+        <span>Ready-made: {typeStats.readyMade}</span>
+        <span>Custom Furniture: {typeStats.custom}</span>
       </div>
 
       <div style={filterCard}>
-        <div style={filterTopRow}>
-          <input
-            placeholder="Search order, customer, requester, or reason..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ ...inputBase, ...searchInput }}
-          />
-
-          <select
-            value={decisionFilter}
-            onChange={(e) => setDecisionFilter(e.target.value)}
-            style={{ ...inputBase, minWidth: 180 }}
-          >
-            <option value="">All Decisions</option>
-            <option value="pending">Pending</option>
-            <option value="approved">Approved</option>
-            <option value="rejected">Rejected</option>
-          </select>
-
-          <button
-            onClick={() => {
-              setSearch("");
-              setDecisionFilter("");
-            }}
-            style={btnGhost}
-          >
-            Reset
-          </button>
-        </div>
-
-        <div style={statusRow}>
-          <button
-            type="button"
-            onClick={() => setDecisionFilter("")}
-            style={{
-              ...statusChip,
-              background: decisionFilter ? "#f4f4f5" : "#18181b",
-              color: decisionFilter ? "#52525b" : "#ffffff",
-              borderColor: decisionFilter ? "#e4e4e7" : "#18181b",
-            }}
-          >
-            All
-          </button>
-
-          {Object.entries(DECISION_STYLE).map(([key, meta]) => {
-            const isActive = decisionFilter === key;
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setDecisionFilter(key)}
-                style={{
-                  ...statusChip,
-                  background: isActive ? "#18181b" : meta.bg,
-                  color: isActive ? "#ffffff" : meta.color,
-                  borderColor: isActive ? "#18181b" : meta.border,
-                }}
-              >
-                {meta.label}
-              </button>
-            );
-          })}
-
-          <div style={filtersMeta}>
-            {search || decisionFilter
-              ? "Filtered view"
-              : "Showing all requests"}
-          </div>
-        </div>
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search order, customer, or reason..."
+          style={input}
+        />
+        <select
+          value={typeFilter}
+          onChange={(event) => setTypeFilter(event.target.value)}
+          style={{ ...input, minWidth: 170 }}
+        >
+          <option value="">All types</option>
+          <option value="ready_made">Ready-made</option>
+          <option value="custom_furniture">Custom Furniture</option>
+        </select>
+        <select
+          value={statusFilter}
+          onChange={(event) => setStatusFilter(event.target.value)}
+          style={{ ...input, minWidth: 170 }}
+        >
+          <option value="">All statuses</option>
+          <option value="pending">Pending Review</option>
+          <option value="cancelled">Cancelled</option>
+          <option value="declined">Declined</option>
+        </select>
+        <button
+          type="button"
+          onClick={() => {
+            setSearch("");
+            setTypeFilter("");
+            setStatusFilter("");
+          }}
+          style={secondaryButton}
+        >
+          Reset
+        </button>
       </div>
 
       <div style={tableCard}>
         <div style={tableHeader}>
           <div>
-            <h2 style={tableTitle}>Cancellation Requests</h2>
-            <p style={tableSubtitle}>
-              Use the table for scanning, then open a single request only when
-              you need to process it.
+            <h2 style={{ margin: 0, fontSize: 18 }}>Cancellation Records</h2>
+            <p style={{ margin: "6px 0 0", color: "#71717a", fontSize: 13 }}>
+              Ready-made cancellations are history. Custom requests remain active
+              until an admin approves or declines them.
             </p>
           </div>
+          <span style={{ color: "#71717a", fontSize: 13 }}>
+            {filteredRows.length} shown
+          </span>
         </div>
 
-        <div style={tableWrap}>
+        <div style={{ overflowX: "auto" }}>
           <table style={table}>
             <thead>
-              <tr style={theadRow}>
+              <tr>
                 {[
                   "Order",
+                  "Type",
                   "Customer",
-                  "Requested By",
-                  "Channel",
+                  "Stage",
+                  "Payment",
                   "Reason",
-                  "Policy",
-                  "Refund",
-                  "Decision",
+                  "Status",
                   "Actions",
                 ].map((label) => (
                   <th key={label} style={th}>
@@ -365,159 +364,155 @@ export default function CancellationsPage() {
                 ))}
               </tr>
             </thead>
-
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={9} style={emptyCell}>
-                    Loading cancellation requests...
+                  <td colSpan={8} style={emptyCell}>
+                    Loading cancellation records...
                   </td>
                 </tr>
               ) : filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={emptyCell}>
-                    <div style={emptyState}>
-                      <div style={emptyStateTitle}>
-                        No cancellation requests found
-                      </div>
-                      <div style={emptyStateText}>
-                        New requests will appear here after customers submit a
-                        cancellation or refund request.
-                      </div>
-                    </div>
+                  <td colSpan={8} style={emptyCell}>
+                    No cancellation records found for the selected filters.
                   </td>
                 </tr>
               ) : (
                 filteredRows.map((row) => {
-                  const decision = getDecisionStatus(row);
-                  const decisionMeta =
-                    DECISION_STYLE[decision] || DECISION_STYLE.pending;
-                  const policyKey =
-                    normalize(row.policy_applied) ||
-                    (decision === "rejected" ? "rejected" : "");
-                  const policyMeta = POLICY_STYLE[policyKey];
-                  const channelMeta = getChannelMeta(row.channel);
+                  const rowType = normalize(row.record_type);
+                  const rowSource = normalize(row.record_source);
+                  const decision = normalize(row.status) || "cancelled";
+                  const statusMeta = STATUS_META[decision] || STATUS_META.cancelled;
+                  const typeMeta = TYPE_META[rowType] || TYPE_META.custom_furniture;
+                  const taskTotal = Number(row.production_task_count || 0);
+                  const taskDone = Number(row.production_completed_count || 0);
+                  const hasPendingPayment =
+                    Number(row.pending_payment_count || 0) > 0 ||
+                    Number(row.payment_session_active || 0) === 1;
+                  const canReview =
+                    rowSource === "custom_request" &&
+                    decision === "pending" &&
+                    Number(row.request_id || 0) > 0;
+                  const stageValue =
+                    rowSource === "custom_request"
+                      ? row.order_status_at_request || row.order_status
+                      : row.order_status;
 
                   return (
-                    <tr key={row.id} style={tbodyRow}>
+                    <tr key={row.record_key || `${rowSource}-${row.order_id}`}>
                       <td style={td}>
                         <button
-                          onClick={() =>
-                            navigate(`/admin/orders/${row.order_id}`)
-                          }
-                          style={orderLink}
+                          type="button"
+                          onClick={() => navigate(`/admin/orders/${row.order_id}`)}
+                          style={linkButton}
                         >
-                          {row.order_number ||
-                            `#${String(row.order_id).padStart(5, "0")}`}
+                          {row.order_number || `#${row.order_id}`}
                         </button>
-                        <div style={secondaryText}>
-                          Requested {formatDateTime(row.created_at)}
-                        </div>
-                      </td>
-
-                      <td style={td}>
-                        <div style={primaryText}>
-                          {row.customer_name || "Customer"}
-                        </div>
-                        <div style={secondaryText}>
-                          Order #{String(row.order_id).padStart(5, "0")}
-                        </div>
-                      </td>
-
-                      <td style={td}>
-                        <div style={primaryText}>
-                          {row.requested_by_name || "Customer"}
-                        </div>
-                        <div style={secondaryText}>
-                          {row.approved_by_name
-                            ? `Processed by ${row.approved_by_name}`
-                            : "Awaiting admin review"}
-                        </div>
+                        <div style={subText}>{formatDateTime(row.requested_at)}</div>
+                        <div style={sourceText}>{getSourceLabel(row)}</div>
                       </td>
 
                       <td style={td}>
                         <span
                           style={{
-                            ...softBadge,
-                            background: channelMeta.bg,
-                            color: channelMeta.color,
-                            border: `1px solid ${channelMeta.border}`,
+                            ...badge,
+                            background: typeMeta.background,
+                            color: typeMeta.color,
+                            border: "1px solid #d4d4d8",
                           }}
                         >
-                          {channelMeta.label}
+                          {typeMeta.label}
                         </span>
                       </td>
 
                       <td style={td}>
-                        <div style={reasonText}>
-                          {row.reason || "No reason provided."}
-                        </div>
+                        <div style={strongText}>{row.customer_name || "Customer"}</div>
+                        {rowSource === "custom_request" ? (
+                          <div style={subText}>
+                            Requested by {row.requested_by_name || "Customer"}
+                          </div>
+                        ) : null}
                       </td>
 
                       <td style={td}>
-                        {policyMeta ? (
-                          <span
-                            style={{
-                              ...softBadge,
-                              background: policyMeta.bg,
-                              color: policyMeta.color,
-                              border: `1px solid ${policyMeta.border}`,
-                            }}
-                          >
-                            {policyMeta.label}
-                          </span>
-                        ) : (
-                          <span style={secondaryText}>Pending review</span>
-                        )}
+                        <div>{prettyStage(stageValue)}</div>
+                        {rowSource === "custom_request" &&
+                        normalize(row.order_status) !== normalize(stageValue) ? (
+                          <div style={subText}>
+                            Current: {prettyStage(row.order_status)}
+                          </div>
+                        ) : null}
+                        {rowType === "custom_furniture" && taskTotal > 0 ? (
+                          <div style={subText}>
+                            Production {taskDone}/{taskTotal}
+                          </div>
+                        ) : null}
                       </td>
 
-                      <td
-                        style={{
-                          ...td,
-                          fontWeight: 700,
-                          color:
-                            Number(row.refund_amount || 0) > 0
-                              ? "#18181b"
-                              : "#71717a",
-                        }}
-                      >
-                        {Number(row.refund_amount || 0) > 0
-                          ? formatMoney(row.refund_amount)
-                          : "—"}
+                      <td style={td}>
+                        <div style={strongText}>
+                          {formatMoney(row.verified_payment_total)}
+                        </div>
+                        <div style={hasPendingPayment ? warningText : subText}>
+                          {hasPendingPayment
+                            ? "Payment review/session active"
+                            : Number(row.verified_payment_total || 0) > 0
+                              ? "Verified payment recorded"
+                              : "No verified payment"}
+                        </div>
+                      </td>
+
+                      <td style={{ ...td, minWidth: 250 }}>
+                        <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.45 }}>
+                          {row.reason || "No reason recorded."}
+                        </div>
+                        {row.review_note ? (
+                          <div style={{ ...subText, marginTop: 6 }}>
+                            Admin note: {row.review_note}
+                          </div>
+                        ) : null}
                       </td>
 
                       <td style={td}>
                         <span
                           style={{
-                            ...softBadge,
-                            background: decisionMeta.bg,
-                            color: decisionMeta.color,
-                            border: `1px solid ${decisionMeta.border}`,
+                            ...badge,
+                            background: statusMeta.background,
+                            color: statusMeta.color,
                           }}
                         >
-                          {decisionMeta.label}
+                          {statusMeta.label}
                         </span>
                       </td>
 
                       <td style={td}>
-                        <div style={actionsRow}>
+                        <div style={actionRow}>
                           <button
-                            onClick={() =>
-                              navigate(`/admin/orders/${row.order_id}`)
-                            }
-                            style={btnView}
+                            type="button"
+                            onClick={() => navigate(`/admin/orders/${row.order_id}`)}
+                            style={secondaryButton}
                           >
-                            View order
+                            View Order
                           </button>
 
-                          {decision === "pending" && (
-                            <button
-                              onClick={() => setModal({ row })}
-                              style={btnApprove}
-                            >
-                              Process
-                            </button>
-                          )}
+                          {canReview ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => openDecision(row, "decline")}
+                                style={secondaryButton}
+                              >
+                                Decline
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openDecision(row, "approve")}
+                                style={primaryButton}
+                              >
+                                Approve Cancellation
+                              </button>
+                            </>
+                          ) : null}
                         </div>
                       </td>
                     </tr>
@@ -529,674 +524,451 @@ export default function CancellationsPage() {
         </div>
       </div>
 
-      {modal && (
-        <ProcessModal
-          row={modal.row}
-          onClose={() => setModal(null)}
-          onSubmit={handleProcess}
-          processing={processing}
-        />
-      )}
-    </div>
-  );
-}
+      {modal && modalRow ? (
+        <div
+          role="presentation"
+          style={modalBackdrop}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeDecision();
+          }}
+        >
+          <div role="dialog" aria-modal="true" style={modalCard}>
+            <h2 style={{ margin: 0, fontSize: 20 }}>
+              {modal.action === "approve"
+                ? "Approve Cancellation"
+                : "Decline Cancellation Request"}
+            </h2>
 
-function ProcessModal({ row, onClose, onSubmit, processing }) {
-  const [approved, setApproved] = useState(true);
-  const [policy, setPolicy] = useState("full_refund");
-  const [refund, setRefund] = useState(
-    Number(row.total_amount || 0).toFixed(2),
-  );
+            <p style={modalCopy}>
+              {modalRow.order_number || `Order #${modalRow.order_id}`} — {" "}
+              {modalRow.customer_name || "Customer"}
+            </p>
 
-  const handlePolicyChange = (nextPolicy) => {
-    setPolicy(nextPolicy);
-
-    const total = Number(row.total_amount || 0);
-
-    if (nextPolicy === "full_refund") setRefund(total.toFixed(2));
-    if (nextPolicy === "processing_fee") setRefund((total * 0.85).toFixed(2));
-    if (nextPolicy === "non_refundable") setRefund("0.00");
-  };
-
-  const handleSubmit = () => {
-    const numericRefund = Number(refund || 0);
-
-    if (approved) {
-      if (Number.isNaN(numericRefund) || numericRefund < 0) {
-        toast.error("Refund amount must be 0 or higher.");
-        return;
-      }
-
-      onSubmit({
-        approved: true,
-        refund_amount: numericRefund,
-        policy_applied: policy,
-      });
-      return;
-    }
-
-    onSubmit({
-      approved: false,
-      refund_amount: 0,
-      policy_applied: null,
-    });
-  };
-
-  return (
-    <div style={overlay}>
-      <div style={modalBox}>
-        <h3 style={modalTitle}>Process Cancellation Request</h3>
-        <p style={modalSubtitle}>
-          {row.order_number ||
-            `Order #${String(row.order_id).padStart(5, "0")}`}{" "}
-          · Total {formatMoney(row.total_amount)}
-        </p>
-
-        <div style={infoPanel}>
-          <div>
-            <strong>Customer:</strong> {row.customer_name || "Customer"}
-          </div>
-          <div>
-            <strong>Requested by:</strong> {row.requested_by_name || "Customer"}
-          </div>
-          <div>
-            <strong>Requested on:</strong> {formatDateTime(row.created_at)}
-          </div>
-          <div>
-            <strong>Reason:</strong> {row.reason || "No reason provided."}
-          </div>
-        </div>
-
-        <div style={{ marginBottom: 16 }}>
-          <label style={labelSm}>Decision</label>
-          <div style={radioRow}>
-            <label style={radioLabel}>
-              <input
-                type="radio"
-                checked={approved}
-                onChange={() => setApproved(true)}
+            <div style={modalSummary}>
+              <SummaryLine
+                label="Stage when requested"
+                value={prettyStage(
+                  modalRow.order_status_at_request || modalRow.order_status,
+                )}
               />
-              Approve refund
-            </label>
-
-            <label style={radioLabel}>
-              <input
-                type="radio"
-                checked={!approved}
-                onChange={() => setApproved(false)}
+              <SummaryLine
+                label="Current order status"
+                value={prettyStage(modalRow.order_status)}
               />
-              Reject refund
-            </label>
-          </div>
-        </div>
-
-        {approved ? (
-          <>
-            <div style={{ marginBottom: 14 }}>
-              <label style={labelSm}>Cancellation Policy</label>
-              <select
-                value={policy}
-                onChange={(e) => handlePolicyChange(e.target.value)}
-                style={inputFull}
-              >
-                <option value="full_refund">Full Refund</option>
-                <option value="processing_fee">15% Processing Fee</option>
-                <option value="non_refundable">Non-Refundable</option>
-              </select>
+              <SummaryLine
+                label="Verified payment"
+                value={formatMoney(modalRow.verified_payment_total)}
+              />
+              <SummaryLine
+                label="Production"
+                value={
+                  Number(modalRow.production_task_count || 0) > 0
+                    ? `${Number(modalRow.production_completed_count || 0)} / ${Number(
+                        modalRow.production_task_count || 0,
+                      )} completed`
+                    : "Not started"
+                }
+              />
             </div>
 
-            <div style={{ marginBottom: 18 }}>
-              <label style={labelSm}>Refund Amount (₱)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={refund}
-                readOnly
-                style={{
-                  ...inputFull,
-                  background: "#f4f4f5",
-                  color: "#52525b",
-                }}
-              />
-              <div style={helperText}>
-                Preview only. Final refund amount is still validated and
-                enforced by the backend.
+            <div style={reasonCard}>
+              <strong>Customer reason</strong>
+              <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
+                {modalRow.reason}
               </div>
             </div>
-          </>
-        ) : (
-          <div style={rejectNote}>
-            No refund will be recorded for this request. The order remains
-            cancelled — this decision does not change the order status.
-          </div>
-        )}
 
-        <div style={modalActions}>
-          <button onClick={onClose} style={btnGhost} disabled={processing}>
-            Close
-          </button>
-          <button
-            onClick={handleSubmit}
-            style={approved ? btnPrimary : btnDeclineAction}
-            disabled={processing}
-          >
-            {processing
-              ? "Processing..."
-              : approved
-                ? "Approve Refund"
-                : "Reject Refund"}
-          </button>
+            {modal.action === "approve" ? (
+              <div style={policyNotice}>
+                Approval cancels the custom furniture order. Recorded payments
+                remain in payment history and this action does not issue a refund.
+              </div>
+            ) : null}
+
+            {modal.action === "approve" && approveBlocked ? (
+              <div style={warningCard}>
+                {approveBlockedByPayment
+                  ? "Approval is blocked until the pending payment review or active online payment session is resolved."
+                  : "The order is no longer at a stage where this cancellation can be approved."}
+              </div>
+            ) : null}
+
+            <label style={fieldLabel}>
+              <span>
+                Admin note {modal.action === "decline" ? "(required)" : "(optional)"}
+              </span>
+              <textarea
+                rows={4}
+                maxLength={500}
+                value={reviewNote}
+                onChange={(event) => setReviewNote(event.target.value)}
+                disabled={processing}
+                placeholder={
+                  modal.action === "decline"
+                    ? "Explain why the request is being declined"
+                    : "Optional internal/customer-facing note"
+                }
+                style={textarea}
+              />
+              <small style={{ color: "#71717a" }}>{reviewNote.length}/500</small>
+            </label>
+
+            <div style={modalActions}>
+              <button
+                type="button"
+                onClick={closeDecision}
+                disabled={processing}
+                style={secondaryButton}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={submitDecision}
+                disabled={
+                  processing ||
+                  (modal.action === "approve" && approveBlocked) ||
+                  (modal.action === "decline" && !reviewNote.trim())
+                }
+                style={modal.action === "approve" ? primaryButton : dangerButton}
+              >
+                {processing
+                  ? "Saving..."
+                  : modal.action === "approve"
+                    ? "Approve Cancellation"
+                    : "Decline Request"}
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }
 
-// ─── Styles ─────────────────────────────────────────────────────────────────
+function StatCard({ label, value }) {
+  return (
+    <div style={statCard}>
+      <span style={statLabel}>{label}</span>
+      <strong style={statValue}>{value}</strong>
+    </div>
+  );
+}
+
+function SummaryLine({ label, value }) {
+  return (
+    <div style={summaryLine}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
 
 const pageShell = {
-  maxWidth: 1480, // Widened to match the new Orders grid
-  margin: "0 auto",
-  display: "flex",
-  flexDirection: "column",
-  gap: 16,
-  color: "#202124",
+  padding: "24px 28px 40px",
+  color: "#18181b",
 };
 
-const headerBlock = {
+const headerRow = {
   display: "flex",
   justifyContent: "space-between",
+  gap: 16,
   alignItems: "flex-start",
-  gap: 14,
-  flexWrap: "wrap",
+  marginBottom: 18,
 };
 
 const eyebrow = {
-  fontSize: 9.5,
-  fontWeight: 600,
-  letterSpacing: ".35px",
   textTransform: "uppercase",
-  color: "#62676e",
-  marginBottom: 8,
+  letterSpacing: "0.08em",
+  fontSize: 12,
+  color: "#71717a",
+  marginBottom: 6,
 };
 
 const pageTitle = {
   margin: 0,
-  fontSize: 25,
-  lineHeight: 1.15,
-  fontWeight: 700,
-  color: "#17191c",
-  letterSpacing: "-0.025em",
+  fontSize: 30,
+  lineHeight: 1.2,
 };
 
 const pageSubtitle = {
   margin: "7px 0 0",
-  color: "#73777e",
-  fontSize: 12.5,
-  lineHeight: 1.45,
+  color: "#71717a",
+  maxWidth: 760,
 };
 
-const summaryPill = {
+const policyCard = {
+  border: "1px solid #d4d4d8",
   background: "#ffffff",
-  border: "1px solid #dfe2e5",
-  borderRadius: 4,
-  padding: "0 14px",
-  height: 36,
-  display: "inline-flex",
-  alignItems: "center",
-  fontSize: 11.5,
-  fontWeight: 600,
-  color: "#25282c",
+  padding: "14px 16px",
+  display: "grid",
+  gap: 5,
+  marginBottom: 16,
+  fontSize: 13,
+  lineHeight: 1.5,
 };
 
 const statsGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-  gap: 10,
+  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+  gap: 12,
+  marginBottom: 10,
 };
 
 const statCard = {
   background: "#ffffff",
-  border: "1px solid #dfe2e5",
-  borderRadius: 4,
-  padding: "14px 16px",
-  minHeight: 78,
-  display: "flex",
-  flexDirection: "column",
-  justifyContent: "center",
+  border: "1px solid #e4e4e7",
+  padding: 16,
+  display: "grid",
+  gap: 8,
 };
 
 const statLabel = {
-  fontSize: 9.5,
-  fontWeight: 600,
-  letterSpacing: ".35px",
-  textTransform: "uppercase",
-  color: "#62676e",
-  marginBottom: 8,
+  color: "#52525b",
+  fontSize: 12,
 };
 
 const statValue = {
-  fontSize: 23,
-  fontWeight: 700,
-  color: "#17191c",
-  lineHeight: 1,
+  fontSize: 24,
 };
 
-const infoCard = {
-  background: "#ffffff",
-  border: "1px solid #dfe2e5",
-  borderRadius: 4,
-  padding: 16,
-};
-
-const infoHeader = {
+const typeSummary = {
   display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: 12,
+  gap: 18,
   flexWrap: "wrap",
-};
-
-const infoTitle = {
-  fontSize: 14,
-  fontWeight: 700,
-  color: "#1e2023",
-};
-
-const infoSubtitle = {
-  marginTop: 4,
+  color: "#52525b",
   fontSize: 12,
-  color: "#777c82",
-};
-
-const policyBody = {
-  marginTop: 16,
-  display: "grid",
-  gap: 8,
-  padding: "14px 16px",
-  borderRadius: 4,
-  background: "#fafafa",
-  border: "1px solid #dfe2e5",
-  color: "#34383d",
-  fontSize: 12.5,
-  lineHeight: 1.6,
+  marginBottom: 16,
 };
 
 const filterCard = {
   background: "#ffffff",
-  border: "1px solid #dfe2e5",
-  borderRadius: 4,
-  padding: 16,
-};
-
-const filterTopRow = {
+  border: "1px solid #e4e4e7",
+  padding: 12,
   display: "flex",
+  gap: 8,
+  alignItems: "center",
   flexWrap: "wrap",
-  gap: 10,
   marginBottom: 16,
 };
 
-const inputBase = {
-  height: 38,
-  borderRadius: 4,
-  border: "1px solid #d4d7db",
+const input = {
+  minHeight: 38,
+  border: "1px solid #d4d4d8",
   background: "#ffffff",
-  padding: "0 12px",
-  fontSize: 12,
-  color: "#25282c",
-  outline: "none",
-};
-
-const searchInput = {
-  flex: "1 1 320px",
-  minWidth: 260,
-};
-
-const statusRow = {
-  display: "flex",
-  gap: 8,
-  flexWrap: "wrap",
-  alignItems: "center",
-};
-
-const statusChip = {
-  padding: "0 14px",
-  height: 32,
-  display: "inline-flex",
-  alignItems: "center",
-  borderRadius: 4,
-  border: "1px solid transparent",
-  fontSize: 11.5,
-  fontWeight: 600,
-  cursor: "pointer",
-  transition: "all 0.15s ease",
-};
-
-const filtersMeta = {
-  marginLeft: "auto",
-  fontSize: 11.5,
-  color: "#777c82",
-  fontWeight: 500,
+  padding: "8px 10px",
+  fontSize: 13,
+  minWidth: 280,
 };
 
 const tableCard = {
   background: "#ffffff",
-  border: "1px solid #dfe2e5",
-  borderRadius: 4,
-  overflow: "hidden",
+  border: "1px solid #e4e4e7",
 };
 
 const tableHeader = {
-  padding: "15px 16px 12px",
-  borderBottom: "1px solid #e8eaed",
-};
-
-const tableTitle = {
-  margin: 0,
-  fontSize: 16,
-  fontWeight: 700,
-  color: "#1e2023",
-};
-
-const tableSubtitle = {
-  margin: "4px 0 0",
-  fontSize: 11.5,
-  color: "#777c82",
-};
-
-const tableWrap = {
-  width: "100%",
-  overflowX: "auto",
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 16,
+  alignItems: "center",
+  padding: "14px 16px",
+  borderBottom: "1px solid #e4e4e7",
 };
 
 const table = {
   width: "100%",
   borderCollapse: "collapse",
-  minWidth: 920,
-};
-
-const theadRow = {
-  background: "#fafafa",
+  fontSize: 13,
 };
 
 const th = {
-  padding: "10px 14px",
   textAlign: "left",
-  fontSize: 9.5,
-  fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: ".35px",
-  color: "#60656d",
-  borderBottom: "1px solid #e4e6e9",
-};
-
-const tbodyRow = {
-  background: "#ffffff",
-};
-
-const td = {
-  padding: "11px 14px",
-  fontSize: 11.5,
-  color: "#34383d",
-  borderBottom: "1px solid #eff0f1",
-  verticalAlign: "middle",
-};
-
-const orderLink = {
-  background: "none",
-  border: "none",
-  color: "#17191c",
-  padding: 0,
-  fontSize: 11.8,
-  fontWeight: 700,
-  cursor: "pointer",
-};
-
-const primaryText = {
-  fontSize: 11.8,
-  fontWeight: 600,
-  color: "#25282c",
-};
-
-const secondaryText = {
-  marginTop: 3,
-  fontSize: 9.8,
-  color: "#858a91",
-};
-
-const reasonText = {
-  maxWidth: 240,
-  fontSize: 11.5,
-  lineHeight: 1.45,
-  color: "#34383d",
-};
-
-const softBadge = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "4px 10px",
-  borderRadius: 4,
-  fontSize: 10.5,
+  padding: "11px 12px",
+  borderBottom: "1px solid #e4e4e7",
+  color: "#52525b",
   fontWeight: 600,
   whiteSpace: "nowrap",
 };
 
-const actionsRow = {
-  display: "flex",
-  gap: 8,
-  flexWrap: "wrap",
-};
-
-const btnView = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "0 13px",
-  height: 32,
-  borderRadius: 4,
-  border: "1px solid #d9dce0",
-  background: "#ffffff",
-  color: "#25282c",
-  fontSize: 10.8,
-  fontWeight: 600,
-  cursor: "pointer",
-  transition: "background 0.2s",
-};
-
-const btnApprove = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "0 13px",
-  height: 32,
-  borderRadius: 4,
-  border: "1px solid #18181b",
-  background: "#18181b",
-  color: "#ffffff",
-  fontSize: 10.8,
-  fontWeight: 600,
-  cursor: "pointer",
-  transition: "background 0.2s",
-};
-
-const btnGhost = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "0 14px",
-  height: 36,
-  borderRadius: 4,
-  border: "1px solid #d9dce0",
-  background: "#ffffff",
-  color: "#25282c",
-  fontSize: 11.5,
-  fontWeight: 600,
-  cursor: "pointer",
-  transition: "background 0.2s",
-};
-
-const btnPrimary = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "0 14px",
-  height: 36,
-  borderRadius: 4,
-  border: "1px solid #18181b",
-  background: "#18181b",
-  color: "#ffffff",
-  fontSize: 11.5,
-  fontWeight: 600,
-  cursor: "pointer",
-  transition: "background 0.2s",
+const td = {
+  padding: "12px",
+  borderBottom: "1px solid #f4f4f5",
+  verticalAlign: "top",
 };
 
 const emptyCell = {
   padding: 34,
   textAlign: "center",
-  color: "#858a91",
-  fontSize: 12,
+  color: "#71717a",
 };
 
-const emptyState = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 5,
-  alignItems: "center",
+const strongText = {
+  fontWeight: 600,
 };
 
-const emptyStateTitle = {
-  fontWeight: 650,
-  color: "#25282c",
-  fontSize: 13,
-};
-
-const emptyStateText = {
-  maxWidth: 420,
-  lineHeight: 1.45,
+const subText = {
+  color: "#71717a",
   fontSize: 11,
+  marginTop: 4,
+  lineHeight: 1.4,
 };
 
-const overlay = {
+const sourceText = {
+  color: "#52525b",
+  fontSize: 10,
+  marginTop: 3,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+};
+
+const warningText = {
+  color: "#9a3412",
+  fontSize: 11,
+  marginTop: 4,
+  lineHeight: 1.4,
+};
+
+const badge = {
+  display: "inline-block",
+  padding: "4px 8px",
+  fontSize: 11,
+  fontWeight: 600,
+  whiteSpace: "nowrap",
+};
+
+const actionRow = {
+  display: "flex",
+  gap: 7,
+  flexWrap: "wrap",
+  minWidth: 220,
+};
+
+const linkButton = {
+  border: 0,
+  padding: 0,
+  margin: 0,
+  background: "transparent",
+  color: "#18181b",
+  fontWeight: 700,
+  cursor: "pointer",
+  textDecoration: "underline",
+  textUnderlineOffset: 2,
+};
+
+const secondaryButton = {
+  minHeight: 34,
+  border: "1px solid #d4d4d8",
+  background: "#ffffff",
+  color: "#18181b",
+  padding: "7px 11px",
+  fontSize: 12,
+  cursor: "pointer",
+};
+
+const primaryButton = {
+  minHeight: 34,
+  border: "1px solid #18181b",
+  background: "#18181b",
+  color: "#ffffff",
+  padding: "7px 11px",
+  fontSize: 12,
+  cursor: "pointer",
+};
+
+const dangerButton = {
+  minHeight: 34,
+  border: "1px solid #991b1b",
+  background: "#ffffff",
+  color: "#991b1b",
+  padding: "7px 11px",
+  fontSize: 12,
+  cursor: "pointer",
+};
+
+const modalBackdrop = {
   position: "fixed",
   inset: 0,
-  background: "rgba(0, 0, 0, 0.6)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  zIndex: 1000,
+  zIndex: 1400,
+  background: "rgba(0, 0, 0, 0.45)",
+  display: "grid",
+  placeItems: "center",
   padding: 20,
 };
 
-const modalBox = {
-  background: "#fff",
-  borderRadius: 4,
-  padding: 24,
-  width: 480,
-  maxWidth: "100%",
-  border: "1px solid #dfe2e5",
-};
-
-const modalTitle = {
-  margin: 0,
-  fontSize: 18,
-  fontWeight: 700,
-  color: "#1e2023",
-};
-
-const modalSubtitle = {
-  margin: "6px 0 20px",
-  fontSize: 12.5,
-  color: "#777c82",
-};
-
-const infoPanel = {
-  background: "#fafafa",
-  border: "1px solid #dfe2e5",
-  borderRadius: 4,
-  padding: "14px 16px",
-  marginBottom: 20,
-  display: "grid",
-  gap: 10,
-  fontSize: 12.5,
-  color: "#34383d",
-  lineHeight: 1.45,
-};
-
-const labelSm = {
-  display: "block",
-  fontSize: 11.5,
-  fontWeight: 600,
-  color: "#1e2023",
-  marginBottom: 8,
-};
-
-const radioRow = {
-  display: "flex",
-  gap: 20,
-  flexWrap: "wrap",
-};
-
-const radioLabel = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 8,
-  fontSize: 12.5,
-  color: "#34383d",
-  fontWeight: 500,
-};
-
-const inputFull = {
-  width: "100%",
-  height: 38,
-  borderRadius: 4,
-  border: "1px solid #d4d7db",
+const modalCard = {
+  width: "min(620px, 100%)",
+  maxHeight: "90vh",
+  overflowY: "auto",
   background: "#ffffff",
-  padding: "0 12px",
-  fontSize: 12,
-  color: "#25282c",
+  border: "1px solid #d4d4d8",
+  padding: 22,
+};
+
+const modalCopy = {
+  margin: "8px 0 14px",
+  color: "#52525b",
+};
+
+const modalSummary = {
+  border: "1px solid #e4e4e7",
+  marginBottom: 14,
+};
+
+const summaryLine = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 16,
+  padding: "9px 11px",
+  borderBottom: "1px solid #f4f4f5",
+  fontSize: 13,
+};
+
+const reasonCard = {
+  border: "1px solid #e4e4e7",
+  background: "#fafafa",
+  padding: 12,
+  marginBottom: 12,
+  fontSize: 13,
+  lineHeight: 1.5,
+};
+
+const policyNotice = {
+  border: "1px solid #d4d4d8",
+  background: "#ffffff",
+  padding: 12,
+  marginBottom: 12,
+  fontSize: 13,
+  lineHeight: 1.5,
+};
+
+const warningCard = {
+  border: "1px solid #fed7aa",
+  background: "#fff7ed",
+  color: "#9a3412",
+  padding: 12,
+  marginBottom: 12,
+  fontSize: 13,
+  lineHeight: 1.5,
+};
+
+const fieldLabel = {
+  display: "grid",
+  gap: 7,
+  fontSize: 13,
+};
+
+const textarea = {
+  width: "100%",
   boxSizing: "border-box",
-  outline: "none",
-};
-
-const helperText = {
-  marginTop: 8,
-  fontSize: 10.5,
-  color: "#777c82",
-  lineHeight: 1.45,
-};
-
-const rejectNote = {
-  padding: "14px 16px",
-  borderRadius: 4,
-  background: "#fef2f2",
-  border: "1px solid #fecaca",
-  color: "#991b1b",
-  fontSize: 12.5,
-  lineHeight: 1.45,
+  border: "1px solid #d4d4d8",
+  padding: 10,
+  resize: "vertical",
+  font: "inherit",
 };
 
 const modalActions = {
-  marginTop: 24,
   display: "flex",
   justifyContent: "flex-end",
-  gap: 12,
-  flexWrap: "wrap",
-};
-
-const btnDeclineAction = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "0 14px",
-  height: 36,
-  borderRadius: 4,
-  border: "1px solid #fecaca",
-  background: "#fef2f2",
-  color: "#dc2626",
-  fontSize: 11.5,
-  fontWeight: 600,
-  cursor: "pointer",
-  transition: "background 0.2s",
+  gap: 8,
+  marginTop: 18,
 };
