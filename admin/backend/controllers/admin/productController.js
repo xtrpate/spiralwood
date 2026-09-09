@@ -566,11 +566,16 @@ exports.create = async (req, res) => {
         "Production cost must be a valid non-negative number.",
       );
     }
-    if (!isValidNonNegativeInteger(stock)) {
+    if (
+      stock !== undefined &&
+      stock !== null &&
+      stock !== "" &&
+      Number(stock) !== 0
+    ) {
       return respondInvalid(
         conn,
         res,
-        "Stock must be a valid non-negative whole number.",
+        "New ready-made products start at 0 stock. Record physical stock through Stock Movement after creating the product.",
       );
     }
     if (!isValidNonNegativeInteger(reorder_point)) {
@@ -596,7 +601,7 @@ exports.create = async (req, res) => {
     const numOnlinePrice = online_price ? parseFloat(online_price) : 0;
     const numWalkinPrice = walkin_price ? parseFloat(walkin_price) : 0;
     const numProdCost = production_cost ? parseFloat(production_cost) : 0;
-    const numStock = stock ? parseInt(stock) : 0;
+    const numStock = 0;
     const numReorder = reorder_point ? parseInt(reorder_point) : 0;
     const wantsFeatured =
       is_featured === "true" || is_featured === 1 || is_featured === true;
@@ -671,6 +676,15 @@ exports.create = async (req, res) => {
       ],
     );
     const productId = result.insertId;
+
+    if (normalizedType === "standard") {
+      await conn.query(
+        `INSERT INTO ready_made_display_stock (product_id, quantity)
+         VALUES (?, 0)
+         ON DUPLICATE KEY UPDATE product_id = VALUES(product_id)`,
+        [productId],
+      );
+    }
 
     for (let index = 0; index < createGalleryUrls.length; index += 1) {
       await conn.query(
@@ -777,7 +791,6 @@ exports.update = async (req, res) => {
       "online_price",
       "walkin_price",
       "production_cost",
-      "stock",
       "reorder_point",
       "is_published",
     ];
@@ -820,12 +833,12 @@ exports.update = async (req, res) => {
     }
     if (
       req.body.stock !== undefined &&
-      !isValidNonNegativeInteger(req.body.stock)
+      Number(req.body.stock) !== Number(old.stock || 0)
     ) {
       return respondInvalid(
         conn,
         res,
-        "Stock must be a valid non-negative whole number.",
+        "Stock on hand cannot be changed from Product Management. Use Stock Movement, Internal Stock Transfer, sales, or cancellation flows so every inventory change stays traceable.",
       );
     }
     if (
@@ -854,7 +867,7 @@ exports.update = async (req, res) => {
           ["online_price", "walkin_price", "production_cost"].includes(col)
         ) {
           updateData[col] = req.body[col] ? parseFloat(req.body[col]) : 0;
-        } else if (["stock", "reorder_point"].includes(col)) {
+        } else if (col === "reorder_point") {
           updateData[col] = req.body[col] ? parseInt(req.body[col]) : 0;
         } else if (col === "category_id") {
           updateData[col] =

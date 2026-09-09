@@ -31,6 +31,12 @@ const ACTION_LABELS = {
   update_supplier: "Updated supplier",
   delete_supplier: "Deleted supplier",
   create_stock_movement: "Recorded stock movement",
+  create_raw_material_category: "Created raw material category",
+  start_physical_inventory: "Started physical inventory",
+  finalize_physical_inventory: "Finalized physical inventory",
+  cancel_physical_inventory: "Cancelled physical inventory",
+  create_stock_transfer: "Created stock transfer",
+  reverse_stock_transfer: "Reversed stock transfer",
 
   // Orders, sales, payments, and delivery
   create_online_order: "Placed online order",
@@ -44,6 +50,9 @@ const ACTION_LABELS = {
   decline_order: "Declined order",
   confirm_order_receipt: "Confirmed order receipt",
   process_cancellation: "Processed cancellation",
+  request_custom_cancellation: "Requested custom furniture cancellation",
+  approve_custom_cancellation: "Approved cancellation request",
+  decline_custom_cancellation: "Declined cancellation request",
   verify_payment: "Reviewed payment",
   record_blueprint_cash_down_payment: "Recorded blueprint cash down payment",
   record_blueprint_cash_payment: "Recorded blueprint cash payment",
@@ -133,6 +142,9 @@ const MODULE_LABELS = {
   raw_materials: "Raw Materials",
   suppliers: "Suppliers",
   stock_movements: "Inventory Activity",
+  categories: "Categories",
+  physical_inventory_sessions: "Physical Inventory",
+  stock_transfers: "Stock Transfers",
   deliveries: "Deliveries",
   appointments: "Appointments",
   warranties: "Warranty",
@@ -146,6 +158,7 @@ const MODULE_LABELS = {
   project_tasks: "Production",
   contracts: "Contracts",
   cancellations: "Cancellations",
+  custom_cancellation_requests: "Custom Cancellations",
   backup_logs: "Backups",
 };
 
@@ -159,6 +172,9 @@ const TARGET_LABELS = {
   raw_materials: "Raw Material",
   suppliers: "Supplier",
   stock_movements: "Stock Movement",
+  categories: "Category",
+  physical_inventory_sessions: "Physical Inventory Count",
+  stock_transfers: "Stock Transfer",
   deliveries: "Delivery",
   appointments: "Appointment",
   warranties: "Warranty Claim",
@@ -172,6 +188,7 @@ const TARGET_LABELS = {
   project_tasks: "Production Task",
   contracts: "Contract",
   cancellations: "Cancellation",
+  custom_cancellation_requests: "Cancellation Request",
   backup_logs: "Backup",
 };
 
@@ -217,7 +234,7 @@ const FIELD_LABELS = {
   required_staff_types: "Allowed Staff Roles",
   order_number: "Order Number",
   order_id: "Order",
-  item_count: "Units",
+  item_count: "Items",
   total: "Total Amount",
   amount: "Amount",
   payment_method: "Payment Method",
@@ -237,6 +254,34 @@ const FIELD_LABELS = {
   customer_decision: "Customer Decision",
   reply_added: "Reply Added",
   evidence_uploaded: "Evidence Uploaded",
+  reference_code: "Reference",
+  direction: "Direction",
+  items: "Transfer Items",
+  product_id: "Product",
+  transfer_id: "Original Transfer",
+  reversal_transfer_id: "Reversal Transfer",
+  warehouse_before: "Warehouse Before",
+  display_before: "Display Before",
+  warehouse_after: "Warehouse After",
+  display_after: "Display After",
+  adjustment_count: "Stock Adjustments",
+  adjustments: "Stock Adjustment Details",
+  pending_reservation_recovery: "Pending Reservation Recovery",
+  material_id: "Raw Material",
+  previous_quantity: "Previous Quantity",
+  physical_count: "Physical Count",
+  difference: "Difference",
+  stock_movement_id: "Stock Movement",
+  cancel_reason: "Cancellation Reason",
+  request_status: "Request Status",
+  order_status_at_request: "Order Status at Request",
+  reviewed_by: "Reviewed By",
+  review_note_provided: "Review Note Provided",
+  verified_payment_total_preserved: "Verified Payments Preserved",
+  material_release_reason: "Material Release Reason",
+  material_reservation_ids: "Released Material Reservations",
+  active_delivery_ids_cancelled: "Cancelled Deliveries",
+  reason_provided: "Reason Provided",
 };
 
 const KNOWN_ACTIONS = Object.keys(ACTION_LABELS);
@@ -310,10 +355,12 @@ const formatValue = (value) => {
   if (Array.isArray(value)) {
     if (!value.length) return "—";
     return value
-      .map((item) =>
-        typeof item === "string" ? formatFieldLabel(item) : String(item),
-      )
-      .join(", ");
+      .map((item) => {
+        if (typeof item === "string") return formatFieldLabel(item);
+        if (item && typeof item === "object") return formatValue(item);
+        return String(item);
+      })
+      .join(" · ");
   }
 
   if (typeof value === "object") {
@@ -516,6 +563,28 @@ const getTargetLabel = (log) => {
     return merged.file_name;
   }
 
+  if (tableName === "stock_transfers" && merged.reference_code) {
+    return `Stock Transfer ${merged.reference_code}`;
+  }
+
+  if (tableName === "physical_inventory_sessions" && merged.reference_code) {
+    return `Physical Inventory ${merged.reference_code}`;
+  }
+
+  if (tableName === "categories" && merged.name) {
+    return `Category: ${merged.name}`;
+  }
+
+  if (tableName === "custom_cancellation_requests") {
+    const requestId = log?.record_id;
+    const orderId = merged.order_id;
+
+    if (requestId && orderId) {
+      return `Cancellation Request #${requestId} · Order #${orderId}`;
+    }
+    if (requestId) return `Cancellation Request #${requestId}`;
+  }
+
   if (
     log?.record_id !== null &&
     log?.record_id !== undefined &&
@@ -566,7 +635,25 @@ const getPerformedBy = (log) => {
   return { name: "System", secondary: "" };
 };
 
+const EVENT_FIRST_SUMMARY_ACTIONS = new Set([
+  "create_raw_material_category",
+  "start_physical_inventory",
+  "finalize_physical_inventory",
+  "cancel_physical_inventory",
+  "create_stock_transfer",
+  "reverse_stock_transfer",
+  "request_custom_cancellation",
+  "approve_custom_cancellation",
+  "decline_custom_cancellation",
+]);
+
 const getChangeSummary = (log) => {
+  if (EVENT_FIRST_SUMMARY_ACTIONS.has(log?.action)) {
+    const action = getActivityLabel(log);
+    const target = getTargetLabel(log);
+    return `${action}${target && target !== "System" ? ` — ${target}` : ""}.`;
+  }
+
   const changed = getChangedFieldKeys(log);
 
   if (changed.length === 1) {
@@ -647,6 +734,7 @@ const getPanelEntries = (log, side) => {
       key,
       label: formatFieldLabel(key),
       value: sourceHas ? formatValue(source[key]) : "Not recorded",
+      rawValue: sourceHas ? source[key] : undefined,
     });
   });
 
@@ -658,6 +746,7 @@ const getPanelEntries = (log, side) => {
       key,
       label: formatFieldLabel(key),
       value: formatValue(value),
+      rawValue: value,
     }));
 };
 
@@ -1027,8 +1116,121 @@ function FilterField({ label, wide = false, children }) {
   );
 }
 
-function ValuesPanel({ title, emptyLabel, entries }) {
+const STRUCTURED_AUDIT_CONFIG = {
+  stock_transfers: {
+    items: "Transfer Item",
+  },
+  physical_inventory_sessions: {
+    adjustments: "Stock Adjustment",
+  },
+};
 
+const getStructuredAuditTitle = (log, entry) =>
+  STRUCTURED_AUDIT_CONFIG[String(log?.table_name || "")]?.[entry?.key] || "";
+
+const isStructuredAuditEntry = (log, entry) =>
+  Boolean(
+    getStructuredAuditTitle(log, entry) &&
+      Array.isArray(entry?.rawValue) &&
+      entry.rawValue.length > 0 &&
+      entry.rawValue.every(
+        (item) => item && typeof item === "object" && !Array.isArray(item),
+      ),
+  );
+
+const formatQuantityWithUnit = (value, unit) => {
+  const formatted = formatValue(value);
+  const cleanUnit = String(unit || "").trim();
+  return formatted === "—" || !cleanUnit ? formatted : `${formatted} ${cleanUnit}`;
+};
+
+const buildStructuredAuditFields = (entryKey, item) => {
+  if (entryKey === "items") {
+    return [
+      { label: "Product", value: item.product_name || `Product #${item.product_id || "—"}` },
+      { label: "Product ID", value: formatValue(item.product_id) },
+      { label: "Quantity", value: formatValue(item.quantity) },
+      { label: "Warehouse Before", value: formatValue(item.warehouse_before) },
+      { label: "Display Before", value: formatValue(item.display_before) },
+      { label: "Warehouse After", value: formatValue(item.warehouse_after) },
+      { label: "Display After", value: formatValue(item.display_after) },
+    ];
+  }
+
+  if (entryKey === "adjustments") {
+    return [
+      {
+        label: "Raw Material",
+        value:
+          item.material_name ||
+          `Raw Material #${item.material_id || "—"}`,
+      },
+      { label: "Material ID", value: formatValue(item.material_id) },
+      {
+        label: "Previous Quantity",
+        value: formatQuantityWithUnit(item.previous_quantity, item.unit),
+      },
+      {
+        label: "Physical Count",
+        value: formatQuantityWithUnit(item.physical_count, item.unit),
+      },
+      {
+        label: "Difference",
+        value: formatQuantityWithUnit(item.difference, item.unit),
+      },
+      { label: "Reason", value: formatValue(item.reason) },
+      {
+        label: "Stock Movement",
+        value:
+          item.stock_movement_id === null ||
+          item.stock_movement_id === undefined ||
+          item.stock_movement_id === ""
+            ? "—"
+            : `#${item.stock_movement_id}`,
+      },
+    ];
+  }
+
+  return [];
+};
+
+function StructuredAuditValue({ entry, title }) {
+
+  return (
+    <div style={structuredValueList}>
+      {entry.rawValue.map((item, index) => {
+        const fields = buildStructuredAuditFields(entry.key, item);
+        const identity =
+          entry.key === "items"
+            ? item.product_id
+            : item.stock_movement_id || item.item_id || item.material_id;
+        const itemKey = `${entry.key}-${identity || index}-${index}`;
+
+        return (
+          <div key={itemKey} style={structuredItem}>
+            <div style={structuredItemTitle}>
+              {title} {index + 1}
+            </div>
+
+            <div style={structuredFieldList}>
+              {fields.map((field) => (
+                <div
+                  key={`${itemKey}-${field.label}`}
+                  style={structuredFieldRow}
+                >
+                  <span style={structuredFieldLabel}>{field.label}</span>
+                  <span style={structuredFieldValue}>{field.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ValuesPanel({ title, emptyLabel, entries, log }) {
   return (
     <section style={panel}>
       <h4 style={panelTitle}>{title}</h4>
@@ -1037,12 +1239,30 @@ function ValuesPanel({ title, emptyLabel, entries }) {
         <div style={emptyValueText}>{emptyLabel}</div>
       ) : (
         <div style={valueList}>
-          {entries.map((entry) => (
-            <div key={entry.key} style={valueRow}>
-              <span style={valueKey}>{entry.label}</span>
-              <span style={valueVal}>{entry.value}</span>
-            </div>
-          ))}
+          {entries.map((entry) => {
+            const structured = isStructuredAuditEntry(log, entry);
+            const structuredTitle = getStructuredAuditTitle(log, entry);
+
+            return (
+              <div
+                key={entry.key}
+                style={{
+                  ...valueRow,
+                  ...(structured ? structuredValueRow : {}),
+                }}
+              >
+                <span style={valueKey}>{entry.label}</span>
+
+                {structured ? (
+                  <div style={structuredValueContainer}>
+                    <StructuredAuditValue entry={entry} title={structuredTitle} />
+                  </div>
+                ) : (
+                  <span style={valueVal}>{entry.value}</span>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </section>
@@ -1120,11 +1340,13 @@ function AuditDetailModal({ log, onClose }) {
               title="Before Change"
               emptyLabel="The previous value was not recorded for this audit entry."
               entries={beforeEntries}
+              log={log}
             />
             <ValuesPanel
               title="After Change"
               emptyLabel="The new value was not recorded for this audit entry."
               entries={afterEntries}
+              log={log}
             />
           </div>
         </div>
@@ -1640,6 +1862,67 @@ const valueVal = {
   color: "#272b30",
   fontSize: 11.5,
   fontWeight: 600,
+  textAlign: "right",
+  wordBreak: "break-word",
+};
+
+const structuredValueRow = {
+  gridTemplateColumns: "1fr",
+  gap: 7,
+};
+
+const structuredValueContainer = {
+  minWidth: 0,
+  width: "100%",
+  textAlign: "left",
+};
+
+const structuredValueList = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 9,
+  width: "100%",
+};
+
+const structuredItem = {
+  padding: "9px 10px",
+  border: "1px solid #e3e6e9",
+  borderRadius: 3,
+  background: "#fafafa",
+};
+
+const structuredItemTitle = {
+  marginBottom: 7,
+  color: "#25292f",
+  fontSize: 11.5,
+  fontWeight: 700,
+};
+
+const structuredFieldList = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 5,
+};
+
+const structuredFieldRow = {
+  display: "grid",
+  gridTemplateColumns: "minmax(105px, 0.9fr) minmax(0, 1.1fr)",
+  gap: 8,
+  alignItems: "start",
+};
+
+const structuredFieldLabel = {
+  color: "#737983",
+  fontSize: 10.5,
+  fontWeight: 500,
+  lineHeight: 1.35,
+};
+
+const structuredFieldValue = {
+  color: "#292d33",
+  fontSize: 10.8,
+  fontWeight: 600,
+  lineHeight: 1.35,
   textAlign: "right",
   wordBreak: "break-word",
 };

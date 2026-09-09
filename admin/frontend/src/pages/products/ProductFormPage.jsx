@@ -242,7 +242,6 @@ export default function ProductFormPage() {
         "online_price",
         "walkin_price",
         "production_cost",
-        "stock",
         "reorder_point",
         "is_featured",
       ];
@@ -645,9 +644,9 @@ export default function ProductFormPage() {
               <div style={{ ...infoBox, marginBottom: 14 }}>
                 <div style={infoTitle}>Managed in Build Materials</div>
                 <div style={infoText}>
-                  Pricing, costs, and inventory levels for ready-made products
-                  are tracked securely in the warehouse. To update these values,
-                  please edit the item in the Build Materials page.
+                  Catalog pricing and costs remain managed with the ready-made item.
+                  Stock on hand is read-only here and changes only through traceable
+                  Inventory transactions such as Stock Movement and Internal Stock Transfer.
                 </div>
               </div>
 

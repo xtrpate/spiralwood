@@ -18,8 +18,13 @@ const auth = require("../controllers/admin/authController");
 const dashboard = require("../controllers/admin/dashboardController");
 const products = require("../controllers/admin/productController");
 const inventory = require("../controllers/admin/inventoryController");
+const inventoryReport = require("../controllers/admin/inventoryReportController");
+const dailyStockInReport = require("../controllers/admin/dailyStockInReportController");
+const physicalInventory = require("../controllers/admin/physicalInventoryController");
+const stockTransfers = require("../controllers/admin/stockTransferController");
 const blueprints = require("../controllers/admin/blueprintController");
 const orders = require("../controllers/admin/orderController");
+const cancellations = require("../controllers/admin/cancellationController");
 const sales = require("../controllers/admin/salesController");
 const mgmt = require("../controllers/admin/managementController");
 const website = require("../controllers/admin/websiteController");
@@ -205,7 +210,24 @@ router.patch(
 // ══════════════════════════════════════════════════════════════════════════════
 // INVENTORY – RAW MATERIALS
 // ══════════════════════════════════════════════════════════════════════════════
+router.get(
+  "/inventory/raw/categories",
+  adminStaff,
+  inventory.getRawMaterialCategories,
+);
+router.post(
+  "/inventory/raw/categories",
+  adminOnly,
+  logAction("create_raw_material_category", "categories"),
+  inventory.createRawMaterialCategory,
+);
 router.get("/inventory/raw", adminStaff, inventory.getRawMaterials);
+router.get("/inventory/report", adminOnly, inventoryReport.getInventoryReport);
+router.get(
+  "/inventory/reports/daily-stock-in",
+  adminOnly,
+  dailyStockInReport.getDailyStockInReport,
+);
 router.post(
   "/inventory/raw",
   adminOnly,
@@ -265,6 +287,67 @@ router.post(
   adminStaff,
   logAction("create_stock_movement", "stock_movements"),
   inventory.createStockMovement,
+);
+
+// PHYSICAL INVENTORY
+router.get(
+  "/inventory/physical-inventory/sessions",
+  adminOnly,
+  physicalInventory.listPhysicalInventorySessions,
+);
+router.post(
+  "/inventory/physical-inventory/sessions",
+  adminOnly,
+  logAction("start_physical_inventory", "physical_inventory_sessions"),
+  physicalInventory.startPhysicalInventory,
+);
+router.get(
+  "/inventory/physical-inventory/report",
+  adminOnly,
+  physicalInventory.getPhysicalInventoryReport,
+);
+router.get(
+  "/inventory/physical-inventory/sessions/:id",
+  adminOnly,
+  physicalInventory.getPhysicalInventorySession,
+);
+router.put(
+  "/inventory/physical-inventory/sessions/:id",
+  adminOnly,
+  physicalInventory.savePhysicalInventoryDraft,
+);
+router.post(
+  "/inventory/physical-inventory/sessions/:id/finalize",
+  adminOnly,
+  logAction("finalize_physical_inventory", "physical_inventory_sessions"),
+  physicalInventory.finalizePhysicalInventory,
+);
+router.post(
+  "/inventory/physical-inventory/sessions/:id/cancel",
+  adminOnly,
+  logAction("cancel_physical_inventory", "physical_inventory_sessions"),
+  physicalInventory.cancelPhysicalInventory,
+);
+
+// INTERNAL STOCK TRANSFER — ready-made products only
+router.get(
+  "/inventory/transfers/inventory",
+  adminOnly,
+  stockTransfers.getTransferInventory,
+);
+router.get("/inventory/transfers", adminOnly, stockTransfers.listTransfers);
+router.get("/inventory/transfers/:id", adminOnly, stockTransfers.getTransfer);
+router.post(
+  "/inventory/transfers",
+  adminOnly,
+  logAction("create_stock_transfer", "stock_transfers"),
+  stockTransfers.createTransfer,
+);
+router.post(
+  "/inventory/transfers/:id/reverse",
+  adminOnly,
+  logAction("reverse_stock_transfer", "stock_transfers"),
+  stockTransfers.reverseTransfer,
 );
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -347,6 +430,23 @@ router.patch(
 );
 
 router.get("/orders", adminStaff, orders.getAll);
+
+// Specific cancellation routes must be declared before /orders/:id so the
+// literal word "cancellations" is never treated as an order id.
+router.get("/orders/cancellations", adminOnly, cancellations.listRequests);
+router.post(
+  "/orders/cancellations/:requestId/approve",
+  adminOnly,
+  logAction("approve_custom_cancellation", "custom_cancellation_requests"),
+  cancellations.approveRequest,
+);
+router.post(
+  "/orders/cancellations/:requestId/decline",
+  adminOnly,
+  logAction("decline_custom_cancellation", "custom_cancellation_requests"),
+  cancellations.declineRequest,
+);
+
 router.get("/orders/:id", adminStaff, orders.getOne);
 router.patch(
   "/orders/:id/status",

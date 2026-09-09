@@ -338,6 +338,7 @@ exports.getTasks = async (req, res) => {
           )
           OR (t.order_id IS NULL AND t.assigned_to = ?)
         )
+        AND COALESCE(LOWER(o.status), '') <> 'cancelled'
       `;
       queryParams.push(staffId, staffId, staffId);
     }
@@ -727,7 +728,7 @@ exports.acceptTask = async (req, res) => {
 
     // ── FIXED: Switched to .query and parsed IDs ──
     const [tasks] = await db.query(
-      `SELECT pt.*, o.order_number
+      `SELECT pt.*, o.order_number, o.status AS order_status
        FROM project_tasks pt
        LEFT JOIN orders o ON o.id = pt.order_id
        WHERE pt.id = ? AND pt.assigned_to = ?`,
@@ -738,6 +739,13 @@ exports.acceptTask = async (req, res) => {
       return res.status(400).json({ message: "Task not found." });
     }
     const task = tasks[0];
+
+    if (normalize(task.order_status) === "cancelled") {
+      return res.status(409).json({
+        message:
+          "This custom furniture order was cancelled. Do not start any remaining production work.",
+      });
+    }
 
     if (normalize(task.status) !== "pending") {
       return res
@@ -834,6 +842,14 @@ exports.updateTaskStatus = async (req, res) => {
     }
 
     const existing = rows[0];
+
+    if (normalize(existing.order_status) === "cancelled") {
+      return res.status(409).json({
+        message:
+          "This custom furniture order was cancelled. Production work is locked and can no longer be updated.",
+      });
+    }
+
     const isAdmin = req.user.role === "admin";
     const isOwner = Number(existing.assigned_to) === Number(req.user.id);
 

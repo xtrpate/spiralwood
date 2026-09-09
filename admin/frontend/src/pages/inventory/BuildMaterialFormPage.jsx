@@ -226,7 +226,6 @@ export default function BuildMaterialFormPage() {
         "online_price",
         "walkin_price",
         "production_cost",
-        "stock",
         "reorder_point",
         "is_featured",
       ];
@@ -569,13 +568,13 @@ export default function BuildMaterialFormPage() {
             <Field label="Stock on hand">
               <input
                 type="number"
-                min="0"
-                value={form.stock ?? 0}
-                onChange={(event) => set("stock", event.target.value)}
-                style={input}
-                placeholder="0"
+                value={Number(form.stock || 0)}
+                readOnly
+                style={readOnlyInput}
               />
-              <div style={helperText}>Current ready-made inventory level.</div>
+              <div style={helperText}>
+                Read-only. New products start at 0; use Stock Movement to receive or adjust physical stock.
+              </div>
             </Field>
 
             <Field label="Reorder point">

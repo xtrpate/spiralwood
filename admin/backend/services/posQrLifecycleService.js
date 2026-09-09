@@ -755,6 +755,17 @@ const releaseExpiredAttempt = async ({
     }
 
     for (const reservation of reservations) {
+      const [displayResult] = await conn.query(
+        `UPDATE ready_made_display_stock
+         SET quantity = quantity + ?
+         WHERE product_id = ?`,
+        [reservation.quantity, reservation.product_id],
+      );
+      if (displayResult.affectedRows !== 1) {
+        await conn.rollback();
+        return { changed: false, reason: "display_stock_restore_failed" };
+      }
+
       const [stockResult] = await conn.query(
         `UPDATE products SET stock = stock + ? WHERE id = ?`,
         [reservation.quantity, reservation.product_id],
@@ -1210,6 +1221,17 @@ const confirmManualRelease = async ({
     }
 
     for (const reservation of reservations) {
+      const [displayResult] = await conn.query(
+        `UPDATE ready_made_display_stock
+         SET quantity = quantity + ?
+         WHERE product_id = ?`,
+        [reservation.quantity, reservation.product_id],
+      );
+      if (displayResult.affectedRows !== 1) {
+        await conn.rollback();
+        return { changed: false, reason: "display_stock_restore_failed" };
+      }
+
       const [stockResult] = await conn.query(
         `UPDATE products SET stock = stock + ? WHERE id = ?`,
         [reservation.quantity, reservation.product_id],

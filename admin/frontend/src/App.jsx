@@ -28,6 +28,8 @@ import RawMaterialsPage from "./pages/inventory/RawMaterialsPage";
 import BuildMaterialsPage from "./pages/inventory/BuildMaterialsPage";
 import BuildMaterialFormPage from "./pages/inventory/BuildMaterialFormPage";
 import StockMovementPage from "./pages/inventory/StockMovementPage";
+import PhysicalInventoryPage from "./pages/inventory/PhysicalInventoryPage";
+import StockTransferPage from "./pages/inventory/StockTransferPage";
 import SuppliersPage from "./pages/inventory/SuppliersPage";
 import BlueprintsPage from "./pages/blueprints/BlueprintsPage";
 import BlueprintDesign from "./pages/blueprints/BlueprintDesign.jsx";
@@ -37,6 +39,8 @@ import OrdersPage from "./pages/orders/OrdersPage";
 import OrderDetailPage from "./pages/orders/OrderDetailPage";
 import CancellationsPage from "./pages/orders/CancellationsPage";
 import SalesReportPage from "./pages/sales/SalesReportPage";
+import CurrentInventoryReportPage from "./pages/reports/CurrentInventoryReportPage";
+import DailyStockInReportPage from "./pages/reports/DailyStockInReportPage";
 import WarrantyPage from "./pages/warranty/WarrantyPage";
 import CustomersPage from "./pages/customers/CustomersPage";
 import UsersPage from "./pages/users/UsersPage";
@@ -509,6 +513,16 @@ export default function App() {
                   element={<StockMovementPage />}
                 />
 
+                <Route
+                  path="inventory/physical-inventory"
+                  element={<PhysicalInventoryPage />}
+                />
+
+                <Route
+                  path="inventory/transfers"
+                  element={<StockTransferPage />}
+                />
+
                 <Route path="inventory/suppliers" element={<SuppliersPage />} />
                 <Route path="blueprints" element={<BlueprintsPage />} />
 
@@ -531,6 +545,14 @@ export default function App() {
                   element={<CancellationsPage />}
                 />
 
+                <Route
+                  path="reports/current-inventory"
+                  element={<CurrentInventoryReportPage />}
+                />
+                <Route
+                  path="reports/daily-stock-in"
+                  element={<DailyStockInReportPage />}
+                />
                 <Route path="sales" element={<SalesReportPage />} />
                 <Route path="pos-qr-recovery" element={<PosQrRecoveryPage />} />
                 <Route path="warranty" element={<WarrantyPage />} />

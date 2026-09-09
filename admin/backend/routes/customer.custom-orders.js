@@ -13,6 +13,7 @@ const { logAction } = require("../middleware/auditLog");
 const customOrderController = require("../controllers/customer/customer.customorders");
 const customerReceiptsController = require("../controllers/customer/customer.receipts");
 const customerDeliveryAssessmentController = require("../controllers/customer/customer.deliveryAssessment");
+const customerCancellationController = require("../controllers/customer/customer.cancellations");
 
 /* ──────────────────────────────────────────────────────────
    Upload dirs
@@ -283,11 +284,29 @@ router.post(
   customOrderController.acceptProjectAgreement,
 );
 
+router.get(
+  "/:id/cancellation-request",
+  authenticate,
+  requireCustomer,
+  customerCancellationController.getCustomerCancellationRequest,
+);
+
+router.post(
+  "/:id/cancellation-request",
+  authenticate,
+  requireCustomer,
+  logAction("request_custom_cancellation", "custom_cancellation_requests"),
+  customerCancellationController.requestCancellation,
+);
+
+// Backward-safe alias: older cached clients that still call /cancel now create
+// an admin-reviewed request instead of directly cancelling the order.
 router.post(
   "/:id/cancel",
   authenticate,
   requireCustomer,
-  customOrderController.cancelUnpaidProject,
+  logAction("request_custom_cancellation", "custom_cancellation_requests"),
+  customerCancellationController.requestCancellation,
 );
 
 router.post(

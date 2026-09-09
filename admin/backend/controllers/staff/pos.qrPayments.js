@@ -602,6 +602,17 @@ const handleDefiniteFailure = async (attemptId, classification) => {
     );
 
     for (const reservation of reservations) {
+      const [displayRestore] = await conn.query(
+        `UPDATE ready_made_display_stock
+         SET quantity = quantity + ?
+         WHERE product_id = ?`,
+        [reservation.quantity, reservation.product_id],
+      );
+      if (displayRestore.affectedRows !== 1) {
+        await conn.rollback();
+        return;
+      }
+
       await conn.query(`UPDATE products SET stock = stock + ? WHERE id = ?`, [
         reservation.quantity,
         reservation.product_id,
@@ -1091,10 +1102,18 @@ const runTransactionA = async (req, res, ctx) => {
     const productPlaceholders = productIds.map(() => "?").join(",");
 
     const [productRows] = await conn.query(
-      `SELECT id, name, walkin_price, production_cost, stock, reorder_point
-       FROM products
-       WHERE id IN (${productPlaceholders})
-       ORDER BY id ASC
+      `SELECT
+         p.id,
+         p.name,
+         p.walkin_price,
+         p.production_cost,
+         p.stock,
+         p.reorder_point,
+         COALESCE(ds.quantity, 0) AS display_stock
+       FROM products p
+       LEFT JOIN ready_made_display_stock ds ON ds.product_id = p.id
+       WHERE p.id IN (${productPlaceholders})
+       ORDER BY p.id ASC
        FOR UPDATE`,
       productIds,
     );
@@ -1112,7 +1131,7 @@ const runTransactionA = async (req, res, ctx) => {
         });
       }
 
-      if (Number(product.stock || 0) < item.quantity) {
+      if (Number(product.display_stock || 0) < item.quantity) {
         await conn.rollback();
         return res.status(400).json({
           message: `Insufficient stock for ${product.name}.`,
@@ -1211,6 +1230,21 @@ const runTransactionA = async (req, res, ctx) => {
     /* ── step 8 continued: guarded, deterministic-order decrement —
        THIS is the reservation. ── */
     for (const item of dedupedItems) {
+      const [displayUpdateResult] = await conn.query(
+        `UPDATE ready_made_display_stock
+         SET quantity = quantity - ?
+         WHERE product_id = ?
+           AND quantity >= ?`,
+        [item.quantity, item.product_id, item.quantity],
+      );
+
+      if (displayUpdateResult.affectedRows !== 1) {
+        await conn.rollback();
+        return res.status(409).json({
+          message: "Sales / Display stock changed for one of the items. Please try again.",
+        });
+      }
+
       const [updateResult] = await conn.query(
         `UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?`,
         [item.quantity, item.product_id, item.quantity],
@@ -1219,7 +1253,7 @@ const runTransactionA = async (req, res, ctx) => {
       if (updateResult.affectedRows !== 1) {
         await conn.rollback();
         return res.status(409).json({
-          message: "Stock changed for one of the items. Please try again.",
+          message: "Total stock changed for one of the items. Please try again.",
         });
       }
 

@@ -70,13 +70,25 @@ const NAV_ITEMS = [
     roles: ["admin", "staff"],
   },
   {
+    label: "Stock Transfer",
+    path: "/admin/inventory/transfers",
+    icon: "↔️",
+    roles: ["admin"],
+  },
+  {
+    label: "Physical Inventory",
+    path: "/admin/inventory/physical-inventory",
+    icon: "📋",
+    roles: ["admin"],
+  },
+  {
     label: "Orders",
     path: "/admin/orders",
     icon: "🛒",
     roles: ["admin", "staff"],
   },
   {
-    label: "Cancellations & Refunds",
+    label: "Cancellations",
     path: "/admin/orders/cancellations",
     icon: "↩️",
     roles: ["admin"],
@@ -137,6 +149,18 @@ const NAV_ITEMS = [
   },
 
   { section: "Reports" },
+  {
+    label: "Inventory Report",
+    path: "/admin/reports/current-inventory",
+    icon: "📦",
+    roles: ["admin"],
+  },
+  {
+    label: "Stock In Report",
+    path: "/admin/reports/daily-stock-in",
+    icon: "📥",
+    roles: ["admin"],
+  },
   {
     label: "Sales Report",
     path: "/admin/sales",

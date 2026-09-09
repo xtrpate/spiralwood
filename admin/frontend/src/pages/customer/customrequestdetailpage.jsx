@@ -647,6 +647,8 @@ export default function CustomRequestDetailPage() {
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [cancellingProject, setCancellingProject] = useState(false);
+  const [cancellationRequest, setCancellationRequest] = useState(null);
+  const [cancellationLoading, setCancellationLoading] = useState(false);
 
   const [discussionMessage, setDiscussionMessage] = useState("");
   const [discussionFiles, setDiscussionFiles] = useState([]);
@@ -682,6 +684,20 @@ export default function CustomRequestDetailPage() {
     }
   }, [id]);
 
+  const loadCancellationRequest = useCallback(async () => {
+    setCancellationLoading(true);
+    try {
+      const res = await api.get(
+        `/customer/custom-orders/${id}/cancellation-request`,
+      );
+      setCancellationRequest(res.data?.request || null);
+    } catch (err) {
+      setCancellationRequest(null);
+    } finally {
+      setCancellationLoading(false);
+    }
+  }, [id]);
+
   const loadRequestDetail = useCallback(
     async (showLoader = true) => {
       if (showLoader) setLoading(true);
@@ -694,7 +710,10 @@ export default function CustomRequestDetailPage() {
         // that payment history also refreshes every time this succeeds
         // -- including right after a PayMongo verification attempt below,
         // with no manual page reload required.
-        await loadPaymentHistory();
+        await Promise.all([
+          loadPaymentHistory(),
+          loadCancellationRequest(),
+        ]);
       } catch (err) {
         setError(
           err.response?.data?.message ||
@@ -705,7 +724,7 @@ export default function CustomRequestDetailPage() {
         if (showLoader) setLoading(false);
       }
     },
-    [id, loadPaymentHistory],
+    [id, loadPaymentHistory, loadCancellationRequest],
   );
 
   useEffect(() => {
@@ -885,14 +904,22 @@ export default function CustomRequestDetailPage() {
     !hasPendingPaymentTransaction &&
     !paymentMethodChangeLocked;
 
-  const canCancelUnpaidProject =
-    orderStatusKey === "confirmed" &&
-    String(latestEstimation?.status || "").trim().toLowerCase() === "approved" &&
+  const cancellationStatusKey = String(
+    cancellationRequest?.status || "",
+  )
+    .trim()
+    .toLowerCase();
+
+  const canRequestCancellation =
     projectAgreementAccepted &&
-    requestData?.payment_status === "unpaid" &&
-    Number(verifiedPaymentTotal || 0) <= 0 &&
-    !hasPendingPaymentTransaction &&
-    !paymentMethodChangeLocked;
+    [
+      "confirmed",
+      "contract_released",
+      "production",
+      "ready_for_pickup",
+      "shipping",
+    ].includes(orderStatusKey) &&
+    cancellationStatusKey !== "pending";
 
   // Customer-facing contract snapshot. These are read-only values from the
   // approved quotation + submitted design already returned for this request.
@@ -1262,27 +1289,41 @@ export default function CustomRequestDetailPage() {
     }
   };
 
-  const handleCancelUnpaidProject = async () => {
-    if (!requestData?.id || !canCancelUnpaidProject) {
+  const handleRequestCancellation = async () => {
+    if (!requestData?.id || !canRequestCancellation) {
       toast.error(
-        "This project can no longer be cancelled directly from this page.",
+        "A cancellation request cannot be submitted for this order right now.",
       );
+      return;
+    }
+
+    const reason = String(cancelReason || "").trim();
+    if (!reason) {
+      toast.error("Please provide a reason for requesting cancellation.");
+      return;
+    }
+    if (reason.length > 500) {
+      toast.error("Cancellation reason must be 500 characters or fewer.");
       return;
     }
 
     setCancellingProject(true);
     try {
       const res = await api.post(
-        `/customer/custom-orders/${requestData.id}/cancel`,
-        { reason: String(cancelReason || "").trim() },
+        `/customer/custom-orders/${requestData.id}/cancellation-request`,
+        { reason },
       );
       setCancelConfirmOpen(false);
       setCancelReason("");
       await loadRequestDetail(false);
-      toast.success(res.data?.message || "Project cancelled successfully.");
+      toast.success(
+        res.data?.message ||
+          "Cancellation request submitted for admin review.",
+      );
     } catch (err) {
       toast.error(
-        err.response?.data?.message || "Failed to cancel project.",
+        err.response?.data?.message ||
+          "Failed to submit cancellation request.",
       );
     } finally {
       setCancellingProject(false);
@@ -2165,15 +2206,61 @@ export default function CustomRequestDetailPage() {
                               Accepted on {formatDate(projectAgreement.signed_at)} through your WISDOM Customer Account.
                             </p>
 
-                            {canCancelUnpaidProject ? (
+                            {cancellationRequest ? (
+                              <div
+                                className="crd-info-box"
+                                style={{
+                                  marginTop: 14,
+                                  background:
+                                    cancellationStatusKey === "pending"
+                                      ? "#fff7ed"
+                                      : cancellationStatusKey === "approved"
+                                        ? "#f4f4f5"
+                                        : "#fef2f2",
+                                }}
+                              >
+                                <div className="crd-info-title">
+                                  {cancellationStatusKey === "pending"
+                                    ? "Cancellation request pending review"
+                                    : cancellationStatusKey === "approved"
+                                      ? "Cancellation request approved"
+                                      : "Cancellation request declined"}
+                                </div>
+                                <p style={{ margin: "8px 0 0", lineHeight: 1.6 }}>
+                                  Reason: {cancellationRequest.reason}
+                                </p>
+                                {cancellationRequest.review_note ? (
+                                  <p style={{ margin: "8px 0 0", lineHeight: 1.6 }}>
+                                    Admin note: {cancellationRequest.review_note}
+                                  </p>
+                                ) : null}
+                                <p
+                                  style={{
+                                    margin: "8px 0 0",
+                                    color: "#71717a",
+                                    fontSize: 12,
+                                  }}
+                                >
+                                  {cancellationStatusKey === "pending"
+                                    ? "Your order remains active while our team reviews this request."
+                                    : cancellationStatusKey === "declined"
+                                      ? "Your order remains active. You can use Conversation if you need to discuss the decision."
+                                      : "The order is cancelled. Recorded payments remain in payment history."}
+                                </p>
+                              </div>
+                            ) : null}
+
+                            {canRequestCancellation ? (
                               <div style={{ marginTop: 14 }}>
                                 <button
                                   type="button"
                                   className="crd-danger-btn"
-                                  disabled={cancellingProject}
+                                  disabled={cancellingProject || cancellationLoading}
                                   onClick={() => setCancelConfirmOpen(true)}
                                 >
-                                  Cancel Project
+                                  {cancellationStatusKey === "declined"
+                                    ? "Request Cancellation Again"
+                                    : "Request Cancellation"}
                                 </button>
                               </div>
                             ) : null}
@@ -2194,7 +2281,7 @@ export default function CustomRequestDetailPage() {
                               </div>
                             ) : null}
 
-                            {cancelConfirmOpen && canCancelUnpaidProject ? (
+                            {cancelConfirmOpen && canRequestCancellation ? (
                               <div
                                 role="presentation"
                                 style={{
@@ -2225,23 +2312,24 @@ export default function CustomRequestDetailPage() {
                                   }}
                                 >
                                   <h3 id="cancel-project-title" style={{ margin: 0 }}>
-                                    Cancel Project
+                                    Request Cancellation
                                   </h3>
                                   <p style={{ margin: "10px 0 16px", lineHeight: 1.6 }}>
-                                    No payment has been verified. Cancelling will stop this
-                                    project from proceeding. Your accepted Project Agreement
-                                    will remain in the transaction history.
+                                    Submitting this request does not cancel the order immediately.
+                                    Your order stays active while Spiral Wood Services reviews the
+                                    request. Existing recorded payments stay in payment history and
+                                    this workflow does not issue a refund.
                                   </p>
 
                                   <label style={{ display: "grid", gap: 8 }}>
-                                    <span>Reason (optional)</span>
+                                    <span>Reason (required)</span>
                                     <textarea
                                       rows={3}
                                       maxLength={500}
                                       value={cancelReason}
                                       disabled={cancellingProject}
                                       onChange={(event) => setCancelReason(event.target.value)}
-                                      placeholder="Tell us why you are cancelling"
+                                      placeholder="Explain why you are requesting cancellation"
                                       style={{ width: "100%", boxSizing: "border-box", resize: "vertical" }}
                                     />
                                   </label>
@@ -2266,9 +2354,9 @@ export default function CustomRequestDetailPage() {
                                       type="button"
                                       className="crd-danger-btn"
                                       disabled={cancellingProject}
-                                      onClick={handleCancelUnpaidProject}
+                                      onClick={handleRequestCancellation}
                                     >
-                                      {cancellingProject ? "Confirming..." : "Confirm"}
+                                      {cancellingProject ? "Submitting..." : "Submit Request"}
                                     </button>
                                   </div>
                                 </div>
