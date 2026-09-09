@@ -18,16 +18,18 @@ async function authenticate(req, res, next) {
 
     const [[user]] = await pool.query(
       `SELECT
-         id,
-         name,
-         email,
-         role,
-         staff_type,
-         is_active,
-         is_verified,
-         must_change_password
-       FROM users
-       WHERE id = ?`,
+     id,
+     name,
+     email,
+     role,
+     authority_level,
+     staff_type,
+     is_active,
+     is_verified,
+     must_change_password,
+     token_version
+   FROM users
+   WHERE id = ?`,
       [decoded.id],
     );
 
@@ -54,6 +56,12 @@ async function authenticate(req, res, next) {
       return res.status(403).json({
         message: "Change your temporary password before continuing.",
         code: "PASSWORD_CHANGE_REQUIRED",
+      });
+    }
+
+    if (Number(decoded.token_version) !== Number(user.token_version)) {
+      return res.status(401).json({
+        message: "Session revoked. Please log in again.",
       });
     }
 
@@ -97,6 +105,53 @@ function authorize(...allowedRoles) {
   };
 }
 
+function verifyAuthority(allowedRoles = []) {
+  const roles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
+
+  const normalizedRoles = roles
+    .map((role) =>
+      String(role || "")
+        .trim()
+        .toLowerCase(),
+    )
+    .filter(Boolean);
+
+  return async (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({
+        message: "Authentication required.",
+      });
+    }
+
+    const authority = String(req.user.authority_level || "user")
+      .trim()
+      .toLowerCase();
+
+    if (!normalizedRoles.includes(authority)) {
+      await writeAuditLogSafe({
+        userId: req.user.id,
+        action: "access_denied",
+        tableName: "security",
+        recordId: req.user.id,
+        newValues: {
+          request_method: req.method,
+          request_path: String(req.originalUrl || req.path || "").split("?")[0],
+          authority_level: authority,
+          required_authority_levels: normalizedRoles,
+          reason: "authority_not_allowed",
+        },
+        ipAddress: req.ip || null,
+      });
+
+      return res.status(403).json({
+        message: "Forbidden. You lack the required authority.",
+      });
+    }
+
+    next();
+  };
+}
+
 function authorizeStaffType(...allowedTypes) {
   return async (req, res, next) => {
     if (!req.user) {
@@ -107,7 +162,10 @@ function authorizeStaffType(...allowedTypes) {
       return next();
     }
 
-    if (req.user.role !== "staff" || !allowedTypes.includes(req.user.staff_type)) {
+    if (
+      req.user.role !== "staff" ||
+      !allowedTypes.includes(req.user.staff_type)
+    ) {
       await writeAuditLogSafe({
         userId: req.user.id,
         action: "access_denied",
@@ -150,6 +208,7 @@ const requireDeliveryRiderOrAdmin = authorizeStaffType("delivery_rider");
 module.exports = {
   authenticate,
   authorize,
+  verifyAuthority,
   authorizeStaffType,
   requireStaffOrAdmin,
   requireCustomer,

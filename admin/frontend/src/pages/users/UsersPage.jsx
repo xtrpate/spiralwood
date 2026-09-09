@@ -18,6 +18,21 @@ import {
   X,
 } from "lucide-react";
 
+const AUTHORITY_LEVELS = {
+  user: {
+    label: "User",
+    desc: "Basic account authority",
+  },
+  manager: {
+    label: "Manager",
+    desc: "Can manage user-level accounts",
+  },
+  admin: {
+    label: "Administrator",
+    desc: "Full authority management access",
+  },
+};
+
 const STAFF_TYPES = {
   cashier: {
     label: "Cashier",
@@ -108,9 +123,7 @@ const formatLastLogin = (value) => {
   });
 };
 
-const normalizePhoneDigits = (value) =>
-  String(value || "")
-    .replace(/\D/g, "");
+const normalizePhoneDigits = (value) => String(value || "").replace(/\D/g, "");
 
 const formatPhoneForDisplay = (value) => {
   const digits = normalizePhoneDigits(value);
@@ -147,6 +160,61 @@ export default function UsersPage() {
   const [openMenuId, setOpenMenuId] = useState(null);
 
   const menuRef = useRef(null);
+
+  const handleAuthorityChange = async (targetUser, nextAuthority) => {
+    if (!targetUser || targetUser.id === me?.id) {
+      toast.error("You cannot change your own authority level.");
+      return;
+    }
+
+    const actorAuthority = String(me?.authority_level || "user").toLowerCase();
+
+    const currentAuthority = String(
+      targetUser.authority_level || "user",
+    ).toLowerCase();
+
+    if (
+      !Object.prototype.hasOwnProperty.call(AUTHORITY_LEVELS, nextAuthority)
+    ) {
+      toast.error("Invalid authority level.");
+      return;
+    }
+
+    if (
+      actorAuthority === "manager" &&
+      (currentAuthority === "admin" || nextAuthority === "admin")
+    ) {
+      toast.error("Managers cannot assign administrator authority.");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const { data } = await api.put(`/users/${targetUser.id}/authority`, {
+        authority_level: nextAuthority,
+      });
+
+      setUsers((current) =>
+        current.map((item) =>
+          item.id === targetUser.id
+            ? {
+                ...item,
+                authority_level: data?.user?.authority_level || nextAuthority,
+              }
+            : item,
+        ),
+      );
+
+      toast.success("Authority level updated.");
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message || "Unable to update authority level.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
 
   useEffect(() => {
     const handleOutsideClick = (event) => {
@@ -345,7 +413,9 @@ export default function UsersPage() {
       await api.patch(`/users/${target.id}/password`, {
         new_password: pwForm.new_password,
       });
-      toast.success("Temporary password reset. User must change it on next login.");
+      toast.success(
+        "Temporary password reset. User must change it on next login.",
+      );
       setModal(null);
       setTarget(null);
     } catch (err) {
@@ -370,7 +440,9 @@ export default function UsersPage() {
       setTarget(null);
       await load();
     } catch (err) {
-      toast.error(err?.response?.data?.message || "Unable to deactivate account.");
+      toast.error(
+        err?.response?.data?.message || "Unable to deactivate account.",
+      );
     } finally {
       setSaving(false);
     }
@@ -483,7 +555,8 @@ export default function UsersPage() {
           <div>
             <h2>Accounts</h2>
             <p>
-              Review account details, access roles, status, and recent sign-in activity.
+              Review account details, access roles, status, and recent sign-in
+              activity.
             </p>
           </div>
 
@@ -564,7 +637,7 @@ export default function UsersPage() {
                 <th>Role</th>
                 <th>Status</th>
                 <th>Last Login</th>
-                <th className="um-actions-heading">Actions</th>
+                <th className="um-actions-heading">Role / Authority</th>
               </tr>
             </thead>
 
@@ -579,7 +652,9 @@ export default function UsersPage() {
                 <tr>
                   <td colSpan={6} className="um-empty">
                     <strong>No matching accounts</strong>
-                    <span>Adjust the search or filters to view more accounts.</span>
+                    <span>
+                      Adjust the search or filters to view more accounts.
+                    </span>
                   </td>
                 </tr>
               ) : (
@@ -594,6 +669,8 @@ export default function UsersPage() {
                     onEdit={openEdit}
                     onPassword={openPassword}
                     onDelete={openDelete}
+                    onAuthorityChange={handleAuthorityChange}
+                    saving={saving}
                   />
                 ))
               )}
@@ -645,7 +722,9 @@ function SummaryCard({ label, value, icon, alert = false }) {
     <div className={`um-summary-card${alert ? " um-summary-alert" : ""}`}>
       <div>
         <div className="um-summary-label">{label}</div>
-        <div className={`um-summary-value${alert ? " is-alert" : ""}`}>{value}</div>
+        <div className={`um-summary-value${alert ? " is-alert" : ""}`}>
+          {value}
+        </div>
       </div>
       <div className="um-summary-icon" aria-hidden="true">
         {icon}
@@ -663,6 +742,8 @@ function UserRow({
   onEdit,
   onPassword,
   onDelete,
+  onAuthorityChange,
+  saving,
 }) {
   const isMe = user.id === me?.id;
   const roleLabel = getRoleLabel(user);
@@ -683,7 +764,9 @@ function UserRow({
               {isMe && <span className="um-you-label">You</span>}
             </div>
             <span className="um-account-type">
-              {user.role === "admin" ? "Administrator account" : "Staff account"}
+              {user.role === "admin"
+                ? "Administrator account"
+                : "Staff account"}
             </span>
           </div>
         </div>
@@ -698,24 +781,63 @@ function UserRow({
 
       <td>
         <div className="um-role-cell">
-          <span className={`um-role-label${user.role === "admin" ? " um-role-admin" : ""}`}>
+          <span
+            className={`um-role-label${
+              user.role === "admin" ? " um-role-admin" : ""
+            }`}
+          >
             {roleLabel}
           </span>
+
           {user.role === "staff" && (
-            <small>{STAFF_TYPES[user.staff_type]?.desc || "Assigned staff access"}</small>
+            <small>
+              {STAFF_TYPES[user.staff_type]?.desc || "Assigned staff access"}
+            </small>
           )}
+
+          <select
+            className="um-authority-select"
+            value={user.authority_level || "user"}
+            onChange={(event) => onAuthorityChange(user, event.target.value)}
+            disabled={
+              saving ||
+              isMe ||
+              (String(me?.authority_level || "user").toLowerCase() ===
+                "manager" &&
+                String(user.authority_level || "user").toLowerCase() ===
+                  "admin")
+            }
+            aria-label={`Authority level for ${user.name}`}
+          >
+            {Object.entries(AUTHORITY_LEVELS).map(([value, meta]) => (
+              <option
+                key={value}
+                value={value}
+                disabled={
+                  String(me?.authority_level || "user").toLowerCase() ===
+                    "manager" && value === "admin"
+                }
+              >
+                {meta.label}
+              </option>
+            ))}
+          </select>
         </div>
       </td>
 
       <td>
-        <span className={`um-status ${user.is_active ? "is-active" : "is-inactive"}`}>
+        <span
+          className={`um-status ${user.is_active ? "is-active" : "is-inactive"}`}
+        >
           <i aria-hidden="true" />
           {user.is_active ? "Active" : "Inactive"}
         </span>
       </td>
 
       <td>
-        <span className="um-last-login">{formatLastLogin(user.last_login)}</span>
+        <span className="um-last-login">
+          {formatLastLogin(user.last_login)}
+        </span>
       </td>
 
       <td>
@@ -739,7 +861,9 @@ function UserRow({
               aria-label={`More actions for ${user.name}`}
               aria-expanded={openMenuId === user.id}
               onClick={() =>
-                setOpenMenuId((current) => (current === user.id ? null : user.id))
+                setOpenMenuId((current) =>
+                  current === user.id ? null : user.id,
+                )
               }
             >
               <MoreHorizontal size={17} strokeWidth={2} />
@@ -793,7 +917,9 @@ function AccountModal({
     <ModalShell onClose={onClose}>
       <div className="um-modal-header">
         <div>
-          <div className="um-modal-eyebrow">{isEdit ? "Account Details" : "New Account"}</div>
+          <div className="um-modal-eyebrow">
+            {isEdit ? "Account Details" : "New Account"}
+          </div>
           <h3>{isEdit ? "Edit Account" : "Add Account"}</h3>
           <p>
             {isEdit
@@ -1008,14 +1134,7 @@ function AccountModal({
   );
 }
 
-function PasswordModal({
-  target,
-  value,
-  setValue,
-  saving,
-  onClose,
-  onSubmit,
-}) {
+function PasswordModal({ target, value, setValue, saving, onClose, onSubmit }) {
   return (
     <ModalShell onClose={onClose} compact>
       <div className="um-modal-header">
@@ -1101,9 +1220,7 @@ function DeleteModal({ target, saving, onClose, onConfirm }) {
         <div>
           <div className="um-modal-eyebrow um-danger-text">Account Access</div>
           <h3>Deactivate Account</h3>
-          <p>
-            Deactivate {target?.name || "this account"} in WISDOM?
-          </p>
+          <p>Deactivate {target?.name || "this account"} in WISDOM?</p>
         </div>
 
         <button
@@ -1123,7 +1240,8 @@ function DeleteModal({ target, saving, onClose, onConfirm }) {
           <div>
             <strong>This is a reversible access change.</strong>
             <span>
-              The account will remain in WISDOM for history and can be reactivated later.
+              The account will remain in WISDOM for history and can be
+              reactivated later.
             </span>
           </div>
         </div>
@@ -2127,5 +2245,29 @@ const styles = `
   .um-photo-upload-btn input {
     display: none;
   }
+
+  .um-authority-select {
+  width: 100%;
+  max-width: 150px;
+  min-height: 28px;
+  margin-top: 6px;
+  padding: 0 7px;
+  border: 1px solid #e4e4e7;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #27272a;
+  font: 600 11px/1 "Inter", sans-serif;
+}
+
+.um-authority-select:focus {
+  outline: none;
+  border-color: #a1a1aa;
+  box-shadow: 0 0 0 2px rgba(24, 24, 27, 0.06);
+}
+
+.um-authority-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 
 `;

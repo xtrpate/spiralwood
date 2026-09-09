@@ -3,6 +3,7 @@
 // controllers/authController.js (Unified Gateway for Admin, Staff, and Customers)
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+console.log("[AUTH CONTROLLER LOADED]", __filename);
 // const nodemailer = require("nodemailer");
 const pool = require("../../config/db");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
@@ -11,7 +12,6 @@ const {
   getPhoneLookupVariants,
   phoneDigitsSql,
 } = require("../../utils/phone");
-
 require("dotenv").config();
 
 // ══════════════════════════════════════════════════════════════
@@ -70,9 +70,12 @@ const sendOtpEmail = async (email, otp, name) => {
 //   THE UNIFIED LOGIN (POST /api/auth/login)
 // ══════════════════════════════════════════════════════════════
 exports.login = async (req, res) => {
+  console.log("[LOGIN HIT] admin authController.js");
   try {
     const { email, password } = req.body;
-    const attemptedEmail = String(email || "").trim().toLowerCase();
+    const attemptedEmail = String(email || "")
+      .trim()
+      .toLowerCase();
     const auditLogin = async ({ action, user = null, reason }) =>
       writeAuditLogSafe({
         userId: user?.id || null,
@@ -90,7 +93,10 @@ exports.login = async (req, res) => {
       });
 
     if (!email || !password) {
-      await auditLogin({ action: "login_failed", reason: "missing_credentials" });
+      await auditLogin({
+        action: "login_failed",
+        reason: "missing_credentials",
+      });
       return res
         .status(400)
         .json({ message: "Email and password are required." });
@@ -112,7 +118,10 @@ exports.login = async (req, res) => {
     );
 
     if (!user) {
-      await auditLogin({ action: "login_failed", reason: "invalid_credentials" });
+      await auditLogin({
+        action: "login_failed",
+        reason: "invalid_credentials",
+      });
       return res.status(401).json({ message: "Invalid credentials." });
     }
 
@@ -195,10 +204,11 @@ exports.login = async (req, res) => {
         id: user.id,
         email: user.email,
         role: user.role,
+        authority_level: user.authority_level || "user",
         name: user.name,
         staff_type: user.staff_type || null,
-        must_change_password:
-          Number(user.must_change_password) === 1 ? 1 : 0,
+        must_change_password: Number(user.must_change_password) === 1 ? 1 : 0,
+        token_version: Number(user.token_version) || 0,
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || "8h" },
@@ -212,6 +222,7 @@ exports.login = async (req, res) => {
       name: user.name,
       email: user.email,
       role: user.role,
+      authority_level: user.authority_level || "user",
       staff_type: user.staff_type || null,
       phone: user.phone || null,
       address: user.address || null,
@@ -225,6 +236,13 @@ exports.login = async (req, res) => {
       last_login: user.last_login || null,
       must_change_password: Number(user.must_change_password) === 1 ? 1 : 0,
     };
+    console.log("[LOGIN DEBUG]", {
+      userId: user.id,
+      authority_level: user.authority_level,
+      token_version: user.token_version,
+      hasToken: Boolean(token),
+      tokenType: typeof token,
+    });
     res.json({ token, user: safeUser });
   } catch (err) {
     console.error("[Unified Login Error]", err);
@@ -240,10 +258,23 @@ exports.login = async (req, res) => {
 exports.getMe = async (req, res) => {
   try {
     const [[user]] = await pool.query(
-      `SELECT id, name, email, role, staff_type, phone, address, profile_photo, last_login, must_change_password
-       FROM users WHERE id = ?`,
+      `SELECT
+     id,
+     name,
+     email,
+     role,
+     authority_level,
+     staff_type,
+     phone,
+     address,
+     profile_photo,
+     last_login,
+     must_change_password
+   FROM users
+   WHERE id = ?`,
       [req.user.id],
     );
+
     res.json(user);
   } catch (err) {
     console.error("[getMe]", err);
@@ -256,7 +287,8 @@ exports.updateProfile = async (req, res) => {
   try {
     if (req.user.role !== "admin" && req.user.role !== "staff") {
       return res.status(403).json({
-        message: "This profile endpoint is only for administrator and staff accounts.",
+        message:
+          "This profile endpoint is only for administrator and staff accounts.",
       });
     }
 
@@ -316,7 +348,9 @@ exports.updateProfile = async (req, res) => {
     }
 
     if (!fields.length) {
-      return res.status(400).json({ message: "No profile changes were provided." });
+      return res
+        .status(400)
+        .json({ message: "No profile changes were provided." });
     }
 
     values.push(req.user.id);
@@ -351,7 +385,8 @@ exports.changePassword = async (req, res) => {
   try {
     if (req.user.role !== "admin" && req.user.role !== "staff") {
       return res.status(403).json({
-        message: "This password endpoint is only for administrator and staff accounts.",
+        message:
+          "This password endpoint is only for administrator and staff accounts.",
       });
     }
 
@@ -370,20 +405,33 @@ exports.changePassword = async (req, res) => {
     }
 
     const [[user]] = await pool.query(
-      `SELECT id, password, role, email, name, staff_type
-         FROM users
-        WHERE id = ?
-        LIMIT 1`,
+      `SELECT
+     id,
+     password,
+     role,
+     email,
+     name,
+     authority_level,
+     staff_type,
+     token_version
+   FROM users
+   WHERE id = ?
+   LIMIT 1`,
       [req.user.id],
     );
     if (!user) return res.status(404).json({ message: "Account not found." });
 
     const match = await bcrypt.compare(currentPassword, user.password || "");
     if (!match) {
-      return res.status(400).json({ message: "Current password is incorrect." });
+      return res
+        .status(400)
+        .json({ message: "Current password is incorrect." });
     }
 
-    const sameAsCurrent = await bcrypt.compare(newPassword, user.password || "");
+    const sameAsCurrent = await bcrypt.compare(
+      newPassword,
+      user.password || "",
+    );
     if (sameAsCurrent) {
       return res.status(400).json({
         message: "New password must be different from your current password.",
@@ -410,9 +458,11 @@ exports.changePassword = async (req, res) => {
         id: user.id,
         email: user.email,
         role: user.role,
+        authority_level: user.authority_level || "user",
         name: user.name,
         staff_type: user.staff_type || null,
         must_change_password: 0,
+        token_version: Number(user.token_version) || 0,
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || "8h" },

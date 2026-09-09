@@ -9,6 +9,35 @@ import "./BuildMaterialsPage.css";
 // WISDOM BUILD MATERIALS UI POLISH V1.0.1
 // WISDOM INVENTORY ROLE SEPARATION V1
 // WISDOM BUILD MATERIALS STOCK FILTER V1
+
+const STOCK_LEVEL_HIERARCHY = {
+  out_of_stock: 1,
+  critical_stock: 2,
+  low_stock: 3,
+  in_stock: 4,
+  healthy_stock: 4,
+};
+
+const getStatus = (product) => {
+  const stock = Number(product.stock || 0);
+  const reorderPoint = Number(product.reorder_point || 0);
+  const status = String(product.stock_status || "").toLowerCase();
+
+  let key = status;
+  if (!key || key === "null") {
+    if (stock <= 0) key = "out_of_stock";
+    else if (stock <= reorderPoint) key = "low_stock";
+    else key = "in_stock";
+  }
+
+  if (key === "out_of_stock") return { key, label: "Empty", tone: "danger" };
+  if (key === "critical_stock")
+    return { key, label: "Critical", tone: "danger" };
+  if (key === "low_stock") return { key, label: "Low", tone: "warning" };
+
+  return { key: "in_stock", label: "Healthy", tone: "neutral" };
+};
+
 export default function BuildMaterialsPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -89,7 +118,7 @@ export default function BuildMaterialsPage() {
           "Product Cost",
           "Available Stock",
           "Reorder Point",
-          "Status",
+          "Stock Level",
           "Published",
           "Active",
         ].map((t) => ({
@@ -109,7 +138,7 @@ export default function BuildMaterialsPage() {
           Number(row.production_cost || 0),
           Number(row.stock || 0),
           Number(row.reorder_point || 0),
-          String(row.stock_status || "").replace(/_/g, " "),
+          getStatus(row).label.toUpperCase(),
           Number(row.is_published) === 1 ? "Yes" : "No",
           Number(row.is_active) === 1 ? "Yes" : "No",
         ]);
@@ -325,25 +354,19 @@ export default function BuildMaterialsPage() {
     });
   };
 
-  const getStatus = (product) => {
-    const stock = Number(product.stock || 0);
-    const reorderPoint = Number(product.reorder_point || 0);
-    const status = String(product.stock_status || "").toLowerCase();
-
-    if (status === "in_stock")
-      return { key: "in_stock", label: "In stock", tone: "neutral" };
-    if (status === "low_stock")
-      return { key: "low_stock", label: "Low stock", tone: "warning" };
-    if (status === "out_of_stock")
-      return { key: "out_of_stock", label: "Out of stock", tone: "danger" };
-    if (stock <= 0)
-      return { key: "out_of_stock", label: "Out of stock", tone: "danger" };
-    if (stock <= reorderPoint)
-      return { key: "low_stock", label: "Low stock", tone: "warning" };
-    return { key: "in_stock", label: "In stock", tone: "neutral" };
-  };
-
   const totalPages = Math.max(1, Math.ceil(total / 20));
+
+  // Automatically sort items by our stock level hierarchy
+  const sortedProducts = [...products].sort((a, b) => {
+    const rankA = STOCK_LEVEL_HIERARCHY[getStatus(a).key] || 5;
+    const rankB = STOCK_LEVEL_HIERARCHY[getStatus(b).key] || 5;
+
+    // Sort by hierarchy (Empty -> Critical -> Low -> Healthy)
+    if (rankA !== rankB) return rankA - rankB;
+
+    // If they have the same status, sort alphabetically
+    return String(a.name || "").localeCompare(String(b.name || ""));
+  });
 
   // Bulk Actions
   const handleSelectAll = (event) => {
@@ -469,9 +492,10 @@ export default function BuildMaterialsPage() {
               }
             >
               <option value="">All stock levels</option>
-              <option value="in_stock">In stock</option>
-              <option value="low_stock">Low stock</option>
-              <option value="out_of_stock">Out of stock</option>
+              <option value="out_of_stock">Empty</option>
+              <option value="critical_stock">Critical</option>
+              <option value="low_stock">Low</option>
+              <option value="in_stock">Healthy</option>
             </select>
           </div>
           <div className="build-materials-filter-field">
@@ -575,7 +599,7 @@ export default function BuildMaterialsPage() {
                   <th>Profit</th>
                   <th>Available Stock</th>
                   <th>Reorder Point</th>
-                  <th>Status</th>
+                  <th>Stock Level</th>
                   <th style={{ textAlign: "center" }}>Actions</th>
                 </tr>
               </thead>
@@ -587,7 +611,7 @@ export default function BuildMaterialsPage() {
                     </td>
                   </tr>
                 ) : (
-                  products.map((product) => {
+                  sortedProducts.map((product) => {
                     const sellingPrice = Number(product.walkin_price || 0);
                     const productCost = Number(product.production_cost || 0);
                     const storedProfit = Number(product.profit_margin);

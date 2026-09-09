@@ -9,9 +9,20 @@ const {
 } = require("../utils/verifyFileSignature");
 const router = express.Router();
 
-const { authenticate, authorize } = require("../middleware/auth");
+const {
+  authenticate,
+  authorize,
+  verifyAuthority,
+} = require("../middleware/auth");
 const { logAction } = require("../middleware/auditLog");
+const { requirePermission } = require("../middleware/permission");
 const upload = require("../config/upload");
+
+const accountAuthority = [
+  authenticate,
+  authorize("admin", "staff"),
+  verifyAuthority(["manager", "admin"]),
+];
 
 // ── Controllers ────────────────────────────────────────────────────────────────
 const auth = require("../controllers/admin/authController");
@@ -32,7 +43,11 @@ const warrantyController = require("../controllers/admin/warrantyController");
 const supportController = require("../controllers/admin/supportController");
 
 // ── Auth guards ───────────────────────────────────────────────────────────────
-const adminOnly = [authenticate, authorize("admin")];
+const adminOnly = [
+  authenticate,
+  authorize("admin"),
+  verifyAuthority(["admin"]),
+];
 const adminStaff = [authenticate, authorize("admin", "staff")];
 
 const { v2: cloudinary } = require("cloudinary");
@@ -408,28 +423,39 @@ router.patch(
 router.get(
   "/orders/:id/assignable-staff",
   adminStaff,
+  requirePermission("orders.view"),
   orders.getAssignableStaff,
 );
 router.patch(
   "/orders/:id/assign-staff",
   adminOnly,
+  requirePermission("orders.manage"),
   logAction("assign_production_staff", "orders"),
   orders.assignStaff,
 );
+
 router.patch(
   "/orders/:id/reassign-staff",
   adminOnly,
+  requirePermission("orders.manage"),
   logAction("reassign_production_staff", "orders"),
   orders.reassignStaff,
 );
+
 router.patch(
   "/orders/:id/tasks/:taskId/status",
   adminOnly,
+  requirePermission("orders.manage"),
   logAction("update_project_task_status", "project_tasks"),
   orders.updateTaskStatus,
 );
 
-router.get("/orders", adminStaff, orders.getAll);
+router.get(
+  "/orders",
+  adminStaff,
+  requirePermission("orders.view"),
+  orders.getAll,
+);
 
 // Specific cancellation routes must be declared before /orders/:id so the
 // literal word "cancellations" is never treated as an order id.
@@ -447,22 +473,32 @@ router.post(
   cancellations.declineRequest,
 );
 
-router.get("/orders/:id", adminStaff, orders.getOne);
+router.get(
+  "/orders/:id",
+  adminStaff,
+  requirePermission("orders.view"),
+  orders.getOne,
+);
 router.patch(
   "/orders/:id/status",
   adminOnly,
+  requirePermission("orders.manage"),
   logAction("update_order_status", "orders"),
   orders.updateStatus,
 );
+
 router.post(
   "/orders/:id/accept",
   adminOnly,
+  requirePermission("orders.manage"),
   logAction("accept_order", "orders"),
   orders.accept,
 );
+
 router.post(
   "/orders/:id/decline",
   adminOnly,
+  requirePermission("orders.manage"),
   logAction("decline_order", "orders"),
   orders.decline,
 );
@@ -470,15 +506,22 @@ router.post(
 router.post(
   "/orders/:id/verify-payment",
   adminOnly,
+  requirePermission("orders.manage"),
   logAction("verify_payment", "payment_transactions"),
   orders.verifyPayment,
 );
 
-router.get("/orders/:id/discussion", adminStaff, orders.getOrderDiscussion);
+router.get(
+  "/orders/:id/discussion",
+  adminStaff,
+  requirePermission("orders.view"),
+  orders.getOrderDiscussion,
+);
 
 router.post(
   "/orders/:id/discussion",
   adminStaff,
+  requirePermission("orders.manage"),
   customDiscussionUpload,
   orders.postOrderDiscussionMessage,
 );
@@ -572,30 +615,48 @@ router.put(
 // ══════════════════════════════════════════════════════════════════════════════
 // USER & ROLE MANAGEMENT
 // ══════════════════════════════════════════════════════════════════════════════
-router.get("/users", adminOnly, mgmt.getUsers);
+router.get(
+  "/users",
+  accountAuthority,
+  requirePermission("users.view"),
+  mgmt.getUsers,
+);
 router.post(
   "/users",
   adminOnly,
+  requirePermission("users.create"),
   upload.uploadUserProfilePhoto,
   logAction("create_user", "users"),
   mgmt.createUser,
 );
 router.put(
+  "/users/:id/authority",
+  accountAuthority,
+  requirePermission("users.authority"),
+  logAction("update_user_authority", "users"),
+  mgmt.updateAuthority,
+);
+router.put(
   "/users/:id",
   adminOnly,
+  requirePermission("users.edit"),
   upload.uploadUserProfilePhoto,
   logAction("update_user", "users"),
   mgmt.updateUser,
 );
+
 router.patch(
   "/users/:id/password",
   adminOnly,
+  requirePermission("users.edit"),
   logAction("reset_user_password", "users"),
   mgmt.resetUserPassword,
 );
+
 router.delete(
   "/users/:id",
   adminOnly,
+  requirePermission("users.delete"),
   logAction("deactivate_user", "users"),
   mgmt.deleteUser,
 );
@@ -667,6 +728,7 @@ router.get("/backup/download/:filename", adminOnly, website.downloadBackup);
 router.post(
   "/orders/:id/custom-request/approve",
   adminOnly,
+  requirePermission("orders.manage"),
   logAction("approve_custom_request", "orders"),
   orders.approveCustomRequest,
 );
@@ -674,6 +736,7 @@ router.post(
 router.post(
   "/orders/:id/custom-request/request-revision",
   adminOnly,
+  requirePermission("orders.manage"),
   (req, res) => {
     return res.status(410).json({
       message:
@@ -685,6 +748,7 @@ router.post(
 router.post(
   "/orders/:id/custom-request/reject",
   adminOnly,
+  requirePermission("orders.manage"),
   logAction("reject_custom_request", "orders"),
   orders.rejectCustomRequest,
 );

@@ -83,6 +83,7 @@ import CustomerStaticPage from "./pages/customer/customerstaticpage";
 import SupportPage from "./pages/customer/supportpage";
 import AdminSupportPage from "./pages/support/SupportPage";
 import ARViewPage from "./pages/customer/ar/ARViewPage";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 import POSLayout from "./pages/staff/POSLayout.jsx";
 import POSDashboard from "./pages/staff/Dashboard";
@@ -570,8 +571,10 @@ export default function App() {
                 <Route
                   path="users"
                   element={
-                    <RequireAuth roles={["admin"]}>
-                      <UsersPage />
+                    <RequireAuth roles={["admin", "staff"]}>
+                      <ProtectedRoute allowedRoles={["manager", "admin"]}>
+                        <UsersPage />
+                      </ProtectedRoute>
                     </RequireAuth>
                   }
                 />

@@ -386,7 +386,8 @@ exports.generateContract = async (req, res) => {
     };
 
     res.status(201).json({
-      message: "Project Agreement created. The customer must review and accept it before payment.",
+      message:
+        "Project Agreement created. The customer must review and accept it before payment.",
       id: insertResult.insertId,
     });
   } catch (err) {
@@ -531,18 +532,30 @@ const INTERNAL_STAFF_TYPES = new Set(["cashier", "indoor", "delivery_rider"]);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const parseRequestedActive = (value, defaultValue = true) => {
-  if (value === undefined || value === null || value === "") return defaultValue;
-  if (value === true || value === 1 || value === "1" || value === "true") return true;
-  if (value === false || value === 0 || value === "0" || value === "false") return false;
+  if (value === undefined || value === null || value === "")
+    return defaultValue;
+  if (value === true || value === 1 || value === "1" || value === "true")
+    return true;
+  if (value === false || value === 0 || value === "0" || value === "false")
+    return false;
   return defaultValue;
 };
 
-const normalizeInternalUserPayload = (body, { requirePassword = false } = {}) => {
+const normalizeInternalUserPayload = (
+  body,
+  { requirePassword = false } = {},
+) => {
   const name = String(body?.name || "").trim();
-  const email = String(body?.email || "").trim().toLowerCase();
+  const email = String(body?.email || "")
+    .trim()
+    .toLowerCase();
   const address = String(body?.address || "").trim();
-  const role = String(body?.role || "").trim().toLowerCase();
-  const staffType = String(body?.staff_type || "").trim().toLowerCase();
+  const role = String(body?.role || "")
+    .trim()
+    .toLowerCase();
+  const staffType = String(body?.staff_type || "")
+    .trim()
+    .toLowerCase();
   const password = String(body?.password || body?.new_password || "");
 
   if (!name || !email || !address || !body?.phone) {
@@ -611,23 +624,25 @@ exports.getUsers = async (req, res) => {
     // ── FIXED: Added empty array [] ──
     const [rows] = await pool.query(
       `SELECT
-         id,
-         name,
-         email,
-         role,
-         staff_type,
-         phone,
-         address,
-         profile_photo,
-         is_active,
-         must_change_password,
-         last_login,
-         created_at
-       FROM users
-       WHERE role IN ('admin','staff')
-       ORDER BY role, staff_type, name`,
+     id,
+     name,
+     email,
+     role,
+     authority_level,
+     staff_type,
+     phone,
+     address,
+     profile_photo,
+     is_active,
+     must_change_password,
+     last_login,
+     created_at
+   FROM users
+   WHERE role IN ('admin','staff')
+   ORDER BY role, staff_type, name`,
       [],
     );
+
     res.json(rows);
   } catch (err) {
     console.error("[getUsers]", err);
@@ -637,7 +652,9 @@ exports.getUsers = async (req, res) => {
 
 exports.createUser = async (req, res) => {
   try {
-    const parsed = normalizeInternalUserPayload(req.body, { requirePassword: true });
+    const parsed = normalizeInternalUserPayload(req.body, {
+      requirePassword: true,
+    });
     if (parsed.error) return res.status(400).json({ message: parsed.error });
 
     const user = parsed.value;
@@ -653,9 +670,21 @@ exports.createUser = async (req, res) => {
     const profilePhoto = uploadedProfile?.url || null;
     const [result] = await pool.query(
       `INSERT INTO users
-        (name, email, password, must_change_password, role, staff_type, phone, address,
-         profile_photo, approval_status, is_active)
-       VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, 'approved', ?)`,
+    (
+      name,
+      email,
+      password,
+      must_change_password,
+      role,
+      authority_level,
+      staff_type,
+      phone,
+      address,
+      profile_photo,
+      approval_status,
+      is_active
+    )
+   VALUES (?, ?, ?, 1, ?, 'user', ?, ?, ?, ?, 'approved', ?)`,
       [
         user.name,
         user.email,
@@ -686,13 +715,16 @@ exports.createUser = async (req, res) => {
     };
 
     return res.status(201).json({
-      message: "Account created. The user must change the temporary password on first login.",
+      message:
+        "Account created. The user must change the temporary password on first login.",
       id: result.insertId,
     });
   } catch (err) {
     console.error("[createUser]", err);
     if (err.code === "ER_DUP_ENTRY") {
-      return res.status(409).json({ message: "Email or phone number is already in use." });
+      return res
+        .status(409)
+        .json({ message: "Email or phone number is already in use." });
     }
     if (err.code === "INTERNAL_PROFILE_UPLOAD_FAILED") {
       return res.status(502).json({ message: err.message });
@@ -723,10 +755,14 @@ exports.updateUser = async (req, res) => {
 
     if (targetId === Number.parseInt(req.user.id, 10)) {
       if (user.role !== "admin") {
-        return res.status(400).json({ message: "You cannot demote your own administrator account." });
+        return res.status(400).json({
+          message: "You cannot demote your own administrator account.",
+        });
       }
       if (!user.is_active) {
-        return res.status(400).json({ message: "You cannot deactivate your own account." });
+        return res
+          .status(400)
+          .json({ message: "You cannot deactivate your own account." });
       }
     }
 
@@ -795,7 +831,9 @@ exports.updateUser = async (req, res) => {
   } catch (err) {
     console.error("[updateUser]", err);
     if (err.code === "ER_DUP_ENTRY") {
-      return res.status(409).json({ message: "Email or phone number is already in use." });
+      return res
+        .status(409)
+        .json({ message: "Email or phone number is already in use." });
     }
     if (err.code === "INTERNAL_PROFILE_UPLOAD_FAILED") {
       return res.status(502).json({ message: err.message });
@@ -813,11 +851,14 @@ exports.resetUserPassword = async (req, res) => {
     }
     if (targetId === Number.parseInt(req.user.id, 10)) {
       return res.status(400).json({
-        message: "Use your own account password settings to change your password.",
+        message:
+          "Use your own account password settings to change your password.",
       });
     }
     if (newPassword.length < 8) {
-      return res.status(400).json({ message: "Password must be at least 8 characters." });
+      return res
+        .status(400)
+        .json({ message: "Password must be at least 8 characters." });
     }
 
     const [[target]] = await pool.query(
@@ -837,7 +878,8 @@ exports.resetUserPassword = async (req, res) => {
       new: { password_reset: true, must_change_password: 1 },
     };
     return res.json({
-      message: "Temporary password reset. The user must change it on next login.",
+      message:
+        "Temporary password reset. The user must change it on next login.",
     });
   } catch (err) {
     console.error("[resetUserPassword]", err);
@@ -852,7 +894,9 @@ exports.deleteUser = async (req, res) => {
       return res.status(400).json({ message: "Invalid account ID." });
     }
     if (targetId === Number.parseInt(req.user.id, 10)) {
-      return res.status(400).json({ message: "You cannot deactivate your own account." });
+      return res
+        .status(400)
+        .json({ message: "You cannot deactivate your own account." });
     }
 
     const [[before]] = await pool.query(
@@ -875,6 +919,113 @@ exports.deleteUser = async (req, res) => {
   } catch (err) {
     console.error("[deactivateUser]", err);
     return res.status(500).json({ message: "Unable to deactivate account." });
+  }
+};
+
+exports.updateAuthority = async (req, res) => {
+  try {
+    const targetId = Number.parseInt(req.params.id, 10);
+
+    if (!Number.isInteger(targetId) || targetId <= 0) {
+      return res.status(400).json({
+        message: "Invalid account ID.",
+      });
+    }
+
+    const authority = String(req.body?.authority_level || "")
+      .trim()
+      .toLowerCase();
+
+    const allowedAuthorityLevels = new Set(["user", "manager", "admin"]);
+
+    if (!allowedAuthorityLevels.has(authority)) {
+      return res.status(400).json({
+        message: "Authority level must be user, manager, or admin.",
+      });
+    }
+
+    if (targetId === Number(req.user.id)) {
+      return res.status(400).json({
+        message: "You cannot change your own authority level.",
+      });
+    }
+
+    const [[target]] = await pool.query(
+      `SELECT
+         id,
+         name,
+         email,
+         role,
+         staff_type,
+         authority_level,
+         is_active
+       FROM users
+       WHERE id = ?
+         AND role IN ('admin','staff')
+       LIMIT 1`,
+      [targetId],
+    );
+
+    if (!target) {
+      return res.status(404).json({
+        message: "Account not found.",
+      });
+    }
+
+    const actorAuthority = String(req.user.authority_level || "user")
+      .trim()
+      .toLowerCase();
+
+    if (actorAuthority === "manager") {
+      if (target.authority_level === "admin" || authority === "admin") {
+        return res.status(403).json({
+          message: "Managers cannot assign administrator authority.",
+        });
+      }
+    }
+
+    if (actorAuthority !== "admin" && actorAuthority !== "manager") {
+      return res.status(403).json({
+        message: "Admin or manager authority is required.",
+      });
+    }
+
+    await pool.query(
+      `UPDATE users
+          SET authority_level = ?,
+          token_version = token_version + 1
+        WHERE id = ?`,
+      [authority, targetId],
+    );
+
+    req.auditRecord = {
+      id: targetId,
+      old: {
+        authority_level: target.authority_level || "user",
+      },
+      new: {
+        authority_level: authority,
+      },
+    };
+
+    return res.json({
+      message: "Authority level updated.",
+      user: {
+        id: target.id,
+        name: target.name,
+        email: target.email,
+        role: target.role,
+        staff_type: target.staff_type || null,
+        authority_level: authority,
+        is_active: Number(target.is_active) === 1 ? 1 : 0,
+      },
+    });
+  } catch (err) {
+    console.error("[updateAuthority]", err);
+
+    return res.status(500).json({
+      message: "Unable to update authority level.",
+    });
   }
 };
 

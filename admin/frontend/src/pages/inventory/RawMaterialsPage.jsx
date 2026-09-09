@@ -13,6 +13,13 @@ const STOCK_COLORS = {
   out_of_stock: ["#f4f4f5", "#52525b", "#d4d4d8"],
 };
 
+const STOCK_LEVEL_HIERARCHY = {
+  out_of_stock: 1,
+  critical_stock: 2,
+  low_stock: 3,
+  healthy_stock: 4,
+};
+
 const formatQuantity = (value) => {
   const number = Number(value);
   if (!Number.isFinite(number)) return "0";
@@ -68,6 +75,12 @@ const formatStatus = (value) => {
   if (!normalized) return "";
   if (normalized === "consumed") return "Used";
   if (normalized === "pending_stock") return "Waiting for stock";
+
+  if (normalized === "healthy_stock") return "Healthy";
+  if (normalized === "low_stock") return "Low";
+  if (normalized === "critical_stock") return "Critical";
+  if (normalized === "out_of_stock") return "Empty";
+
   const words = normalized.replaceAll("_", " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
 };
@@ -75,7 +88,8 @@ const formatStatus = (value) => {
 const formatStockReason = (item = {}) => {
   const reason = String(item.stock_status_reason || "").toLowerCase();
   if (reason === "on_hand_zero") return "Physical stock is zero";
-  if (reason === "pending_order_need") return "A blueprint order is waiting for stock";
+  if (reason === "pending_order_need")
+    return "A blueprint order is waiting for stock";
   if (reason === "all_stock_reserved") return "All on-hand stock is reserved";
   if (reason === "safety_stock") return "At or below safety stock";
   if (reason === "lead_time") {
@@ -294,9 +308,9 @@ export default function RawMaterialsPage() {
           Number(row.avg_daily_usage_30d || 0),
           Number(row.lead_time_need_quantity || 0),
           cost,
-          String(row.availability_status || row.stock_status || "")
-            .replace(/_/g, " ")
-            .toUpperCase(),
+          formatStatus(
+            row.availability_status || row.stock_status || "",
+          ).toUpperCase(),
           formatStockReason(row) || "—",
         ]);
       });
@@ -559,6 +573,20 @@ export default function RawMaterialsPage() {
     modal?.data?.unit,
   );
 
+  // Automatically sort items by our stock level hierarchy
+  const sortedItems = [...items].sort((a, b) => {
+    const rankA =
+      STOCK_LEVEL_HIERARCHY[a.availability_status || a.stock_status] || 5;
+    const rankB =
+      STOCK_LEVEL_HIERARCHY[b.availability_status || b.stock_status] || 5;
+
+    // If they have different statuses, sort by hierarchy (Empty -> Critical -> Low -> Healthy)
+    if (rankA !== rankB) return rankA - rankB;
+
+    // If they have the same status, sort them alphabetically by name
+    return String(a.name || "").localeCompare(String(b.name || ""));
+  });
+
   return (
     <div>
       <div style={header}>
@@ -655,10 +683,10 @@ export default function RawMaterialsPage() {
             style={inputSm}
           >
             <option value="">All stock levels</option>
-            <option value="out_of_stock">Out of stock</option>
-            <option value="critical_stock">Critical stock</option>
-            <option value="low_stock">Low stock</option>
-            <option value="healthy_stock">Healthy stock</option>
+            <option value="out_of_stock">Empty</option>
+            <option value="critical_stock">Critical</option>
+            <option value="low_stock">Low</option>
+            <option value="healthy_stock">Healthy</option>
           </select>
         </div>
         <div style={filterField}>
@@ -681,7 +709,7 @@ export default function RawMaterialsPage() {
         </div>
 
         <div style={filterField}>
-          <label style={filterLabel}>Date Added</label>
+          <label style={filterLabel}>Date</label>
           <select
             value={filters.date_preset}
             onChange={(e) => handleDatePreset(e.target.value)}
@@ -790,14 +818,14 @@ export default function RawMaterialsPage() {
             </tr>
           </thead>
           <tbody>
-            {items.length === 0 ? (
+            {sortedItems.length === 0 ? (
               <tr>
                 <td colSpan={12} style={emptyCell}>
                   No raw materials found for the selected filters.
                 </td>
               </tr>
             ) : (
-              items.map((item) => {
+              sortedItems.map((item) => {
                 const availabilityStatus =
                   item.availability_status || item.stock_status;
                 const [bg, color, border] = STOCK_COLORS[
@@ -1080,8 +1108,9 @@ export default function RawMaterialsPage() {
             </h3>
             {modal.mode === "add" && (
               <div style={modalInfo}>
-                Enter the material name only. Add dimensions separately when needed.
-                Add stock through Stock Movements so every change is recorded.
+                Enter the material name only. Add dimensions separately when
+                needed. Add stock through Stock Movements so every change is
+                recorded.
               </div>
             )}
             <form onSubmit={handleSave}>
@@ -1141,7 +1170,9 @@ export default function RawMaterialsPage() {
                     style={inputFull}
                   >
                     <option value="">
-                      {modal.mode === "add" ? "Select category" : "Uncategorized"}
+                      {modal.mode === "add"
+                        ? "Select category"
+                        : "Uncategorized"}
                     </option>
                     {categories.map((category) => (
                       <option key={category.id} value={category.id}>
@@ -1150,8 +1181,11 @@ export default function RawMaterialsPage() {
                     ))}
                   </select>
                   {categories.length === 0 && (
-                    <div style={{ marginTop: 5, fontSize: 11, color: "#71717a" }}>
-                      No raw material categories yet. Use “+ Add category” first.
+                    <div
+                      style={{ marginTop: 5, fontSize: 11, color: "#71717a" }}
+                    >
+                      No raw material categories yet. Use “+ Add category”
+                      first.
                     </div>
                   )}
                 </div>
@@ -1295,7 +1329,9 @@ export default function RawMaterialsPage() {
                   <label style={labelSm}>Reorder</label>
                   <input
                     type="text"
-                    inputMode={modalAllowsDecimalQuantity ? "decimal" : "numeric"}
+                    inputMode={
+                      modalAllowsDecimalQuantity ? "decimal" : "numeric"
+                    }
                     value={modal.data.reorder_point ?? ""}
                     onChange={(e) =>
                       setField(
@@ -1314,7 +1350,9 @@ export default function RawMaterialsPage() {
                   <label style={labelSm}>Safety Stock</label>
                   <input
                     type="text"
-                    inputMode={modalAllowsDecimalQuantity ? "decimal" : "numeric"}
+                    inputMode={
+                      modalAllowsDecimalQuantity ? "decimal" : "numeric"
+                    }
                     value={modal.data.safety_stock ?? ""}
                     onChange={(e) =>
                       setField(

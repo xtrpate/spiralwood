@@ -238,6 +238,18 @@ const useAuthStore = create((set, get) => ({
     return data;
   },
 
+  hasAuthority: (allowedRoles = []) => {
+    const allowed = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
+
+    const authority = String(get().user?.authority_level || "user")
+      .trim()
+      .toLowerCase();
+
+    return allowed
+      .map((role) => String(role).toLowerCase())
+      .includes(authority);
+  },
+
   forgotPassword: async (email, recaptchaToken = "") => {
     const { data } = await api.post("/customer/auth/forgot-password", {
       email: String(email || "").trim(),

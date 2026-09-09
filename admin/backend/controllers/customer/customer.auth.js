@@ -1486,6 +1486,7 @@ exports.login = async (req, res) => {
         email,
         password,
         role,
+        authority_level,
         staff_type,
         phone,
         address,
@@ -1494,7 +1495,8 @@ exports.login = async (req, res) => {
         profile_photo,
         is_verified,
         phone_verified,
-        is_active
+        is_active,
+        token_version
       FROM users
       WHERE email = ? 
       LIMIT 1
@@ -1619,10 +1621,12 @@ exports.login = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        authority_level: user.authority_level || "user",
         staff_type: user.staff_type || null,
+        token_version: Number(user.token_version) || 0,
       },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "24h" },
+      { expiresIn: process.env.JWT_EXPIRES_IN || "8h" },
     );
 
     await db.query("UPDATE users SET last_login = NOW() WHERE id = ?", [
@@ -1636,6 +1640,7 @@ exports.login = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        authority_level: user.authority_level || "user",
         staff_type: user.staff_type || null,
         phone: user.phone,
         address: user.address,
