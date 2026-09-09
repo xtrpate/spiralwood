@@ -41,7 +41,9 @@ const getAppointmentPurposeLabel = (purpose) => {
 };
 
 const formatAppointmentSchedule = (value) => {
-  const raw = String(value || "").trim().replace("T", " ");
+  const raw = String(value || "")
+    .trim()
+    .replace("T", " ");
   const match = /^(\d{4})-(\d{2})-(\d{2})[ ](\d{2}):(\d{2})/.exec(raw);
   if (!match) return "the requested schedule";
   const [, year, month, day, hour, minute] = match;
@@ -614,6 +616,12 @@ exports.updateAppointment = async (req, res) => {
     const currentStatus = normalizeText(existing.status).toLowerCase();
     const isAdmin = req.user.role === "admin";
 
+    // Check if the appointment date has already passed
+    const appointmentDate = new Date(
+      existing.scheduled_date || existing.preferred_date,
+    );
+    const isPastDue = appointmentDate < new Date();
+
     if (["completed", "rejected", "cancelled"].includes(currentStatus)) {
       await conn.rollback();
       transactionActive = false;
@@ -653,6 +661,15 @@ exports.updateAppointment = async (req, res) => {
           });
         }
 
+        if (isAccept && isPastDue) {
+          await conn.rollback();
+          transactionActive = false;
+          return res.status(400).json({
+            message:
+              "This appointment schedule has already passed. Please return it to the admin.",
+          });
+        }
+
         await conn.query(
           `
           UPDATE appointments
@@ -672,7 +689,9 @@ exports.updateAppointment = async (req, res) => {
         );
 
         const purposeLabel = getAppointmentPurposeLabel(existing.purpose);
-        const scheduleLabel = formatAppointmentSchedule(existing.scheduled_date);
+        const scheduleLabel = formatAppointmentSchedule(
+          existing.scheduled_date,
+        );
         if (isAccept && existing.customer_id) {
           await createNotificationSafe(conn, {
             userId: existing.customer_id,
@@ -763,11 +782,16 @@ exports.updateAppointment = async (req, res) => {
 
       if (existing.customer_id) {
         const purposeLabel = getAppointmentPurposeLabel(existing.purpose);
-        const scheduleLabel = formatAppointmentSchedule(existing.scheduled_date);
+        const scheduleLabel = formatAppointmentSchedule(
+          existing.scheduled_date,
+        );
         await createNotificationSafe(conn, {
           userId: existing.customer_id,
           type: "appointment_update",
-          title: requestedStatus === "completed" ? "Appointment Completed" : "Appointment Cancelled",
+          title:
+            requestedStatus === "completed"
+              ? "Appointment Completed"
+              : "Appointment Cancelled",
           message:
             requestedStatus === "completed"
               ? `Your ${purposeLabel} appointment scheduled for ${scheduleLabel} has been completed.`
@@ -918,6 +942,19 @@ exports.updateAppointment = async (req, res) => {
       status = requestedStatus;
     }
 
+    if (
+      isPastDue &&
+      !["cancelled", "rejected", "completed"].includes(status) &&
+      currentStatus !== "confirmed"
+    ) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message:
+          "This appointment date has already passed. It can only be cancelled or rejected.",
+      });
+    }
+
     // Effective-state check: runs once, using the final computed values from
     // every branch above — not tied to which specific field the admin sent.
     // A reschedule-only request on an already-assigned/confirmed appointment
@@ -1044,11 +1081,18 @@ exports.updateAppointment = async (req, res) => {
       });
     }
 
-    if (["rejected", "cancelled"].includes(status) && status !== currentStatus && existing.customer_id) {
+    if (
+      ["rejected", "cancelled"].includes(status) &&
+      status !== currentStatus &&
+      existing.customer_id
+    ) {
       await createNotificationSafe(conn, {
         userId: existing.customer_id,
         type: "appointment_update",
-        title: status === "rejected" ? "Appointment Request Not Approved" : "Appointment Cancelled",
+        title:
+          status === "rejected"
+            ? "Appointment Request Not Approved"
+            : "Appointment Cancelled",
         message:
           status === "rejected"
             ? `We could not approve your ${purposeLabel} appointment request for ${scheduleLabel}. Please choose another schedule or contact our team.`

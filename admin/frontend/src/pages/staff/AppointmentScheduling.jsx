@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Ban,
   Check,
+  Calendar,
 } from "lucide-react";
 
 const PURPOSE_LABELS = {
@@ -19,7 +20,7 @@ const PURPOSE_LABELS = {
 
 const STATUS_LABELS = {
   pending: "Pending Review",
-  awaiting_staff_acceptance: "Awaiting Staff Acceptance",
+  awaiting_staff_acceptance: "Reviewing Schedule",
   confirmed: "Confirmed",
   completed: "Completed",
   rejected: "Rejected",
@@ -230,6 +231,11 @@ const emptyStateStyle = {
 const formatRequestNumber = (id) =>
   id ? `APT-${String(id).padStart(4, "0")}` : "—";
 
+const isPastDue = (dateString) => {
+  if (!dateString) return false;
+  return new Date(dateString) < new Date();
+};
+
 const getStatusLabel = (status) =>
   STATUS_LABELS[String(status || "").toLowerCase()] || String(status || "—");
 
@@ -269,7 +275,7 @@ function AdminSummaryCard({ label, count, hint }) {
 const getIndoorStatusLabel = (status) => {
   const key = String(status || "").toLowerCase();
 
-  if (key === "awaiting_staff_acceptance") return "Awaiting Acceptance";
+  if (key === "awaiting_staff_acceptance") return "Reviewing Schedule";
   if (key === "confirmed") return "Confirmed";
   if (key === "completed") return "Completed";
   if (key === "cancelled") return "Cancelled";
@@ -655,6 +661,28 @@ export default function AppointmentScheduling() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  const [rescheduleModal, setRescheduleModal] = useState(null);
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [rescheduleTime, setRescheduleTime] = useState("");
+  const [rescheduleStaffId, setRescheduleStaffId] = useState("");
+
+  const openReschedule = (appointment) => {
+    setRescheduleModal(appointment);
+    setRescheduleStaffId(
+      String(appointment.assigned_staff_id || appointment.assigned_to || ""),
+    );
+
+    const existingDate =
+      appointment.scheduled_date || appointment.preferred_date;
+    if (existingDate && !isPastDue(existingDate)) {
+      setRescheduleDate(existingDate.split("T")[0]);
+      setRescheduleTime(existingDate.split("T")[1]?.substring(0, 5) || "");
+    } else {
+      setRescheduleDate("");
+      setRescheduleTime("");
+    }
+  };
+
   // for calendar schedule
   const [weekStart, setWeekStart] = useState(() => {
     const tomorrow = new Date();
@@ -1037,7 +1065,7 @@ export default function AppointmentScheduling() {
   };
 
   const getAssignedStaff = (appointment) =>
-    appointment.assigned_staff_name || "Not assigned";
+    appointment.provider_name || "Not assigned";
 
   const matchesAdminFilters = (appointment) => {
     if (
@@ -1069,7 +1097,11 @@ export default function AppointmentScheduling() {
       getAddress(appointment),
       getRequestedBy(appointment),
       getAssignedStaff(appointment),
-    ].some((value) => String(value || "").toLowerCase().includes(keyword));
+    ].some((value) =>
+      String(value || "")
+        .toLowerCase()
+        .includes(keyword),
+    );
   };
 
   const filteredAdminNewRequests = adminNewRequests.filter(matchesAdminFilters);
@@ -1128,24 +1160,65 @@ export default function AppointmentScheduling() {
       </td>
     );
   };
-  const renderPreferredScheduleCell = (appointment) => (
-    <td style={tdStyle}>
-      <div style={{ fontWeight: 400, color: "#3f3f46" }}>
-        {formatDateTime(
-          appointment.preferred_date || appointment.scheduled_date,
+  const renderPreferredScheduleCell = (appointment) => {
+    const pastDue = isPastDue(
+      appointment.preferred_date || appointment.scheduled_date,
+    );
+    return (
+      <td style={tdStyle}>
+        <div
+          style={{ fontWeight: 400, color: pastDue ? "#991b1b" : "#3f3f46" }}
+        >
+          {formatDateTime(
+            appointment.preferred_date || appointment.scheduled_date,
+          )}
+        </div>
+        {pastDue && (
+          <div
+            style={{
+              color: "#991b1b",
+              fontSize: 9.5,
+              fontWeight: 700,
+              marginTop: 4,
+              letterSpacing: "0.05em",
+            }}
+          >
+            PAST DUE
+          </div>
         )}
-      </div>
-    </td>
-  );
-  const renderConfirmedScheduleCell = (appointment) => (
-    <td style={tdStyle}>
-      <div style={{ fontWeight: 400, color: "#3f3f46" }}>
-        {formatDateTime(
-          appointment.scheduled_date || appointment.preferred_date,
+      </td>
+    );
+  };
+
+  const renderConfirmedScheduleCell = (appointment) => {
+    const pastDue = isPastDue(
+      appointment.scheduled_date || appointment.preferred_date,
+    );
+    return (
+      <td style={tdStyle}>
+        <div
+          style={{ fontWeight: 400, color: pastDue ? "#991b1b" : "#3f3f46" }}
+        >
+          {formatDateTime(
+            appointment.scheduled_date || appointment.preferred_date,
+          )}
+        </div>
+        {pastDue && appointment.status !== "completed" && (
+          <div
+            style={{
+              color: "#991b1b",
+              fontSize: 9.5,
+              fontWeight: 700,
+              marginTop: 4,
+              letterSpacing: "0.05em",
+            }}
+          >
+            PAST DUE
+          </div>
         )}
-      </div>
-    </td>
-  );
+      </td>
+    );
+  };
   const renderAddressCell = (appointment) => (
     <td style={{ ...tdStyle, minWidth: 190 }}>
       <div style={{ fontWeight: 400, color: "#3f3f46" }}>
@@ -1210,11 +1283,7 @@ export default function AppointmentScheduling() {
 
   return (
     <div
-      style={
-        isAdmin
-          ? adminPageStyle
-          : { fontFamily: "'Inter', sans-serif" }
-      }
+      style={isAdmin ? adminPageStyle : { fontFamily: "'Inter', sans-serif" }}
     >
       {isAdmin ? (
         <>
@@ -1277,9 +1346,9 @@ export default function AppointmentScheduling() {
             />
 
             <AdminSummaryCard
-              label="Awaiting Staff"
+              label="Reviewing Schedule"
               count={adminAwaitingAcceptance.length}
-              hint="Waiting for staff"
+              hint="Waiting for staff response"
             />
 
             <AdminSummaryCard
@@ -1388,7 +1457,7 @@ export default function AppointmentScheduling() {
               }
               onClick={() => setAdminActiveTab("awaiting")}
             >
-              Awaiting Staff
+              Reviewing Schedule
             </button>
 
             <button
@@ -1806,252 +1875,486 @@ export default function AppointmentScheduling() {
             <SectionCard
               id="manual-appointment-form"
               title="New Appointment"
-          subtitle="For walk-in, phone, or staff-created appointment requests."
-        >
-          <form onSubmit={handleManualSubmit}>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                gap: 16,
-              }}
+              subtitle="For walk-in, phone, or staff-created appointment requests."
             >
-              <div>
-                <label style={labelStyle}>Order ID (optional)</label>
-                <input
-                  style={inputStyle}
-                  type="number"
-                  min="1"
-                  value={form.order_id}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, order_id: e.target.value }))
-                  }
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Customer ID (optional)</label>
-                <input
-                  style={inputStyle}
-                  type="number"
-                  min="1"
-                  value={form.customer_id}
-                  onChange={(e) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      customer_id: e.target.value,
-                    }))
-                  }
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Staff (optional)</label>
-                <select
-                  style={inputStyle}
-                  value={form.assigned_staff_id}
-                  onChange={(e) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      assigned_staff_id: e.target.value,
-                    }))
-                  }
-                >
-                  <option value="">Not assigned yet</option>
-                  {assignedStaff.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label style={labelStyle}>
-                  Service <span style={{ color: "#ef4444" }}>*</span>
-                </label>
-                <select
-                  style={inputStyle}
-                  value={form.purpose}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, purpose: e.target.value }))
-                  }
-                  required
-                >
-                  <option value="installation">Installation</option>
-                  <option value="consultation">Consultation</option>
-                  <option value="site_measurement">Site Measurement</option>
-                </select>
-              </div>
-
-              <div>
-                <label style={labelStyle}>
-                  Date <span style={{ color: "#ef4444" }}>*</span>
-                </label>
-                <input
-                  style={inputStyle}
-                  type="date"
-                  min={getMinDateYMD()}
-                  value={
-                    form.scheduled_date ? form.scheduled_date.split("T")[0] : ""
-                  }
-                  onChange={(e) => {
-                    const selectedDate = e.target.value;
-                    const existingTime = form.scheduled_date
-                      ? form.scheduled_date.split("T")[1]?.substring(0, 5)
-                      : "";
-
-                    setForm((prev) => ({
-                      ...prev,
-                      scheduled_date: selectedDate
-                        ? `${selectedDate}T${existingTime || "09:00"}`
-                        : "",
-                    }));
-                  }}
-                  required
-                />
-              </div>
-
-              <div>
-                <label
+              <form onSubmit={handleManualSubmit}>
+                <div
                   style={{
-                    ...labelStyle,
-                    color: form.scheduled_date ? "#18181b" : "#a1a1aa",
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: 16,
                   }}
                 >
-                  Time <span style={{ color: "#ef4444" }}>*</span>
-                </label>
-                <select
-                  style={{
-                    ...inputStyle,
-                    background: form.scheduled_date ? "#ffffff" : "#fafafa",
-                    color: form.scheduled_date ? "#18181b" : "#a1a1aa",
-                    cursor: form.scheduled_date ? "pointer" : "not-allowed",
-                  }}
-                  value={
-                    form.scheduled_date
-                      ? form.scheduled_date.split("T")[1]?.substring(0, 5)
-                      : ""
-                  }
-                  onChange={(e) => {
-                    const d = form.scheduled_date
-                      ? form.scheduled_date.split("T")[0]
-                      : "";
-                    if (d) {
-                      setForm((prev) => ({
-                        ...prev,
-                        scheduled_date: `${d}T${e.target.value}`,
-                      }));
-                    }
-                  }}
-                  disabled={!form.scheduled_date}
-                  required
-                >
-                  <option value="" disabled>
-                    Select time...
-                  </option>
-                  {TIME_SLOTS.map((slot) => {
-                    const d = form.scheduled_date
-                      ? form.scheduled_date.split("T")[0]
-                      : "";
-                    let statusText = "Available";
-
-                    if (d) {
-                      const slotDateTime = new Date(`${d}T${slot}:00`);
-                      const isPast = slotDateTime < new Date();
-
-                      const dateObj = new Date(`${d}T00:00:00`);
-                      const isSunday = dateObj.getDay() === 0;
-
-                      const booking = (bookedSlots[d] || []).find(
-                        (b) => b.time === slot || b === slot,
-                      );
-
-                      if (isSunday) {
-                        statusText = "Closed";
-                      } else if (booking) {
-                        statusText =
-                          booking.status === "completed"
-                            ? "Completed"
-                            : "Booked";
-                      } else if (isPast) {
-                        statusText = "Past";
+                  <div>
+                    <label style={labelStyle}>Order ID (optional)</label>
+                    <input
+                      style={inputStyle}
+                      type="number"
+                      min="1"
+                      value={form.order_id}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          order_id: e.target.value,
+                        }))
                       }
-                    }
+                    />
+                  </div>
 
-                    return (
-                      <option
-                        key={slot}
-                        value={slot}
-                        disabled={statusText !== "Available"}
-                      >
-                        {formatTimeForDisplay(slot)} - {statusText}
+                  <div>
+                    <label style={labelStyle}>Customer ID (optional)</label>
+                    <input
+                      style={inputStyle}
+                      type="number"
+                      min="1"
+                      value={form.customer_id}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          customer_id: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}>Staff (optional)</label>
+                    <select
+                      style={inputStyle}
+                      value={form.assigned_staff_id}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          assigned_staff_id: e.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">Not assigned yet</option>
+                      {assignedStaff.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}>
+                      Service <span style={{ color: "#ef4444" }}>*</span>
+                    </label>
+                    <select
+                      style={inputStyle}
+                      value={form.purpose}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          purpose: e.target.value,
+                        }))
+                      }
+                      required
+                    >
+                      <option value="installation">Installation</option>
+                      <option value="consultation">Consultation</option>
+                      <option value="site_measurement">Site Measurement</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}>
+                      Date <span style={{ color: "#ef4444" }}>*</span>
+                    </label>
+                    <input
+                      style={inputStyle}
+                      type="date"
+                      min={getMinDateYMD()}
+                      value={
+                        form.scheduled_date
+                          ? form.scheduled_date.split("T")[0]
+                          : ""
+                      }
+                      onChange={(e) => {
+                        const selectedDate = e.target.value;
+                        const existingTime = form.scheduled_date
+                          ? form.scheduled_date.split("T")[1]?.substring(0, 5)
+                          : "";
+
+                        setForm((prev) => ({
+                          ...prev,
+                          scheduled_date: selectedDate
+                            ? `${selectedDate}T${existingTime || "09:00"}`
+                            : "",
+                        }));
+                      }}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      style={{
+                        ...labelStyle,
+                        color: form.scheduled_date ? "#18181b" : "#a1a1aa",
+                      }}
+                    >
+                      Time <span style={{ color: "#ef4444" }}>*</span>
+                    </label>
+                    <select
+                      style={{
+                        ...inputStyle,
+                        background: form.scheduled_date ? "#ffffff" : "#fafafa",
+                        color: form.scheduled_date ? "#18181b" : "#a1a1aa",
+                        cursor: form.scheduled_date ? "pointer" : "not-allowed",
+                      }}
+                      value={
+                        form.scheduled_date
+                          ? form.scheduled_date.split("T")[1]?.substring(0, 5)
+                          : ""
+                      }
+                      onChange={(e) => {
+                        const d = form.scheduled_date
+                          ? form.scheduled_date.split("T")[0]
+                          : "";
+                        if (d) {
+                          setForm((prev) => ({
+                            ...prev,
+                            scheduled_date: `${d}T${e.target.value}`,
+                          }));
+                        }
+                      }}
+                      disabled={!form.scheduled_date}
+                      required
+                    >
+                      <option value="" disabled>
+                        Select time...
                       </option>
-                    );
-                  })}
-                </select>
-              </div>
-            </div>
+                      {TIME_SLOTS.map((slot) => {
+                        const d = form.scheduled_date
+                          ? form.scheduled_date.split("T")[0]
+                          : "";
+                        let statusText = "Available";
 
-            <div style={{ marginTop: 20 }}>
-              <label style={labelStyle}>
-                Notes <span style={{ color: "#ef4444" }}>*</span>
-              </label>
-              <textarea
-                style={{
-                  ...inputStyle,
-                  minHeight: 120,
-                  resize: "vertical",
-                  fontFamily: "inherit",
+                        if (d) {
+                          const slotDateTime = new Date(`${d}T${slot}:00`);
+                          const isPast = slotDateTime < new Date();
+
+                          const dateObj = new Date(`${d}T00:00:00`);
+                          const isSunday = dateObj.getDay() === 0;
+
+                          const booking = (bookedSlots[d] || []).find(
+                            (b) => b.time === slot || b === slot,
+                          );
+
+                          if (isSunday) {
+                            statusText = "Closed";
+                          } else if (booking) {
+                            statusText =
+                              booking.status === "completed"
+                                ? "Completed"
+                                : "Booked";
+                          } else if (isPast) {
+                            statusText = "Past";
+                          }
+                        }
+
+                        return (
+                          <option
+                            key={slot}
+                            value={slot}
+                            disabled={statusText !== "Available"}
+                          >
+                            {formatTimeForDisplay(slot)} - {statusText}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 20 }}>
+                  <label style={labelStyle}>
+                    Notes <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
+                  <textarea
+                    style={{
+                      ...inputStyle,
+                      minHeight: 120,
+                      resize: "vertical",
+                      fontFamily: "inherit",
+                    }}
+                    value={form.notes}
+                    onChange={(e) =>
+                      setForm((prev) => ({ ...prev, notes: e.target.value }))
+                    }
+                    placeholder="Description, address, contact number, or customer notes"
+                    required
+                  />
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 16,
+                    padding: "10px 12px",
+                    borderRadius: 0,
+                    background: "#fafafa",
+                    border: "1px solid #e4e4e7",
+                    fontSize: 11.5,
+                    fontWeight: 400,
+                    color: "#6f7076",
+                    lineHeight: 1.45,
+                  }}
+                >
+                  Assigned staff must accept the appointment before it becomes
+                  confirmed.
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 24,
+                    display: "flex",
+                    gap: 12,
+                    flexWrap: "wrap",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  <button
+                    style={btnGhost}
+                    type="button"
+                    onClick={() => setShowForm(false)}
+                    disabled={loading}
+                  >
+                    Cancel
+                  </button>
+                  <button style={btnPrimary} type="submit" disabled={loading}>
+                    <Plus size={16} />
+                    {loading ? "Saving..." : "Save appointment"}
+                  </button>
+                </div>
+              </form>
+            </SectionCard>
+          </div>
+        </div>
+      )}
+
+      {rescheduleModal && (
+        <div
+          style={adminModalOverlayStyle}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !actionLoadingId) {
+              setRescheduleModal(null);
+            }
+          }}
+        >
+          <div
+            style={{ ...adminModalShellStyle, maxWidth: 480 }}
+            role="dialog"
+            aria-modal="true"
+          >
+            <button
+              type="button"
+              style={adminModalCloseStyle}
+              onClick={() => setRescheduleModal(null)}
+              disabled={actionLoadingId === rescheduleModal.id}
+            >
+              &times;
+            </button>
+
+            <SectionCard
+              title="Manage Appointment"
+              subtitle={`Update schedule or assign staff for ${formatRequestNumber(rescheduleModal.id)}.`}
+            >
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const newDateTime = `${rescheduleDate}T${rescheduleTime}`;
+
+                  const currentStaffId = String(
+                    rescheduleModal.assigned_staff_id ||
+                      rescheduleModal.assigned_to ||
+                      "",
+                  );
+                  const isDateChanged =
+                    newDateTime !==
+                    (rescheduleModal.scheduled_date ||
+                      rescheduleModal.preferred_date);
+                  const isStaffChanged = rescheduleStaffId !== currentStaffId;
+
+                  // Smart status transitions based on what was changed
+                  let newStatus = rescheduleModal.status;
+
+                  if (newStatus === "pending" && rescheduleStaffId) {
+                    newStatus = "awaiting_staff_acceptance";
+                  } else if (
+                    newStatus === "awaiting_staff_acceptance" &&
+                    !rescheduleStaffId
+                  ) {
+                    newStatus = "pending";
+                  } else if (
+                    newStatus === "confirmed" &&
+                    (isDateChanged || isStaffChanged)
+                  ) {
+                    newStatus = rescheduleStaffId
+                      ? "awaiting_staff_acceptance"
+                      : "pending";
+                  }
+
+                  const payload = {
+                    scheduled_date: newDateTime,
+                    preferred_date: newDateTime,
+                    status: newStatus,
+                    assigned_staff_id: rescheduleStaffId
+                      ? Number(rescheduleStaffId)
+                      : null,
+                  };
+
+                  await handleAction(
+                    rescheduleModal.id,
+                    payload,
+                    newStatus === "awaiting_staff_acceptance"
+                      ? "Appointment updated. Staff must accept."
+                      : "Appointment updated successfully.",
+                  );
+                  setRescheduleModal(null);
                 }}
-                value={form.notes}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, notes: e.target.value }))
-                }
-                placeholder="Description, address, contact number, or customer notes"
-                required
-              />
-            </div>
-
-            <div
-              style={{
-                marginTop: 16,
-                padding: "10px 12px",
-                borderRadius: 0,
-                background: "#fafafa",
-                border: "1px solid #e4e4e7",
-                fontSize: 11.5,
-                fontWeight: 400,
-                color: "#6f7076",
-                lineHeight: 1.45,
-              }}
-            >
-              Assigned staff must accept the appointment before it becomes confirmed.
-            </div>
-
-            <div
-              style={{
-                marginTop: 24,
-                display: "flex",
-                gap: 12,
-                flexWrap: "wrap",
-                justifyContent: "flex-end",
-              }}
-            >
-              <button
-                style={btnGhost}
-                type="button"
-                onClick={() => setShowForm(false)}
-                disabled={loading}
               >
-                Cancel
-              </button>
-              <button style={btnPrimary} type="submit" disabled={loading}>
-                <Plus size={16} />
-                {loading ? "Saving..." : "Save appointment"}
-              </button>
-            </div>
-          </form>
+                <div style={{ display: "grid", gap: 16 }}>
+                  <div>
+                    <label style={labelStyle}>
+                      Assign Staff{" "}
+                      {rescheduleModal.status === "pending" ? (
+                        "(Optional)"
+                      ) : (
+                        <span style={{ color: "#ef4444" }}>*</span>
+                      )}
+                    </label>
+                    <select
+                      style={inputStyle}
+                      value={rescheduleStaffId}
+                      onChange={(e) => setRescheduleStaffId(e.target.value)}
+                      required={rescheduleModal.status !== "pending"}
+                    >
+                      {rescheduleModal.status === "pending" ? (
+                        <option value="">Not assigned</option>
+                      ) : (
+                        <option value="" disabled>
+                          Select staff...
+                        </option>
+                      )}
+                      {assignedStaff.map((staff) => (
+                        <option key={staff.id} value={staff.id}>
+                          {staff.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}>
+                      Date <span style={{ color: "#ef4444" }}>*</span>
+                    </label>
+                    <input
+                      style={inputStyle}
+                      type="date"
+                      min={getMinDateYMD()}
+                      value={rescheduleDate}
+                      onChange={(e) => setRescheduleDate(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      style={{
+                        ...labelStyle,
+                        color: rescheduleDate ? "#18181b" : "#a1a1aa",
+                      }}
+                    >
+                      Time <span style={{ color: "#ef4444" }}>*</span>
+                    </label>
+                    <select
+                      style={{
+                        ...inputStyle,
+                        background: rescheduleDate ? "#ffffff" : "#fafafa",
+                        color: rescheduleDate ? "#18181b" : "#a1a1aa",
+                        cursor: rescheduleDate ? "pointer" : "not-allowed",
+                      }}
+                      value={rescheduleTime}
+                      onChange={(e) => setRescheduleTime(e.target.value)}
+                      disabled={!rescheduleDate}
+                      required
+                    >
+                      <option value="" disabled>
+                        Select time...
+                      </option>
+                      {TIME_SLOTS.map((slot) => {
+                        let statusText = "Available";
+                        if (rescheduleDate) {
+                          const slotDateTime = new Date(
+                            `${rescheduleDate}T${slot}:00`,
+                          );
+                          const isPast = slotDateTime < new Date();
+                          const dateObj = new Date(
+                            `${rescheduleDate}T00:00:00`,
+                          );
+                          const isSunday = dateObj.getDay() === 0;
+
+                          const booking = (
+                            bookedSlots[rescheduleDate] || []
+                          ).find((b) => b.time === slot || b === slot);
+
+                          if (isSunday) {
+                            statusText = "Closed";
+                          } else if (booking) {
+                            statusText =
+                              booking.status === "completed"
+                                ? "Completed"
+                                : "Booked";
+                          } else if (isPast) {
+                            statusText = "Past";
+                          }
+                        }
+
+                        return (
+                          <option
+                            key={slot}
+                            value={slot}
+                            disabled={statusText !== "Available"}
+                          >
+                            {formatTimeForDisplay(slot)} - {statusText}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 24,
+                    display: "flex",
+                    gap: 12,
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  <button
+                    style={btnGhost}
+                    type="button"
+                    onClick={() => setRescheduleModal(null)}
+                    disabled={actionLoadingId === rescheduleModal.id}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    style={btnPrimary}
+                    type="submit"
+                    disabled={actionLoadingId === rescheduleModal.id}
+                  >
+                    <Check size={14} />
+                    {actionLoadingId === rescheduleModal.id
+                      ? "Saving..."
+                      : "Save changes"}
+                  </button>
+                </div>
+              </form>
             </SectionCard>
           </div>
         </div>
@@ -2060,319 +2363,291 @@ export default function AppointmentScheduling() {
       {isAdmin && (
         <>
           {adminActiveTab === "new" && (
-          <SectionCard
-            title="New Requests"
-            subtitle="Requests that need review and staff assignment."
-          >
-            {filteredAdminNewRequests.length === 0 ? (
-              <p style={emptyStateStyle}>No appointments to show.</p>
-            ) : (
-              <div style={adminTableScrollStyle}>
-                <table style={tableStyle}>
-                  <thead>
-                    <tr style={thRowStyle}>
-                      <th style={thStyle}>Request</th>
-                      <th style={thStyle}>Customer</th>
-                      <th style={thStyle}>Service</th>
-                      <th style={thStyle}>Schedule</th>
-                      <th style={thStyle}>Location</th>
-                      <th style={thStyle}>Source</th>
-                      <th style={thStyle}>Staff</th>
-                      <th style={thStyle}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredAdminNewRequests.map((a) => (
-                      <tr
-                        key={a.id}
-                        id={`appointment-row-${a.id}`}
-                        style={
-                          focusedAppointmentId === a.id
-                            ? {
-                                ...trStyle,
-                                boxShadow: "inset 0 0 0 2px #0a0a0a",
-                              }
-                            : trStyle
-                        }
-                      >
-                        {renderRequestRefCell(a)}
-                        {renderCustomerCell(a)}
-                        {renderServiceCell(a)}
-                        {renderPreferredScheduleCell(a)}
-                        {renderAddressCell(a)}
-                        {renderRequestedByCell(a)}
-
-                        <td style={{ ...tdStyle, minWidth: 180 }}>
-                          <select
-                            style={inputStyle}
-                            value={assignmentDrafts[a.id] ?? ""}
-                            onChange={(e) =>
-                              setAssignmentDrafts((prev) => ({
-                                ...prev,
-                                [a.id]: e.target.value,
-                              }))
-                            }
-                          >
-                            <option value="">Select staff</option>
-                            {assignedStaff.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.name}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-
-                        <td style={tdStyle}>
-                          <div style={adminRowActionsStyle}>
-                            <button
-                              style={btnGhost}
-                              disabled={actionLoadingId === a.id}
-                              onClick={() => handleAssignStaff(a)}
-                            >
-                              <UserCheck size={14} /> Assign
-                            </button>
-
-                            <button
-                              style={btnDanger}
-                              disabled={actionLoadingId === a.id}
-                              onClick={() =>
-                                handleAction(
-                                  a.id,
-                                  { status: "rejected" },
-                                  "Appointment request rejected.",
-                                )
-                              }
-                            >
-                              <Ban size={14} /> Reject
-                            </button>
-                          </div>
-                        </td>
+            <SectionCard
+              title="New Requests"
+              subtitle="Requests that need review and staff assignment."
+            >
+              {filteredAdminNewRequests.length === 0 ? (
+                <p style={emptyStateStyle}>No appointments to show.</p>
+              ) : (
+                <div style={adminTableScrollStyle}>
+                  <table style={tableStyle}>
+                    <thead>
+                      <tr style={thRowStyle}>
+                        <th style={thStyle}>Request</th>
+                        <th style={thStyle}>Customer</th>
+                        <th style={thStyle}>Service</th>
+                        <th style={thStyle}>Schedule</th>
+                        <th style={thStyle}>Location</th>
+                        <th style={thStyle}>Source</th>
+                        <th style={thStyle}>Staff</th>
+                        <th style={thStyle}>Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </SectionCard>
+                    </thead>
+                    <tbody>
+                      {filteredAdminNewRequests.map((a) => (
+                        <tr
+                          key={a.id}
+                          id={`appointment-row-${a.id}`}
+                          style={
+                            focusedAppointmentId === a.id
+                              ? {
+                                  ...trStyle,
+                                  boxShadow: "inset 0 0 0 2px #0a0a0a",
+                                }
+                              : trStyle
+                          }
+                        >
+                          {renderRequestRefCell(a)}
+                          {renderCustomerCell(a)}
+                          {renderServiceCell(a)}
+                          {renderPreferredScheduleCell(a)}
+                          {renderAddressCell(a)}
+                          {renderRequestedByCell(a)}
+                          {renderAssignedStaffCell(a)}
+
+                          <td style={tdStyle}>
+                            <div style={adminRowActionsStyle}>
+                              <button
+                                style={btnGhost}
+                                disabled={actionLoadingId === a.id}
+                                onClick={() => openReschedule(a)}
+                              >
+                                <Calendar size={14} /> Manage
+                              </button>
+
+                              <button
+                                style={btnDanger}
+                                disabled={actionLoadingId === a.id}
+                                onClick={() =>
+                                  handleAction(
+                                    a.id,
+                                    { status: "rejected" },
+                                    "Appointment request rejected.",
+                                  )
+                                }
+                              >
+                                <Ban size={14} /> Reject
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </SectionCard>
           )}
 
           {adminActiveTab === "awaiting" && (
-          <SectionCard
-            title="Awaiting Staff Acceptance"
-            subtitle="Assigned requests waiting for staff response."
-          >
-            {filteredAdminAwaitingAcceptance.length === 0 ? (
-              <p style={emptyStateStyle}>
-                No appointments to show.
-              </p>
-            ) : (
-              <div style={adminTableScrollStyle}>
-                <table style={tableStyle}>
-                  <thead>
-                    <tr style={thRowStyle}>
-                      <th style={thStyle}>Request</th>
-                      <th style={thStyle}>Customer</th>
-                      <th style={thStyle}>Service</th>
-                      <th style={thStyle}>Schedule</th>
-                      <th style={thStyle}>Staff</th>
-                      <th style={thStyle}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredAdminAwaitingAcceptance.map((a) => (
-                      <tr
-                        key={a.id}
-                        id={`appointment-row-${a.id}`}
-                        style={
-                          focusedAppointmentId === a.id
-                            ? {
-                                ...trStyle,
-                                boxShadow: "inset 0 0 0 2px #0a0a0a",
-                              }
-                            : trStyle
-                        }
-                      >
-                        {renderRequestRefCell(a)}
-                        {renderCustomerCell(a)}
-                        {renderServiceCell(a)}
-                        {renderConfirmedScheduleCell(a)}
-                        <td style={{ ...tdStyle, minWidth: 180 }}>
-                          <select
-                            style={inputStyle}
-                            value={assignmentDrafts[a.id] ?? ""}
-                            onChange={(event) =>
-                              setAssignmentDrafts((prev) => ({
-                                ...prev,
-                                [a.id]: event.target.value,
-                              }))
-                            }
-                          >
-                            <option value="">Select staff</option>
-                            {assignedStaff.map((staff) => (
-                              <option key={staff.id} value={staff.id}>
-                                {staff.name}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-
-                        <td style={tdStyle}>
-                          <div style={adminRowActionsStyle}>
-                            <button
-                              style={btnGhost}
-                              disabled={actionLoadingId === a.id}
-                              onClick={() => handleAssignStaff(a)}
-                            >
-                              <UserCheck size={14} /> Reassign
-                            </button>
-
-                            <button
-                              style={btnDanger}
-                              disabled={actionLoadingId === a.id}
-                              onClick={() =>
-                                handleAction(
-                                  a.id,
-                                  { status: "rejected" },
-                                  "Appointment request rejected.",
-                                )
-                              }
-                            >
-                              <Ban size={14} /> Reject
-                            </button>
-                          </div>
-                        </td>
+            <SectionCard
+              title="Reviewing Schedule"
+              subtitle="Assigned requests waiting for staff response."
+            >
+              {filteredAdminAwaitingAcceptance.length === 0 ? (
+                <p style={emptyStateStyle}>No appointments to show.</p>
+              ) : (
+                <div style={adminTableScrollStyle}>
+                  <table style={tableStyle}>
+                    <thead>
+                      <tr style={thRowStyle}>
+                        <th style={thStyle}>Request</th>
+                        <th style={thStyle}>Customer</th>
+                        <th style={thStyle}>Service</th>
+                        <th style={thStyle}>Schedule</th>
+                        <th style={thStyle}>Staff</th>
+                        <th style={thStyle}>Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </SectionCard>
+                    </thead>
+                    <tbody>
+                      {filteredAdminAwaitingAcceptance.map((a) => (
+                        <tr
+                          key={a.id}
+                          id={`appointment-row-${a.id}`}
+                          style={
+                            focusedAppointmentId === a.id
+                              ? {
+                                  ...trStyle,
+                                  boxShadow: "inset 0 0 0 2px #0a0a0a",
+                                }
+                              : trStyle
+                          }
+                        >
+                          {renderRequestRefCell(a)}
+                          {renderCustomerCell(a)}
+                          {renderServiceCell(a)}
+                          {renderConfirmedScheduleCell(a)}
+                          {renderAssignedStaffCell(a)}
+
+                          <td style={tdStyle}>
+                            <div style={adminRowActionsStyle}>
+                              <button
+                                style={btnGhost}
+                                disabled={actionLoadingId === a.id}
+                                onClick={() => openReschedule(a)}
+                              >
+                                <Calendar size={14} /> Manage
+                              </button>
+
+                              <button
+                                style={btnDanger}
+                                disabled={actionLoadingId === a.id}
+                                onClick={() =>
+                                  handleAction(
+                                    a.id,
+                                    { status: "rejected" },
+                                    "Appointment request rejected.",
+                                  )
+                                }
+                              >
+                                <Ban size={14} /> Reject
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </SectionCard>
           )}
 
           {adminActiveTab === "confirmed" && (
-          <SectionCard
-            title="Confirmed Appointments"
-            subtitle="Accepted appointments currently active."
-          >
-            {filteredAdminConfirmedAppointments.length === 0 ? (
-              <p style={emptyStateStyle}>No appointments to show.</p>
-            ) : (
-              <div style={adminTableScrollStyle}>
-                <table style={tableStyle}>
-                  <thead>
-                    <tr style={thRowStyle}>
-                      <th style={thStyle}>Request</th>
-                      <th style={thStyle}>Customer</th>
-                      <th style={thStyle}>Service</th>
-                      <th style={thStyle}>Schedule</th>
-                      <th style={thStyle}>Location</th>
-                      <th style={thStyle}>Staff</th>
-                      <th style={thStyle}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredAdminConfirmedAppointments.map((a) => (
-                      <tr
-                        key={a.id}
-                        id={`appointment-row-${a.id}`}
-                        style={
-                          focusedAppointmentId === a.id
-                            ? {
-                                ...trStyle,
-                                boxShadow: "inset 0 0 0 2px #0a0a0a",
-                              }
-                            : trStyle
-                        }
-                      >
-                        {renderRequestRefCell(a)}
-                        {renderCustomerCell(a)}
-                        {renderServiceCell(a)}
-                        {renderConfirmedScheduleCell(a)}
-                        {renderAddressCell(a)}
-                        {renderAssignedStaffCell(a)}
-
-                        <td style={tdStyle}>
-                          <div style={adminRowActionsStyle}>
-                            <button
-                              style={btnDanger}
-                              disabled={actionLoadingId === a.id}
-                              onClick={() =>
-                                handleAction(
-                                  a.id,
-                                  { status: "cancelled" },
-                                  "Confirmed appointment cancelled.",
-                                )
-                              }
-                            >
-                              <Ban size={14} /> Cancel
-                            </button>
-                          </div>
-                        </td>
+            <SectionCard
+              title="Confirmed Appointments"
+              subtitle="Accepted appointments currently active."
+            >
+              {filteredAdminConfirmedAppointments.length === 0 ? (
+                <p style={emptyStateStyle}>No appointments to show.</p>
+              ) : (
+                <div style={adminTableScrollStyle}>
+                  <table style={tableStyle}>
+                    <thead>
+                      <tr style={thRowStyle}>
+                        <th style={thStyle}>Request</th>
+                        <th style={thStyle}>Customer</th>
+                        <th style={thStyle}>Service</th>
+                        <th style={thStyle}>Schedule</th>
+                        <th style={thStyle}>Location</th>
+                        <th style={thStyle}>Staff</th>
+                        <th style={thStyle}>Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </SectionCard>
+                    </thead>
+                    <tbody>
+                      {filteredAdminConfirmedAppointments.map((a) => (
+                        <tr
+                          key={a.id}
+                          id={`appointment-row-${a.id}`}
+                          style={
+                            focusedAppointmentId === a.id
+                              ? {
+                                  ...trStyle,
+                                  boxShadow: "inset 0 0 0 2px #0a0a0a",
+                                }
+                              : trStyle
+                          }
+                        >
+                          {renderRequestRefCell(a)}
+                          {renderCustomerCell(a)}
+                          {renderServiceCell(a)}
+                          {renderConfirmedScheduleCell(a)}
+                          {renderAddressCell(a)}
+                          {renderAssignedStaffCell(a)}
+
+                          <td style={tdStyle}>
+                            <div style={adminRowActionsStyle}>
+                              <button
+                                style={btnGhost}
+                                disabled={actionLoadingId === a.id}
+                                onClick={() => openReschedule(a)}
+                              >
+                                <Calendar size={14} /> Manage
+                              </button>
+
+                              <button
+                                style={btnDanger}
+                                disabled={actionLoadingId === a.id}
+                                onClick={() =>
+                                  handleAction(
+                                    a.id,
+                                    { status: "cancelled" },
+                                    "Confirmed appointment cancelled.",
+                                  )
+                                }
+                              >
+                                <Ban size={14} /> Cancel
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </SectionCard>
           )}
 
           {adminActiveTab === "history" && (
-          <SectionCard
-            title="Appointment History"
-            subtitle="Completed, rejected, and cancelled appointments."
-          >
-            {filteredAdminClosedAppointments.length === 0 ? (
-              <p style={emptyStateStyle}>No appointments to show.</p>
-            ) : (
-              <div style={adminTableScrollStyle}>
-                <table style={tableStyle}>
-                  <thead>
-                    <tr style={thRowStyle}>
-                      <th style={thStyle}>Request</th>
-                      <th style={thStyle}>Customer</th>
-                      <th style={thStyle}>Service</th>
-                      <th style={thStyle}>Schedule</th>
-                      <th style={thStyle}>Staff</th>
-                      <th style={thStyle}>Status</th>
-                      <th style={thStyle}>Updated</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredAdminClosedAppointments.map((a) => (
-                      <tr
-                        key={a.id}
-                        id={`appointment-row-${a.id}`}
-                        style={
-                          focusedAppointmentId === a.id
-                            ? {
-                                ...trStyle,
-                                boxShadow: "inset 0 0 0 2px #0a0a0a",
-                              }
-                            : trStyle
-                        }
-                      >
-                        {renderRequestRefCell(a)}
-                        {renderCustomerCell(a)}
-                        {renderServiceCell(a)}
-                        {renderConfirmedScheduleCell(a)}
-                        {renderAssignedStaffCell(a)}
-                        {renderStatusCell(a)}
-                        <td
-                          style={{ ...tdStyle, color: "#71717a", fontSize: 12 }}
-                        >
-                          {formatDateTime(a.updated_at)}
-                        </td>
+            <SectionCard
+              title="Appointment History"
+              subtitle="Completed, rejected, and cancelled appointments."
+            >
+              {filteredAdminClosedAppointments.length === 0 ? (
+                <p style={emptyStateStyle}>No appointments to show.</p>
+              ) : (
+                <div style={adminTableScrollStyle}>
+                  <table style={tableStyle}>
+                    <thead>
+                      <tr style={thRowStyle}>
+                        <th style={thStyle}>Request</th>
+                        <th style={thStyle}>Customer</th>
+                        <th style={thStyle}>Service</th>
+                        <th style={thStyle}>Schedule</th>
+                        <th style={thStyle}>Staff</th>
+                        <th style={thStyle}>Status</th>
+                        <th style={thStyle}>Updated</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </SectionCard>
+                    </thead>
+                    <tbody>
+                      {filteredAdminClosedAppointments.map((a) => (
+                        <tr
+                          key={a.id}
+                          id={`appointment-row-${a.id}`}
+                          style={
+                            focusedAppointmentId === a.id
+                              ? {
+                                  ...trStyle,
+                                  boxShadow: "inset 0 0 0 2px #0a0a0a",
+                                }
+                              : trStyle
+                          }
+                        >
+                          {renderRequestRefCell(a)}
+                          {renderCustomerCell(a)}
+                          {renderServiceCell(a)}
+                          {renderConfirmedScheduleCell(a)}
+                          {renderAssignedStaffCell(a)}
+                          {renderStatusCell(a)}
+                          <td
+                            style={{
+                              ...tdStyle,
+                              color: "#71717a",
+                              fontSize: 12,
+                            }}
+                          >
+                            {formatDateTime(a.updated_at)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </SectionCard>
           )}
-
         </>
       )}
 
@@ -2498,11 +2773,15 @@ export default function AppointmentScheduling() {
                         <button
                           type="button"
                           style={
-                            actionLoadingId === a.id
+                            actionLoadingId === a.id ||
+                            isPastDue(a.preferred_date || a.scheduled_date)
                               ? indoorDisabledButton
                               : indoorPrimaryButton
                           }
-                          disabled={actionLoadingId === a.id}
+                          disabled={
+                            actionLoadingId === a.id ||
+                            isPastDue(a.preferred_date || a.scheduled_date)
+                          }
                           onClick={() =>
                             handleAction(
                               a.id,
