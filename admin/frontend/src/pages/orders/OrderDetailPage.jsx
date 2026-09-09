@@ -5,6 +5,7 @@ import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
 import AdminSubmittedDesignPreview from "./AdminSubmittedDesignPreview";
 import OrderDiscussionPanel from "./OrderDiscussionPanel";
+import { exportOrderCompletionReportPdf } from "./OrderCompletionReport";
 import "../../components/motion-feedback.css";
 
 const parseMapCoordinate = (value) => {
@@ -1561,6 +1562,23 @@ export default function OrderDetailPage() {
               </>
             )}
 
+            {normalizedOrderStatus === "completed" && (
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    exportOrderCompletionReportPdf(order);
+                  } catch (error) {
+                    toast.error(
+                      error?.message || "Failed to export completion report.",
+                    );
+                  }
+                }}
+                style={btnPrimary}
+              >
+                Export Completion PDF
+              </button>
+            )}
             {shouldShowStatusButton && (
               <button
                 onClick={() => {
