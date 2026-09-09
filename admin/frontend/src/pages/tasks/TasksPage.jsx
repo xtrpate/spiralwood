@@ -3,6 +3,7 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../services/api";
 import toast from "react-hot-toast";
+import { exportTaskAssignmentsReportPdf } from "./TaskAssignmentsReportPdf";
 import useAuthStore from "../../store/authStore";
 
 const PRIORITY_ROLES = [
@@ -677,6 +678,36 @@ export default function TasksPage() {
     dueTo,
   ]);
 
+  const handleExportTaskAssignmentsPdf = () => {
+    const selectedStaff =
+      filterStaff === "all"
+        ? null
+        : productionStaffOptions.find(
+            (person) => String(person.id) === String(filterStaff),
+          );
+
+    try {
+      exportTaskAssignmentsReportPdf({
+        orders: filteredOrders,
+        requiredStepCount: REQUIRED_PRODUCTION_ROLES.length,
+        filters: {
+          search: search.trim(),
+          status: filterStatus,
+          staffLabel:
+            filterStaff === "all"
+              ? "All"
+              : selectedStaff?.name || String(filterStaff),
+          dueFrom,
+          dueTo,
+        },
+      });
+    } catch (exportError) {
+      toast.error(
+        exportError?.message || "Failed to export task assignment report.",
+      );
+    }
+  };
+
   const stats = {
     total: productionOrderGroups.length,
     pending: productionOrderGroups.filter(
@@ -1194,6 +1225,28 @@ export default function TasksPage() {
             aria-label="Due date to"
             title="Due date to"
           />
+
+          <button
+            type="button"
+            style={{
+              ...S.btn,
+              ...S.btnGray,
+              opacity: loading || filteredOrders.length === 0 ? 0.55 : 1,
+              cursor:
+                loading || filteredOrders.length === 0
+                  ? "not-allowed"
+                  : "pointer",
+            }}
+            onClick={handleExportTaskAssignmentsPdf}
+            disabled={loading || filteredOrders.length === 0}
+            title={
+              filteredOrders.length === 0
+                ? "No production orders match the current filters"
+                : "Export the currently filtered production orders as PDF"
+            }
+          >
+            Export Task PDF
+          </button>
 
           <button
             type="button"
