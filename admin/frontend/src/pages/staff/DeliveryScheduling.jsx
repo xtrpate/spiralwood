@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import api from "../../services/api";
+import { exportDeliveryActivityReportPdf } from "./DeliveryReportPdf";
 import {
   Plus,
   Search,
@@ -9,6 +10,7 @@ import {
   CheckCircle2,
   CircleX,
   RotateCcw,
+  FileDown,
 } from "lucide-react";
 
 // WISDOM DELIVERY SCHEDULING PROFESSIONAL UI POLISH V1.0.1
@@ -368,6 +370,29 @@ export default function DeliveryScheduling() {
     statusFilter !== "all" ||
     riderFilter !== "all" ||
     Boolean(dateFilter);
+
+  const handleExportDeliveryPdf = () => {
+    setError("");
+
+    try {
+      exportDeliveryActivityReportPdf({
+        deliveries: filteredDeliveries.map((delivery) => ({
+          ...delivery,
+          report_status: getDeliveryAttemptStatus(delivery),
+        })),
+        filters: {
+          search: deliverySearch.trim(),
+          status: statusFilter,
+          rider: riderFilter,
+          scheduledDate: dateFilter,
+        },
+      });
+    } catch (exportError) {
+      setError(
+        exportError?.message || "Failed to export delivery activity report.",
+      );
+    }
+  };
 
   const validateForm = () => {
     const nextErrors = {};
@@ -746,18 +771,53 @@ export default function DeliveryScheduling() {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            setError("");
-            setSuccess("");
-            setShowForm(true);
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexWrap: "wrap",
           }}
-          style={btnPrimary}
         >
-          <Plus size={16} />
-          Schedule delivery
-        </button>
+          <button
+            type="button"
+            onClick={handleExportDeliveryPdf}
+            disabled={listLoading || filteredDeliveries.length === 0}
+            style={{
+              ...btnPrimary,
+              background: "#ffffff",
+              color: "#18181b",
+              border: "1px solid #d4d4d8",
+              opacity:
+                listLoading || filteredDeliveries.length === 0 ? 0.55 : 1,
+              cursor:
+                listLoading || filteredDeliveries.length === 0
+                  ? "not-allowed"
+                  : "pointer",
+            }}
+            title={
+              filteredDeliveries.length === 0
+                ? "No delivery records match the current filters"
+                : "Export the currently filtered delivery records as PDF"
+            }
+          >
+            <FileDown size={16} />
+            Export Delivery PDF
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setError("");
+              setSuccess("");
+              setShowForm(true);
+            }}
+            style={btnPrimary}
+          >
+            <Plus size={16} />
+            Schedule delivery
+          </button>
+        </div>
       </div>
 
       {success && (
