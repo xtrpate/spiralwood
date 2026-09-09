@@ -25,6 +25,20 @@ const formatMoney = (value) =>
     maximumFractionDigits: 2,
   })}`;
 
+const getVatInclusiveBreakdown = (grossValue) => {
+  const gross = Number(grossValue || 0);
+  const totalCents = Number.isFinite(gross)
+    ? Math.max(0, Math.round((gross + Number.EPSILON) * 100))
+    : 0;
+  const vatableCents = Math.round(totalCents / 1.12);
+
+  return {
+    vatableSales: vatableCents / 100,
+    vatAmount: (totalCents - vatableCents) / 100,
+    total: totalCents / 100,
+  };
+};
+
 const formatReceiptDate = (value) => {
   if (!value) return "—";
 
@@ -123,6 +137,7 @@ export default function CustomerStandardReceiptPage() {
   const items = Array.isArray(receipt.items)
     ? receipt.items
     : [];
+  const vatBreakdown = getVatInclusiveBreakdown(receipt.total_amount);
 
   return (
     <div className="customer-receipt-page-v172 customer-receipt-v180">
@@ -315,8 +330,18 @@ export default function CustomerStandardReceiptPage() {
             </div>
 
             <div className="total-row">
-              <span>Order total</span>
-              <span>{formatMoney(receipt.total_amount)}</span>
+              <span>VATable Sales</span>
+              <span>{formatMoney(vatBreakdown.vatableSales)}</span>
+            </div>
+
+            <div className="total-row">
+              <span>VAT (12%)</span>
+              <span>{formatMoney(vatBreakdown.vatAmount)}</span>
+            </div>
+
+            <div className="total-row grand">
+              <span>TOTAL</span>
+              <span>{formatMoney(vatBreakdown.total)}</span>
             </div>
 
             <div className="total-row customer-payment-received-v172 customer-payment-received-v180">

@@ -93,12 +93,8 @@ const NAV_ITEMS = [
     icon: "↩️",
     roles: ["admin"],
   },
-  {
-    label: "POS QR Recovery",
-    path: "/admin/pos-qr-recovery",
-    icon: "💳",
-    roles: ["admin"],
-  },
+  // POS QR Recovery remains routed and functional, but is intentionally
+  // hidden from the Admin sidebar for the current evaluation build.
 
   { section: "Operations" },
   {

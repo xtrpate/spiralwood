@@ -15,6 +15,9 @@ const {
   createNotification,
   createNotificationSafe,
 } = require("../../utils/notificationHelper");
+const {
+  sendCustomerMilestoneNotificationSafe,
+} = require("../../services/customerMilestoneNotificationService");
 
 const {
   resolveLifecycleByOrder,
@@ -1367,6 +1370,12 @@ exports.rescheduleDelivery = async (req, res) => {
       });
     }
 
+    await sendCustomerMilestoneNotificationSafe(db, {
+      orderId: sourceDelivery.order_id,
+      event: "redelivery_scheduled",
+      scheduledDate,
+    });
+
     res.status(201).json({
       message: "Delivery rescheduled successfully.",
       delivery,
@@ -2377,6 +2386,21 @@ exports.updateDeliveryStatus = async (req, res) => {
     );
 
     await conn.commit();
+
+    const externalMilestoneEvent = isFailureUpdate
+      ? "delivery_failed"
+      : isStartingTransitNow
+        ? "out_for_delivery"
+        : isCompletingDeliveryNow
+          ? "delivered"
+          : null;
+
+    if (externalMilestoneEvent) {
+      await sendCustomerMilestoneNotificationSafe(db, {
+        orderId: existing.order_id,
+        event: externalMilestoneEvent,
+      });
+    }
 
     // PHASE 5 -- dedicated audit for the blueprint rider cash collection,
     // written only after the transaction has actually committed. Kept
