@@ -554,6 +554,7 @@ router.get("/sales/report/print", adminStaff, sales.getPrintData);
 // WARRANTY
 // ══════════════════════════════════════════════════════════════════════════════
 router.get("/warranty", adminOnly, warrantyController.getClaims);
+router.get("/warranty/:id/resolution-options", adminOnly, warrantyController.getResolutionOptions);
 
 router.patch(
   "/warranty/:id/decision",

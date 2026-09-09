@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
 import "./WarrantyPage.css";
+import WarrantyResolutionModal from "./WarrantyResolutionModal";
 
 const STATUS_META = {
   pending: {
@@ -193,24 +194,23 @@ export default function WarrantyPage() {
     }
   };
 
-  const handleFulfill = async ({ id, file }) => {
-    try {
-      const formData = new FormData();
-      formData.append("replacement_receipt", file);
+  const handleFulfill = async ({ id, file, resolution_type, resolution_notes, replacement_source, return_disposition, materials }) => {
+    const formData = new FormData();
+    formData.append("replacement_receipt", file);
+    formData.append("resolution_type", resolution_type);
+    formData.append("resolution_notes", resolution_notes || "");
+    formData.append("replacement_source", replacement_source || "");
+    formData.append("return_disposition", return_disposition || "not_returned");
+    formData.append("materials_json", JSON.stringify(materials || []));
 
-      await api.patch(`/warranty/${id}/fulfill`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+    await api.patch(`/warranty/${id}/fulfill`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
 
-      toast.success("Warranty claim marked as fulfilled.");
-      setFulfillTarget(null);
-      setSelectedRow(null);
-      loadClaims();
-    } catch (err) {
-      toast.error(
-        err?.response?.data?.message || "Failed to mark claim as fulfilled.",
-      );
-    }
+    toast.success("Warranty claim resolved and fulfilled.");
+    setFulfillTarget(null);
+    setSelectedRow(null);
+    await loadClaims();
   };
 
   const activeFilterCount = [search, statusFilter].filter(Boolean).length;
@@ -747,64 +747,8 @@ function DecisionModal({ row, decision, onClose, onSubmit }) {
 }
 
 function FulfillModal({ row, onClose, onSubmit }) {
-  const [file, setFile] = useState(null);
-
   return (
-    <div style={overlay}>
-      <div style={smallModal} className="warranty-small-modal">
-        <div style={modalHeader} className="warranty-modal-header">
-          <div>
-            <div style={modalEyebrow}>Fulfillment</div>
-            <h3 style={modalTitle}>Upload Fulfillment Proof</h3>
-            <div style={modalSubline}>
-              {row.order_number || `Order #${row.order_id}`} ·{" "}
-              {row.product_name}
-            </div>
-          </div>
-
-          <button onClick={onClose} style={closeBtn}>
-            ✕
-          </button>
-        </div>
-
-        <div
-          style={{ ...panel, margin: 22, marginBottom: 14 }}
-          className="warranty-panel"
-        >
-          <div style={panelTitle}>Fulfillment Proof</div>
-          <input
-            type="file"
-            accept=".jpg,.jpeg,.png,.webp,.pdf"
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
-            style={fileInput}
-            className="warranty-file-input"
-          />
-          <div style={helperText}>
-            Upload the document or image used to close this approved warranty
-            claim.
-          </div>
-        </div>
-
-        <div style={modalFooter} className="warranty-modal-footer">
-          <button onClick={onClose} style={ghostButton}>
-            Cancel
-          </button>
-          <button
-            onClick={() => {
-              if (!file) {
-                toast.error("Please upload the replacement receipt first.");
-                return;
-              }
-              onSubmit({ id: row.id, file });
-            }}
-            style={fulfillBtn}
-            className="warranty-claim-action warranty-fulfill-btn"
-          >
-            Save Fulfillment
-          </button>
-        </div>
-      </div>
-    </div>
+    <WarrantyResolutionModal row={row} onClose={onClose} onSubmit={onSubmit} />
   );
 }
 

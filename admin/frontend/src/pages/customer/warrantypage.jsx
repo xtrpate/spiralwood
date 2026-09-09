@@ -104,7 +104,8 @@ export default function WarrantyPage() {
 
   const [orderId, setOrderId] = useState("");
   const [orderNumber, setOrderNumber] = useState("");
-  const [productName, setProductName] = useState("");
+  const [selectedOrderItemId, setSelectedOrderItemId] = useState("");
+  const [claimQuantity, setClaimQuantity] = useState("1");
   const [products, setProducts] = useState([]);
   const [description, setDescription] = useState("");
   const [photoFile, setPhotoFile] = useState(null);
@@ -153,23 +154,7 @@ export default function WarrantyPage() {
     }
   };
 
-  const visibleOrders = useMemo(() => {
-    const claimedOrderIds = new Set(
-      claims
-        .filter(
-          (claim) =>
-            String(claim.status || "")
-              .trim()
-              .toLowerCase() !== "cancelled",
-        )
-        .map((claim) => String(claim.order_id || "").trim())
-        .filter(Boolean),
-    );
-
-    return orders.filter(
-      (order) => !claimedOrderIds.has(String(order.id || "").trim()),
-    );
-  }, [orders, claims]);
+  const visibleOrders = orders;
 
   const hasEligibleOrders = visibleOrders.length > 0;
 
@@ -205,7 +190,8 @@ export default function WarrantyPage() {
       : JSON.parse(found?.products || "[]");
 
     setProducts(orderProducts);
-    setProductName("");
+    setSelectedOrderItemId("");
+    setClaimQuantity("1");
   };
 
   const handleSubmit = async (e) => {
@@ -217,8 +203,14 @@ export default function WarrantyPage() {
       return;
     }
 
-    if (!productName.trim()) {
-      setFormError("Please enter the product name.");
+    const selectedItem = products.find((item) => String(item.order_item_id) === String(selectedOrderItemId));
+    if (!selectedItem) {
+      setFormError("Please select the exact affected item from the order.");
+      return;
+    }
+    const claimQty = Number(claimQuantity);
+    if (!Number.isInteger(claimQty) || claimQty < 1 || claimQty > Number(selectedItem.quantity || 1)) {
+      setFormError(`Claim quantity must be between 1 and ${Number(selectedItem.quantity || 1)}.`);
       return;
     }
 
@@ -238,7 +230,8 @@ export default function WarrantyPage() {
     }
 
     const formData = new FormData();
-    formData.append("product_name", productName.trim());
+    formData.append("order_item_id", selectedOrderItemId);
+    formData.append("claim_quantity", String(claimQty));
     formData.append("description", description.trim());
     formData.append("photo", photoFile);
     formData.append("proof", proofFile);
@@ -255,11 +248,6 @@ export default function WarrantyPage() {
 
       await Promise.all([fetchClaims(), fetchOrders()]);
 
-      if (orderId) {
-        setOrders((prev) =>
-          prev.filter((order) => String(order.id) !== String(orderId)),
-        );
-      }
 
       setSubmitted(true);
       setFormError("");
@@ -276,7 +264,8 @@ export default function WarrantyPage() {
   const resetForm = async () => {
     setOrderId("");
     setOrderNumber("");
-    setProductName("");
+    setSelectedOrderItemId("");
+    setClaimQuantity("1");
     setDescription("");
     setPhotoFile(null);
     setProofFile(null);
@@ -672,8 +661,8 @@ export default function WarrantyPage() {
                             <div className="wselect-wrap">
                               <select
                                 className="winput wselect"
-                                value={productName}
-                                onChange={(e) => setProductName(e.target.value)}
+                                value={selectedOrderItemId}
+                                onChange={(e) => { setSelectedOrderItemId(e.target.value); setClaimQuantity("1"); }}
                               >
                                 <option value="">
                                   Select the affected product
@@ -681,16 +670,32 @@ export default function WarrantyPage() {
 
                                 {products.map((item) => (
                                   <option
-                                    key={item.product_id}
-                                    value={item.product_name}
+                                    key={item.order_item_id}
+                                    value={item.order_item_id}
                                   >
-                                    {item.product_name}
+                                    {item.product_name} — Qty {item.quantity}
                                   </option>
                                 ))}
                               </select>
 
                               <ChevronDown size={15} className="wselect-icon" />
                             </div>
+                          </div>
+
+                          <div className="wfield">
+                            <label className="wlabel">
+                              Claim quantity <span className="wrequired">*</span>
+                            </label>
+                            <input
+                              className="winput"
+                              type="number"
+                              min="1"
+                              max={Number(products.find((item) => String(item.order_item_id) === String(selectedOrderItemId))?.quantity || 1)}
+                              step="1"
+                              value={claimQuantity}
+                              onChange={(e) => setClaimQuantity(e.target.value)}
+                              disabled={!selectedOrderItemId}
+                            />
                           </div>
 
                           <div className="wfield">
