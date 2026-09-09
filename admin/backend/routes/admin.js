@@ -18,6 +18,7 @@ const auth = require("../controllers/admin/authController");
 const dashboard = require("../controllers/admin/dashboardController");
 const products = require("../controllers/admin/productController");
 const inventory = require("../controllers/admin/inventoryController");
+const inventoryReport = require("../controllers/admin/inventoryReportController");
 const physicalInventory = require("../controllers/admin/physicalInventoryController");
 const stockTransfers = require("../controllers/admin/stockTransferController");
 const blueprints = require("../controllers/admin/blueprintController");
@@ -220,6 +221,7 @@ router.post(
   inventory.createRawMaterialCategory,
 );
 router.get("/inventory/raw", adminStaff, inventory.getRawMaterials);
+router.get("/inventory/report", adminOnly, inventoryReport.getInventoryReport);
 router.post(
   "/inventory/raw",
   adminOnly,

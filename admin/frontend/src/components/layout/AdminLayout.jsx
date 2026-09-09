@@ -150,6 +150,12 @@ const NAV_ITEMS = [
 
   { section: "Reports" },
   {
+    label: "Inventory Report",
+    path: "/admin/reports/current-inventory",
+    icon: "📦",
+    roles: ["admin"],
+  },
+  {
     label: "Sales Report",
     path: "/admin/sales",
     icon: "📈",

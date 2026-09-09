@@ -39,6 +39,7 @@ import OrdersPage from "./pages/orders/OrdersPage";
 import OrderDetailPage from "./pages/orders/OrderDetailPage";
 import CancellationsPage from "./pages/orders/CancellationsPage";
 import SalesReportPage from "./pages/sales/SalesReportPage";
+import CurrentInventoryReportPage from "./pages/reports/CurrentInventoryReportPage";
 import WarrantyPage from "./pages/warranty/WarrantyPage";
 import CustomersPage from "./pages/customers/CustomersPage";
 import UsersPage from "./pages/users/UsersPage";
@@ -543,6 +544,10 @@ export default function App() {
                   element={<CancellationsPage />}
                 />
 
+                <Route
+                  path="reports/current-inventory"
+                  element={<CurrentInventoryReportPage />}
+                />
                 <Route path="sales" element={<SalesReportPage />} />
                 <Route path="pos-qr-recovery" element={<PosQrRecoveryPage />} />
                 <Route path="warranty" element={<WarrantyPage />} />
