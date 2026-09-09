@@ -156,6 +156,12 @@ const NAV_ITEMS = [
     roles: ["admin"],
   },
   {
+    label: "Stock In Report",
+    path: "/admin/reports/daily-stock-in",
+    icon: "📥",
+    roles: ["admin"],
+  },
+  {
     label: "Sales Report",
     path: "/admin/sales",
     icon: "📈",
