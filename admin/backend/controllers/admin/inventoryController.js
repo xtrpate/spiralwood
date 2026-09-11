@@ -585,8 +585,8 @@ exports.getRawMaterials = async (req, res) => {
        WHERE ${where.join(" AND ")}
        ORDER BY
          rm.is_active DESC,
-         rm.created_at ASC,
-         rm.id ASC
+         rm.created_at DESC,
+         rm.id DESC
        LIMIT ? OFFSET ?`,
       [...params, limitNumber, offset],
     );
@@ -825,6 +825,213 @@ exports.createRawMaterial = async (req, res) => {
   } catch (err) {
     await conn.rollback();
     return res.status(500).json({ message: err.message });
+  } finally {
+    conn.release();
+  }
+};
+
+// WISDOM ZIP 2 - BULK RAW MATERIAL CREATION
+exports.createRawMaterialsBulk = async (req, res) => {
+  const conn = await pool.getConnection();
+
+  const fail = (message, status = 400, rowIndex = null, extra = {}) => {
+    const error = new Error(message);
+    error.status = status;
+    error.rowIndex = rowIndex;
+    error.extra = extra;
+    throw error;
+  };
+
+  try {
+    const materials = req.body?.materials;
+    if (!Array.isArray(materials) || materials.length === 0) {
+      return res.status(400).json({ message: "Add at least one raw material." });
+    }
+    if (materials.length > 50) {
+      return res.status(400).json({ message: "You can add up to 50 raw materials at a time." });
+    }
+
+    await conn.beginTransaction();
+    const created = [];
+
+    for (let index = 0; index < materials.length; index += 1) {
+      const input = materials[index] || {};
+      const rowNumber = index + 1;
+      const prefix = materials.length > 1 ? `Material ${rowNumber}: ` : "";
+
+      const {
+        name,
+        category_id = null,
+        unit,
+        material_form = "other",
+        length_mm = null,
+        width_mm = null,
+        thickness_mm = null,
+        reorder_point = 0,
+        safety_stock = 0,
+        lead_time_days = 0,
+        unit_cost = 0,
+        supplier_id = null,
+      } = input;
+
+      const reorderPoint = Number(reorder_point);
+      const safetyStock = Number(safety_stock);
+      const leadTime = Number(lead_time_days);
+      const unitCost = Number(unit_cost);
+      const physicalSpec = buildRawMaterialPhysicalSpec({
+        material_form,
+        length_mm,
+        width_mm,
+        thickness_mm,
+      });
+
+      if (!name || !String(name).trim()) {
+        fail(`${prefix}Material name is required.`, 400, index);
+      }
+      if (!unit || !String(unit).trim()) {
+        fail(`${prefix}Unit is required.`, 400, index);
+      }
+      if (physicalSpec.error) {
+        fail(`${prefix}${physicalSpec.error}`, 400, index);
+      }
+      if (
+        [reorderPoint, safetyStock, unitCost].some(
+          (value) => !Number.isFinite(value) || value < 0,
+        ) ||
+        !Number.isInteger(leadTime) ||
+        leadTime < 0
+      ) {
+        fail(
+          `${prefix}Reorder point, safety stock, and supplier price must be non-negative numbers. Lead time must be a whole number of days.`,
+          400,
+          index,
+        );
+      }
+      if (
+        ![reorder_point, safety_stock].every((value) =>
+          hasValidQuantityPrecisionForUnit(value, unit),
+        )
+      ) {
+        fail(`${prefix}${quantityRuleMessage(unit)}`, 400, index);
+      }
+      if (!hasAtMostTwoDecimalPlaces(unit_cost)) {
+        fail(`${prefix}Supplier price can have up to 2 decimal places.`, 400, index);
+      }
+      if (!hasWholeNumberFormat(lead_time_days)) {
+        fail(`${prefix}Lead time must be a whole number of days.`, 400, index);
+      }
+      if (!isValidNonNegativeInteger(category_id) || Number(category_id) <= 0) {
+        fail(`${prefix}Select a raw material category.`, 400, index);
+      }
+
+      const rawCategory = await getRawMaterialCategoryById(conn, category_id);
+      if (!rawCategory) {
+        fail(`${prefix}Select a valid raw material category.`, 400, index);
+      }
+
+      let supplierId = null;
+      if (supplier_id !== null && supplier_id !== undefined && supplier_id !== "") {
+        if (!isValidNonNegativeInteger(supplier_id) || Number(supplier_id) <= 0) {
+          fail(`${prefix}Supplier must be a valid selection.`, 400, index);
+        }
+        supplierId = Number(supplier_id);
+        const [[supplier]] = await conn.query(
+          "SELECT id FROM suppliers WHERE id = ? LIMIT 1",
+          [supplierId],
+        );
+        if (!supplier) {
+          fail(`${prefix}Selected supplier no longer exists.`, 400, index);
+        }
+      }
+
+      const duplicate = await findDuplicateRawMaterial(conn, {
+        name,
+        unit,
+        materialForm: physicalSpec.materialForm,
+        lengthMm: physicalSpec.lengthMm,
+        widthMm: physicalSpec.widthMm,
+        thicknessMm: physicalSpec.thicknessMm,
+      });
+      if (duplicate) {
+        fail(
+          `${prefix}${duplicateRawMaterialMessage(duplicate)}`,
+          409,
+          index,
+          {
+            duplicate_material_id: duplicate.id,
+            duplicate_is_active: Number(duplicate.is_active) === 1,
+          },
+        );
+      }
+
+      const quantity = 0;
+      const status = computeStockStatus(quantity, reorderPoint, safetyStock);
+      const [materialResult] = await conn.query(
+        `INSERT INTO raw_materials
+           (name, category_id, unit, material_form, length_mm, width_mm, thickness_mm,
+            quantity, reorder_point, safety_stock, lead_time_days, unit_cost, supplier_id, stock_status)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [
+          String(name).trim(),
+          Number(category_id),
+          String(unit).trim(),
+          physicalSpec.materialForm,
+          physicalSpec.lengthMm,
+          physicalSpec.widthMm,
+          physicalSpec.thicknessMm,
+          quantity,
+          reorderPoint,
+          safetyStock,
+          leadTime,
+          unitCost,
+          supplierId,
+          status,
+        ],
+      );
+
+      created.push({
+        id: materialResult.insertId,
+        name: String(name).trim(),
+        category_id: Number(category_id),
+        unit: String(unit).trim(),
+        material_form: physicalSpec.materialForm,
+        quantity,
+        reorder_point: reorderPoint,
+        safety_stock: safetyStock,
+        lead_time_days: leadTime,
+        unit_cost: unitCost,
+        supplier_id: supplierId,
+        stock_status: status,
+      });
+    }
+
+    await conn.commit();
+
+    req.auditRecord = {
+      id: created[0]?.id || null,
+      old: null,
+      new: {
+        bulk_create: true,
+        created_count: created.length,
+        materials: created,
+      },
+    };
+
+    return res.status(201).json({
+      message: `${created.length} raw material${created.length === 1 ? "" : "s"} created. Add physical stock through Stock Movements.`,
+      created_count: created.length,
+      materials: created,
+    });
+  } catch (error) {
+    await conn.rollback();
+    const status = Number(error?.status) || 500;
+    return res.status(status).json({
+      message: error?.message || "Bulk raw material creation failed.",
+      ...(Number.isInteger(error?.rowIndex)
+        ? { row_index: error.rowIndex, row_number: error.rowIndex + 1 }
+        : {}),
+      ...(error?.extra || {}),
+    });
   } finally {
     conn.release();
   }

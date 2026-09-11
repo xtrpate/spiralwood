@@ -249,6 +249,12 @@ router.post(
   logAction("create_raw_material", "raw_materials"),
   inventory.createRawMaterial,
 );
+router.post(
+  "/inventory/raw/bulk",
+  adminOnly,
+  logAction("create_raw_material_bulk", "raw_materials"),
+  inventory.createRawMaterialsBulk,
+);
 router.put(
   "/inventory/raw/:id",
   adminOnly,
