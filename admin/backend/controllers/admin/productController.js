@@ -340,6 +340,7 @@ exports.getAll = async (req, res) => {
       status,
       category_id,
       featured,
+      sort,
       page = 1,
       limit = 20,
     } = req.query;
@@ -391,6 +392,25 @@ exports.getAll = async (req, res) => {
       params.push(featured === "true" ? 1 : 0);
     }
 
+    const orderBy =
+      sort === "admin_product_management"
+        ? `CASE
+             WHEN p.type = 'standard' THEN 0
+             WHEN p.type = 'blueprint' THEN 1
+             ELSE 2
+           END ASC,
+           p.created_at DESC,
+           p.id DESC`
+        : `CASE
+             WHEN p.is_active = 0 THEN 5
+             WHEN p.is_published = 0 THEN 4
+             WHEN p.stock_status = 'out_of_stock' THEN 3
+             WHEN p.stock_status = 'low_stock' THEN 2
+             WHEN p.stock_status = 'in_stock' THEN 1
+             ELSE 6
+           END ASC,
+           p.created_at DESC`;
+
     const [products] = await pool.query(
       `SELECT p.*, c.name AS category_name,
               COALESCE(b.title, pbs.title) AS blueprint_title,
@@ -404,16 +424,7 @@ exports.getAll = async (req, res) => {
        LEFT JOIN blueprints b ON b.id = p.blueprint_id
        LEFT JOIN product_blueprint_snapshots pbs ON pbs.product_id = p.id
        WHERE ${where.join(" AND ")}
-       ORDER BY 
-         CASE 
-           WHEN p.is_active = 0 THEN 5
-           WHEN p.is_published = 0 THEN 4
-           WHEN p.stock_status = 'out_of_stock' THEN 3
-           WHEN p.stock_status = 'low_stock' THEN 2
-           WHEN p.stock_status = 'in_stock' THEN 1
-           ELSE 6 
-         END ASC,
-         p.created_at DESC
+       ORDER BY ${orderBy}
        LIMIT ? OFFSET ?`,
       [...params, parseInt(limit), offset],
     );

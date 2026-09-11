@@ -598,7 +598,6 @@ export default function BuildMaterialsPage() {
                   <th>Product Cost</th>
                   <th>Profit</th>
                   <th>Available Stock</th>
-                  <th>Reorder Point</th>
                   <th>Stock Level</th>
                   <th style={{ textAlign: "center" }}>Actions</th>
                 </tr>
@@ -606,7 +605,7 @@ export default function BuildMaterialsPage() {
               <tbody>
                 {!loading && products.length === 0 ? (
                   <tr>
-                    <td colSpan="10" className="build-materials-empty">
+                    <td colSpan="9" className="build-materials-empty">
                       No ready-made products match the selected filters.
                     </td>
                   </tr>
@@ -737,11 +736,6 @@ export default function BuildMaterialsPage() {
                           <span className="build-materials-stock">
                             {Number(product.stock || 0).toLocaleString("en-PH")}
                           </span>
-                        </td>
-                        <td>
-                          {Number(product.reorder_point || 0).toLocaleString(
-                            "en-PH",
-                          )}
                         </td>
                         <td>
                           <span

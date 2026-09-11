@@ -171,3 +171,39 @@
 .wisdom-sidebar:hover *::-webkit-scrollbar-thumb:hover {
   background-color: rgba(130, 130, 135, 0.6) !important;
 }
+
+/* WISDOM SIDEBAR REFERENCE TYPOGRAPHY V1.0.1 */
+.wisdom-sidebar {
+  font-family: "Inter", "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+.wisdom-sidebar nav a {
+  font-family: inherit !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  line-height: 1.35 !important;
+  letter-spacing: -0.012em !important;
+}
+
+.wisdom-sidebar nav a[aria-current="page"] {
+  font-weight: 500 !important;
+}
+
+.wisdom-sidebar nav a span {
+  font-weight: inherit !important;
+}
+
+.wisdom-sidebar nav > div {
+  font-family: inherit !important;
+  font-weight: 500 !important;
+}
+
+.wisdom-sidebar nav > button {
+  font-family: inherit !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  letter-spacing: -0.012em !important;
+}
