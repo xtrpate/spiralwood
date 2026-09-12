@@ -50,13 +50,30 @@ app.use(
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 15 * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX, 10) || 200,
+const readPositiveInt = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+// General application traffic needs enough headroom for normal authenticated
+// navigation, reports, and background notification polling. The previous
+// RATE_LIMIT_MAX=200 value applied one shared per-IP bucket to every /api
+// request and could lock out normal users during regular application use.
+//
+// Use GENERAL_API_RATE_LIMIT_* for this broad safety net. Sensitive auth
+// endpoints keep their own much stricter route-specific limiters.
+const generalApiLimiter = rateLimit({
+  windowMs: readPositiveInt(
+    process.env.GENERAL_API_RATE_LIMIT_WINDOW_MS,
+    15 * 60 * 1000,
+  ),
+  max: readPositiveInt(process.env.GENERAL_API_RATE_LIMIT_MAX, 3000),
   message: { message: "Too many requests. Please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
-app.use("/api", limiter);
+app.use("/api", generalApiLimiter);
 
 const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, "uploads");
 

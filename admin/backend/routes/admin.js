@@ -305,6 +305,12 @@ router.post(
   logAction("create_raw_material", "raw_materials"),
   inventory.createRawMaterial,
 );
+router.post(
+  "/inventory/raw/bulk",
+  adminOnly,
+  logAction("create_raw_material_bulk", "raw_materials"),
+  inventory.createRawMaterialsBulk,
+);
 router.put(
   "/inventory/raw/:id",
   adminStaff,
@@ -694,12 +700,17 @@ router.get(
 // ══════════════════════════════════════════════════════════════════════════════
 // WARRANTY
 // ══════════════════════════════════════════════════════════════════════════════
+<<<<<<< HEAD
 router.get(
   "/warranty",
   adminStaff,
   requirePermission("warranty.view"),
   warrantyController.getClaims,
 );
+=======
+router.get("/warranty", adminOnly, warrantyController.getClaims);
+router.get("/warranty/:id/resolution-options", adminOnly, warrantyController.getResolutionOptions);
+>>>>>>> e303bc81d7e73c9629773cf7ed159a340d6192a6
 
 router.patch(
   "/warranty/:id/decision",

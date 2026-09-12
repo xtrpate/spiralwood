@@ -41,6 +41,7 @@ import CancellationsPage from "./pages/orders/CancellationsPage";
 import SalesReportPage from "./pages/sales/SalesReportPage";
 import CurrentInventoryReportPage from "./pages/reports/CurrentInventoryReportPage";
 import DailyStockInReportPage from "./pages/reports/DailyStockInReportPage";
+import DeliveryReportPage from "./pages/reports/DeliveryReportPage";
 import WarrantyPage from "./pages/warranty/WarrantyPage";
 import CustomersPage from "./pages/customers/CustomersPage";
 import UsersPage from "./pages/users/UsersPage";
@@ -723,6 +724,17 @@ export default function App() {
                     </RequirePermission>
                   }
                 />
+<<<<<<< HEAD
+=======
+                <Route
+                  path="reports/deliveries"
+                  element={<DeliveryReportPage />}
+                />
+                <Route path="sales" element={<SalesReportPage />} />
+                <Route path="pos-qr-recovery" element={<PosQrRecoveryPage />} />
+                <Route path="warranty" element={<WarrantyPage />} />
+                <Route path="support" element={<AdminSupportPage />} />
+>>>>>>> e303bc81d7e73c9629773cf7ed159a340d6192a6
 
                 <Route
                   path="customers"

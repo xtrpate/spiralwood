@@ -166,6 +166,23 @@ const RESERVATION_STATUS_STYLES = {
   released: { background: "#ecfdf5", color: "#166534", border: "#bbf7d0" },
 };
 
+const MAX_BULK_MATERIALS = 50;
+
+const createEmptyBulkMaterial = () => ({
+  name: "",
+  category_id: "",
+  unit: "",
+  material_form: "other",
+  length_mm: "",
+  width_mm: "",
+  thickness_mm: "",
+  reorder_point: 0,
+  safety_stock: 0,
+  lead_time_days: 0,
+  unit_cost: 0,
+  supplier_id: "",
+});
+
 export default function RawMaterialsPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -195,6 +212,8 @@ export default function RawMaterialsPage() {
   const [exporting, setExporting] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportScope, setExportScope] = useState("filtered");
+  const [bulkModal, setBulkModal] = useState(null);
+  const [bulkSaving, setBulkSaving] = useState(false);
 
   const handleDatePreset = (preset) => {
     const today = new Date();
@@ -372,24 +391,7 @@ export default function RawMaterialsPage() {
   }, [loadCategories]);
 
   const openAdd = () =>
-    setModal({
-      mode: "add",
-      data: {
-        name: "",
-        category_id: "",
-        unit: "",
-        material_form: "other",
-        length_mm: "",
-        width_mm: "",
-        thickness_mm: "",
-        quantity: 0,
-        reorder_point: 0,
-        safety_stock: 0,
-        lead_time_days: 0,
-        unit_cost: 0,
-        supplier_id: "",
-      },
-    });
+    setBulkModal({ rows: [createEmptyBulkMaterial()] });
 
   const openEdit = (item) =>
     setModal({
@@ -453,6 +455,111 @@ export default function RawMaterialsPage() {
       // The global API interceptor shows the server message.
     } finally {
       setSaving(false);
+    }
+  };
+
+  const setBulkField = (index, key, value) => {
+    setBulkModal((current) => {
+      if (!current) return current;
+      const rows = current.rows.map((row, rowIndex) => {
+        if (rowIndex !== index) return row;
+        if (key === "material_form") {
+          return {
+            ...row,
+            material_form: value,
+            ...(["hardware", "other"].includes(value)
+              ? { length_mm: "", width_mm: "", thickness_mm: "" }
+              : {}),
+          };
+        }
+        return { ...row, [key]: value };
+      });
+      return { ...current, rows };
+    });
+  };
+
+  const handleCreateBulkCategory = async (rowIndex) => {
+    const value = window.prompt("Enter a new raw material category name:");
+    if (value === null) return;
+
+    const name = value.trim();
+    if (!name) {
+      toast.error("Category name is required.");
+      return;
+    }
+
+    try {
+      const { data } = await api.post("/inventory/raw/categories", { name });
+      const category = data?.category;
+      await loadCategories();
+      if (category?.id) {
+        setBulkField(rowIndex, "category_id", String(category.id));
+      }
+      toast.success(data?.message || "Category added.");
+    } catch (error) {
+      // Global API interceptor shows the server message.
+    }
+  };
+
+  const addBulkRow = () => {
+    setBulkModal((current) => {
+      if (!current || current.rows.length >= MAX_BULK_MATERIALS) return current;
+      return { ...current, rows: [...current.rows, createEmptyBulkMaterial()] };
+    });
+  };
+
+  const removeBulkRow = (index) => {
+    setBulkModal((current) => {
+      if (!current || current.rows.length <= 1) return current;
+      return {
+        ...current,
+        rows: current.rows.filter((_, rowIndex) => rowIndex !== index),
+      };
+    });
+  };
+
+  const handleBulkSave = async (event) => {
+    event.preventDefault();
+    const rows = bulkModal?.rows || [];
+    if (rows.length === 0) return;
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index];
+      const label = `Material ${index + 1}`;
+      if (!String(row.name || "").trim()) {
+        toast.error(`${label}: enter a material name.`);
+        return;
+      }
+      if (!row.category_id) {
+        toast.error(`${label}: select a category.`);
+        return;
+      }
+      if (!String(row.unit || "").trim()) {
+        toast.error(`${label}: select a unit.`);
+        return;
+      }
+      if (row.material_form === "sheet") {
+        if (!row.length_mm || !row.width_mm || !row.thickness_mm) {
+          toast.error(
+            `${label}: sheet materials require length, width, and thickness.`,
+          );
+          return;
+        }
+      }
+    }
+
+    setBulkSaving(true);
+    try {
+      const { data } = await api.post("/inventory/raw/bulk", {
+        materials: rows,
+      });
+      toast.success(data?.message || "Raw materials added.");
+      setBulkModal(null);
+      load();
+    } catch (error) {
+      // The global API interceptor shows the server message.
+    } finally {
+      setBulkSaving(false);
     }
   };
 
@@ -573,20 +680,14 @@ export default function RawMaterialsPage() {
     modal?.data?.unit,
   );
 
-  // Automatically sort items by our stock level hierarchy
+  // Newest raw materials stay at the top. Backend ordering is also newest-first
+  // so pagination and the visible page use the same deterministic order.
   const sortedItems = [...items].sort((a, b) => {
-    const rankA =
-      STOCK_LEVEL_HIERARCHY[a.availability_status || a.stock_status] || 5;
-    const rankB =
-      STOCK_LEVEL_HIERARCHY[b.availability_status || b.stock_status] || 5;
-
-    // If they have different statuses, sort by hierarchy (Empty -> Critical -> Low -> Healthy)
-    if (rankA !== rankB) return rankA - rankB;
-
-    // If they have the same status, sort them alphabetically by name
-    return String(a.name || "").localeCompare(String(b.name || ""));
+    const createdA = new Date(a.created_at || 0).getTime();
+    const createdB = new Date(b.created_at || 0).getTime();
+    if (createdA !== createdB) return createdB - createdA;
+    return Number(b.id || 0) - Number(a.id || 0);
   });
-
   return (
     <div>
       <div style={header}>
@@ -1096,6 +1197,334 @@ export default function RawMaterialsPage() {
             >
               Next
             </button>
+          </div>
+        </div>
+      )}
+
+      {bulkModal && (
+        <div style={overlay}>
+          <div
+            style={{
+              ...modalBox,
+              width: "min(1040px, calc(100vw - 36px))",
+              maxWidth: "calc(100vw - 36px)",
+            }}
+          >
+            <h3 style={modalTitle}>{bulkModal.rows.length === 1 ? "Add Raw Material" : "Add Raw Materials"}</h3>
+            <div style={modalInfo}>
+              Create several material records in one operation. New materials
+              start at 0 stock; add physical stock later through Stock
+              Movements so every quantity change stays traceable. If any row is
+              invalid, none of the rows will be created.
+            </div>
+
+            <form onSubmit={handleBulkSave}>
+              <div style={{ display: "grid", gap: 14 }}>
+                {bulkModal.rows.map((row, index) => {
+                  const form = String(row.material_form || "other").toLowerCase();
+                  const showDimensions = ["sheet", "linear", "piece"].includes(form);
+                  const decimalQuantity = unitAllowsDecimalQuantity(row.unit);
+
+                  return (
+                    <div
+                      key={index}
+                      style={{
+                        border: "1px solid #e4e4e7",
+                        borderRadius: 2,
+                        padding: 16,
+                        background: "#fafafa",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 12,
+                          marginBottom: 14,
+                        }}
+                      >
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#18181b" }}>
+                          Material {index + 1}
+                        </div>
+                        {bulkModal.rows.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeBulkRow(index)}
+                            style={{ ...btnGhost, padding: "6px 10px", color: "#b42318" }}
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                          gap: "12px 14px",
+                        }}
+                      >
+                        <div style={{ gridColumn: "1 / -1" }}>
+                          <label style={labelSm}>Material Name *</label>
+                          <input
+                            required
+                            value={row.name}
+                            onChange={(event) =>
+                              setBulkField(index, "name", event.target.value)
+                            }
+                            style={inputFull}
+                          />
+                        </div>
+
+                        <div>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 8,
+                            }}
+                          >
+                            <label style={labelSm}>Category *</label>
+                            <button
+                              type="button"
+                              onClick={() => handleCreateBulkCategory(index)}
+                              disabled={bulkSaving}
+                              style={{
+                                border: "none",
+                                background: "transparent",
+                                padding: 0,
+                                color: "#18181b",
+                                fontSize: 11,
+                                fontWeight: 700,
+                                cursor: bulkSaving ? "not-allowed" : "pointer",
+                                textDecoration: "underline",
+                              }}
+                            >
+                              + Add category
+                            </button>
+                          </div>
+                          <select
+                            required
+                            value={row.category_id}
+                            onChange={(event) =>
+                              setBulkField(index, "category_id", event.target.value)
+                            }
+                            style={inputFull}
+                          >
+                            <option value="">Select category</option>
+                            {categories.map((category) => (
+                              <option key={category.id} value={category.id}>
+                                {category.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label style={labelSm}>Unit *</label>
+                          <select
+                            required
+                            value={row.unit}
+                            onChange={(event) =>
+                              setBulkField(index, "unit", event.target.value)
+                            }
+                            style={inputFull}
+                          >
+                            <option value="">Select unit</option>
+                            <option value="pcs">Pieces (pcs)</option>
+                            <option value="sheet">Sheet</option>
+                            <option value="meter">Meter</option>
+                            <option value="kg">Kilogram (kg)</option>
+                            <option value="liter">Liter (L)</option>
+                            <option value="set">Set</option>
+                            <option value="box">Box</option>
+                            <option value="roll">Roll</option>
+                            <option value="gallon">Gallon</option>
+                            <option value="container">Container</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label style={labelSm}>Form</label>
+                          <select
+                            value={row.material_form}
+                            onChange={(event) =>
+                              setBulkField(index, "material_form", event.target.value)
+                            }
+                            style={inputFull}
+                          >
+                            {MATERIAL_FORM_OPTIONS.map(([value, label]) => (
+                              <option key={value} value={value}>
+                                {label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {showDimensions && (
+                          <>
+                            {[
+                              ["Length (mm)", "length_mm"],
+                              ["Width (mm)", "width_mm"],
+                              ["Thickness (mm)", "thickness_mm"],
+                            ].map(([label, key]) => (
+                              <div key={key}>
+                                <label style={labelSm}>
+                                  {label}
+                                  {form === "sheet" ? " *" : ""}
+                                </label>
+                                <input
+                                  type="number"
+                                  min="0.01"
+                                  step="0.01"
+                                  required={form === "sheet"}
+                                  value={row[key]}
+                                  onChange={(event) =>
+                                    setBulkField(index, key, event.target.value)
+                                  }
+                                  style={inputFull}
+                                />
+                              </div>
+                            ))}
+                          </>
+                        )}
+
+                        <div>
+                          <label style={labelSm}>Supplier Price (₱)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={row.unit_cost}
+                            onChange={(event) =>
+                              setBulkField(index, "unit_cost", event.target.value)
+                            }
+                            style={inputFull}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={labelSm}>Lead Time</label>
+                          <input
+                            inputMode="numeric"
+                            value={row.lead_time_days}
+                            onChange={(event) =>
+                              setBulkField(
+                                index,
+                                "lead_time_days",
+                                String(event.target.value || "").replace(/[^0-9]/g, ""),
+                              )
+                            }
+                            style={inputFull}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={labelSm}>Reorder</label>
+                          <input
+                            inputMode={decimalQuantity ? "decimal" : "numeric"}
+                            value={row.reorder_point}
+                            onChange={(event) =>
+                              setBulkField(
+                                index,
+                                "reorder_point",
+                                sanitizeQuantityInput(
+                                  event.target.value,
+                                  decimalQuantity,
+                                ),
+                              )
+                            }
+                            style={inputFull}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={labelSm}>Safety Stock</label>
+                          <input
+                            inputMode={decimalQuantity ? "decimal" : "numeric"}
+                            value={row.safety_stock}
+                            onChange={(event) =>
+                              setBulkField(
+                                index,
+                                "safety_stock",
+                                sanitizeQuantityInput(
+                                  event.target.value,
+                                  decimalQuantity,
+                                ),
+                              )
+                            }
+                            style={inputFull}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={labelSm}>Supplier</label>
+                          <select
+                            value={row.supplier_id}
+                            onChange={(event) =>
+                              setBulkField(index, "supplier_id", event.target.value)
+                            }
+                            style={inputFull}
+                          >
+                            <option value="">None</option>
+                            {suppliers.map((supplier) => (
+                              <option key={supplier.id} value={supplier.id}>
+                                {supplier.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 12,
+                  marginTop: 16,
+                  flexWrap: "wrap",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={addBulkRow}
+                  disabled={
+                    bulkModal.rows.length >= MAX_BULK_MATERIALS || bulkSaving
+                  }
+                  style={btnGhost}
+                >
+                  + Add another material
+                </button>
+                <div style={{ fontSize: 11, color: "#71717a" }}>
+                  {bulkModal.rows.length} / {MAX_BULK_MATERIALS} materials
+                </div>
+              </div>
+
+              <div style={modalActions}>
+                <button
+                  type="button"
+                  onClick={() => setBulkModal(null)}
+                  disabled={bulkSaving}
+                  style={btnGhost}
+                >
+                  Cancel
+                </button>
+                <button type="submit" disabled={bulkSaving} style={btnPrimary}>
+                  {bulkSaving
+                    ? "Saving..."
+                    : `Create ${bulkModal.rows.length} material${
+                        bulkModal.rows.length === 1 ? "" : "s"
+                      }`}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

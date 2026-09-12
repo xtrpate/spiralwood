@@ -500,6 +500,7 @@ export default function ProductsPage() {
       page: filters.page,
       limit: 20,
       is_published: 1,
+      sort: "admin_product_management",
     };
 
     return params;

@@ -76,6 +76,13 @@ router.post(
 router.get("/", authenticate, requireCustomer, orderController.getOrders);
 
 router.get(
+  "/:id/delivery-receipt",
+  authenticate,
+  requireCustomer,
+  orderController.getDeliveryReceipt,
+);
+
+router.get(
   "/:id/receipts/:receiptId",
   authenticate,
   requireCustomer,

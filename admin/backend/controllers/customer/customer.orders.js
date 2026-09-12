@@ -908,6 +908,30 @@ exports.getOrderById = async (req, res) => {
 
     order.receipt = receipt || null;
 
+    // WISDOM DIGITAL DELIVERY RECEIPT V3
+    // Expose only immutable receipt metadata here. Full receipt content,
+    // including an optional signature, is loaded through the protected
+    // ownership-checked endpoint below.
+    const [[deliveryReceipt]] = await db.query(
+      `SELECT
+         d.id AS delivery_id,
+         da.receipt_number,
+         da.acknowledged_at,
+         d.signed_receipt AS proof_url
+       FROM deliveries d
+       INNER JOIN delivery_acknowledgements da
+         ON da.delivery_id = d.id
+        AND da.voided_at IS NULL
+       WHERE d.order_id = ?
+         AND da.receipt_number IS NOT NULL
+         AND da.receipt_snapshot_json IS NOT NULL
+       ORDER BY d.id DESC, da.id DESC
+       LIMIT 1`,
+      [order.id],
+    );
+
+    order.delivery_receipt = deliveryReceipt || null;
+
     res.json(order);
   } catch (err) {
     console.error("[customer.orders/:id]", err);
@@ -1204,6 +1228,100 @@ exports.verifyPayment = async (req, res) => {
     res.status(500).json({
       message: "Server error during verification.",
       error: err.message,
+    });
+  }
+};
+
+
+exports.getDeliveryReceipt = async (req, res) => {
+  const orderId = Number(req.params.id);
+  const customerId = Number(req.user.id);
+
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return res.status(400).json({ message: "Invalid order id." });
+  }
+
+  try {
+    const [[row]] = await db.query(
+      `SELECT
+         d.id AS delivery_id,
+         d.order_id,
+         da.id AS acknowledgement_id,
+         da.receipt_number,
+         da.receipt_snapshot_json,
+         da.received_by_name,
+         da.recipient_type,
+         da.signature_data,
+         da.signature_mime,
+         da.acknowledgement_text,
+         da.note,
+         da.acknowledged_at,
+         da.captured_by,
+         captured.name AS captured_by_name
+       FROM orders o
+       INNER JOIN deliveries d ON d.order_id = o.id
+       INNER JOIN delivery_acknowledgements da
+         ON da.delivery_id = d.id
+        AND da.voided_at IS NULL
+       LEFT JOIN users captured ON captured.id = da.captured_by
+       WHERE o.id = ?
+         AND o.customer_id = ?
+         AND da.receipt_number IS NOT NULL
+         AND da.receipt_snapshot_json IS NOT NULL
+       ORDER BY d.id DESC, da.id DESC
+       LIMIT 1`,
+      [orderId, customerId],
+    );
+
+    if (!row) {
+      return res.status(404).json({
+        reason_code: "DELIVERY_RECEIPT_NOT_AVAILABLE",
+        message:
+          "No active digital delivery receipt is available for this order.",
+      });
+    }
+
+    let snapshot;
+    try {
+      snapshot =
+        typeof row.receipt_snapshot_json === "string"
+          ? JSON.parse(row.receipt_snapshot_json)
+          : row.receipt_snapshot_json;
+    } catch {
+      snapshot = null;
+    }
+
+    if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+      return res.status(409).json({
+        message:
+          "This delivery receipt snapshot is invalid. Please contact support.",
+      });
+    }
+
+    return res.json({
+      ...snapshot,
+      receipt_number: row.receipt_number,
+      delivery_id: row.delivery_id,
+      order_id: row.order_id,
+      acknowledgement_id: row.acknowledgement_id,
+      received_by_name: row.received_by_name,
+      recipient_type: row.recipient_type,
+      signature_data: row.signature_data || null,
+      signature_mime: row.signature_mime || null,
+      signature_present: Boolean(
+        String(row.signature_data || "").trim(),
+      ),
+      acknowledgement_text: row.acknowledgement_text,
+      note: row.note,
+      acknowledged_at: row.acknowledged_at,
+      captured_by: row.captured_by,
+      captured_by_name:
+        row.captured_by_name || snapshot.recorded_by_name || null,
+    });
+  } catch (err) {
+    console.error("[customer.orders/:id/delivery-receipt]", err);
+    return res.status(500).json({
+      message: "Failed to load digital delivery receipt.",
     });
   }
 };

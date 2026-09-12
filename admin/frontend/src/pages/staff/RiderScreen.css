@@ -1662,3 +1662,259 @@
     width: auto;
   }
 }
+
+/* WISDOM RIDER HISTORY RECORD DETAILS V3
+   Complete rider-owned delivery history details + paging. */
+.rider-history-error {
+  padding: 18px;
+  border-top: 1px solid #e4e4e7;
+  color: #991b1b;
+  background: #fef2f2;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.rider-history-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 18px;
+  border-top: 1px solid #e4e4e7;
+  background: #fafafa;
+}
+
+.rider-history-pagination > span {
+  min-width: 110px;
+  color: #52525b;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.rider-history-detail-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.rider-history-detail-actions > span {
+  width: auto !important;
+}
+
+.rider-history-handoff-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: 10px;
+  border: 1px solid #dcdde0;
+  background: #dcdde0;
+}
+
+.rider-history-handoff-grid > div {
+  min-height: 72px;
+  padding: 10px;
+  background: #ffffff;
+}
+
+.rider-history-handoff-grid span {
+  display: block;
+  margin-bottom: 5px;
+  color: #71717a;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.rider-history-handoff-grid strong {
+  display: block;
+  color: #18181b;
+  font-size: 11.5px;
+  font-weight: 650;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.rider-history-inline-error {
+  margin-top: 8px;
+  padding: 9px 10px;
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.rider-history-items-list {
+  margin-top: 10px;
+  border: 1px solid #dcdde0;
+}
+
+.rider-history-item-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 10px;
+  border-bottom: 1px solid #ececee;
+}
+
+.rider-history-item-row:last-child {
+  border-bottom: 0;
+}
+
+.rider-history-item-row strong {
+  display: block;
+  color: #18181b;
+  font-size: 11.5px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.rider-history-item-row span {
+  display: block;
+  margin-top: 2px;
+  color: #77787e;
+  font-size: 9.5px;
+  font-weight: 500;
+}
+
+.rider-history-item-row > :last-child {
+  color: #52525b;
+  font-size: 10.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.rider-history-signature-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.55);
+  box-sizing: border-box;
+}
+
+.rider-history-signature-card {
+  width: min(620px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  padding: 18px;
+  border: 1px solid #d4d4d8;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.rider-history-signature-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e4e4e7;
+}
+
+.rider-history-signature-head span {
+  display: block;
+  color: #71717a;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.rider-history-signature-head h3 {
+  margin: 4px 0 0;
+  color: #18181b;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.rider-history-signature-meta {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 14px;
+}
+
+.rider-history-signature-image-wrap {
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid #dcdde0;
+  background: #ffffff;
+}
+
+.rider-history-signature-image-wrap img {
+  display: block;
+  max-width: 100%;
+  max-height: 300px;
+  object-fit: contain;
+}
+
+.rider-history-signature-acknowledgement {
+  margin: 12px 0 0;
+  color: #52525b;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.rider-history-signature-message {
+  padding: 30px 10px;
+  color: #52525b;
+  font-size: 12px;
+  text-align: center;
+}
+
+.rider-history-signature-message.is-error {
+  color: #991b1b;
+}
+
+@media (max-width: 768px) {
+  .rider-history-pagination {
+    justify-content: space-between;
+    padding: 12px;
+  }
+
+  .rider-history-pagination > span {
+    min-width: 0;
+  }
+
+  .rider-history-handoff-grid,
+  .rider-history-signature-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .rider-history-detail-actions {
+    flex-direction: column;
+  }
+
+  .rider-history-detail-actions > *,
+  .rider-history-detail-actions > span,
+  .rider-history-detail-actions button,
+  .rider-history-detail-actions a {
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+
+  .rider-history-signature-overlay {
+    padding: 8px;
+  }
+
+  .rider-history-signature-card {
+    max-height: calc(100vh - 16px);
+    padding: 14px;
+  }
+
+  .rider-history-signature-image-wrap {
+    min-height: 180px;
+  }
+}

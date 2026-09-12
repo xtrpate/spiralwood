@@ -4,6 +4,8 @@ import api, { buildAssetUrl } from "../../services/api";
 import "./orders.css";
 import { PackageSearch, ShoppingBag } from "lucide-react";
 import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
+import { DeliveryReceiptButton } from "../../components/delivery/DeliveryReceiptModal";
+import DownloadFileButton from "../../components/delivery/DownloadFileButton";
 
 const STATUS_META = {
   pending: {
@@ -579,6 +581,55 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
                       >
                         View Receipt
                       </button>
+                    </div>
+                  )}
+
+                  {order.delivery_receipt?.receipt_number && (
+                    <div
+                      style={{
+                        marginTop: 16,
+                        paddingTop: 14,
+                        borderTop: "1px solid #e4e4e7",
+                      }}
+                    >
+                      <div
+                        className="om-detail-row"
+                        style={{ marginBottom: 12 }}
+                      >
+                        <span>Delivery Receipt</span>
+                        <strong>
+                          {order.delivery_receipt.receipt_number}
+                        </strong>
+                      </div>
+
+                      <DeliveryReceiptButton
+                        endpoint={`/customer/orders/${order.id}/delivery-receipt`}
+                        className="order-inline-btn order-inline-btn-primary om-action-btn"
+                        style={{ width: "100%" }}
+                      />
+
+                      {order.delivery_receipt?.proof_url ? (
+                        <div style={{ marginTop: 8 }}>
+                          <a
+                            href={buildAssetUrl(order.delivery_receipt.proof_url)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="order-inline-btn om-action-btn"
+                            style={{ width: "100%", display: "flex" }}
+                          >
+                            View Proof of Delivery
+                          </a>
+                          <div style={{ marginTop: 8 }}>
+                            <DownloadFileButton
+                              url={buildAssetUrl(order.delivery_receipt.proof_url)}
+                              filename={`Proof_of_Delivery_${order.order_number || order.id}`}
+                              label="Download Proof of Delivery"
+                              className="order-inline-btn om-action-btn"
+                              style={{ width: "100%" }}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   )}
 

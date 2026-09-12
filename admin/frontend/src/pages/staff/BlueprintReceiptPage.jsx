@@ -25,6 +25,20 @@ const formatMoney = (value) =>
     minimumFractionDigits: 2,
   })}`;
 
+const getVatInclusiveBreakdown = (grossValue) => {
+  const gross = Number(grossValue || 0);
+  const totalCents = Number.isFinite(gross)
+    ? Math.max(0, Math.round((gross + Number.EPSILON) * 100))
+    : 0;
+  const vatableCents = Math.round(totalCents / 1.12);
+
+  return {
+    vatableSales: vatableCents / 100,
+    vatAmount: (totalCents - vatableCents) / 100,
+    total: totalCents / 100,
+  };
+};
+
 export default function BlueprintReceiptPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -76,6 +90,7 @@ export default function BlueprintReceiptPage() {
 
   const isFullyPaid = receipt.payment_status === "Fully Paid";
   const receiptDate = receipt.created_at || receipt.printed_at;
+  const vatBreakdown = getVatInclusiveBreakdown(receipt.total_amount);
 
   return (
     <div className="staff-receipt-page-v190 staff-blueprint-receipt-v190">
@@ -204,8 +219,16 @@ export default function BlueprintReceiptPage() {
           <div className="staff-receipt-section-title-v190">PAYMENT SUMMARY</div>
           <div className="receipt-totals staff-receipt-summary-v190">
             <div className="total-row">
-              <span>Project total</span>
-              <span>{formatMoney(receipt.total_amount)}</span>
+              <span>VATable Sales</span>
+              <span>{formatMoney(vatBreakdown.vatableSales)}</span>
+            </div>
+            <div className="total-row">
+              <span>VAT (12%)</span>
+              <span>{formatMoney(vatBreakdown.vatAmount)}</span>
+            </div>
+            <div className="total-row grand staff-total-v190">
+              <span>TOTAL</span>
+              <span>{formatMoney(vatBreakdown.total)}</span>
             </div>
             <div className="total-row">
               <span>Previous verified payments</span>

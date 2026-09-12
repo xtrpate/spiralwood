@@ -7,6 +7,7 @@ const authController = require("../controllers/customer/customer.auth");
 // 👉 THE FIX: Changed 'verifyToken' to 'authenticate' to match your middleware file
 const { authenticate } = require("../middleware/auth");
 const {
+  loginLimiter,
   registerLimiter,
   otpLimiter,
   otpRequestLimiter,
@@ -60,7 +61,7 @@ router.post(
 );
 router.post("/verify-reset-otp", otpLimiter, authController.verifyResetOtp);
 router.post("/reset-password", otpLimiter, authController.resetPassword);
-router.post("/login", authController.login);
+router.post("/login", loginLimiter, authController.login);
 router.post("/check-availability", authController.checkAvailability);
 
 /* ══════════════════════════════════════════════════════════════

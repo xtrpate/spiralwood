@@ -385,8 +385,8 @@ export default function OrdersPage() {
     page: 1,
   });
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
       const { data } = await api.get("/orders", {
         params: { ...filters, limit: 20 },
@@ -396,14 +396,46 @@ export default function OrdersPage() {
       setTotal(Number(data?.total || 0));
       setSummary(data?.summary || null);
     } catch (err) {
-      toast.error(err?.response?.data?.message || "Failed to load orders.");
+      if (silent) {
+        console.error("Background orders refresh failed:", err?.response?.data || err);
+      } else {
+        toast.error(err?.response?.data?.message || "Failed to load orders.");
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [filters]);
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  // Refresh canonical statuses when Admin returns to the Orders tab.
+  // Existing rows stay visible while the request runs in the background.
+  useEffect(() => {
+    let lastRefreshAt = 0;
+    let refreshInFlight = false;
+
+    const refreshVisibleOrders = async () => {
+      if (document.visibilityState !== "visible" || refreshInFlight) return;
+      const now = Date.now();
+      if (now - lastRefreshAt < 750) return;
+      lastRefreshAt = now;
+      refreshInFlight = true;
+      try {
+        await load({ silent: true });
+      } finally {
+        refreshInFlight = false;
+      }
+    };
+
+    window.addEventListener("focus", refreshVisibleOrders);
+    document.addEventListener("visibilitychange", refreshVisibleOrders);
+
+    return () => {
+      window.removeEventListener("focus", refreshVisibleOrders);
+      document.removeEventListener("visibilitychange", refreshVisibleOrders);
+    };
   }, [load]);
 
   const setF = (key, value) =>

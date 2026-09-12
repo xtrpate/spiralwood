@@ -152,6 +152,7 @@ export default function PhysicalInventoryPage() {
   const [activeSession, setActiveSession] = useState(null);
   const [items, setItems] = useState([]);
   const [counts, setCounts] = useState({});
+  const [selectedIds, setSelectedIds] = useState([]);
   const [search, setSearch] = useState("");
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(true);
@@ -180,7 +181,11 @@ export default function PhysicalInventoryPage() {
     setItems(data?.items || []);
     setNotes(data?.session?.notes || "");
     const nextCounts = {};
+    const nextSelectedIds = [];
     for (const item of data?.items || []) {
+      if (item.physical_count !== null && item.physical_count !== undefined) {
+        nextSelectedIds.push(item.id);
+      }
       nextCounts[item.id] = {
         physical_count:
           item.physical_count === null || item.physical_count === undefined
@@ -190,6 +195,7 @@ export default function PhysicalInventoryPage() {
       };
     }
     setCounts(nextCounts);
+    setSelectedIds(nextSelectedIds);
   }, []);
 
   const loadSession = useCallback(
@@ -207,6 +213,7 @@ export default function PhysicalInventoryPage() {
     setActiveSession(null);
     setItems([]);
     setCounts({});
+    setSelectedIds([]);
     setNotes("");
   }, []);
 
@@ -309,21 +316,20 @@ export default function PhysicalInventoryPage() {
     }));
   };
 
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+
   const summary = useMemo(() => {
-    let counted = 0;
     let differences = 0;
     let blocked = 0;
 
     for (const item of items) {
+      if (!selectedSet.has(item.id)) continue;
       const entry = counts[item.id] || {};
       const countText = String(entry.physical_count ?? "").trim();
-      if (countText !== "") counted += 1;
-
       const difference = getCountDifference(item, countText);
       if (difference !== null && Math.abs(difference) > EPSILON) {
         differences += 1;
       }
-
       if (
         countText !== "" &&
         Number(countText) + EPSILON < Number(item.current_reserved_quantity || 0)
@@ -334,13 +340,12 @@ export default function PhysicalInventoryPage() {
 
     return {
       total: items.length,
-      counted,
-      remaining: Math.max(0, items.length - counted),
+      counted: selectedIds.length,
+      remaining: Math.max(0, items.length - selectedIds.length),
       differences,
       blocked,
     };
-  }, [items, counts]);
-
+  }, [items, counts, selectedIds, selectedSet]);
   const filteredItems = useMemo(() => {
     const needle = search.trim().toLowerCase();
     if (!needle) return items;
@@ -357,27 +362,89 @@ export default function PhysicalInventoryPage() {
     });
   }, [items, search]);
 
+  const allShownSelected =
+    filteredItems.length > 0 &&
+    filteredItems.every((item) => selectedSet.has(item.id));
+
+  const toggleItemSelection = (item, checked) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(item.id);
+      else next.delete(item.id);
+      return [...next];
+    });
+
+    setCounts((current) => ({
+      ...current,
+      [item.id]: checked
+        ? {
+            ...(current[item.id] || {}),
+            physical_count:
+              String(current[item.id]?.physical_count ?? "").trim() === ""
+                ? String(item.system_quantity ?? 0)
+                : current[item.id].physical_count,
+            reason: current[item.id]?.reason || "",
+          }
+        : { physical_count: "", reason: "" },
+    }));
+  };
+
+  const toggleAllShown = (checked) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      for (const item of filteredItems) {
+        if (checked) next.add(item.id);
+        else next.delete(item.id);
+      }
+      return [...next];
+    });
+    setCounts((current) => {
+      const next = { ...current };
+      for (const item of filteredItems) {
+        if (checked) {
+          next[item.id] = {
+            ...(next[item.id] || {}),
+            physical_count:
+              String(next[item.id]?.physical_count ?? "").trim() === ""
+                ? String(item.system_quantity ?? 0)
+                : next[item.id].physical_count,
+            reason: next[item.id]?.reason || "",
+          };
+        } else {
+          next[item.id] = { physical_count: "", reason: "" };
+        }
+      }
+      return next;
+    });
+  };
   const buildPayloadItems = () =>
     items.map((item) => ({
       item_id: item.id,
-      physical_count:
-        String(counts[item.id]?.physical_count ?? "").trim() === ""
+      physical_count: selectedSet.has(item.id)
+        ? String(counts[item.id]?.physical_count ?? "").trim() === ""
           ? null
-          : Number(counts[item.id].physical_count),
-      reason: String(counts[item.id]?.reason || "").trim() || null,
+          : Number(counts[item.id].physical_count)
+        : null,
+      reason: selectedSet.has(item.id)
+        ? String(counts[item.id]?.reason || "").trim() || null
+        : null,
     }));
-
   const validateBeforeFinalize = () => {
-    const missingCount = [];
+    if (selectedIds.length === 0) {
+      toast.error("Select at least one raw material to reconcile.");
+      return false;
+    }
+
     const missingReason = [];
     const invalidReserved = [];
 
     for (const item of items) {
+      if (!selectedSet.has(item.id)) continue;
       const entry = counts[item.id] || {};
       const countText = String(entry.physical_count ?? "").trim();
       if (!countText) {
-        missingCount.push(item);
-        continue;
+        toast.error(`Enter a physical count for ${item.material_name_snapshot}.`);
+        return false;
       }
 
       const count = Number(countText);
@@ -385,9 +452,10 @@ export default function PhysicalInventoryPage() {
         toast.error(`Invalid physical count for ${item.material_name_snapshot}.`);
         return false;
       }
-
       if (!allowsDecimal(item.unit_snapshot) && !Number.isInteger(count)) {
-        toast.error(`${item.material_name_snapshot} must use a whole-number count.`);
+        toast.error(
+          `${item.material_name_snapshot} must use a whole-number count.`,
+        );
         return false;
       }
 
@@ -405,29 +473,21 @@ export default function PhysicalInventoryPage() {
       }
     }
 
-    if (missingCount.length > 0) {
-      toast.error(
-        `Count all raw materials first. ${missingCount.length} item${missingCount.length === 1 ? " is" : "s are"} still blank.`,
-      );
-      return false;
-    }
-
     if (missingReason.length > 0) {
       toast.error(
         `Add a reason to every difference. ${missingReason.length} item${missingReason.length === 1 ? " needs" : "s need"} a reason.`,
       );
       return false;
     }
-
     if (invalidReserved.length > 0) {
       toast.error(
         `Physical count cannot be lower than active Blueprint reservations for ${invalidReserved.length} item${invalidReserved.length === 1 ? "" : "s"}.`,
       );
       return false;
     }
-
     return true;
   };
+
 
   const handleStart = async () => {
     setStarting(true);
@@ -471,7 +531,7 @@ export default function PhysicalInventoryPage() {
     if (!activeSession || !validateBeforeFinalize()) return;
 
     const confirmed = window.confirm(
-      `Finalize ${activeSession.reference_code}? This will update stock only for items with a difference and create documented Stock Movement adjustments.`,
+      `Finalize ${activeSession.reference_code} for ${selectedIds.length} selected material${selectedIds.length === 1 ? "" : "s"}? Only selected rows will be reconciled. Stock Movements are created only for differences.`,
     );
     if (!confirmed) return;
 
@@ -488,6 +548,7 @@ export default function PhysicalInventoryPage() {
       setActiveSession(null);
       setItems([]);
       setCounts({});
+      setSelectedIds([]);
       await refreshAll();
     } catch (error) {
       // Global API interceptor displays server message.
@@ -515,6 +576,7 @@ export default function PhysicalInventoryPage() {
       setActiveSession(null);
       setItems([]);
       setCounts({});
+      setSelectedIds([]);
       await refreshAll();
     } catch (error) {
       // Global API interceptor displays server message.
@@ -704,7 +766,8 @@ export default function PhysicalInventoryPage() {
         <div>
           <h1 style={title}>Physical Inventory</h1>
           <p style={subtitle}>
-            Compare system stock with the actual warehouse count. Differences
+            Select only the materials you are counting, then enter the actual
+            warehouse quantity. Unselected rows stay unchanged. Differences
             require a reason and are recorded as traceable stock adjustments.
           </p>
         </div>
@@ -742,8 +805,8 @@ export default function PhysicalInventoryPage() {
           <div style={summaryGrid}>
             {[
               ["Materials", summary.total],
-              ["Counted", summary.counted],
-              ["Remaining", summary.remaining],
+              ["Selected", summary.counted],
+              ["Not selected", summary.remaining],
               ["Differences", summary.differences],
             ].map(([label, value]) => (
               <div key={label} style={summaryCard}>
@@ -758,17 +821,18 @@ export default function PhysicalInventoryPage() {
           {(Number(activeSession.stock_changed_count || 0) > 0 ||
             items.some(
               (item) =>
-                Number(item.material_is_active) !== 1 ||
-                Math.abs(
-                  Number(item.current_on_hand || 0) -
-                    Number(item.system_quantity || 0),
-                ) > EPSILON,
+                selectedSet.has(item.id) &&
+                (Number(item.material_is_active) !== 1 ||
+                  Math.abs(
+                    Number(item.current_on_hand || 0) -
+                      Number(item.system_quantity || 0),
+                  ) > EPSILON),
             )) && (
             <div style={warningBox}>
-              Stock or material records changed after this count started.
-              Finalization is protected by the backend and will not overwrite
-              newer inventory. If the system blocks finalization, cancel this
-              session and start a fresh count.
+              One or more selected material records changed after this count
+              started. Finalization is protected by the backend and will not
+              overwrite newer inventory. Refresh or start a fresh count before
+              reconciling those selected rows.
             </div>
           )}
 
@@ -791,6 +855,14 @@ export default function PhysicalInventoryPage() {
             <table style={table}>
               <thead>
                 <tr style={theadRow}>
+                  <th style={{ ...th, width: 44, textAlign: "center" }}>
+                    <input
+                      type="checkbox"
+                      checked={allShownSelected}
+                      onChange={(event) => toggleAllShown(event.target.checked)}
+                      aria-label="Select all shown materials"
+                    />
+                  </th>
                   <th style={th}>Material</th>
                   <th style={th}>Unit</th>
                   <th style={th}>System Qty</th>
@@ -810,8 +882,9 @@ export default function PhysicalInventoryPage() {
                     item,
                     entry.physical_count,
                   );
+                  const selected = selectedSet.has(item.id);
                   const hasDifference =
-                    difference !== null && Math.abs(difference) > EPSILON;
+                    selected && difference !== null && Math.abs(difference) > EPSILON;
                   const belowReserved =
                     String(entry.physical_count ?? "").trim() !== "" &&
                     Number(entry.physical_count) + EPSILON <
@@ -824,7 +897,20 @@ export default function PhysicalInventoryPage() {
                     ) > EPSILON;
 
                   return (
-                    <tr key={item.id} style={tr}>
+                    <tr
+                      key={item.id}
+                      style={{ ...tr, background: selected ? "#fff" : "#fafafa" }}
+                    >
+                      <td style={{ ...td, textAlign: "center", width: 44 }}>
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={(event) =>
+                            toggleItemSelection(item, event.target.checked)
+                          }
+                          aria-label={`Select ${item.material_name_snapshot}`}
+                        />
+                      </td>
                       <td style={{ ...td, minWidth: 220 }}>
                         <div style={itemName}>
                           {item.material_name_snapshot}
@@ -859,14 +945,17 @@ export default function PhysicalInventoryPage() {
                               },
                             }));
                           }}
+                          disabled={!selected}
                           inputMode={
                             allowsDecimal(item.unit_snapshot)
                               ? "decimal"
                               : "numeric"
                           }
-                          placeholder="Count"
+                          placeholder={selected ? "Count" : "Select row first"}
                           style={{
                             ...countInput,
+                            background: selected ? "#fff" : "#f4f4f5",
+                            color: selected ? "#18181b" : "#a1a1aa",
                             borderColor: belowReserved ? "#dc2626" : "#d4d4d8",
                           }}
                         />
@@ -965,7 +1054,9 @@ export default function PhysicalInventoryPage() {
                 style={btnPrimary}
               >
                 <CheckCircle2 size={14} />
-                {finalizing ? "Finalizing..." : "Finalize count"}
+                {finalizing
+                  ? "Finalizing..."
+                  : `Finalize selected (${summary.counted})`}
               </button>
             </div>
           </div>

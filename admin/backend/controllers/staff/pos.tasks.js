@@ -3,6 +3,9 @@ const db = require("../../config/db"); // Uses the unified db config
 const {
   createNotificationSafe,
 } = require("../../utils/notificationHelper");
+const {
+  sendCustomerMilestoneNotificationSafe,
+} = require("../../services/customerMilestoneNotificationService");
 
 const ensureIndoorAssignee = async (userId) => {
   // ── FIXED: Switched to .query and parsed ID ──
@@ -1071,6 +1074,13 @@ exports.updateTaskStatus = async (req, res) => {
                 targetOrderId: existing.order_id,
               });
             }
+          }
+
+          if (pickupReadyApplied) {
+            await sendCustomerMilestoneNotificationSafe(db, {
+              orderId: parseInt(existing.order_id),
+              event: "ready_for_pickup",
+            });
           }
 
           await createNotificationSafe(db, {

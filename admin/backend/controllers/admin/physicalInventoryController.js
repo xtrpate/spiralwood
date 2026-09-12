@@ -487,11 +487,12 @@ exports.getPhysicalInventorySession = async (req, res) => {
         session.status === "draft"
           ? items.filter(
               (item) =>
-                Number(item.material_is_active) !== 1 ||
-                Math.abs(
-                  Number(item.current_on_hand || 0) -
-                    Number(item.system_quantity || 0),
-                ) > EPSILON,
+                item.physical_count !== null &&
+                (Number(item.material_is_active) !== 1 ||
+                  Math.abs(
+                    Number(item.current_on_hand || 0) -
+                      Number(item.system_quantity || 0),
+                  ) > EPSILON),
             ).length
           : 0,
     };
@@ -749,19 +750,14 @@ exports.finalizePhysicalInventory = async (req, res) => {
       [sessionId],
     );
 
-    const uncounted = items.filter((item) => item.physical_count === null);
-    if (uncounted.length > 0) {
+    const countedItems = items.filter((item) => item.physical_count !== null);
+    if (countedItems.length === 0) {
       await connection.rollback();
       return res.status(409).json({
-        message: `Count all raw materials before finalizing. ${uncounted.length} item${uncounted.length === 1 ? " is" : "s are"} still missing a physical count.`,
-        details: {
-          uncounted_item_ids: uncounted.slice(0, 50).map((item) => item.id),
-          uncounted_count: uncounted.length,
-        },
+        message: "Select and count at least one raw material before finalizing.",
       });
     }
-
-    const missingReasons = items.filter(
+    const missingReasons = countedItems.filter(
       (item) =>
         Math.abs(Number(item.difference_quantity || 0)) > EPSILON &&
         !String(item.reason || "").trim(),
@@ -776,7 +772,9 @@ exports.finalizePhysicalInventory = async (req, res) => {
       });
     }
 
-    const materialIds = items.map((item) => Number(item.material_id)).sort((a, b) => a - b);
+    const materialIds = countedItems
+      .map((item) => Number(item.material_id))
+      .sort((a, b) => a - b);
     const placeholders = materialIds.map(() => "?").join(",");
 
     const [materials] = await connection.query(
@@ -790,37 +788,23 @@ exports.finalizePhysicalInventory = async (req, res) => {
     );
     const materialById = new Map(materials.map((material) => [Number(material.id), material]));
 
-    const [newActiveMaterials] = await connection.query(
-      `SELECT rm.id, rm.name
-       FROM raw_materials rm
-       LEFT JOIN physical_inventory_items i
-         ON i.session_id = ? AND i.material_id = rm.id
-       WHERE rm.is_active = 1
-         AND i.id IS NULL
-       ORDER BY rm.id
-       LIMIT 50`,
-      [sessionId],
-    );
-
-    const inactiveOrMissing = items.filter((item) => {
+    const inactiveOrMissing = countedItems.filter((item) => {
       const material = materialById.get(Number(item.material_id));
       return !material || Number(material.is_active) !== 1;
     });
 
-    if (newActiveMaterials.length > 0 || inactiveOrMissing.length > 0) {
+    if (inactiveOrMissing.length > 0) {
       await connection.rollback();
       return res.status(409).json({
         message:
-          "The raw material catalog changed after this count started. Cancel this count and start a fresh Physical Inventory session.",
+          "One or more selected raw materials changed or were archived after this count started. Refresh and start a fresh count for those materials.",
         details: {
-          newly_active_materials: newActiveMaterials,
           inactive_or_missing_item_ids: inactiveOrMissing.map((item) => item.id),
         },
       });
     }
-
     const stockChanged = [];
-    for (const item of items) {
+    for (const item of countedItems) {
       const material = materialById.get(Number(item.material_id));
       const currentQty = normalizeQuantity(material.quantity || 0);
       const snapshotQty = normalizeQuantity(item.system_quantity || 0);
@@ -853,7 +837,7 @@ exports.finalizePhysicalInventory = async (req, res) => {
     });
 
     const belowReserved = [];
-    for (const item of items) {
+    for (const item of countedItems) {
       const reserved = normalizeQuantity(
         reservedByMaterial.get(Number(item.material_id)) || 0,
       );
@@ -884,7 +868,7 @@ exports.finalizePhysicalInventory = async (req, res) => {
 
     const adjustments = [];
 
-    for (const item of items) {
+    for (const item of countedItems) {
       const difference = normalizeQuantity(item.difference_quantity || 0);
       if (Math.abs(difference) <= EPSILON) continue;
 
@@ -1006,7 +990,8 @@ exports.finalizePhysicalInventory = async (req, res) => {
       new: {
         status: "completed",
         reference_code: session.reference_code,
-        item_count: items.length,
+        snapshot_item_count: items.length,
+        counted_item_count: countedItems.length,
         adjustment_count: adjustments.length,
         adjustments,
         pending_reservation_recovery: recovery,
@@ -1018,10 +1003,11 @@ exports.finalizePhysicalInventory = async (req, res) => {
       message:
         recoveryFailures > 0
           ? `Physical inventory finalized with ${adjustments.length} adjustment${adjustments.length === 1 ? "" : "s"}. Stock was updated, but ${recoveryFailures} pending reservation recovery check${recoveryFailures === 1 ? " needs" : "s need"} review.`
-          : `Physical inventory finalized. ${adjustments.length} stock adjustment${adjustments.length === 1 ? "" : "s"} recorded.`,
+          : `Physical inventory finalized for ${countedItems.length} selected material${countedItems.length === 1 ? "" : "s"}. ${adjustments.length} stock adjustment${adjustments.length === 1 ? "" : "s"} recorded.`,
       session_id: sessionId,
       reference_code: session.reference_code,
-      item_count: items.length,
+      snapshot_item_count: items.length,
+      counted_item_count: countedItems.length,
       adjustment_count: adjustments.length,
       adjustments,
       pending_reservation_recovery: recovery,

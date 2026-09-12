@@ -411,10 +411,10 @@
   text-align: center;
 }
 .build-materials-table-card th:nth-child(2) {
-  width: 6%;
+  width: 7%;
 }
 .build-materials-table-card th:nth-child(3) {
-  width: 17%;
+  width: 22%;
 }
 .build-materials-table-card th:nth-child(4) {
   width: 11%;
@@ -426,15 +426,12 @@
   width: 11%;
 }
 .build-materials-table-card th:nth-child(7) {
-  width: 9%;
+  width: 10%;
 }
 .build-materials-table-card th:nth-child(8) {
-  width: 9%;
+  width: 11%;
 }
 .build-materials-table-card th:nth-child(9) {
-  width: 9%;
-}
-.build-materials-table-card th:nth-child(10) {
   width: 13%;
   text-align: center;
 }

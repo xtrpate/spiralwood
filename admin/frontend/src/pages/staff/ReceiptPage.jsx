@@ -9,6 +9,20 @@ import receiptBrandLogoV172 from "../customer/spiral-wood-receipt-logo-v172.png"
 const OFFICIAL_BUSINESS_ADDRESS =
   "8 Laot Street, Near Gavino, Prenza I, Marilao, 3019 Bulacan";
 
+const getVatInclusiveBreakdown = (grossValue) => {
+  const gross = Number(grossValue || 0);
+  const totalCents = Number.isFinite(gross)
+    ? Math.max(0, Math.round((gross + Number.EPSILON) * 100))
+    : 0;
+  const vatableCents = Math.round(totalCents / 1.12);
+
+  return {
+    vatableSales: vatableCents / 100,
+    vatAmount: (totalCents - vatableCents) / 100,
+    total: totalCents / 100,
+  };
+};
+
 export default function ReceiptPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -64,8 +78,8 @@ export default function ReceiptPage() {
   const subtotal = Number(receipt.subtotal ?? 0);
   const discount = Number(receipt.discount ?? 0);
   const deliveryFee = Number(receipt.delivery_fee ?? 0);
-  const tax = Number(receipt.tax ?? 0);
   const total = Number(receipt.total ?? 0);
+  const vatBreakdown = getVatInclusiveBreakdown(total);
 
   // Never print a full customer phone number. Show the first 4 and last 2
   // digits only; mask everything else. Falls back to nothing if no phone
@@ -332,19 +346,33 @@ export default function ReceiptPage() {
               </div>
             )}
 
-            {tax > 0 && (
-              <div className="total-row">
-                <span>Tax</span>
-                <span>
-                  ₱{tax.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
-                </span>
-              </div>
-            )}
+            <div className="total-row">
+              <span>VATable Sales</span>
+              <span>
+                ₱{vatBreakdown.vatableSales.toLocaleString("en-PH", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </span>
+            </div>
+
+            <div className="total-row">
+              <span>VAT (12%)</span>
+              <span>
+                ₱{vatBreakdown.vatAmount.toLocaleString("en-PH", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </span>
+            </div>
 
             <div className="total-row grand staff-total-v190">
-              <span>Total</span>
+              <span>TOTAL</span>
               <span>
-                ₱{total.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                ₱{vatBreakdown.total.toLocaleString("en-PH", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
               </span>
             </div>
 

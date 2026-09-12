@@ -134,6 +134,17 @@ router.get(
 );
 
 router.get(
+  "/deliveries/report",
+  adminOnly,
+  posFulfillmentController.getDeliveryReport,
+);
+router.get(
+  "/deliveries/report/:id",
+  adminOnly,
+  posFulfillmentController.getDeliveryReportDetail,
+);
+
+router.get(
   "/deliverable-orders",
   deliveryManageAccess,
   posFulfillmentController.getDeliverableOrders,
@@ -149,6 +160,12 @@ router.get(
   "/deliveries/:id/acknowledgement",
   deliveryViewAccess,
   posFulfillmentController.getDeliveryAcknowledgement,
+);
+
+router.get(
+  "/deliveries/:id/receipt",
+  deliveryAccess,
+  posFulfillmentController.getDeliveryReceipt,
 );
 
 router.post(
