@@ -6,6 +6,9 @@ const {
   resolveLifecycleByOrder,
 } = require("../../services/blueprintLifecycleService");
 const { calcDownPaymentAmount } = require("../../utils/paymentAmounts");
+const {
+  createNotificationSafe,
+} = require("../../utils/notificationHelper");
 const { persistUserProfilePhoto } = require("../../config/upload");
 const {
   normalizePhilippinePhone,
@@ -369,6 +372,16 @@ exports.generateContract = async (req, res) => {
     // verified down payment.
     await conn.commit();
     transactionActive = false;
+
+    await createNotificationSafe(pool, {
+      userId: order.customer_id,
+      type: "contract_ready",
+      title: "Project Agreement Ready",
+      message: `Your Project Agreement for ${order.order_number || `Order #${order.id}`} is ready. Review and accept it to continue.`,
+      targetType: "custom_request",
+      targetId: order.id,
+      targetOrderId: order.id,
+    });
 
     req.auditRecord = {
       id: insertResult.insertId,

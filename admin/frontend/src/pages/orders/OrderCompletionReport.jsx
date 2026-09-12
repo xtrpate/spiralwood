@@ -102,14 +102,14 @@ export function exportOrderCompletionReportPdf(order) {
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 15;
   const contentWidth = pageWidth - margin * 2;
-  const footerReserve = 16;
-  let y = 16;
+  const footerReserve = 11;
+  let y = 12;
 
   const ensureSpace = (heightNeeded = 10) => {
     if (y + heightNeeded <= pageHeight - footerReserve) return;
 
     doc.addPage();
-    y = 16;
+    y = 12;
   };
 
   const addRule = () => {
@@ -368,7 +368,7 @@ export function exportOrderCompletionReportPdf(order) {
 
   addSectionTitle("Order Information");
   addField("Order Number", order.order_number || `#${order.id || "-"}`);
-  addField("Order Type", isCustomOrder ? "Custom Furniture / Blueprint" : "Ready-Made");
+  addField("Order Type", isCustomOrder ? "Custom Furniture" : "Ready-Made");
   addField("Channel", titleCase(order.channel || order.type));
   addField("Date Placed", formatDateTime(order.created_at));
   addField("Fulfillment", fulfillmentMethod);
@@ -393,7 +393,7 @@ export function exportOrderCompletionReportPdf(order) {
     if (isCustomOrder) {
       addCustomItemTableHeader();
       items.forEach(addCustomItemRow);
-      addOrderTotal(totalAmount, "QUOTED / ORDER TOTAL");
+      addOrderTotal(totalAmount, "PROJECT TOTAL");
     } else {
       addStandardItemTableHeader();
       items.forEach(addStandardItemRow);
@@ -451,6 +451,12 @@ export function exportOrderCompletionReportPdf(order) {
   addField("Remaining Balance", formatMoney(paymentBalance));
   addField("Payment Status", paymentStatus);
 
+  // Keep Fulfillment and Production together when the remaining space
+  // would otherwise create a nearly-empty trailing page.
+  if (isCustomOrder || tasks.length > 0) {
+    ensureSpace(fulfillmentMethod === "Delivery" ? 66 : 48);
+  }
+
   addSectionTitle("Fulfillment");
   addField("Method", fulfillmentMethod);
 
@@ -477,10 +483,13 @@ export function exportOrderCompletionReportPdf(order) {
 
   if (isCustomOrder || tasks.length > 0) {
     addSectionTitle("Production");
-    addField("Production Tasks", `${completedTaskCount}/${tasks.length}`);
-    addField("Status", productionStatus);
     addField(
-      "Completed On",
+      "Task Progress",
+      `${completedTaskCount} of ${tasks.length} production tasks`,
+    );
+    addField("Production Status", productionStatus);
+    addField(
+      "Production Completed",
       latestProductionCompletion
         ? formatDateTime(latestProductionCompletion)
         : "-",
@@ -495,7 +504,7 @@ export function exportOrderCompletionReportPdf(order) {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.2);
   doc.text(
-    "System-generated operational completion summary. This is not a payment receipt.",
+    "Order completion summary for customer and company records. This document is not a payment receipt.",
     margin,
     y,
   );

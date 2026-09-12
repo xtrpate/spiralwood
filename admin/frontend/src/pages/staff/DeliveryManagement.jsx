@@ -4,6 +4,8 @@ import { Navigation, UploadCloud, FileText } from "lucide-react";
 import api, { buildAssetUrl } from "../../services/api";
 import useAuthStore from "../../store/authStore";
 import DeliverySignaturePad from "./DeliverySignaturePad";
+import { DeliveryReceiptButton } from "../../components/delivery/DeliveryReceiptModal";
+import DownloadFileButton from "../../components/delivery/DownloadFileButton";
 import "./RiderScreen.css";
 
 const normalize = (value) => String(value || "").toLowerCase();
@@ -445,6 +447,13 @@ export default function DeliveryManagement() {
     const acknowledgementForm = getAcknowledgementForm(delivery);
     const isCompletingDelivery =
       targetStatus === "delivered" && currentStatus !== "delivered";
+    const isCorrectedDelivery =
+      isCompletingDelivery &&
+      Number(delivery.delivery_has_voided_acknowledgement || 0) === 1;
+    const hasReusablePendingDeliveryCollection =
+      isCorrectedDelivery &&
+      Number(delivery.pending_payment_count || 0) === 1 &&
+      Number(delivery.delivery_has_reusable_pending_collection || 0) === 1;
 
     if (isCompletingDelivery) {
       const receiverName = acknowledgementForm.received_by_name.trim();
@@ -461,14 +470,6 @@ export default function DeliveryManagement() {
       ) {
         setError(
           "Select whether the recipient is the customer or an authorized representative.",
-        );
-        setSuccess("");
-        return;
-      }
-
-      if (!acknowledgementForm.signature_data) {
-        setError(
-          "Please ask the recipient to sign before completing delivery.",
         );
         setSuccess("");
         return;
@@ -498,7 +499,9 @@ export default function DeliveryManagement() {
     const isBlueprintDelivery = normalize(delivery.order_type) === "blueprint";
 
     const collectionError =
-      isBlueprintDelivery || targetStatus === "failed"
+      isBlueprintDelivery ||
+      hasReusablePendingDeliveryCollection ||
+      targetStatus === "failed"
         ? ""
         : validateCollectionForm(delivery, collectionForm, {
             requireAmount: targetStatus === "delivered",
@@ -517,12 +520,18 @@ export default function DeliveryManagement() {
       return;
     }
 
-    // PHASE 5: a blueprint delivery being completed always needs a
-    // FRESH photo — an old deliveries.signed_receipt from an earlier
-    // in_transit upload never satisfies this, unlike the generic path.
-    if (isBlueprintDelivery && targetStatus === "delivered" && !selectedFile) {
+    // Blueprint completions always require a fresh photo. Any delivery
+    // being completed again after Undo Delivery also requires fresh POD,
+    // so an old retained proof can never silently satisfy a correction.
+    if (
+      targetStatus === "delivered" &&
+      (isBlueprintDelivery || isCorrectedDelivery) &&
+      !selectedFile
+    ) {
       setError(
-        "Please upload a fresh Proof of Delivery photo to complete this delivery.",
+        isCorrectedDelivery
+          ? "Please upload a fresh Proof of Delivery photo to complete this corrected delivery."
+          : "Please upload a fresh Proof of Delivery photo to complete this delivery.",
       );
       setSuccess("");
       return;
@@ -555,7 +564,11 @@ export default function DeliveryManagement() {
       // PHASE 5: never send collected_amount/payment_method for
       // blueprint orders — the backend computes and controls both, and
       // ignores these fields entirely for order_type = 'blueprint'.
-      if (targetStatus === "delivered" && !isBlueprintDelivery) {
+      if (
+        targetStatus === "delivered" &&
+        !isBlueprintDelivery &&
+        !hasReusablePendingDeliveryCollection
+      ) {
         fd.append("collected_amount", collectionForm.amount || "");
         fd.append("payment_method", collectionForm.payment_method || "cash");
         fd.append("collection_notes", collectionForm.collection_notes || "");
@@ -758,7 +771,6 @@ export default function DeliveryManagement() {
               ["customer", "authorized_representative"].includes(
                 normalize(acknowledgementForm.recipient_type),
               ) &&
-              Boolean(acknowledgementForm.signature_data) &&
               acknowledgementForm.acknowledgement_accepted &&
               acknowledgementForm.note.trim().length <= 500;
 
@@ -797,21 +809,27 @@ export default function DeliveryManagement() {
               pendingPaymentCount > 0;
             const blueprintHasPendingCollection =
               isBlueprintDelivery && pendingPaymentCount > 0;
-
-            const isCorrectedBlueprintWithReusablePendingCollection =
-              isBlueprintDelivery &&
+            const isCorrectedDelivery =
+              canCompleteDelivery &&
+              Number(delivery.delivery_has_voided_acknowledgement || 0) === 1;
+            const hasReusablePendingDeliveryCollection =
+              isCorrectedDelivery &&
               pendingPaymentCount === 1 &&
               Number(
-                delivery.delivery_has_voided_acknowledgement || 0,
-              ) === 1 &&
-              Number(
-                delivery.delivery_has_reusable_pending_blueprint_collection ||
-                  0,
+                delivery.delivery_has_reusable_pending_collection || 0,
               ) === 1;
+            const isCorrectedBlueprintWithReusablePendingCollection =
+              isBlueprintDelivery && hasReusablePendingDeliveryCollection;
+            const isCorrectedStandardCodWithReusablePendingCollection =
+              isStandardCodDelivery &&
+              hasReusablePendingDeliveryCollection;
 
             const blueprintPendingCollectionBlocksCompletion =
               blueprintHasPendingCollection &&
               !isCorrectedBlueprintWithReusablePendingCollection;
+            const standardCodPendingCollectionBlocksCompletion =
+              standardCodHasPendingPayment &&
+              !isCorrectedStandardCodWithReusablePendingCollection;
 
             const blueprintAwaitingOnline =
               isBlueprintDelivery &&
@@ -859,10 +877,13 @@ export default function DeliveryManagement() {
                 blueprintAwaitingOnline ||
                 blueprintMethodRequired
               : savingId === delivery.id ||
-                (!hasReceipt && !selectedFile) ||
-                standardCodHasPendingPayment ||
+                (isCorrectedDelivery
+                  ? !selectedFile
+                  : !hasReceipt && !selectedFile) ||
+                standardCodPendingCollectionBlocksCompletion ||
                 (canCompleteDelivery &&
                   hasOutstandingBalance &&
+                  !hasReusablePendingDeliveryCollection &&
                   (!hasCollectedAmountValue ||
                     collectedAmountInvalid ||
                     collectedAmountExceedsBalance ||
@@ -874,9 +895,10 @@ export default function DeliveryManagement() {
 
             const canUploadProof = isBlueprintDelivery
               ? true
-              : !standardCodHasPendingPayment &&
+              : !standardCodPendingCollectionBlocksCompletion &&
                 (!canCompleteDelivery ||
                   !hasOutstandingBalance ||
+                  hasReusablePendingDeliveryCollection ||
                   (hasCollectedAmountValue &&
                     !collectedAmountInvalid &&
                     !collectedAmountExceedsBalance &&
@@ -1240,7 +1262,9 @@ export default function DeliveryManagement() {
                               </div>
                               <div style={helperText}>
                                 {standardCodHasPendingPayment
-                                  ? "A payment is already awaiting admin review. Complete Delivery is locked until it is verified or rejected."
+                                  ? isCorrectedStandardCodWithReusablePendingCollection
+                                    ? "The previous delivery cash collection is still awaiting Admin review. Complete this corrected handoff with a fresh proof; no duplicate payment will be created."
+                                    : "A payment is already awaiting admin review. Complete Delivery is locked until it is verified or rejected."
                                   : isStandardCodDelivery
                                     ? "Collect the exact remaining balance from the customer. Admin will verify the cash collection before the order can be completed."
                                     : "Record the amount collected from the customer during delivery. Admin will verify this payment before the order can be completed."}
@@ -1257,9 +1281,11 @@ export default function DeliveryManagement() {
                               >
                                 <div>
                                   <label style={infoLabel}>
-                                    {isStandardCodDelivery
-                                      ? "Amount to Collect"
-                                      : "Collected Amount"}
+                                    {isCorrectedStandardCodWithReusablePendingCollection
+                                      ? "Pending Cash Collection"
+                                      : isStandardCodDelivery
+                                        ? "Amount to Collect"
+                                        : "Collected Amount"}
                                   </label>
                                   {isStandardCodDelivery ? (
                                     <input
@@ -1366,20 +1392,22 @@ export default function DeliveryManagement() {
                         )}
 
                         <div style={sectionTitle}>
-                          {isBlueprintDelivery
+                          {isBlueprintDelivery || isCorrectedDelivery
                             ? "Upload Proof of Delivery Photo"
                             : "Proof of Delivery"}
                         </div>
                         <div style={helperText}>
                           {isBlueprintDelivery
                             ? "A fresh photo is required every time to complete this delivery."
-                            : "Upload the Proof of Delivery photo first, then complete the delivery."}
+                            : isCorrectedDelivery
+                              ? "A fresh photo is required to complete this corrected delivery."
+                              : "Upload the Proof of Delivery photo first, then complete the delivery."}
                         </div>
 
                         <div style={proofPanel}>
                           <div style={proofStatusRow}>
                             <span style={proofStatusLabel}>
-                              {isBlueprintDelivery
+                              {isBlueprintDelivery || isCorrectedDelivery
                                 ? selectedFile
                                   ? "Fresh photo selected."
                                   : "Upload a fresh Proof of Delivery photo to continue."
@@ -1389,7 +1417,8 @@ export default function DeliveryManagement() {
                             </span>
 
                             {hasReceipt && delivery.signed_receipt ? (
-                              <a
+                              <>
+                                <a
                                 href={buildAssetUrl(delivery.signed_receipt)}
                                 target="_blank"
                                 rel="noreferrer"
@@ -1397,6 +1426,13 @@ export default function DeliveryManagement() {
                               >
                                 View Current Proof
                               </a>
+                              <DownloadFileButton
+                                url={buildAssetUrl(delivery.signed_receipt)}
+                                filename={`Proof_of_Delivery_${delivery.order_number || delivery.id}`}
+                                label="Download Proof"
+                                className="rider-btn rider-btn-secondary"
+                              />
+                              </>
                             ) : null}
                           </div>
 
@@ -1444,7 +1480,8 @@ export default function DeliveryManagement() {
                           </div>
                           <div style={helperText}>
                             Have the person receiving the order enter their
-                            name and sign before completing the handoff.
+                            name, review the acknowledgement, and sign only if
+                            they want to provide an e-signature.
                           </div>
 
                           <div
@@ -1524,7 +1561,7 @@ export default function DeliveryManagement() {
                           </div>
 
                           <div style={{ marginTop: "14px" }}>
-                            <label style={infoLabel}>Recipient Signature</label>
+                            <label style={infoLabel}>Recipient Signature (optional)</label>
                             <DeliverySignaturePad
                               value={acknowledgementForm.signature_data}
                               disabled={savingId === delivery.id}
@@ -1661,7 +1698,8 @@ export default function DeliveryManagement() {
 
                         <div style={{ marginTop: 12 }}>
                           {hasReceipt && delivery.signed_receipt ? (
-                            <a
+                            <>
+                              <a
                               href={buildAssetUrl(delivery.signed_receipt)}
                               target="_blank"
                               rel="noreferrer"
@@ -1669,6 +1707,13 @@ export default function DeliveryManagement() {
                             >
                               View Proof of Delivery
                             </a>
+                            <DownloadFileButton
+                              url={buildAssetUrl(delivery.signed_receipt)}
+                              filename={`Proof_of_Delivery_${delivery.order_number || delivery.id}`}
+                              label="Download Proof"
+                              className="rider-btn rider-btn-secondary"
+                            />
+                            </>
                           ) : (
                             <div style={helperText}>
                               This older record has no uploaded proof yet.
@@ -1676,22 +1721,39 @@ export default function DeliveryManagement() {
                           )}
 
                           {delivery.delivery_acknowledgement_id ? (
-                            <div style={{ marginTop: 10 }}>
-                              <button
-                                type="button"
-                                className="rider-btn rider-btn-secondary"
-                                onClick={() =>
-                                  openDeliverySignature(delivery)
-                                }
-                              >
-                                View E-Signature
-                              </button>
-                            </div>
+                            Number(delivery.delivery_has_signature || 0) === 1 ? (
+                              <div style={{ marginTop: 10 }}>
+                                <button
+                                  type="button"
+                                  className="rider-btn rider-btn-secondary"
+                                  onClick={() =>
+                                    openDeliverySignature(delivery)
+                                  }
+                                >
+                                  View E-Signature
+                                </button>
+                              </div>
+                            ) : (
+                              <div style={{ ...helperText, marginTop: 10 }}>
+                                Recipient acknowledgement recorded. E-signature
+                                was optional and was not captured.
+                              </div>
+                            )
                           ) : (
                             <div style={{ ...helperText, marginTop: 10 }}>
-                              Legacy delivery — no e-signature was captured.
+                              Legacy delivery — no recipient acknowledgement was
+                              captured.
                             </div>
                           )}
+
+                          {delivery.delivery_receipt_number ? (
+                            <div style={{ marginTop: 10 }}>
+                              <DeliveryReceiptButton
+                                endpoint={`/pos/deliveries/${delivery.id}/receipt`}
+                                className="rider-btn rider-btn-secondary"
+                              />
+                            </div>
+                          ) : null}
 
                           {/* 👉 NEW: The entire upload and Undo section is strictly hidden if Completed */}
                           {isDelivered && (

@@ -76,7 +76,7 @@ const validateDeliverySignatureData = (value) => {
   const raw = normalizeText(value);
 
   if (!raw) {
-    return { error: "Recipient signature is required." };
+    return { value: null, mime: null };
   }
 
   if (raw.length > DELIVERY_SIGNATURE_MAX_DATA_URL_LENGTH) {
@@ -411,6 +411,20 @@ const computeOrderPaymentStatus = ({
   return "unpaid";
 };
 
+const isRiderDeliveryCollectionPayment = (row = {}) => {
+  const method = normalizeText(row.payment_method).toLowerCase();
+  const status = normalizeText(row.status).toLowerCase();
+  const notes = normalizeText(row.notes).toLowerCase();
+
+  return (
+    status === "pending" &&
+    method === "cash" &&
+    Boolean(normalizeText(row.proof_url)) &&
+    (notes === "collected on delivery." ||
+      notes.startsWith("collected on delivery by "))
+  );
+};
+
 const ensureStaffType = async (userId, expectedType) => {
   if (!userId) return null;
 
@@ -521,6 +535,12 @@ exports.getDeliveries = async (req, res) => {
         da.received_by_name AS delivery_received_by_name,
         da.recipient_type AS delivery_recipient_type,
         da.acknowledged_at AS delivery_acknowledged_at,
+        da.receipt_number AS delivery_receipt_number,
+        CASE
+          WHEN da.signature_data IS NOT NULL
+           AND TRIM(da.signature_data) <> '' THEN 1
+          ELSE 0
+        END AS delivery_has_signature,
 
         EXISTS(
           SELECT 1
@@ -536,9 +556,29 @@ exports.getDeliveries = async (req, res) => {
             AND LOWER(ptr.status) = 'pending'
             AND LOWER(ptr.payment_method) = 'cash'
             AND ptr.proof_url IS NOT NULL
-            AND ptr.proof_url = d.signed_receipt
-            AND TRIM(COALESCE(ptr.notes, '')) = 'Collected on delivery.'
-        ) AS delivery_has_reusable_pending_blueprint_collection,
+            AND (
+              LOWER(TRIM(COALESCE(ptr.notes, ''))) = 'collected on delivery.'
+              OR LOWER(TRIM(COALESCE(ptr.notes, ''))) LIKE 'collected on delivery by %'
+            )
+            AND ABS(
+              ptr.amount - GREATEST(
+                o.total - COALESCE(
+                  (
+                    SELECT SUM(
+                      CASE
+                        WHEN LOWER(pt_reuse.status) = 'verified' THEN pt_reuse.amount
+                        ELSE 0
+                      END
+                    )
+                    FROM payment_transactions pt_reuse
+                    WHERE pt_reuse.order_id = o.id
+                  ),
+                  0
+                ),
+                0
+              )
+            ) <= 0.01
+        ) AS delivery_has_reusable_pending_collection,
 
         o.order_number,
         o.total,
@@ -680,6 +720,7 @@ exports.getDeliveryAcknowledgement = async (req, res) => {
         da.signature_mime,
         da.acknowledgement_text,
         da.note,
+        da.receipt_number,
         da.acknowledged_at,
         da.captured_by,
         captured.name AS captured_by_name
@@ -716,6 +757,7 @@ exports.getDeliveryAcknowledgement = async (req, res) => {
       signature_mime: acknowledgement.signature_mime,
       acknowledgement_text: acknowledgement.acknowledgement_text,
       note: acknowledgement.note,
+      receipt_number: acknowledgement.receipt_number || null,
       acknowledged_at: acknowledgement.acknowledged_at,
       captured_by: acknowledgement.captured_by,
       captured_by_name: acknowledgement.captured_by_name || null,
@@ -727,6 +769,106 @@ exports.getDeliveryAcknowledgement = async (req, res) => {
     );
     res.status(500).json({
       message: "Failed to load delivery e-signature acknowledgement.",
+    });
+  }
+};
+
+
+exports.getDeliveryReceipt = async (req, res) => {
+  const deliveryId = toNullableInt(req.params.id);
+
+  if (!deliveryId) {
+    return res.status(400).json({ message: "Invalid delivery id." });
+  }
+
+  try {
+    const params = [deliveryId];
+
+    let sql = `
+      SELECT
+        d.id AS delivery_id,
+        d.order_id,
+        da.id AS acknowledgement_id,
+        da.receipt_number,
+        da.receipt_snapshot_json,
+        da.received_by_name,
+        da.recipient_type,
+        da.signature_data,
+        da.signature_mime,
+        da.acknowledgement_text,
+        da.note,
+        da.acknowledged_at,
+        da.captured_by,
+        captured.name AS captured_by_name
+      FROM deliveries d
+      INNER JOIN delivery_acknowledgements da
+        ON da.delivery_id = d.id
+       AND da.voided_at IS NULL
+      LEFT JOIN users captured ON captured.id = da.captured_by
+      WHERE d.id = ?
+        AND da.receipt_number IS NOT NULL
+        AND da.receipt_snapshot_json IS NOT NULL
+    `;
+
+    if (req.user.role === "staff") {
+      sql += ` AND d.driver_id = ? `;
+      params.push(req.user.id);
+    }
+
+    sql += ` ORDER BY da.id DESC LIMIT 1 `;
+
+    const [[row]] = await db.query(sql, params);
+
+    if (!row) {
+      return res.status(404).json({
+        reason_code: "DELIVERY_RECEIPT_NOT_AVAILABLE",
+        message:
+          "No active digital delivery receipt is available for this delivery.",
+      });
+    }
+
+    let snapshot;
+    try {
+      snapshot =
+        typeof row.receipt_snapshot_json === "string"
+          ? JSON.parse(row.receipt_snapshot_json)
+          : row.receipt_snapshot_json;
+    } catch {
+      snapshot = null;
+    }
+
+    if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+      return res.status(409).json({
+        message:
+          "This delivery receipt snapshot is invalid. Please contact support.",
+      });
+    }
+
+    return res.json({
+      ...snapshot,
+      receipt_number: row.receipt_number,
+      delivery_id: row.delivery_id,
+      order_id: row.order_id,
+      acknowledgement_id: row.acknowledgement_id,
+      received_by_name: row.received_by_name,
+      recipient_type: row.recipient_type,
+      signature_data: row.signature_data || null,
+      signature_mime: row.signature_mime || null,
+      signature_present: Boolean(normalizeText(row.signature_data)),
+      acknowledgement_text: row.acknowledgement_text,
+      note: row.note,
+      acknowledged_at: row.acknowledged_at,
+      captured_by: row.captured_by,
+      captured_by_name:
+        row.captured_by_name || snapshot.recorded_by_name || null,
+    });
+  } catch (err) {
+    console.error(
+      "GET /api/pos/deliveries/:id/receipt error:",
+      err,
+    );
+    return res.status(500).json({
+      message: "Failed to load digital delivery receipt.",
     });
   }
 };
@@ -1680,7 +1822,7 @@ exports.updateDeliveryStatus = async (req, res) => {
       let verifiedCentsBlueprint = 0;
       let hasPendingPaymentBlueprint = false;
       let pendingBlueprintPaymentCount = 0;
-      let reusablePendingBlueprintCollectionId = null;
+      const pendingBlueprintPayments = [];
       let hasInvalidAmountBlueprint = false;
 
       for (const row of blueprintPaymentRows) {
@@ -1695,18 +1837,7 @@ exports.updateDeliveryStatus = async (req, res) => {
         } else if (st === "pending") {
           hasPendingPaymentBlueprint = true;
           pendingBlueprintPaymentCount += 1;
-
-          const matchesPriorDeliveryCollection =
-            hasPriorVoidedDeliveryAcknowledgement &&
-            normalizeText(row.payment_method).toLowerCase() === "cash" &&
-            Boolean(normalizeText(existing.signed_receipt)) &&
-            normalizeText(row.proof_url) ===
-              normalizeText(existing.signed_receipt) &&
-            normalizeText(row.notes) === "Collected on delivery.";
-
-          if (matchesPriorDeliveryCollection) {
-            reusablePendingBlueprintCollectionId = row.id;
-          }
+          pendingBlueprintPayments.push({ row, cents });
         }
       }
 
@@ -1767,10 +1898,18 @@ exports.updateDeliveryStatus = async (req, res) => {
           });
         }
 
+        const reusablePendingBlueprintCollections =
+          pendingBlueprintPayments.filter(
+            ({ row, cents }) =>
+              hasPriorVoidedDeliveryAcknowledgement &&
+              isRiderDeliveryCollectionPayment(row) &&
+              cents === remainingCentsBlueprint,
+          );
+
         const canReusePendingBlueprintDeliveryCollection =
           hasPendingPaymentBlueprint &&
           pendingBlueprintPaymentCount === 1 &&
-          Number(reusablePendingBlueprintCollectionId) > 0;
+          reusablePendingBlueprintCollections.length === 1;
 
         if (
           hasPendingPaymentBlueprint &&
@@ -1833,6 +1972,18 @@ exports.updateDeliveryStatus = async (req, res) => {
       });
     }
 
+    if (
+      isCompletingDeliveryNow &&
+      hasPriorVoidedDeliveryAcknowledgement &&
+      !uploadedReceiptPath
+    ) {
+      await conn.rollback();
+      return res.status(400).json({
+        message:
+          "Please upload a fresh Proof of Delivery photo to complete this corrected delivery.",
+      });
+    }
+
     const nextSignedReceipt =
       uploadedReceiptPath || existing.signed_receipt || null;
 
@@ -1876,11 +2027,47 @@ exports.updateDeliveryStatus = async (req, res) => {
       normalizeText(order.order_type || "").toLowerCase() === "standard" &&
       normalizeText(order.payment_method || "").toLowerCase() === "cod";
 
+    let canReusePendingStandardCodCollection = false;
+
+    if (
+      isCompletingDeliveryNow &&
+      isStandardCodOrder &&
+      hasPriorVoidedDeliveryAcknowledgement &&
+      currentBalance > 0.009 &&
+      hasPendingPaymentBefore
+    ) {
+      const [pendingStandardRows] = await conn.query(
+        `SELECT id, amount, status, payment_method, proof_url, notes
+         FROM payment_transactions
+         WHERE order_id = ?
+           AND LOWER(status) = 'pending'
+         ORDER BY id
+         FOR UPDATE`,
+        [existing.order_id],
+      );
+
+      const currentBalanceCents = parseDecimalToCentsStrict(
+        currentBalance.toFixed(2),
+      );
+      const reusableRows = pendingStandardRows.filter((row) => {
+        const rowCents = parseDecimalToCentsStrict(row.amount);
+        return (
+          currentBalanceCents !== null &&
+          rowCents === currentBalanceCents &&
+          isRiderDeliveryCollectionPayment(row)
+        );
+      });
+
+      canReusePendingStandardCodCollection =
+        pendingStandardRows.length === 1 && reusableRows.length === 1;
+    }
+
     if (
       isCompletingDeliveryNow &&
       isStandardCodOrder &&
       currentBalance > 0.009 &&
-      hasPendingPaymentBefore
+      hasPendingPaymentBefore &&
+      !canReusePendingStandardCodCollection
     ) {
       await conn.rollback();
       cleanupFreshUpload(req.file);
@@ -1906,9 +2093,10 @@ exports.updateDeliveryStatus = async (req, res) => {
       !hasPendingPaymentBefore;
 
     // A real balance is due, but an existing real payment_transactions
-    // row is already pending review — delivery still completes, but no
-    // second, redundant pending collection is created. PHASE 5: also
-    // excluded for blueprint orders (handled entirely above).
+    // row is already pending review. For Standard COD this reaches this
+    // point only when the pending row has been proven to be the prior
+    // rider collection from an Undo Delivery correction. No duplicate
+    // collection row is created. Blueprint remains handled above.
     const collectionSkippedForPendingPayment =
       isCompletingDeliveryNow &&
       !isBlueprintOrder &&
@@ -2080,6 +2268,127 @@ exports.updateDeliveryStatus = async (req, res) => {
       );
 
       deliveryAcknowledgementId = acknowledgementInsert.insertId;
+
+      // WISDOM DIGITAL DELIVERY RECEIPT V3
+      // Freeze a formal receipt snapshot inside the same transaction as the
+      // successful delivery handoff. The signature image remains in its
+      // dedicated column and is intentionally NOT duplicated in the JSON.
+      const receiptIssuedAt = new Date();
+      const receiptDateParts = Object.fromEntries(
+        new Intl.DateTimeFormat("en-US", {
+          timeZone: "Asia/Manila",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        })
+          .formatToParts(receiptIssuedAt)
+          .filter((part) => ["year", "month", "day"].includes(part.type))
+          .map((part) => [part.type, part.value]),
+      );
+      const deliveryReceiptNumber =
+        `DR-${receiptDateParts.year}-${String(deliveryAcknowledgementId).padStart(6, "0")}`;
+
+      const [[receiptOrder]] = await conn.query(
+        `SELECT
+           o.id,
+           o.order_number,
+           o.delivery_address,
+           COALESCE(
+             NULLIF(TRIM(o.walkin_customer_name), ''),
+             NULLIF(TRIM(customer.name), ''),
+             'Customer'
+           ) AS customer_name,
+           COALESCE(
+             NULLIF(TRIM(o.walkin_customer_phone), ''),
+             NULLIF(TRIM(customer.phone), ''),
+             ''
+           ) AS customer_phone,
+           NULLIF(TRIM(driver.name), '') AS driver_name
+         FROM orders o
+         LEFT JOIN users customer ON customer.id = o.customer_id
+         LEFT JOIN users driver ON driver.id = ?
+         WHERE o.id = ?
+         LIMIT 1`,
+        [existing.driver_id, existing.order_id],
+      );
+
+      const [receiptItemRows] = await conn.query(
+        `SELECT
+           oi.id AS order_item_id,
+           NULLIF(TRIM(p.barcode), '') AS client_code,
+           COALESCE(
+             NULLIF(TRIM(oi.product_name), ''),
+             NULLIF(TRIM(p.name), ''),
+             CONCAT('Item #', oi.id)
+           ) AS description,
+           oi.quantity
+         FROM order_items oi
+         LEFT JOIN products p ON p.id = oi.product_id
+         WHERE oi.order_id = ?
+         ORDER BY oi.id ASC`,
+        [existing.order_id],
+      );
+
+      const totalItemCount = (receiptItemRows || []).reduce(
+        (sum, item) => sum + Math.max(0, Number(item.quantity || 0)),
+        0,
+      );
+
+      const deliveryReceiptSnapshot = {
+        version: 2,
+        title: "DELIVERY RECEIPT",
+        receipt_number: deliveryReceiptNumber,
+        issued_at: receiptIssuedAt.toISOString(),
+        delivery_id: deliveryId,
+        order_id: existing.order_id,
+        order_number:
+          receiptOrder?.order_number ||
+          order.order_number ||
+          `ORDER-${existing.order_id}`,
+        customer_name: receiptOrder?.customer_name || "Customer",
+        customer_phone: receiptOrder?.customer_phone || "",
+        delivery_address:
+          normalizeText(existing.address) ||
+          normalizeText(receiptOrder?.delivery_address) ||
+          "—",
+        driver_name:
+          receiptOrder?.driver_name || req.user.name || "Assigned Rider",
+        items: (receiptItemRows || []).map((item) => ({
+          client_code: item.client_code || null,
+          quantity: Number(item.quantity || 0),
+          unit: "pc",
+          description: item.description || "Item",
+        })),
+        total_items: totalItemCount,
+        received_by_name: deliveryAcknowledgementInput.receivedByName,
+        recipient_type: deliveryAcknowledgementInput.recipientType,
+        acknowledgement_text:
+          deliveryAcknowledgementInput.acknowledgementText,
+        note: deliveryAcknowledgementInput.note,
+        delivered_at:
+          deliveredDate instanceof Date
+            ? deliveredDate.toISOString()
+            : receiptIssuedAt.toISOString(),
+        proof_of_delivery_recorded: Boolean(
+          normalizeText(nextSignedReceipt),
+        ),
+        signature_present: Boolean(
+          deliveryAcknowledgementInput.signatureData,
+        ),
+        recorded_by_name: req.user.name || null,
+      };
+
+      await conn.query(
+        `UPDATE delivery_acknowledgements
+         SET receipt_number = ?,
+             receipt_snapshot_json = ?
+         WHERE id = ?`,
+        [
+          deliveryReceiptNumber,
+          JSON.stringify(deliveryReceiptSnapshot),
+          deliveryAcknowledgementId,
+        ],
+      );
     }
 
     if (shouldRecordDeliveryCollection) {
@@ -2185,6 +2494,37 @@ exports.updateDeliveryStatus = async (req, res) => {
          WHERE id = ?`,
         [nextOrderPaymentStatus, existing.order_id],
       );
+    }
+
+    if (nextOrderStatus) {
+      const [[verifiedLinkedOrder]] = await conn.query(
+        `SELECT status, payment_status
+         FROM orders
+         WHERE id = ?
+         LIMIT 1
+         FOR UPDATE`,
+        [existing.order_id],
+      );
+
+      const actualOrderStatus = normalizeText(
+        verifiedLinkedOrder?.status,
+      ).toLowerCase();
+      const actualPaymentStatus = normalizeText(
+        verifiedLinkedOrder?.payment_status,
+      ).toLowerCase();
+
+      if (
+        actualOrderStatus !== nextOrderStatus ||
+        actualPaymentStatus !== normalizeText(nextOrderPaymentStatus).toLowerCase()
+      ) {
+        await conn.rollback();
+        cleanupFreshUpload(req.file);
+        return res.status(500).json({
+          reason_code: "ORDER_DELIVERY_SYNC_VERIFICATION_FAILED",
+          message:
+            "Delivery was not finalized because the linked order state could not be verified. Please retry.",
+        });
+      }
     }
 
     const isFailureUpdate = requestedStatus === "failed";
@@ -2295,6 +2635,12 @@ exports.updateDeliveryStatus = async (req, res) => {
         da.received_by_name AS delivery_received_by_name,
         da.recipient_type AS delivery_recipient_type,
         da.acknowledged_at AS delivery_acknowledged_at,
+        da.receipt_number AS delivery_receipt_number,
+        CASE
+          WHEN da.signature_data IS NOT NULL
+           AND TRIM(da.signature_data) <> '' THEN 1
+          ELSE 0
+        END AS delivery_has_signature,
 
         EXISTS(
           SELECT 1
@@ -2310,9 +2656,29 @@ exports.updateDeliveryStatus = async (req, res) => {
             AND LOWER(ptr.status) = 'pending'
             AND LOWER(ptr.payment_method) = 'cash'
             AND ptr.proof_url IS NOT NULL
-            AND ptr.proof_url = d.signed_receipt
-            AND TRIM(COALESCE(ptr.notes, '')) = 'Collected on delivery.'
-        ) AS delivery_has_reusable_pending_blueprint_collection,
+            AND (
+              LOWER(TRIM(COALESCE(ptr.notes, ''))) = 'collected on delivery.'
+              OR LOWER(TRIM(COALESCE(ptr.notes, ''))) LIKE 'collected on delivery by %'
+            )
+            AND ABS(
+              ptr.amount - GREATEST(
+                o.total - COALESCE(
+                  (
+                    SELECT SUM(
+                      CASE
+                        WHEN LOWER(pt_reuse.status) = 'verified' THEN pt_reuse.amount
+                        ELSE 0
+                      END
+                    )
+                    FROM payment_transactions pt_reuse
+                    WHERE pt_reuse.order_id = o.id
+                  ),
+                  0
+                ),
+                0
+              )
+            ) <= 0.01
+        ) AS delivery_has_reusable_pending_collection,
 
         o.order_number,
         o.total,

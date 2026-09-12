@@ -6,6 +6,8 @@ import toast from "react-hot-toast";
 import AdminSubmittedDesignPreview from "./AdminSubmittedDesignPreview";
 import OrderDiscussionPanel from "./OrderDiscussionPanel";
 import { exportOrderCompletionReportPdf } from "./OrderCompletionReport";
+import { DeliveryReceiptButton } from "../../components/delivery/DeliveryReceiptModal";
+import DownloadFileButton from "../../components/delivery/DownloadFileButton";
 import "../../components/motion-feedback.css";
 
 const parseMapCoordinate = (value) => {
@@ -485,23 +487,56 @@ export default function OrderDetailPage() {
   const [reassignStaffId, setReassignStaffId] = useState("");
   const [updatingTaskId, setUpdatingTaskId] = useState(null);
 
-  const load = async () => {
-    setLoading(true);
+  const load = async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
       const { data } = await api.get(`/orders/${id}`);
       setOrder(data);
       setNewStatus(data.status);
     } catch (err) {
-      toast.error(
-        err?.response?.data?.message || "Failed to load order details.",
-      );
+      if (silent) {
+        console.error("Background order refresh failed:", err?.response?.data || err);
+      } else {
+        toast.error(
+          err?.response?.data?.message || "Failed to load order details.",
+        );
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     load();
+  }, [id]); // eslint-disable-line
+
+  // Refresh canonical order/delivery state when Admin returns to this tab.
+  // A short de-duplication window prevents focus + visibilitychange from
+  // immediately issuing duplicate requests. No polling is introduced.
+  useEffect(() => {
+    let lastRefreshAt = 0;
+    let refreshInFlight = false;
+
+    const refreshVisibleOrder = async () => {
+      if (document.visibilityState !== "visible" || refreshInFlight) return;
+      const now = Date.now();
+      if (now - lastRefreshAt < 750) return;
+      lastRefreshAt = now;
+      refreshInFlight = true;
+      try {
+        await load({ silent: true });
+      } finally {
+        refreshInFlight = false;
+      }
+    };
+
+    window.addEventListener("focus", refreshVisibleOrder);
+    document.addEventListener("visibilitychange", refreshVisibleOrder);
+
+    return () => {
+      window.removeEventListener("focus", refreshVisibleOrder);
+      document.removeEventListener("visibilitychange", refreshVisibleOrder);
+    };
   }, [id]); // eslint-disable-line
 
   useEffect(() => {
@@ -2983,8 +3018,14 @@ export default function OrderDetailPage() {
                 rel="noreferrer"
                 style={btnSecondaryLink}
               >
-                Open in New Tab
+                View Proof
               </a>
+              <DownloadFileButton
+                url={deliveryReceiptPreview.url}
+                filename={`Proof_of_Delivery_${order?.order_number || id}`}
+                label="Download Proof"
+                style={btnSecondary}
+              />
               <button onClick={closeDeliveryReceiptPreview} style={btnPrimary}>
                 Close
               </button>
@@ -3439,13 +3480,36 @@ function AdminDeliveryAcknowledgement({
       <InfoRow
         label="E-Signature"
         value={
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            style={previewLinkButton}
-          >
-            View E-Signature
-          </button>
+          state.data.signature_data ? (
+            <button
+              type="button"
+              onClick={() => setOpen(true)}
+              style={previewLinkButton}
+            >
+              View E-Signature
+            </button>
+          ) : (
+            "Not captured (optional)"
+          )
+        }
+      />
+
+      <InfoRow
+        label="Delivery Receipt"
+        value={
+          state.data.receipt_number ? (
+            <div>
+              <div style={{ marginBottom: 8, fontWeight: 700 }}>
+                {state.data.receipt_number}
+              </div>
+              <DeliveryReceiptButton
+                endpoint={`/pos/deliveries/${deliveryId}/receipt`}
+                style={previewLinkButton}
+              />
+            </div>
+          ) : (
+            "Not issued for this legacy delivery"
+          )
         }
       />
 

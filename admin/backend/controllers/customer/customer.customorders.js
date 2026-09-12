@@ -1092,10 +1092,20 @@ exports.getCustomOrderById = async (req, res) => {
           d.status,
           d.signed_receipt,
           d.updated_at,
-          u.name AS driver_name
+          u.name AS driver_name,
+          da.receipt_number AS delivery_receipt_number,
+          da.acknowledged_at AS delivery_acknowledged_at,
+          CASE
+            WHEN da.signature_data IS NOT NULL
+             AND TRIM(da.signature_data) <> '' THEN 1
+            ELSE 0
+          END AS delivery_has_signature
        FROM deliveries d
        LEFT JOIN users u
          ON u.id = d.driver_id
+       LEFT JOIN delivery_acknowledgements da
+         ON da.delivery_id = d.id
+        AND da.voided_at IS NULL
        WHERE d.order_id = ?
        ORDER BY d.id DESC
        LIMIT 1`,
@@ -1117,6 +1127,10 @@ exports.getCustomOrderById = async (req, res) => {
           latitude: parseStrictCoordinate(order.delivery_lat),
           longitude: parseStrictCoordinate(order.delivery_lng),
           driver_name: toTrimmedStringOrNull(deliveryRow.driver_name),
+          receipt_number:
+            toTrimmedStringOrNull(deliveryRow.delivery_receipt_number),
+          acknowledged_at: deliveryRow.delivery_acknowledged_at || null,
+          has_signature: Number(deliveryRow.delivery_has_signature || 0) === 1,
           proof_url: signUploadPath(
             toTrimmedStringOrNull(deliveryRow.signed_receipt),
           ),

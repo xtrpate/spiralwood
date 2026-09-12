@@ -1,0 +1,372 @@
+.delivery-receipt-modal-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 1800;
+  overflow: auto;
+  padding: 24px;
+  background: rgba(24, 24, 27, 0.72);
+  box-sizing: border-box;
+}
+
+.delivery-receipt-modal-card {
+  width: min(960px, 100%);
+  margin: 0 auto;
+  background: #ffffff;
+  border: 1px solid #d4d4d8;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.22);
+}
+
+.delivery-receipt-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid #d4d4d8;
+  background: #fafafa;
+}
+
+.delivery-receipt-modal-action-status {
+  margin-right: auto;
+  min-width: 0;
+}
+
+.delivery-receipt-action-btn {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid #18181b;
+  border-radius: 0;
+  background: #18181b;
+  color: #ffffff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.delivery-receipt-action-btn-secondary {
+  background: #ffffff;
+  color: #18181b;
+  border-color: #a1a1aa;
+}
+
+.delivery-receipt-print-root {
+  padding: 28px;
+  color: #111827;
+  background: #ffffff;
+  font-family: "Inter", "Segoe UI", Arial, sans-serif;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.delivery-receipt-header-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  border: 1.5px solid #111827;
+}
+
+.delivery-receipt-brand-cell,
+.delivery-receipt-title-cell {
+  min-height: 104px;
+  padding: 14px 16px;
+  box-sizing: border-box;
+}
+
+.delivery-receipt-brand-cell {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-right: 1.5px solid #111827;
+}
+
+.delivery-receipt-logo {
+  width: 72px;
+  height: 62px;
+  object-fit: contain;
+  filter: grayscale(100%);
+}
+
+.delivery-receipt-company {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.delivery-receipt-address {
+  max-width: 430px;
+  margin-top: 6px;
+  color: #52525b;
+  font-size: 10px;
+}
+
+.delivery-receipt-title-cell {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+}
+
+.delivery-receipt-title {
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.delivery-receipt-dr-row {
+  display: grid;
+  grid-template-columns: 74px 1fr;
+  align-items: center;
+  margin-top: 12px;
+  border: 1px solid #111827;
+}
+
+.delivery-receipt-dr-row span,
+.delivery-receipt-dr-row strong {
+  padding: 7px 8px;
+}
+
+.delivery-receipt-dr-row span {
+  border-right: 1px solid #111827;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.delivery-receipt-party-grid {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) 100px 180px;
+  border-left: 1.5px solid #111827;
+  border-right: 1.5px solid #111827;
+  border-bottom: 1.5px solid #111827;
+}
+
+.delivery-receipt-label-cell,
+.delivery-receipt-value-cell {
+  min-height: 64px;
+  padding: 10px;
+  border-right: 1px solid #111827;
+  box-sizing: border-box;
+}
+
+.delivery-receipt-party-grid > :last-child {
+  border-right: 0;
+}
+
+.delivery-receipt-label-cell {
+  display: flex;
+  align-items: center;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  background: #fafafa;
+}
+
+.delivery-receipt-value-cell strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.delivery-receipt-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  border-left: 1.5px solid #111827;
+  border-right: 1.5px solid #111827;
+  border-bottom: 1.5px solid #111827;
+}
+
+.delivery-receipt-meta-cell {
+  min-height: 60px;
+  padding: 9px 10px;
+  border-right: 1px solid #111827;
+  box-sizing: border-box;
+}
+
+.delivery-receipt-meta-cell:last-child {
+  border-right: 0;
+}
+
+.delivery-receipt-meta-cell span,
+.delivery-receipt-turnover-cell span,
+.delivery-receipt-note-row span {
+  display: block;
+  margin-bottom: 5px;
+  color: #52525b;
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+.delivery-receipt-meta-cell strong,
+.delivery-receipt-turnover-cell strong {
+  display: block;
+  font-size: 11px;
+}
+
+.delivery-receipt-items-section {
+  margin-top: 16px;
+}
+
+.delivery-receipt-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.delivery-receipt-table th,
+.delivery-receipt-table td {
+  padding: 9px 8px;
+  border: 1px solid #111827;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.delivery-receipt-table th {
+  background: #f4f4f5;
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-align: left;
+}
+
+.delivery-receipt-table-with-code th:nth-child(1),
+.delivery-receipt-table-with-code td:nth-child(1) { width: 21%; }
+.delivery-receipt-table-with-code th:nth-child(2),
+.delivery-receipt-table-with-code td:nth-child(2) { width: 12%; }
+.delivery-receipt-table-with-code th:nth-child(3),
+.delivery-receipt-table-with-code td:nth-child(3) { width: 12%; }
+.delivery-receipt-table-with-code th:nth-child(4),
+.delivery-receipt-table-with-code td:nth-child(4) { width: 55%; }
+
+.delivery-receipt-table-without-code th:nth-child(1),
+.delivery-receipt-table-without-code td:nth-child(1) { width: 15%; }
+.delivery-receipt-table-without-code th:nth-child(2),
+.delivery-receipt-table-without-code td:nth-child(2) { width: 15%; }
+.delivery-receipt-table-without-code th:nth-child(3),
+.delivery-receipt-table-without-code td:nth-child(3) { width: 70%; }
+
+.delivery-receipt-center {
+  text-align: center;
+}
+
+.delivery-receipt-table tfoot td {
+  font-weight: 800;
+  background: #fafafa;
+}
+
+.delivery-receipt-total-items {
+  text-align: center;
+  font-size: 13px;
+}
+
+.delivery-receipt-empty {
+  text-align: center;
+  color: #71717a;
+}
+
+.delivery-receipt-turnover-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 16px;
+  border-top: 1px solid #111827;
+  border-left: 1px solid #111827;
+}
+
+.delivery-receipt-turnover-cell {
+  min-height: 88px;
+  padding: 10px;
+  border-right: 1px solid #111827;
+  border-bottom: 1px solid #111827;
+}
+
+.delivery-receipt-turnover-cell small {
+  display: block;
+  margin-top: 6px;
+  color: #71717a;
+  font-size: 9px;
+}
+
+.delivery-receipt-acknowledgement-box,
+.delivery-receipt-signature-grid {
+  margin-top: 16px;
+  border: 1px solid #111827;
+}
+
+.delivery-receipt-box-heading {
+  padding: 7px 9px;
+  border-bottom: 1px solid #111827;
+  background: #f4f4f5;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+.delivery-receipt-box-body {
+  min-height: 54px;
+  padding: 10px;
+}
+
+.delivery-receipt-note-row {
+  padding: 9px 10px;
+  border-top: 1px solid #111827;
+}
+
+.delivery-receipt-signature-body {
+  min-height: 132px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+}
+
+.delivery-receipt-signature-body img {
+  max-width: 560px;
+  max-height: 150px;
+  object-fit: contain;
+}
+
+.delivery-receipt-signature-empty {
+  max-width: 600px;
+  color: #71717a;
+  text-align: center;
+  font-size: 10px;
+}
+
+.delivery-receipt-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 18px;
+  padding-top: 10px;
+  border-top: 1px solid #111827;
+  color: #52525b;
+  font-size: 8.5px;
+}
+
+.delivery-receipt-footer > :first-child {
+  max-width: 70%;
+}
+
+.delivery-receipt-load-error {
+  display: block;
+  margin-top: 6px;
+  color: #b91c1c;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+@media (max-width: 760px) {
+  .delivery-receipt-modal-shell { padding: 8px; }
+  .delivery-receipt-print-root { padding: 14px; overflow-x: auto; }
+  .delivery-receipt-header-grid { grid-template-columns: 1fr; }
+  .delivery-receipt-brand-cell { border-right: 0; border-bottom: 1.5px solid #111827; }
+  .delivery-receipt-party-grid { grid-template-columns: 92px minmax(0, 1fr); }
+  .delivery-receipt-party-grid > :nth-child(2) { border-right: 0; }
+  .delivery-receipt-party-grid > :nth-child(3),
+  .delivery-receipt-party-grid > :nth-child(4) { border-top: 1px solid #111827; }
+  .delivery-receipt-meta-grid,
+  .delivery-receipt-turnover-grid { grid-template-columns: 1fr; }
+  .delivery-receipt-meta-cell,
+  .delivery-receipt-turnover-cell { border-right: 0; }
+  .delivery-receipt-footer { flex-direction: column; }
+  .delivery-receipt-footer > :first-child { max-width: none; }
+}

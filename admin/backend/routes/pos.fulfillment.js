@@ -132,6 +132,12 @@ router.get(
   posFulfillmentController.getDeliveryAcknowledgement,
 );
 
+router.get(
+  "/deliveries/:id/receipt",
+  deliveryAccess,
+  posFulfillmentController.getDeliveryReceipt,
+);
+
 router.post(
   "/deliveries",
   adminOnly,

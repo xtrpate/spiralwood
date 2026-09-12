@@ -5,6 +5,8 @@ import { Check, MapPin } from "lucide-react";
 import api, { buildAssetUrl } from "../../services/api";
 import { downloadProjectAgreementPdf } from "../../utils/projectAgreementPdf";
 import { downloadPickupAcknowledgementPdf } from "../../utils/pickupAcknowledgementPdf";
+import { DeliveryReceiptButton } from "../../components/delivery/DeliveryReceiptModal";
+import DownloadFileButton from "../../components/delivery/DownloadFileButton";
 import CustomerTemplateWorkbench from "./CustomerTemplateWorkbench";
 import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
 import "./customizepage.css";
@@ -3565,18 +3567,60 @@ export default function CustomRequestDetailPage() {
                         <span>Proof of delivery</span>
 
                         {customerDeliveryProofHref ? (
-                          <a
-                            href={customerDeliveryProofHref}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="crd-delivery-proof-btn-v5"
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 8,
+                              flexWrap: "wrap",
+                              justifyContent: "flex-end",
+                            }}
                           >
-                            View proof
-                          </a>
+                            <a
+                              href={customerDeliveryProofHref}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="crd-delivery-proof-btn-v5"
+                            >
+                              View proof
+                            </a>
+                            <DownloadFileButton
+                              url={customerDeliveryProofHref}
+                              filename={`Proof_of_Delivery_${requestData.order_number || requestData.id || id}`}
+                              label="Download proof"
+                              className="crd-delivery-proof-btn-v5"
+                            />
+                          </div>
                         ) : (
                           <strong>
                             {customerDeliveryIsFinished
                               ? "Proof not available"
+                              : "Available after delivery"}
+                          </strong>
+                        )}
+                      </div>
+
+                      <div className="crd-delivery-confirmation-row-v5">
+                        <span>Delivery receipt</span>
+                        {deliveryDetailsForCustomer?.receipt_number ? (
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                              flexWrap: "wrap",
+                              justifyContent: "flex-end",
+                            }}
+                          >
+                            <strong>{deliveryDetailsForCustomer.receipt_number}</strong>
+                            <DeliveryReceiptButton
+                              endpoint={`/customer/orders/${requestData.id || id}/delivery-receipt`}
+                              className="crd-delivery-proof-btn-v5"
+                            />
+                          </div>
+                        ) : (
+                          <strong>
+                            {customerDeliveryIsFinished
+                              ? "Receipt not available"
                               : "Available after delivery"}
                           </strong>
                         )}
