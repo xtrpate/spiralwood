@@ -3131,3 +3131,431 @@ exports.getRiderHistory = async (req, res) => {
     return res.status(500).json({ message: "Failed to load delivery history" });
   }
 };
+
+/* ── ADMIN DELIVERY REPORT ── */
+const DELIVERY_REPORT_EXPORT_LIMIT = 5000;
+const DELIVERY_REPORT_STATUSES = new Set([
+  "all",
+  "scheduled",
+  "in_transit",
+  "delivered",
+  "failed",
+]);
+
+const DELIVERY_REPORT_STATUS_SQL = `CASE
+  WHEN d.status IN ('delivered', 'completed')
+   AND LOWER(COALESCE(d.notes, '')) LIKE '%failure reason:%'
+    THEN 'failed'
+  WHEN d.status = 'completed' THEN 'delivered'
+  ELSE d.status
+END`;
+
+const DELIVERY_REPORT_ACTIVITY_DATE_SQL = `CASE
+  WHEN (${DELIVERY_REPORT_STATUS_SQL}) = 'delivered'
+    THEN COALESCE(d.delivered_date, d.updated_at)
+  WHEN (${DELIVERY_REPORT_STATUS_SQL}) = 'failed'
+    THEN d.updated_at
+  ELSE COALESCE(d.scheduled_date, d.updated_at)
+END`;
+
+const DELIVERY_REPORT_ACTIVE_ACK_JOIN_SQL = `
+  LEFT JOIN delivery_acknowledgements da
+    ON da.id = (
+      SELECT da2.id
+      FROM delivery_acknowledgements da2
+      WHERE da2.delivery_id = d.id
+        AND da2.voided_at IS NULL
+      ORDER BY da2.id DESC
+      LIMIT 1
+    )`;
+
+const parseDeliveryReportDate = (value) => {
+  const raw = normalizeText(value);
+  if (!raw) return "";
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (!isRealCalendarDate(year, month, day)) return null;
+  return raw;
+};
+
+const buildDeliveryReportFilterState = (req) => {
+  const requestedPage = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  const requestedLimit = Number.parseInt(req.query.limit, 10) || 25;
+  const limit = Math.min(100, Math.max(1, requestedLimit));
+  const exportAll = ["1", "true", "yes"].includes(
+    normalizeText(req.query.export).toLowerCase(),
+  );
+  const search = normalizeText(req.query.search).slice(0, 120);
+  const status = normalizeText(req.query.status || "all").toLowerCase();
+  const riderRaw = normalizeText(req.query.rider_id);
+  const riderId = riderRaw ? toNullableInt(riderRaw) : null;
+  const fromDate = parseDeliveryReportDate(req.query.from);
+  const toDate = parseDeliveryReportDate(req.query.to);
+
+  if (!DELIVERY_REPORT_STATUSES.has(status)) {
+    return { error: "Invalid Delivery Report status filter." };
+  }
+  if (riderRaw && !riderId) {
+    return { error: "Invalid rider filter." };
+  }
+  if (fromDate === null || toDate === null) {
+    return { error: "Delivery Report dates must use YYYY-MM-DD." };
+  }
+  if (fromDate && toDate && fromDate > toDate) {
+    return { error: "From date cannot be later than To date." };
+  }
+
+  const where = ["1 = 1"];
+  const params = [];
+
+  if (status !== "all") {
+    where.push(`(${DELIVERY_REPORT_STATUS_SQL}) = ?`);
+    params.push(status);
+  }
+
+  if (riderId) {
+    where.push("d.driver_id = ?");
+    params.push(riderId);
+  }
+
+  if (search) {
+    const like = `%${search}%`;
+    where.push(`(
+      o.order_number LIKE ?
+      OR COALESCE(
+        NULLIF(TRIM(o.walkin_customer_name), ''),
+        NULLIF(TRIM(customer.name), ''),
+        'Walk-in Customer'
+      ) LIKE ?
+      OR COALESCE(d.address, '') LIKE ?
+      OR COALESCE(driver.name, '') LIKE ?
+      OR COALESCE(da.receipt_number, '') LIKE ?
+    )`);
+    params.push(like, like, like, like, like);
+  }
+
+  if (fromDate) {
+    where.push(`DATE(${DELIVERY_REPORT_ACTIVITY_DATE_SQL}) >= ?`);
+    params.push(fromDate);
+  }
+
+  if (toDate) {
+    where.push(`DATE(${DELIVERY_REPORT_ACTIVITY_DATE_SQL}) <= ?`);
+    params.push(toDate);
+  }
+
+  return {
+    value: {
+      requestedPage,
+      limit,
+      exportAll,
+      search,
+      status,
+      riderId,
+      fromDate,
+      toDate,
+      whereSql: where.join(" AND "),
+      params,
+    },
+  };
+};
+
+exports.getDeliveryReport = async (req, res) => {
+  const parsed = buildDeliveryReportFilterState(req);
+  if (parsed.error) {
+    return res.status(400).json({ message: parsed.error });
+  }
+
+  const filters = parsed.value;
+
+  try {
+    const [[summaryRow]] = await db.query(
+      `SELECT
+         COUNT(*) AS total,
+         COALESCE(SUM(report_status = 'delivered'), 0) AS delivered,
+         COALESCE(SUM(report_status = 'failed'), 0) AS failed,
+         COALESCE(SUM(report_status = 'scheduled'), 0) AS scheduled,
+         COALESCE(SUM(report_status = 'in_transit'), 0) AS in_transit
+       FROM (
+         SELECT ${DELIVERY_REPORT_STATUS_SQL} AS report_status
+         FROM deliveries d
+         INNER JOIN orders o ON o.id = d.order_id
+         LEFT JOIN users customer ON customer.id = o.customer_id
+         LEFT JOIN users driver ON driver.id = d.driver_id
+         ${DELIVERY_REPORT_ACTIVE_ACK_JOIN_SQL}
+         WHERE ${filters.whereSql}
+       ) delivery_report_rows`,
+      filters.params,
+    );
+
+    const total = Number(summaryRow?.total || 0);
+    const delivered = Number(summaryRow?.delivered || 0);
+    const failed = Number(summaryRow?.failed || 0);
+    const scheduled = Number(summaryRow?.scheduled || 0);
+    const inTransit = Number(summaryRow?.in_transit || 0);
+    const completedAttempts = delivered + failed;
+    const successRate =
+      completedAttempts > 0
+        ? Number(((delivered / completedAttempts) * 100).toFixed(1))
+        : 0;
+
+    if (filters.exportAll && total > DELIVERY_REPORT_EXPORT_LIMIT) {
+      return res.status(413).json({
+        message: `This report matches ${total.toLocaleString("en-PH")} delivery attempts. Narrow the date range or filters to ${DELIVERY_REPORT_EXPORT_LIMIT.toLocaleString("en-PH")} records or fewer before exporting.`,
+      });
+    }
+
+    const totalPages = Math.max(1, Math.ceil(total / filters.limit));
+    const page = filters.exportAll
+      ? 1
+      : Math.min(filters.requestedPage, totalPages);
+    const offset = filters.exportAll ? 0 : (page - 1) * filters.limit;
+
+    let recordsSql = `
+      SELECT
+        d.id AS delivery_id,
+        d.order_id,
+        d.driver_id,
+        d.assigned_by,
+        d.assigned_at,
+        d.scheduled_date,
+        d.delivered_date,
+        d.address,
+        d.status,
+        d.notes,
+        d.signed_receipt,
+        d.updated_at,
+        ${DELIVERY_REPORT_STATUS_SQL} AS report_status,
+        ${DELIVERY_REPORT_ACTIVITY_DATE_SQL} AS activity_date,
+
+        o.order_number,
+        o.order_type,
+        o.status AS order_status,
+        COALESCE(
+          NULLIF(TRIM(o.walkin_customer_name), ''),
+          NULLIF(TRIM(customer.name), ''),
+          'Walk-in Customer'
+        ) AS customer_name,
+
+        driver.name AS driver_name,
+
+        da.id AS delivery_acknowledgement_id,
+        da.received_by_name AS delivery_received_by_name,
+        da.recipient_type AS delivery_recipient_type,
+        da.acknowledged_at AS delivery_acknowledged_at,
+        da.receipt_number AS delivery_receipt_number,
+        CASE
+          WHEN da.signature_data IS NOT NULL
+           AND TRIM(da.signature_data) <> '' THEN 1
+          ELSE 0
+        END AS delivery_has_signature,
+
+        (
+          SELECT COUNT(*)
+          FROM deliveries prior
+          WHERE prior.order_id = d.order_id
+            AND prior.id <= d.id
+        ) AS attempt_number,
+        (
+          SELECT COUNT(*)
+          FROM deliveries all_attempts
+          WHERE all_attempts.order_id = d.order_id
+        ) AS attempt_count
+
+      FROM deliveries d
+      INNER JOIN orders o ON o.id = d.order_id
+      LEFT JOIN users customer ON customer.id = o.customer_id
+      LEFT JOIN users driver ON driver.id = d.driver_id
+      ${DELIVERY_REPORT_ACTIVE_ACK_JOIN_SQL}
+      WHERE ${filters.whereSql}
+      ORDER BY COALESCE(
+        d.assigned_at,
+        d.updated_at,
+        d.delivered_date,
+        d.scheduled_date
+      ) DESC, d.id DESC
+    `;
+
+    const recordParams = [...filters.params];
+    if (!filters.exportAll) {
+      recordsSql += " LIMIT ? OFFSET ?";
+      recordParams.push(filters.limit, offset);
+    }
+
+    const [records] = await db.query(recordsSql, recordParams);
+    records.forEach((row) => {
+      if (row.signed_receipt) {
+        row.signed_receipt = signUploadPath(row.signed_receipt);
+      }
+    });
+
+    const [riders] = await db.query(
+      `SELECT DISTINCT driver.id, driver.name
+       FROM deliveries d
+       INNER JOIN users driver ON driver.id = d.driver_id
+       WHERE driver.id IS NOT NULL
+       ORDER BY driver.name ASC`,
+    );
+
+    return res.json({
+      records,
+      summary: {
+        total,
+        delivered,
+        failed,
+        scheduled,
+        in_transit: inTransit,
+        active: scheduled + inTransit,
+        success_rate: successRate,
+      },
+      pagination: {
+        page,
+        limit: filters.exportAll ? Math.max(total, 1) : filters.limit,
+        total,
+        total_pages: filters.exportAll ? 1 : totalPages,
+      },
+      riders,
+      export_limit: DELIVERY_REPORT_EXPORT_LIMIT,
+    });
+  } catch (err) {
+    console.error("GET /api/pos/deliveries/report error:", err);
+    return res.status(500).json({ message: "Failed to load the Delivery Report." });
+  }
+};
+
+exports.getDeliveryReportDetail = async (req, res) => {
+  const deliveryId = toNullableInt(req.params.id);
+  if (!deliveryId) {
+    return res.status(400).json({ message: "Invalid delivery id." });
+  }
+
+  try {
+    const [[record]] = await db.query(
+      `SELECT
+         d.id AS delivery_id,
+         d.order_id,
+         d.driver_id,
+         d.assigned_by,
+         d.assigned_at,
+         d.scheduled_date,
+         d.delivered_date,
+         d.address,
+         d.status,
+         d.notes,
+         d.signed_receipt,
+         d.updated_at,
+         ${DELIVERY_REPORT_STATUS_SQL} AS report_status,
+         ${DELIVERY_REPORT_ACTIVITY_DATE_SQL} AS activity_date,
+
+         o.order_number,
+         o.order_type,
+         o.status AS order_status,
+         COALESCE(
+           NULLIF(TRIM(o.walkin_customer_name), ''),
+           NULLIF(TRIM(customer.name), ''),
+           'Walk-in Customer'
+         ) AS customer_name,
+         driver.name AS driver_name,
+
+         da.id AS delivery_acknowledgement_id,
+         da.received_by_name AS delivery_received_by_name,
+         da.recipient_type AS delivery_recipient_type,
+         da.acknowledged_at AS delivery_acknowledged_at,
+         da.receipt_number AS delivery_receipt_number,
+         da.receipt_snapshot_json,
+         CASE
+           WHEN da.signature_data IS NOT NULL
+            AND TRIM(da.signature_data) <> '' THEN 1
+           ELSE 0
+         END AS delivery_has_signature,
+
+         (
+           SELECT COUNT(*)
+           FROM deliveries prior
+           WHERE prior.order_id = d.order_id
+             AND prior.id <= d.id
+         ) AS attempt_number,
+         (
+           SELECT COUNT(*)
+           FROM deliveries all_attempts
+           WHERE all_attempts.order_id = d.order_id
+         ) AS attempt_count
+
+       FROM deliveries d
+       INNER JOIN orders o ON o.id = d.order_id
+       LEFT JOIN users customer ON customer.id = o.customer_id
+       LEFT JOIN users driver ON driver.id = d.driver_id
+       ${DELIVERY_REPORT_ACTIVE_ACK_JOIN_SQL}
+       WHERE d.id = ?
+       LIMIT 1`,
+      [deliveryId],
+    );
+
+    if (!record) {
+      return res.status(404).json({ message: "Delivery record not found." });
+    }
+
+    let items = null;
+    if (record.receipt_snapshot_json) {
+      try {
+        const snapshot =
+          typeof record.receipt_snapshot_json === "string"
+            ? JSON.parse(record.receipt_snapshot_json)
+            : record.receipt_snapshot_json;
+        if (snapshot && Array.isArray(snapshot.items)) {
+          items = snapshot.items.map((item) => ({
+            order_item_id: item.order_item_id || null,
+            client_code: item.client_code || null,
+            quantity: Number(item.quantity || 0),
+            unit: item.unit || "pc",
+            description: item.description || "Item",
+          }));
+        }
+      } catch {
+        items = null;
+      }
+    }
+
+    if (!items) {
+      const [itemRows] = await db.query(
+        `SELECT
+           oi.id AS order_item_id,
+           NULLIF(TRIM(p.barcode), '') AS client_code,
+           COALESCE(
+             NULLIF(TRIM(oi.product_name), ''),
+             NULLIF(TRIM(p.name), ''),
+             CONCAT('Item #', oi.id)
+           ) AS description,
+           oi.quantity
+         FROM order_items oi
+         LEFT JOIN products p ON p.id = oi.product_id
+         WHERE oi.order_id = ?
+         ORDER BY oi.id ASC`,
+        [record.order_id],
+      );
+
+      items = itemRows.map((item) => ({
+        order_item_id: item.order_item_id,
+        client_code: item.client_code || null,
+        quantity: Number(item.quantity || 0),
+        unit: "pc",
+        description: item.description || "Item",
+      }));
+    }
+
+    if (record.signed_receipt) {
+      record.signed_receipt = signUploadPath(record.signed_receipt);
+    }
+    delete record.receipt_snapshot_json;
+
+    return res.json({ ...record, items });
+  } catch (err) {
+    console.error("GET /api/pos/deliveries/report/:id error:", err);
+    return res.status(500).json({ message: "Failed to load the delivery record." });
+  }
+};

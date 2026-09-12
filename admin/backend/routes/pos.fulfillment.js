@@ -115,6 +115,17 @@ router.get(
 );
 
 router.get(
+  "/deliveries/report",
+  adminOnly,
+  posFulfillmentController.getDeliveryReport,
+);
+router.get(
+  "/deliveries/report/:id",
+  adminOnly,
+  posFulfillmentController.getDeliveryReportDetail,
+);
+
+router.get(
   "/deliverable-orders",
   adminOnly,
   posFulfillmentController.getDeliverableOrders,

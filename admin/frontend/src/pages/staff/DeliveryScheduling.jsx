@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../services/api";
-import { exportDeliveryActivityReportPdf } from "./DeliveryReportPdf";
 import {
   Plus,
   Search,
@@ -10,7 +9,6 @@ import {
   CheckCircle2,
   CircleX,
   RotateCcw,
-  FileDown,
 } from "lucide-react";
 
 // WISDOM DELIVERY SCHEDULING PROFESSIONAL UI POLISH V1.0.1
@@ -176,31 +174,28 @@ const formatStatusLabel = (status) => {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
-const deliveryStatusRank = (status) => {
-  switch (normalizeStatus(status)) {
-    case "in_transit":
-      return 1;
-    case "scheduled":
-      return 2;
-    case "failed":
-      return 3;
-    case "delivered":
-    case "completed":
-      return 4;
-    default:
-      return 5;
-  }
+const getDeliveryAssignedSortTime = (delivery = {}) => {
+  const value =
+    delivery.assigned_at ||
+    delivery.updated_at ||
+    delivery.delivered_date ||
+    delivery.scheduled_date ||
+    "";
+
+  if (!value) return 0;
+
+  const date = new Date(value);
+  const time = date.getTime();
+  return Number.isNaN(time) ? 0 : time;
 };
 
 const sortDeliveries = (a, b) => {
-  const rankA = deliveryStatusRank(getDeliveryAttemptStatus(a));
-  const rankB = deliveryStatusRank(getDeliveryAttemptStatus(b));
+  const timeA = getDeliveryAssignedSortTime(a);
+  const timeB = getDeliveryAssignedSortTime(b);
 
-  if (rankA !== rankB) return rankA - rankB;
+  if (timeA !== timeB) return timeB - timeA;
 
-  const dateA = new Date(a.scheduled_date || 0).getTime();
-  const dateB = new Date(b.scheduled_date || 0).getTime();
-  return dateB - dateA;
+  return Number(b?.id || 0) - Number(a?.id || 0);
 };
 
 const getStatusStyle = (status) => {
@@ -240,6 +235,8 @@ const getStatusStyle = (status) => {
 };
 
 export default function DeliveryScheduling() {
+  const navigate = useNavigate();
+
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
@@ -370,29 +367,6 @@ export default function DeliveryScheduling() {
     statusFilter !== "all" ||
     riderFilter !== "all" ||
     Boolean(dateFilter);
-
-  const handleExportDeliveryPdf = () => {
-    setError("");
-
-    try {
-      exportDeliveryActivityReportPdf({
-        deliveries: filteredDeliveries.map((delivery) => ({
-          ...delivery,
-          report_status: getDeliveryAttemptStatus(delivery),
-        })),
-        filters: {
-          search: deliverySearch.trim(),
-          status: statusFilter,
-          rider: riderFilter,
-          scheduledDate: dateFilter,
-        },
-      });
-    } catch (exportError) {
-      setError(
-        exportError?.message || "Failed to export delivery activity report.",
-      );
-    }
-  };
 
   const validateForm = () => {
     const nextErrors = {};
@@ -781,28 +755,17 @@ export default function DeliveryScheduling() {
         >
           <button
             type="button"
-            onClick={handleExportDeliveryPdf}
-            disabled={listLoading || filteredDeliveries.length === 0}
+            onClick={() => navigate("/admin/reports/deliveries")}
             style={{
               ...btnPrimary,
               background: "#ffffff",
               color: "#18181b",
-              border: "1px solid #d4d4d8",
-              opacity:
-                listLoading || filteredDeliveries.length === 0 ? 0.55 : 1,
-              cursor:
-                listLoading || filteredDeliveries.length === 0
-                  ? "not-allowed"
-                  : "pointer",
+              border: "1px solid #18181b",
             }}
-            title={
-              filteredDeliveries.length === 0
-                ? "No delivery records match the current filters"
-                : "Export the currently filtered delivery records as PDF"
-            }
+            title="Open the complete Delivery Report"
           >
-            <FileDown size={16} />
-            Export Delivery PDF
+            <Truck size={16} />
+            View Delivery Report
           </button>
 
           <button

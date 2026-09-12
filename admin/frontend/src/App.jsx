@@ -41,6 +41,7 @@ import CancellationsPage from "./pages/orders/CancellationsPage";
 import SalesReportPage from "./pages/sales/SalesReportPage";
 import CurrentInventoryReportPage from "./pages/reports/CurrentInventoryReportPage";
 import DailyStockInReportPage from "./pages/reports/DailyStockInReportPage";
+import DeliveryReportPage from "./pages/reports/DeliveryReportPage";
 import WarrantyPage from "./pages/warranty/WarrantyPage";
 import CustomersPage from "./pages/customers/CustomersPage";
 import UsersPage from "./pages/users/UsersPage";
@@ -553,6 +554,10 @@ export default function App() {
                 <Route
                   path="reports/daily-stock-in"
                   element={<DailyStockInReportPage />}
+                />
+                <Route
+                  path="reports/deliveries"
+                  element={<DeliveryReportPage />}
                 />
                 <Route path="sales" element={<SalesReportPage />} />
                 <Route path="pos-qr-recovery" element={<PosQrRecoveryPage />} />

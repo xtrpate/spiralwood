@@ -177,6 +177,12 @@ const NAV_ITEMS = [
     roles: ["admin"],
   },
   {
+    label: "Delivery Report",
+    path: "/admin/reports/deliveries",
+    icon: Truck,
+    roles: ["admin"],
+  },
+  {
     label: "Sales Report",
     path: "/admin/sales",
     icon: BarChart3,
