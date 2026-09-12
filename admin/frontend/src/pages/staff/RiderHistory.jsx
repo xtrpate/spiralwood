@@ -1,4 +1,4 @@
-// WISDOM RIDER HISTORY UI V2.2
+// WISDOM RIDER HISTORY UI V3.0
 import { useEffect, useMemo, useState } from "react";
 import {
   Clock3,
@@ -8,7 +8,11 @@ import {
   X,
 } from "lucide-react";
 import api, { buildAssetUrl } from "../../services/api";
+import DeliveryReceiptModal from "../../components/delivery/DeliveryReceiptModal";
+import DownloadFileButton from "../../components/delivery/DownloadFileButton";
 import "./RiderScreen.css";
+
+const PAGE_SIZE = 25;
 
 const normalize = (value) => String(value || "").trim().toLowerCase();
 
@@ -55,140 +59,186 @@ const formatDateTime = (value) => {
   });
 };
 
+const formatRecipientType = (value) => {
+  const normalized = normalize(value);
+  if (normalized === "customer") return "Customer";
+  if (normalized === "authorized_representative") {
+    return "Authorized Representative";
+  }
+  return "Not available";
+};
+
 const getRecordDate = (record) =>
   isSuccessfulDeliveryResult(getHistoryResult(record))
     ? record.delivered_date || record.updated_at
     : record.updated_at;
 
-const sortableTime = (record) => {
-  const value =
-    record.assigned_at ||
-    record.updated_at ||
-    record.delivered_date ||
-    null;
+const getProofFilename = (record = {}) => {
+  const orderNumber = String(record.order_number || `delivery-${record.delivery_id || "proof"}`)
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, "_");
+  const cleanUrl = String(record.signed_receipt || "").split("?")[0];
+  const extensionMatch = cleanUrl.match(/\.(jpg|jpeg|jfif|png|webp|pdf)$/i);
+  const extension = extensionMatch ? extensionMatch[0].toLowerCase() : "";
+  return `Proof_of_Delivery_${orderNumber}${extension}`;
+};
 
-  const time = value ? new Date(value).getTime() : 0;
-  return Number.isFinite(time) ? time : 0;
+const emptyPagination = {
+  page: 1,
+  limit: PAGE_SIZE,
+  total: 0,
+  total_pages: 1,
 };
 
 export default function RiderHistory() {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState(emptyPagination);
   const [selectedRecord, setSelectedRecord] = useState(null);
+  const [receiptDetail, setReceiptDetail] = useState({
+    deliveryId: null,
+    loading: false,
+    data: null,
+    error: "",
+  });
+  const [receiptModalOpen, setReceiptModalOpen] = useState(false);
+  const [signatureViewer, setSignatureViewer] = useState({
+    open: false,
+    loading: false,
+    data: null,
+    error: "",
+  });
 
   useEffect(() => {
-    Promise.all([
-      api.get("/pos/deliveries/history"),
-      api.get("/pos/deliveries"),
-    ])
-      .then(([historyRes, deliveriesRes]) => {
-        const historyList = Array.isArray(historyRes.data)
-          ? historyRes.data
-          : [];
-        const deliveryList = Array.isArray(deliveriesRes.data)
-          ? deliveriesRes.data
-          : [];
+    if (startDate && endDate && startDate > endDate) {
+      setLoading(false);
+      setHistory([]);
+      setPagination({ ...emptyPagination, page: 1 });
+      setError("From date cannot be later than To date.");
+      return undefined;
+    }
 
-        const deliveryById = new Map(
-          deliveryList.map((delivery) => [
-            Number(delivery.id),
-            delivery,
-          ]),
-        );
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      setLoading(true);
+      setError("");
 
-        const enriched = historyList.map((record) => {
-          const liveRecord =
-            deliveryById.get(Number(record.delivery_id)) || {};
-
-          return {
-            ...record,
-            ...liveRecord,
-            delivery_id: record.delivery_id,
-            order_number:
-              liveRecord.order_number || record.order_number,
-            customer_name:
-              liveRecord.customer_name || record.customer_name,
-            address: liveRecord.address || record.address,
-            status: liveRecord.status || record.status,
-            delivered_date:
-              liveRecord.delivered_date || record.delivered_date,
-            updated_at: liveRecord.updated_at || record.updated_at,
-          };
+      try {
+        const response = await api.get("/pos/deliveries/history", {
+          params: {
+            paged: 1,
+            page,
+            limit: PAGE_SIZE,
+            search: search.trim() || undefined,
+            status: statusFilter,
+            from: startDate || undefined,
+            to: endDate || undefined,
+          },
         });
 
-        setHistory(enriched);
-      })
-      .catch((err) => {
+        if (!active) return;
+
+        const payload = response.data;
+        const records = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload?.records)
+            ? payload.records
+            : [];
+        const serverPagination =
+          payload && !Array.isArray(payload) && payload.pagination
+            ? payload.pagination
+            : {
+                page,
+                limit: PAGE_SIZE,
+                total: records.length,
+                total_pages: 1,
+              };
+
+        setHistory(records);
+        setPagination({
+          page: Number(serverPagination.page || page),
+          limit: Number(serverPagination.limit || PAGE_SIZE),
+          total: Number(serverPagination.total || 0),
+          total_pages: Math.max(1, Number(serverPagination.total_pages || 1)),
+        });
+      } catch (err) {
+        if (!active) return;
         console.error("Failed to load delivery history", err);
         setHistory([]);
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  const filteredHistory = useMemo(() => {
-    const keyword = search.trim().toLowerCase();
-
-    return history
-      .filter((record) => {
-        const status = getHistoryResult(record);
-
-        if (
-          statusFilter === "delivered" &&
-          !isSuccessfulDeliveryResult(status)
-        ) {
-          return false;
-        }
-
-        if (
-          statusFilter !== "all" &&
-          statusFilter !== "delivered" &&
-          status !== statusFilter
-        ) {
-          return false;
-        }
-
-        const recordDate = new Date(getRecordDate(record));
-        if (!Number.isNaN(recordDate.getTime())) {
-          recordDate.setHours(0, 0, 0, 0);
-
-          if (startDate) {
-            const start = new Date(`${startDate}T00:00:00`);
-            start.setHours(0, 0, 0, 0);
-            if (recordDate < start) return false;
-          }
-
-          if (endDate) {
-            const end = new Date(`${endDate}T00:00:00`);
-            end.setHours(0, 0, 0, 0);
-            if (recordDate > end) return false;
-          }
-        }
-
-        if (!keyword) return true;
-
-        return [
-          record.order_number,
-          record.customer_name,
-          record.address,
-          record.history_result,
-          record.status,
-        ].some((field) =>
-          String(field || "")
-            .toLowerCase()
-            .includes(keyword),
+        setPagination({ ...emptyPagination, page });
+        setError(
+          err?.response?.data?.message || "Failed to load delivery history.",
         );
-      })
-      .sort((a, b) => {
-        const timeDifference = sortableTime(b) - sortableTime(a);
-        if (timeDifference !== 0) return timeDifference;
+      } finally {
+        if (active) setLoading(false);
+      }
+    }, search.trim() ? 250 : 0);
 
-        return Number(b.delivery_id || 0) - Number(a.delivery_id || 0);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [search, statusFilter, startDate, endDate, page]);
+
+  useEffect(() => {
+    const deliveryId = Number(selectedRecord?.delivery_id || 0);
+    const receiptNumber = String(
+      selectedRecord?.delivery_receipt_number || "",
+    ).trim();
+
+    setReceiptModalOpen(false);
+
+    if (!deliveryId || !receiptNumber) {
+      setReceiptDetail({
+        deliveryId: deliveryId || null,
+        loading: false,
+        data: null,
+        error: "",
       });
-  }, [history, search, statusFilter, startDate, endDate]);
+      return undefined;
+    }
+
+    let active = true;
+    setReceiptDetail({
+      deliveryId,
+      loading: true,
+      data: null,
+      error: "",
+    });
+
+    api
+      .get(`/pos/deliveries/${deliveryId}/receipt`)
+      .then(({ data }) => {
+        if (!active) return;
+        setReceiptDetail({
+          deliveryId,
+          loading: false,
+          data,
+          error: "",
+        });
+      })
+      .catch((err) => {
+        if (!active) return;
+        setReceiptDetail({
+          deliveryId,
+          loading: false,
+          data: null,
+          error:
+            err?.response?.data?.message ||
+            "The digital Delivery Receipt could not be loaded.",
+        });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedRecord?.delivery_id, selectedRecord?.delivery_receipt_number]);
 
   const filters = [
     { value: "all", label: "All" },
@@ -200,13 +250,88 @@ export default function RiderHistory() {
     ? getPinnedMapHref(selectedRecord)
     : null;
 
+  const proofUrl = selectedRecord?.signed_receipt
+    ? buildAssetUrl(selectedRecord.signed_receipt)
+    : "";
+
+  const receiptItems = useMemo(() => {
+    if (!receiptDetail.data || !Array.isArray(receiptDetail.data.items)) {
+      return [];
+    }
+    return receiptDetail.data.items;
+  }, [receiptDetail.data]);
+
+  const openRecord = (record) => {
+    setSelectedRecord(record);
+    setSignatureViewer({
+      open: false,
+      loading: false,
+      data: null,
+      error: "",
+    });
+  };
+
+  const closeRecord = () => {
+    setSelectedRecord(null);
+    setReceiptModalOpen(false);
+    setSignatureViewer({
+      open: false,
+      loading: false,
+      data: null,
+      error: "",
+    });
+  };
+
+  const openSignature = async () => {
+    const deliveryId = Number(selectedRecord?.delivery_id || 0);
+    if (!deliveryId) return;
+
+    if (receiptDetail.data?.signature_data) {
+      setSignatureViewer({
+        open: true,
+        loading: false,
+        data: receiptDetail.data,
+        error: "",
+      });
+      return;
+    }
+
+    setSignatureViewer({
+      open: true,
+      loading: true,
+      data: null,
+      error: "",
+    });
+
+    try {
+      const { data } = await api.get(
+        `/pos/deliveries/${deliveryId}/acknowledgement`,
+      );
+      setSignatureViewer({
+        open: true,
+        loading: false,
+        data,
+        error: "",
+      });
+    } catch (err) {
+      setSignatureViewer({
+        open: true,
+        loading: false,
+        data: null,
+        error:
+          err?.response?.data?.message ||
+          "Failed to load the recipient e-signature.",
+      });
+    }
+  };
+
   return (
     <div className="rider-page-shell rider-history-v2">
       <header className="rider-v2-page-header">
         <div>
           <h2 className="rider-header-title">Delivery History</h2>
           <p className="rider-header-subtitle">
-            Review completed and failed delivery records.
+            Review your completed and failed delivery records.
           </p>
         </div>
       </header>
@@ -220,7 +345,10 @@ export default function RiderHistory() {
               className={`rider-history-tab ${
                 statusFilter === filter.value ? "is-active" : ""
               }`}
-              onClick={() => setStatusFilter(filter.value)}
+              onClick={() => {
+                setStatusFilter(filter.value);
+                setPage(1);
+              }}
             >
               {filter.label}
             </button>
@@ -234,7 +362,10 @@ export default function RiderHistory() {
               type="text"
               placeholder="Order, customer, or address"
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
             />
           </label>
 
@@ -243,7 +374,10 @@ export default function RiderHistory() {
             <input
               type="date"
               value={startDate}
-              onChange={(event) => setStartDate(event.target.value)}
+              onChange={(event) => {
+                setStartDate(event.target.value);
+                setPage(1);
+              }}
             />
           </label>
 
@@ -252,7 +386,10 @@ export default function RiderHistory() {
             <input
               type="date"
               value={endDate}
-              onChange={(event) => setEndDate(event.target.value)}
+              onChange={(event) => {
+                setEndDate(event.target.value);
+                setPage(1);
+              }}
             />
           </label>
         </div>
@@ -262,85 +399,122 @@ export default function RiderHistory() {
         <div className="rider-history-records-head">
           <div>
             <h3>Records</h3>
-            <p>Newest assignments are shown first.</p>
+            <p>Newest delivery records are shown first.</p>
           </div>
-          <span>{filteredHistory.length} shown</span>
+          <span>{pagination.total} total</span>
         </div>
 
-        {loading ? (
+        {error ? (
+          <div className="rider-history-error" role="alert">
+            {error}
+          </div>
+        ) : loading ? (
           <div className="rider-history-empty">Loading history...</div>
-        ) : filteredHistory.length === 0 ? (
+        ) : history.length === 0 ? (
           <div className="rider-history-empty">
             No delivery records match these filters.
           </div>
         ) : (
-          <div className="rider-table-scroll">
-            <table className="rider-table rider-mobile-table rider-history-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Order</th>
-                  <th>Customer</th>
-                  <th>Destination</th>
-                  <th>Result</th>
-                  <th aria-label="Action" />
-                </tr>
-              </thead>
-              <tbody>
-                {filteredHistory.map((record) => (
-                  <tr key={record.delivery_id}>
-                    <td data-label="Date">
-                      {formatDateTime(getRecordDate(record))}
-                    </td>
-                    <td
-                      data-label="Order"
-                      className="rider-history-order"
-                    >
-                      {record.order_number || "—"}
-                    </td>
-                    <td data-label="Customer">
-                      {record.customer_name || "Customer"}
-                    </td>
-                    <td
-                      data-label="Destination"
-                      className="rider-history-destination"
-                    >
-                      {record.address || "Address unavailable"}
-                    </td>
-                    <td data-label="Result">
-                      <span
-                        className={`rider-history-result ${
-                          isSuccessfulDeliveryResult(getHistoryResult(record))
-                            ? "is-delivered"
-                            : ""
-                        }`}
-                      >
-                        {isSuccessfulDeliveryResult(getHistoryResult(record))
-                          ? "Delivered"
-                          : "Failed"}
-                      </span>
-                    </td>
-                    <td data-label="Action" className="rider-history-action-cell">
-                      <button
-                        type="button"
-                        className="rider-v2-row-action"
-                        onClick={() => setSelectedRecord(record)}
-                      >
-                        View
-                      </button>
-                    </td>
+          <>
+            <div className="rider-table-scroll">
+              <table className="rider-table rider-mobile-table rider-history-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Order</th>
+                    <th>Customer</th>
+                    <th>Destination</th>
+                    <th>Result</th>
+                    <th aria-label="Action" />
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {history.map((record) => (
+                    <tr key={record.delivery_id}>
+                      <td data-label="Date">
+                        {formatDateTime(getRecordDate(record))}
+                      </td>
+                      <td
+                        data-label="Order"
+                        className="rider-history-order"
+                      >
+                        {record.order_number || "—"}
+                      </td>
+                      <td data-label="Customer">
+                        {record.customer_name || "Customer"}
+                      </td>
+                      <td
+                        data-label="Destination"
+                        className="rider-history-destination"
+                      >
+                        {record.address || "Address unavailable"}
+                      </td>
+                      <td data-label="Result">
+                        <span
+                          className={`rider-history-result ${
+                            isSuccessfulDeliveryResult(getHistoryResult(record))
+                              ? "is-delivered"
+                              : ""
+                          }`}
+                        >
+                          {isSuccessfulDeliveryResult(getHistoryResult(record))
+                            ? "Delivered"
+                            : "Failed"}
+                        </span>
+                      </td>
+                      <td
+                        data-label="Action"
+                        className="rider-history-action-cell"
+                      >
+                        <button
+                          type="button"
+                          className="rider-v2-row-action"
+                          onClick={() => openRecord(record)}
+                        >
+                          View Details
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {pagination.total_pages > 1 ? (
+              <div className="rider-history-pagination">
+                <button
+                  type="button"
+                  className="rider-v2-btn rider-v2-btn-secondary"
+                  disabled={loading || pagination.page <= 1}
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                >
+                  Previous
+                </button>
+                <span>
+                  Page {pagination.page} of {pagination.total_pages}
+                </span>
+                <button
+                  type="button"
+                  className="rider-v2-btn rider-v2-btn-secondary"
+                  disabled={loading || pagination.page >= pagination.total_pages}
+                  onClick={() =>
+                    setPage((current) =>
+                      Math.min(pagination.total_pages, current + 1),
+                    )
+                  }
+                >
+                  Next
+                </button>
+              </div>
+            ) : null}
+          </>
         )}
       </section>
 
       {selectedRecord ? (
         <div
           className="rider-history-detail-overlay"
-          onClick={() => setSelectedRecord(null)}
+          onClick={closeRecord}
         >
           <aside
             className="rider-history-detail-panel"
@@ -356,7 +530,7 @@ export default function RiderHistory() {
                 type="button"
                 className="rider-history-close"
                 aria-label="Close details"
-                onClick={() => setSelectedRecord(null)}
+                onClick={closeRecord}
               >
                 <X size={18} strokeWidth={1.8} />
               </button>
@@ -407,7 +581,7 @@ export default function RiderHistory() {
                   {isSuccessfulDeliveryResult(
                     getHistoryResult(selectedRecord),
                   )
-                    ? "Completed"
+                    ? "Delivered"
                     : "Attempted"}
                 </span>
                 <strong>
@@ -415,6 +589,120 @@ export default function RiderHistory() {
                 </strong>
               </div>
             </div>
+
+            {isSuccessfulDeliveryResult(getHistoryResult(selectedRecord)) ? (
+              <section className="rider-history-detail-section">
+                <div className="rider-history-detail-section-title">
+                  <FileText size={15} strokeWidth={1.8} />
+                  Recipient Handoff
+                </div>
+
+                {selectedRecord.delivery_acknowledgement_id ? (
+                  <div className="rider-history-handoff-grid">
+                    <div>
+                      <span>Received By</span>
+                      <strong>
+                        {selectedRecord.delivery_received_by_name ||
+                          "Not available"}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Recipient</span>
+                      <strong>
+                        {formatRecipientType(
+                          selectedRecord.delivery_recipient_type,
+                        )}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Received On</span>
+                      <strong>
+                        {formatDateTime(
+                          selectedRecord.delivery_acknowledged_at,
+                        )}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Delivery Receipt</span>
+                      <strong>
+                        {selectedRecord.delivery_receipt_number ||
+                          "Not available"}
+                      </strong>
+                    </div>
+                  </div>
+                ) : (
+                  <p>
+                    Recipient acknowledgement is not available for this older
+                    delivery record.
+                  </p>
+                )}
+
+                <div className="rider-history-detail-actions">
+                  {Number(selectedRecord.delivery_has_signature || 0) === 1 ? (
+                    <button
+                      type="button"
+                      className="rider-v2-btn rider-v2-btn-secondary"
+                      onClick={openSignature}
+                    >
+                      View E-Signature
+                    </button>
+                  ) : null}
+
+                  {selectedRecord.delivery_receipt_number ? (
+                    <button
+                      type="button"
+                      className="rider-v2-btn rider-v2-btn-secondary"
+                      disabled={receiptDetail.loading || !receiptDetail.data}
+                      onClick={() => setReceiptModalOpen(true)}
+                    >
+                      {receiptDetail.loading
+                        ? "Loading Receipt..."
+                        : "View Delivery Receipt"}
+                    </button>
+                  ) : null}
+                </div>
+
+                {receiptDetail.error ? (
+                  <div className="rider-history-inline-error" role="alert">
+                    {receiptDetail.error}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
+
+            {selectedRecord.delivery_receipt_number ? (
+              <section className="rider-history-detail-section">
+                <div className="rider-history-detail-section-title">
+                  <FileText size={15} strokeWidth={1.8} />
+                  Items Delivered
+                </div>
+
+                {receiptDetail.loading ? (
+                  <p>Loading the frozen delivery item snapshot...</p>
+                ) : receiptItems.length ? (
+                  <div className="rider-history-items-list">
+                    {receiptItems.map((item, index) => (
+                      <div
+                        className="rider-history-item-row"
+                        key={`${item.client_code || item.description || "item"}-${index}`}
+                      >
+                        <div>
+                          <strong>{item.description || "Item"}</strong>
+                          {item.client_code ? (
+                            <span>{item.client_code}</span>
+                          ) : null}
+                        </div>
+                        <div>
+                          Qty {Number(item.quantity || 0)} {item.unit || "pc"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : receiptDetail.data ? (
+                  <p>No item snapshot is available for this receipt.</p>
+                ) : null}
+              </section>
+            ) : null}
 
             <section className="rider-history-detail-section">
               <div className="rider-history-detail-section-title">
@@ -446,20 +734,28 @@ export default function RiderHistory() {
                 Proof of Delivery
               </div>
               <p>
-                {selectedRecord.signed_receipt
+                {proofUrl
                   ? "Proof was uploaded for this delivery."
                   : "No proof file is available for this record."}
               </p>
 
-              {selectedRecord.signed_receipt ? (
-                <a
-                  href={buildAssetUrl(selectedRecord.signed_receipt)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rider-v2-btn rider-v2-btn-secondary rider-history-detail-button"
-                >
-                  View Proof
-                </a>
+              {proofUrl ? (
+                <div className="rider-history-detail-actions">
+                  <a
+                    href={proofUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rider-v2-btn rider-v2-btn-secondary"
+                  >
+                    View Proof
+                  </a>
+                  <DownloadFileButton
+                    url={proofUrl}
+                    filename={getProofFilename(selectedRecord)}
+                    label="Download Proof"
+                    className="rider-v2-btn rider-v2-btn-secondary"
+                  />
+                </div>
               ) : null}
             </section>
 
@@ -467,7 +763,9 @@ export default function RiderHistory() {
               <section className="rider-history-detail-section">
                 <div className="rider-history-detail-section-title">
                   <Clock3 size={15} strokeWidth={1.8} />
-                  Notes
+                  {isSuccessfulDeliveryResult(getHistoryResult(selectedRecord))
+                    ? "Delivery Notes"
+                    : "Failure Details"}
                 </div>
                 <p className="rider-history-notes">
                   {selectedRecord.notes}
@@ -475,6 +773,97 @@ export default function RiderHistory() {
               </section>
             ) : null}
           </aside>
+        </div>
+      ) : null}
+
+      {receiptModalOpen && receiptDetail.data ? (
+        <DeliveryReceiptModal
+          receipt={receiptDetail.data}
+          onClose={() => setReceiptModalOpen(false)}
+        />
+      ) : null}
+
+      {signatureViewer.open ? (
+        <div
+          className="rider-history-signature-overlay"
+          onClick={() =>
+            setSignatureViewer((current) => ({ ...current, open: false }))
+          }
+        >
+          <div
+            className="rider-history-signature-card"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Delivery E-Signature"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="rider-history-signature-head">
+              <div>
+                <span>Delivery E-Signature</span>
+                <h3>{selectedRecord?.order_number || "Order"}</h3>
+              </div>
+              <button
+                type="button"
+                className="rider-history-close"
+                aria-label="Close e-signature"
+                onClick={() =>
+                  setSignatureViewer((current) => ({
+                    ...current,
+                    open: false,
+                  }))
+                }
+              >
+                <X size={18} strokeWidth={1.8} />
+              </button>
+            </div>
+
+            {signatureViewer.loading ? (
+              <div className="rider-history-signature-message">
+                Loading e-signature...
+              </div>
+            ) : signatureViewer.error ? (
+              <div className="rider-history-signature-message is-error">
+                {signatureViewer.error}
+              </div>
+            ) : signatureViewer.data?.signature_data ? (
+              <>
+                <div className="rider-history-handoff-grid rider-history-signature-meta">
+                  <div>
+                    <span>Received By</span>
+                    <strong>
+                      {signatureViewer.data.received_by_name || "Not available"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Recipient</span>
+                    <strong>
+                      {formatRecipientType(signatureViewer.data.recipient_type)}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Signed On</span>
+                    <strong>
+                      {formatDateTime(signatureViewer.data.acknowledged_at)}
+                    </strong>
+                  </div>
+                </div>
+                <div className="rider-history-signature-image-wrap">
+                  <img
+                    src={signatureViewer.data.signature_data}
+                    alt="Recipient e-signature"
+                  />
+                </div>
+                <p className="rider-history-signature-acknowledgement">
+                  {signatureViewer.data.acknowledgement_text ||
+                    "I acknowledge receipt of this order at the delivery address."}
+                </p>
+              </>
+            ) : (
+              <div className="rider-history-signature-message">
+                No e-signature is available for this record.
+              </div>
+            )}
+          </div>
         </div>
       ) : null}
     </div>

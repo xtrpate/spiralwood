@@ -2934,44 +2934,200 @@ exports.getRiderDashboard = async (req, res) => {
 };
 
 /* ── RIDER DELIVERY HISTORY ── */
+const parseRiderHistoryDate = (value) => {
+  const raw = normalizeText(value);
+  if (!raw) return "";
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+
+  if (!isRealCalendarDate(year, month, day)) return null;
+  return raw;
+};
+
 exports.getRiderHistory = async (req, res) => {
   try {
     const riderId = req.user.id;
+    const paged = normalizeText(req.query.paged) === "1";
+    const requestedPage = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const requestedLimit = Number.parseInt(req.query.limit, 10) || 50;
+    const limit = Math.min(100, Math.max(1, requestedLimit));
+    const search = normalizeText(req.query.search).slice(0, 120);
+    const status = normalizeText(req.query.status || "all").toLowerCase();
+    const fromDate = parseRiderHistoryDate(req.query.from);
+    const toDate = parseRiderHistoryDate(req.query.to);
 
-    // Fetch delivered/completed/failed deliveries and safely grab online or walk-in customer names
+    if (!["all", "delivered", "failed"].includes(status)) {
+      return res.status(400).json({ message: "Invalid delivery history status filter." });
+    }
+
+    if (fromDate === null || toDate === null) {
+      return res.status(400).json({ message: "Delivery history dates must use YYYY-MM-DD." });
+    }
+
+    if (fromDate && toDate && fromDate > toDate) {
+      return res.status(400).json({ message: "From date cannot be later than To date." });
+    }
+
+    const successfulHistoryCondition = `(
+      d.status = 'delivered'
+      OR (
+        d.status = 'completed'
+        AND LOWER(COALESCE(d.notes, '')) NOT LIKE '%failure reason:%'
+      )
+    )`;
+
+    const failedHistoryCondition = `(
+      d.status = 'failed'
+      OR (
+        d.status = 'completed'
+        AND LOWER(COALESCE(d.notes, '')) LIKE '%failure reason:%'
+      )
+    )`;
+
+    const historyDateExpression = `CASE
+      WHEN ${successfulHistoryCondition}
+        THEN COALESCE(d.delivered_date, d.updated_at)
+      ELSE d.updated_at
+    END`;
+
+    const where = [
+      "d.driver_id = ?",
+      "d.status IN ('delivered', 'completed', 'failed')",
+    ];
+    const params = [riderId];
+
+    if (status === "delivered") {
+      where.push(successfulHistoryCondition);
+    } else if (status === "failed") {
+      where.push(failedHistoryCondition);
+    }
+
+    if (search) {
+      const like = `%${search}%`;
+      where.push(`(
+        o.order_number LIKE ?
+        OR COALESCE(
+          NULLIF(TRIM(o.walkin_customer_name), ''),
+          NULLIF(TRIM(u.name), ''),
+          'Walk-in Customer'
+        ) LIKE ?
+        OR d.address LIKE ?
+      )`);
+      params.push(like, like, like);
+    }
+
+    if (fromDate) {
+      where.push(`DATE(${historyDateExpression}) >= ?`);
+      params.push(fromDate);
+    }
+
+    if (toDate) {
+      where.push(`DATE(${historyDateExpression}) <= ?`);
+      params.push(toDate);
+    }
+
+    const whereSql = where.join(" AND ");
+
+    const [[countRow]] = await db.query(
+      `SELECT COUNT(*) AS total
+       FROM deliveries d
+       INNER JOIN orders o ON o.id = d.order_id
+       LEFT JOIN users u ON u.id = o.customer_id
+       WHERE ${whereSql}`,
+      params,
+    );
+
+    const total = Number(countRow?.total || 0);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const page = Math.min(requestedPage, totalPages);
+    const offset = (page - 1) * limit;
+
     const [history] = await db.query(
-      `SELECT 
-         d.id AS delivery_id, 
-         o.order_number, 
+      `SELECT
+         d.id AS delivery_id,
+         d.order_id,
+         o.order_number,
          o.order_type,
-         COALESCE(o.walkin_customer_name, u.name, 'Walk-in Customer') AS customer_name, 
-         d.address, 
+         COALESCE(
+           NULLIF(TRIM(o.walkin_customer_name), ''),
+           NULLIF(TRIM(u.name), ''),
+           'Walk-in Customer'
+         ) AS customer_name,
+         d.address,
          d.status,
          CASE
-           WHEN d.status = 'completed'
-             AND LOWER(COALESCE(d.notes, '')) LIKE '%failure reason:%'
+           WHEN ${failedHistoryCondition}
              THEN 'failed'
-           WHEN d.status = 'completed'
+           WHEN ${successfulHistoryCondition}
              THEN 'delivered'
            ELSE d.status
          END AS history_result,
-         o.payment_status, 
-         o.total, 
+         o.payment_status,
+         o.total,
          o.delivery_lat,
          o.delivery_lng,
-         d.delivered_date, 
-         d.updated_at 
+         d.assigned_at,
+         d.scheduled_date,
+         d.delivered_date,
+         d.updated_at,
+         d.notes,
+         d.signed_receipt,
+
+         da.id AS delivery_acknowledgement_id,
+         da.received_by_name AS delivery_received_by_name,
+         da.recipient_type AS delivery_recipient_type,
+         da.acknowledged_at AS delivery_acknowledged_at,
+         da.receipt_number AS delivery_receipt_number,
+         CASE
+           WHEN da.signature_data IS NOT NULL
+            AND TRIM(da.signature_data) <> '' THEN 1
+           ELSE 0
+         END AS delivery_has_signature
+
        FROM deliveries d
-       JOIN orders o ON d.order_id = o.id
+       INNER JOIN orders o ON o.id = d.order_id
        LEFT JOIN users u ON u.id = o.customer_id
-       WHERE d.driver_id = ? AND d.status IN ('delivered', 'completed', 'failed')
-       ORDER BY d.updated_at DESC
-       LIMIT 50`,
-      [riderId],
+       LEFT JOIN delivery_acknowledgements da
+         ON da.id = (
+           SELECT da2.id
+           FROM delivery_acknowledgements da2
+           WHERE da2.delivery_id = d.id
+             AND da2.voided_at IS NULL
+           ORDER BY da2.id DESC
+           LIMIT 1
+         )
+       WHERE ${whereSql}
+       ORDER BY ${historyDateExpression} DESC, d.id DESC
+       LIMIT ? OFFSET ?`,
+      [...params, limit, offset],
     );
-    res.json(history);
+
+    history.forEach((row) => {
+      if (row.signed_receipt) {
+        row.signed_receipt = signUploadPath(row.signed_receipt);
+      }
+    });
+
+    if (!paged) {
+      return res.json(history);
+    }
+
+    return res.json({
+      records: history,
+      pagination: {
+        page,
+        limit,
+        total,
+        total_pages: totalPages,
+      },
+    });
   } catch (err) {
     console.error("[Rider History Error]", err);
-    res.status(500).json({ message: "Failed to load delivery history" });
+    return res.status(500).json({ message: "Failed to load delivery history" });
   }
 };
