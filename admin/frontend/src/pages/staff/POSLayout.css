@@ -127,7 +127,25 @@ body {
   transition: all 0.2s;
   white-space: nowrap;
   overflow: hidden;
+  flex-shrink: 0;
 }
+.sidebar-section-header {
+  padding: 18px 12px 6px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #71717a;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  flex-shrink: 0;
+}
+
+.sidebar-divider {
+  height: 1px;
+  background: #27272a;
+  margin: 16px 12px 8px;
+  flex-shrink: 0;
+}
+
 .nav-item:hover {
   background: #27272a;
   color: #fff;

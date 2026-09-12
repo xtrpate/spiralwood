@@ -8,6 +8,7 @@ const {
   authorize,
 } = require("../middleware/auth");
 const { logAction } = require("../middleware/auditLog");
+const { requirePermission } = require("../middleware/permission");
 
 const posQrPaymentsController = require("../controllers/staff/pos.qrPayments");
 
@@ -29,7 +30,12 @@ const requirePosQrEnabled = (req, res, next) => {
   next();
 };
 
-const posAccess = [requirePosQrEnabled, authenticate, requireCashierOrAdmin];
+const posAccess = [
+  requirePosQrEnabled,
+  authenticate,
+  requireCashierOrAdmin,
+  requirePermission("pos_qr_recovery.view"),
+];
 
 /* ══════════════════════════════════════════════════════════════
    CASHIER POS — QR / ONLINE PAYMENT ATTEMPTS
@@ -47,7 +53,11 @@ router.post("/attempts", posAccess, posQrPaymentsController.createAttempt);
    allows an authenticated cashier/admin to reconcile stale browser
    state even while creation of new QR attempts is disabled.
 ════════════════════════════════════════════════════════════ */
-const resumeAccess = [authenticate, requireCashierOrAdmin];
+const resumeAccess = [
+  authenticate,
+  requireCashierOrAdmin,
+  requirePermission("pos_qr_recovery.view"),
+];
 
 router.post(
   "/attempts/resume",
@@ -79,7 +89,11 @@ router.post(
    This keeps unresolved attempts visible while mutating recovery
    actions are disabled.
 ══════════════════════════════════════════════════════════════ */
-const recoveryReadAccess = [authenticate, authorize("admin")];
+const recoveryReadAccess = [
+  authenticate,
+  authorize("admin"),
+  requirePermission("pos_qr_recovery.view"),
+];
 
 router.get(
   "/recovery/attempts",
@@ -116,6 +130,7 @@ const recoveryAccess = [
   requirePosQrRecoveryEnabled,
   authenticate,
   authorize("admin"),
+  requirePermission("pos_qr_recovery.manage"),
 ];
 
 router.post(
@@ -160,10 +175,7 @@ router.post(
 router.post(
   "/attempts/:id/cancel-unpaid",
   recoveryAccess,
-  logAction(
-    "admin_resolve_unpaid_pos_qr_attempt",
-    "pos_qr_payment_attempts",
-  ),
+  logAction("admin_resolve_unpaid_pos_qr_attempt", "pos_qr_payment_attempts"),
   posQrPaymentsController.cancelUnpaidAttempt,
 );
 

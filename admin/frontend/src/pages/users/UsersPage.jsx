@@ -11,6 +11,7 @@ import {
   Pencil,
   Search,
   ShieldCheck,
+  Shield,
   Trash2,
   Plus,
   UserX,
@@ -158,17 +159,24 @@ export default function UsersPage() {
   const [photoPreview, setPhotoPreview] = useState("");
   const [filters, setFilters] = useState(FILTERS);
   const [openMenuId, setOpenMenuId] = useState(null);
+  const [permissionTarget, setPermissionTarget] = useState(null);
+  const [permissionData, setPermissionData] = useState(null);
+  const [permissionLoading, setPermissionLoading] = useState(false);
+  const [permissionSaving, setPermissionSaving] = useState(false);
+  const [authChangeTarget, setAuthChangeTarget] = useState(null);
+  const [pendingAuthorityForPerms, setPendingAuthorityForPerms] =
+    useState(null);
 
   const menuRef = useRef(null);
 
-  const handleAuthorityChange = async (targetUser, nextAuthority) => {
+  // Step 1 - Trigger Confirmation
+  const onInitiateAuthorityChange = (targetUser, nextAuthority) => {
     if (!targetUser || targetUser.id === me?.id) {
       toast.error("You cannot change your own authority level.");
       return;
     }
 
     const actorAuthority = String(me?.authority_level || "user").toLowerCase();
-
     const currentAuthority = String(
       targetUser.authority_level || "user",
     ).toLowerCase();
@@ -188,31 +196,36 @@ export default function UsersPage() {
       return;
     }
 
-    setSaving(true);
+    // Opens the Step 1 confirmation modal instead of saving immediately
+    setAuthChangeTarget({ user: targetUser, nextAuthority });
+    setOpenMenuId(null);
+  };
+
+  // Step 2 - Opens permissions with linked authority data
+  const openPermissions = async (targetUser, nextAuthority = null) => {
+    if (!targetUser) return;
+
+    setPermissionTarget(targetUser);
+    setPendingAuthorityForPerms(nextAuthority);
+    setPermissionData(null);
+    setPermissionLoading(true);
+    setOpenMenuId(null);
 
     try {
-      const { data } = await api.put(`/users/${targetUser.id}/authority`, {
-        authority_level: nextAuthority,
-      });
+      const endpoint = nextAuthority
+        ? `/users/${targetUser.id}/permissions?preview_authority=${nextAuthority}`
+        : `/users/${targetUser.id}/permissions`;
 
-      setUsers((current) =>
-        current.map((item) =>
-          item.id === targetUser.id
-            ? {
-                ...item,
-                authority_level: data?.user?.authority_level || nextAuthority,
-              }
-            : item,
-        ),
-      );
-
-      toast.success("Authority level updated.");
+      const { data } = await api.get(endpoint);
+      setPermissionData(data);
     } catch (err) {
       toast.error(
-        err?.response?.data?.message || "Unable to update authority level.",
+        err?.response?.data?.message || "Unable to load user permissions.",
       );
+      setPermissionTarget(null);
+      setPendingAuthorityForPerms(null);
     } finally {
-      setSaving(false);
+      setPermissionLoading(false);
     }
   };
 
@@ -669,7 +682,8 @@ export default function UsersPage() {
                     onEdit={openEdit}
                     onPassword={openPassword}
                     onDelete={openDelete}
-                    onAuthorityChange={handleAuthorityChange}
+                    onAuthorityChange={onInitiateAuthorityChange}
+                    onPermissions={openPermissions}
                     saving={saving}
                   />
                 ))
@@ -713,6 +727,94 @@ export default function UsersPage() {
           onConfirm={handleDelete}
         />
       )}
+
+      {authChangeTarget && (
+        <ModalShell onClose={() => setAuthChangeTarget(null)} compact>
+          <div className="um-modal-header">
+            <div>
+              <div className="um-modal-eyebrow">Authority Level</div>
+              <h3>Change Authority</h3>
+            </div>
+            <button
+              type="button"
+              className="um-modal-close"
+              onClick={() => setAuthChangeTarget(null)}
+            >
+              <X size={17} strokeWidth={1.9} />
+            </button>
+          </div>
+          <div className="um-modal-body">
+            <p
+              style={{
+                fontSize: 13,
+                color: "#52525b",
+                lineHeight: 1.5,
+                margin: 0,
+              }}
+            >
+              Are you sure you want to change the authority of{" "}
+              <strong>{authChangeTarget.user.name}</strong> to{" "}
+              <strong>
+                {AUTHORITY_LEVELS[authChangeTarget.nextAuthority]?.label}
+              </strong>
+              ?
+            </p>
+          </div>
+          <div className="um-modal-footer">
+            <button
+              className="um-btn um-btn-secondary"
+              onClick={() => setAuthChangeTarget(null)}
+            >
+              No
+            </button>
+            <button
+              className="um-btn um-btn-primary"
+              onClick={() => {
+                const { user, nextAuthority } = authChangeTarget;
+                setAuthChangeTarget(null);
+                openPermissions(user, nextAuthority);
+              }}
+            >
+              Yes
+            </button>
+          </div>
+        </ModalShell>
+      )}
+
+      {permissionTarget && (
+        <PermissionModal
+          target={permissionTarget}
+          data={permissionData}
+          loading={permissionLoading}
+          pendingAuthority={pendingAuthorityForPerms}
+          canEdit={String(me?.authority_level || "").toLowerCase() === "admin"}
+          onClose={() => {
+            setPermissionTarget(null);
+            setPermissionData(null);
+            setPendingAuthorityForPerms(null);
+          }}
+          onSaved={(updated, appliedAuthority) => {
+            if (updated) {
+              setPermissionData(updated);
+            }
+
+            if (!appliedAuthority && !updated) {
+              setUsers((current) => [...current]);
+              return;
+            }
+
+            if (appliedAuthority) {
+              setUsers((current) =>
+                current.map((item) =>
+                  item.id === permissionTarget.id
+                    ? { ...item, authority_level: appliedAuthority }
+                    : item,
+                ),
+              );
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -743,6 +845,7 @@ function UserRow({
   onPassword,
   onDelete,
   onAuthorityChange,
+  onPermissions,
   saving,
 }) {
   const isMe = user.id === me?.id;
@@ -875,6 +978,14 @@ function UserRow({
                   <KeyRound size={14} strokeWidth={1.9} />
                   Reset Password
                 </button>
+
+                {String(me?.authority_level || "").toLowerCase() ===
+                  "admin" && (
+                  <button type="button" onClick={() => onPermissions(user)}>
+                    <Shield size={14} strokeWidth={1.9} />
+                    Permissions
+                  </button>
+                )}
 
                 {!isMe && (
                   <>
@@ -1267,6 +1378,320 @@ function DeleteModal({ target, saving, onClose, onConfirm }) {
         </button>
       </div>
     </ModalShell>
+  );
+}
+
+function PermissionModal({
+  target,
+  data,
+  loading,
+  pendingAuthority,
+  canEdit,
+  onClose,
+  onSaved,
+}) {
+  const [draftOverrides, setDraftOverrides] = useState({});
+  const [localSaving, setLocalSaving] = useState(false);
+  const [confirmMode, setConfirmMode] = useState(null); // 'cancel' | 'save'
+
+  useEffect(() => {
+    if (!data?.permissions) return;
+    const initial = {};
+    for (const permission of data.permissions) {
+      initial[permission.id] =
+        permission.override === true
+          ? "grant"
+          : permission.override === false
+            ? "deny"
+            : "default";
+    }
+    setDraftOverrides(initial);
+  }, [data]);
+
+  const groupedPermissions = useMemo(() => {
+    const groups = new Map();
+    for (const permission of data?.permissions || []) {
+      const moduleName = permission.module || "other";
+      if (!groups.has(moduleName)) {
+        groups.set(moduleName, []);
+      }
+      groups.get(moduleName).push(permission);
+    }
+    return [...groups.entries()];
+  }, [data]);
+
+  const handleOverrideChange = (permissionId, value) => {
+    if (!canEdit || localSaving) return;
+    setDraftOverrides((current) => ({
+      ...current,
+      [permissionId]: value,
+    }));
+  };
+
+  // 👉 Intercepts clicks and routes to the confirm modals
+  const handleCloseAttempt = () => {
+    if (pendingAuthority) setConfirmMode("cancel");
+    else onClose();
+  };
+
+  const handleSaveAttempt = () => {
+    if (pendingAuthority) setConfirmMode("save");
+    else handleSave();
+  };
+
+  const handleSave = async () => {
+    if (!canEdit || localSaving || !data?.permissions) return;
+
+    const overrides = data.permissions
+      .map((permission) => {
+        const original =
+          permission.override === true
+            ? "grant"
+            : permission.override === false
+              ? "deny"
+              : "default";
+        const current = draftOverrides[permission.id] || "default";
+
+        if (current === original) return null;
+        return {
+          permission_id: permission.id,
+          granted:
+            current === "grant" ? true : current === "deny" ? false : null,
+        };
+      })
+      .filter(Boolean);
+
+    setLocalSaving(true);
+    try {
+      // Processes the Authority change first, then the Permissions
+      if (pendingAuthority) {
+        await api.put(`/users/${target.id}/authority`, {
+          authority_level: pendingAuthority,
+        });
+      }
+
+      const { data: updated } = await api.put(
+        `/users/${target.id}/permissions`,
+        { overrides },
+      );
+      toast.success(
+        pendingAuthority
+          ? "Authority and permissions updated."
+          : "User permissions updated.",
+      );
+
+      const { data: refreshed } = await api.get(
+        `/users/${target.id}/permissions`,
+      );
+      onSaved(refreshed || updated, pendingAuthority);
+
+      if (pendingAuthority) onClose();
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message || "Unable to update user permissions.",
+      );
+    } finally {
+      setLocalSaving(false);
+    }
+  };
+
+  return (
+    <div className="um-modal-backdrop">
+      <div
+        className="um-modal um-permission-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="permission-modal-title"
+      >
+        <div className="um-modal-header">
+          <div>
+            <div className="um-modal-eyebrow">Account Permissions</div>
+            <h3 id="permission-modal-title">
+              Permissions: {target?.name || "User"}
+            </h3>
+            <p>
+              {pendingAuthority || target?.authority_level || "user"} authority
+              {" · "}
+              {target?.role || "staff"}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            className="um-icon-btn"
+            onClick={handleCloseAttempt}
+            disabled={localSaving}
+            aria-label="Close permissions"
+          >
+            <X size={17} strokeWidth={2} />
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="um-modal-body">
+            <div className="um-empty">
+              <strong>Loading...</strong>
+              <span>Fetching user permissions.</span>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="um-modal-body um-permission-body">
+              {!canEdit && (
+                <div className="um-permission-readonly-note">
+                  You can view this account's effective permissions, but only an
+                  Administrator can modify them.
+                </div>
+              )}
+
+              {groupedPermissions.map(([moduleName, permissions]) => (
+                <section key={moduleName} className="um-permission-group">
+                  <div className="um-permission-group-header">
+                    <h4>{moduleName}</h4>
+                  </div>
+
+                  <div className="um-permission-list">
+                    {permissions.map((permission) => {
+                      const selected =
+                        draftOverrides[permission.id] || "default";
+
+                      return (
+                        <div key={permission.id} className="um-permission-row">
+                          <div className="um-permission-copy">
+                            <strong>{permission.permission_key}</strong>
+                            <small>
+                              {permission.description ||
+                                "No description provided."}
+                            </small>
+                            <span
+                              className={`um-effective-badge ${permission.effective ? "is-allowed" : "is-denied"}`}
+                            >
+                              Effective:{" "}
+                              {permission.effective ? "Allowed" : "Denied"}
+                            </span>
+                          </div>
+
+                          <select
+                            className="um-permission-select"
+                            value={selected}
+                            onChange={(event) =>
+                              handleOverrideChange(
+                                permission.id,
+                                event.target.value,
+                              )
+                            }
+                            disabled={!canEdit || localSaving}
+                            aria-label={`Override for ${permission.permission_key}`}
+                          >
+                            <option value="default">Inherit Default</option>
+                            <option value="grant">Force Allow</option>
+                            <option value="deny">Force Deny</option>
+                          </select>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
+            </div>
+
+            <div className="um-modal-footer">
+              <button
+                type="button"
+                className="um-btn um-btn-secondary"
+                onClick={handleCloseAttempt}
+                disabled={localSaving}
+              >
+                Close
+              </button>
+
+              {canEdit && (
+                <button
+                  type="button"
+                  className="um-btn um-btn-primary"
+                  onClick={handleSaveAttempt}
+                  disabled={localSaving}
+                >
+                  {localSaving
+                    ? "Saving..."
+                    : pendingAuthority
+                      ? "Save Authority & Permissions"
+                      : "Save Permissions"}
+                </button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* 👉 Inner Confirm Overlay for Step 4 & 5 */}
+      {confirmMode && (
+        <div className="um-modal-backdrop" style={{ zIndex: 1100 }}>
+          <div className="um-modal um-modal-compact">
+            <div className="um-modal-header">
+              <div>
+                <div className="um-modal-eyebrow">
+                  {confirmMode === "cancel" ? "Cancel Changes" : "Save Changes"}
+                </div>
+                <h3
+                  style={{
+                    margin: 0,
+                    color: "#18181b",
+                    fontSize: "18px",
+                    fontWeight: 700,
+                  }}
+                >
+                  {confirmMode === "cancel"
+                    ? "Are you sure?"
+                    : "Confirm Authority & Permissions"}
+                </h3>
+              </div>
+            </div>
+            <div className="um-modal-body">
+              <p
+                style={{
+                  fontSize: 13,
+                  color: "#52525b",
+                  lineHeight: 1.5,
+                  margin: 0,
+                }}
+              >
+                {confirmMode === "cancel"
+                  ? "Are you sure you want to cancel? Your current modifications will not be saved and the authority change will be cancelled."
+                  : `Are you sure you want to change this user's authority to ${AUTHORITY_LEVELS[pendingAuthority]?.label} and apply these permissions?`}
+              </p>
+            </div>
+            <div className="um-modal-footer">
+              <button
+                className="um-btn um-btn-secondary"
+                onClick={() => setConfirmMode(null)}
+              >
+                {confirmMode === "cancel"
+                  ? "No, continue editing"
+                  : "No, review again"}
+              </button>
+              <button
+                className={`um-btn ${confirmMode === "cancel" ? "um-btn-danger" : "um-btn-primary"}`}
+                onClick={() => {
+                  const mode = confirmMode;
+                  setConfirmMode(null);
+                  if (mode === "cancel") {
+                    onSaved(null, null);
+                    onClose();
+                  } else {
+                    handleSave();
+                  }
+                }}
+              >
+                {confirmMode === "cancel"
+                  ? "Yes, cancel changes"
+                  : "Yes, save changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2269,5 +2694,142 @@ const styles = `
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* ==========================================================
+     PERMISSIONS MODAL STYLES
+     ========================================================== */
+  
+  .um-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.42);
+  }
+
+  .um-permission-modal {
+    width: min(100%, 760px); /* Wider for permission grid */
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .um-permission-body {
+    overflow-y: auto;
+    padding: 20px;
+    background: #f7f7f8;
+  }
+
+  .um-permission-readonly-note {
+    margin-bottom: 16px;
+    padding: 12px;
+    background: #fff8eb;
+    border: 1px solid #fce8cd;
+    border-radius: 4px;
+    color: #9c6500;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .um-permission-group {
+    margin-bottom: 16px;
+    background: #ffffff;
+    border: 1px solid #d6dae0;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .um-permission-group:last-child {
+    margin-bottom: 0;
+  }
+
+  .um-permission-group-header {
+    padding: 12px 16px;
+    background: #fafafa;
+    border-bottom: 1px solid #d6dae0;
+  }
+
+  .um-permission-group-header h4 {
+    margin: 0;
+    color: #18181b;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .um-permission-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 14px 16px;
+    border-bottom: 1px solid #eceef1;
+  }
+
+  .um-permission-row:last-child {
+    border-bottom: none;
+  }
+
+  .um-permission-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .um-permission-copy strong {
+    color: #18181b;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .um-permission-copy small {
+    color: #71717a;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .um-effective-badge {
+    margin-top: 4px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 9.5px;
+    font-weight: 650;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .um-effective-badge.is-allowed {
+    background: #e6f4ea;
+    color: #1e7e34;
+  }
+
+  .um-effective-badge.is-denied {
+    background: #fce8e6;
+    color: #d93025;
+  }
+
+  .um-permission-select {
+    min-width: 140px;
+    height: 34px;
+    padding: 0 10px;
+    background: #ffffff;
+    border: 1px solid #cbd0d6;
+    border-radius: 3px;
+    color: #18181b;
+    font-size: 12px;
+    font-weight: 500;
+    outline: none;
+    cursor: pointer;
+  }
+
+  .um-permission-select:focus {
+    border-color: #777d85;
+    box-shadow: 0 0 0 2px rgba(24, 24, 27, 0.07);
+  }
 
 `;

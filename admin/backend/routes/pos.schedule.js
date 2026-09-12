@@ -8,11 +8,23 @@ const {
 } = require("../middleware/auth");
 
 const { logAction } = require("../middleware/auditLog");
+const { requirePermission } = require("../middleware/permission");
 
 const posScheduleController = require("../controllers/staff/pos.schedule");
 
 const adminOnly = [authenticate, authorize("admin")];
-const appointmentAccess = [authenticate, requireIndoorStaffOrAdmin];
+
+const appointmentAccess = [
+  authenticate,
+  requireIndoorStaffOrAdmin,
+  requirePermission("appointments.view"),
+];
+
+const appointmentManageAccess = [
+  authenticate,
+  authorize("admin"),
+  requirePermission("appointments.manage"),
+];
 
 /* ══════════════════════════════════════════════════════════════
    APPOINTMENTS ONLY
@@ -32,14 +44,14 @@ router.get(
 
 router.post(
   "/appointments",
-  adminOnly,
+  appointmentManageAccess,
   logAction("create_appointment", "appointments"),
   posScheduleController.createAppointment,
 );
 
 router.patch(
   "/appointments/:id",
-  appointmentAccess,
+  appointmentManageAccess,
   logAction("update_appointment", "appointments"),
   posScheduleController.updateAppointment,
 );

@@ -35,6 +35,17 @@ const getStoredToken = () =>
   sessionStorage.getItem("token") ||
   null;
 
+const normalizePermissionKey = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
+
+const normalizePermissions = (value) => {
+  if (!Array.isArray(value)) return [];
+
+  return [...new Set(value.map(normalizePermissionKey).filter(Boolean))].sort();
+};
+
 const hasLocalAuth = () =>
   !!(localStorage.getItem("wisdom_token") || localStorage.getItem("token"));
 
@@ -103,14 +114,44 @@ syncAuthHeader(savedToken);
 const useAuthStore = create((set, get) => ({
   user: savedUser,
   token: savedToken,
+  permissions: normalizePermissions(savedUser?.permissions),
+
+  hasPermission: (permissionKey) => {
+    const key = normalizePermissionKey(permissionKey);
+
+    if (!key) return false;
+
+    return get().permissions.includes(key);
+  },
+
+  hasAnyPermission: (permissionKeys) => {
+    if (!Array.isArray(permissionKeys)) return false;
+
+    return permissionKeys.some((permissionKey) =>
+      get().hasPermission(permissionKey),
+    );
+  },
 
   setUser: (updater) => {
     const currentUser = get().user;
     const nextUser =
       typeof updater === "function" ? updater(currentUser) : updater;
 
-    persistUserOnly(nextUser);
-    set({ user: nextUser });
+    const permissions = normalizePermissions(nextUser?.permissions);
+
+    const normalizedUser = nextUser
+      ? {
+          ...nextUser,
+          permissions,
+        }
+      : null;
+
+    persistUserOnly(normalizedUser);
+
+    set({
+      user: normalizedUser,
+      permissions,
+    });
   },
 
   login: async (email, password, rememberMe = false, recaptchaToken = "") => {
@@ -125,10 +166,19 @@ const useAuthStore = create((set, get) => ({
       });
 
       // 2. Persist and Set State
-      persistSession(data.token, data.user, rememberMe);
+      const permissions = normalizePermissions(data.user?.permissions);
+
+      const normalizedUser = {
+        ...data.user,
+        permissions,
+      };
+
+      persistSession(data.token, normalizedUser, rememberMe);
+
       set({
-        user: data.user,
+        user: normalizedUser,
         token: data.token,
+        permissions,
       });
 
       // 3. Return the user (which includes their role!)
@@ -277,13 +327,18 @@ const useAuthStore = create((set, get) => ({
       const updatedUser = {
         ...(get().user || {}),
         must_change_password: 0,
+        permissions: normalizePermissions(get().permissions),
       };
       const freshToken = data?.token || get().token;
       const rememberMe = localStorage.getItem(REMEMBER_KEY) === "true";
 
       if (freshToken) {
         persistSession(freshToken, updatedUser, rememberMe);
-        set({ user: updatedUser, token: freshToken });
+        set({
+          user: updatedUser,
+          token: freshToken,
+          permissions: normalizePermissions(updatedUser.permissions),
+        });
       } else {
         persistUserOnly(updatedUser);
         set({ user: updatedUser });
@@ -300,9 +355,11 @@ const useAuthStore = create((set, get) => ({
 
   logout: () => {
     clearSession();
+
     set({
       user: null,
       token: null,
+      permissions: [],
     });
   },
 
@@ -331,15 +388,41 @@ const useAuthStore = create((set, get) => ({
               }
             : data;
 
-        persistUserOnly(mergedUser);
-        set({ user: mergedUser, token });
-        return mergedUser;
+        const permissions = normalizePermissions(mergedUser?.permissions);
+
+        const normalizedUser = {
+          ...mergedUser,
+          permissions,
+        };
+
+        persistUserOnly(normalizedUser);
+
+        set({
+          user: normalizedUser,
+          token,
+          permissions,
+        });
+
+        return normalizedUser;
       }
 
       if (storedUser?.role === "customer") {
-        persistUserOnly(storedUser);
-        set({ user: storedUser, token });
-        return storedUser;
+        const permissions = normalizePermissions(storedUser?.permissions);
+
+        const normalizedUser = {
+          ...storedUser,
+          permissions,
+        };
+
+        persistUserOnly(normalizedUser);
+
+        set({
+          user: normalizedUser,
+          token,
+          permissions,
+        });
+
+        return normalizedUser;
       }
 
       clearSession();

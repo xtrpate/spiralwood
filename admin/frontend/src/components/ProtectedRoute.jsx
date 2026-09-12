@@ -4,8 +4,12 @@ import useAuthStore from "../store/authStore";
 
 const DEFAULT_AUTHORITY = "user";
 
-export default function ProtectedRoute({ allowedRoles = [], children }) {
-  const { user } = useAuthStore();
+export default function ProtectedRoute({
+  allowedRoles = [],
+  requiredPermission = null,
+  children,
+}) {
+  const { user, hasPermission } = useAuthStore();
   const location = useLocation();
 
   if (!user) {
@@ -18,9 +22,18 @@ export default function ProtectedRoute({ allowedRoles = [], children }) {
     .trim()
     .toLowerCase();
 
-  if (
-    !allowed.map((value) => String(value).toLowerCase()).includes(authority)
-  ) {
+  const normalizedAllowed = allowed
+    .filter(Boolean)
+    .map((value) => String(value).trim().toLowerCase());
+
+  const authorityAllowed =
+    normalizedAllowed.length === 0 || normalizedAllowed.includes(authority);
+
+  if (!authorityAllowed) {
+    return <Navigate to={getDefaultRouteForUser(user)} replace />;
+  }
+
+  if (requiredPermission && !hasPermission(requiredPermission)) {
     return <Navigate to={getDefaultRouteForUser(user)} replace />;
   }
 

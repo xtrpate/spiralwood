@@ -264,8 +264,8 @@ export default function TasksPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
-  const { user: me } = useAuthStore();
-  const isAdmin = me?.role === "admin";
+  const { user: me, hasPermission } = useAuthStore();
+  const canManageTasks = hasPermission("task_assignments.manage");
   const navigate = useNavigate();
 
   const [tasks, setTasks] = useState([]);
@@ -306,7 +306,7 @@ export default function TasksPage() {
     try {
       const { data: t } = await api.get("/tasks");
       setTasks(t);
-      if (isAdmin) {
+      if (canManageTasks) {
         const [{ data: s }, { data: o }] = await Promise.all([
           api.get("/tasks/staff-list"),
           api.get("/tasks/orders-list"),
@@ -319,7 +319,7 @@ export default function TasksPage() {
     } finally {
       setLoading(false);
     }
-  }, [isAdmin]);
+  }, [canManageTasks]);
 
   useEffect(() => {
     load();
@@ -402,8 +402,8 @@ export default function TasksPage() {
   useEffect(() => {
     if (!assignmentOrderIdParam || !me) return;
 
-    if (!isAdmin) {
-      toast.error("Only administrators can assign production staff.");
+    if (!canManageTasks) {
+      toast.error("You do not have permission to assign production staff.");
       clearProductionAssignmentParam();
       return;
     }
@@ -452,7 +452,7 @@ export default function TasksPage() {
     return () => {
       cancelled = true;
     };
-  }, [assignmentOrderIdParam, isAdmin, me?.id]);
+  }, [assignmentOrderIdParam, canManageTasks, me?.id]);
 
   const handleProductionAssign = async (e) => {
     e.preventDefault();
@@ -1069,12 +1069,12 @@ export default function TasksPage() {
         <div>
           <h1 style={S.title}>Task Assignments</h1>
           <p style={S.sub}>
-            {isAdmin
+            {canManageTasks
               ? "Assign tasks to staff and track progress."
               : "Review your assigned tasks and current progress."}
           </p>
         </div>
-        {isAdmin && (
+        {canManageTasks && (
           <button
             type="button"
             style={{ ...S.btn, ...S.btnPrim, minHeight: 36, padding: "0 14px" }}
@@ -1521,7 +1521,7 @@ export default function TasksPage() {
               }}
             >
               <div>
-                {isAdmin &&
+                {canManageTasks &&
                 selectedProductionOrder.orderId &&
                 !selectedProductionOrder.complete ? (
                   <button

@@ -33,7 +33,8 @@ const NAV_ITEMS = [
     label: "Dashboard",
     path: "/admin/dashboard",
     icon: "📊",
-    roles: ["admin"],
+    permission: "dashboard.view",
+    roles: ["admin", "staff"],
   },
 
   { section: "Maintenance" },
@@ -41,24 +42,28 @@ const NAV_ITEMS = [
     label: "Products",
     path: "/admin/products",
     icon: "📦",
+    permission: "products.view",
     roles: ["admin", "staff"],
   },
   {
     label: "Raw Materials",
     path: "/admin/inventory/raw",
     icon: "🪵",
+    permission: "raw_materials.view",
     roles: ["admin", "staff"],
   },
   {
     label: "Build Materials",
     path: "/admin/inventory/build",
     icon: "🔧",
+    permission: "build_materials.view",
     roles: ["admin", "staff"],
   },
   {
     label: "Suppliers",
     path: "/admin/inventory/suppliers",
     icon: "🏭",
+    permission: "suppliers.view",
     roles: ["admin", "staff"],
   },
 
@@ -67,37 +72,43 @@ const NAV_ITEMS = [
     label: "Stock Movements",
     path: "/admin/inventory/movements",
     icon: "🔄",
+    permission: "stock_movements.view",
     roles: ["admin", "staff"],
   },
   {
     label: "Stock Transfer",
     path: "/admin/inventory/transfers",
     icon: "↔️",
-    roles: ["admin"],
+    permission: "stock_movements.manage",
+    roles: ["admin", "staff"],
   },
   {
     label: "Physical Inventory",
     path: "/admin/inventory/physical-inventory",
     icon: "📋",
-    roles: ["admin"],
+    permission: "stock_movements.manage",
+    roles: ["admin", "staff"],
   },
   {
     label: "Orders",
     path: "/admin/orders",
     icon: "🛒",
+    permission: "orders.view",
     roles: ["admin", "staff"],
   },
   {
     label: "Cancellations",
     path: "/admin/orders/cancellations",
     icon: "↩️",
-    roles: ["admin"],
+    permission: "cancellations_refunds.view",
+    roles: ["admin", "staff"],
   },
   {
     label: "POS QR Recovery",
     path: "/admin/pos-qr-recovery",
     icon: "💳",
-    roles: ["admin"],
+    permission: "pos_qr_recovery.view",
+    roles: ["admin", "staff"],
   },
 
   { section: "Operations" },
@@ -105,19 +116,22 @@ const NAV_ITEMS = [
     label: "Task Assignments",
     path: "/admin/tasks",
     icon: "📋",
+    permission: "task_assignments.view",
     roles: ["admin", "staff"],
   },
   {
     label: "Appointments",
     path: "/admin/appointments",
     icon: "📅",
-    roles: ["admin"],
+    permission: "appointments.view",
+    roles: ["admin", "staff"],
   },
   {
     label: "Delivery Scheduling",
     path: "/admin/delivery",
     icon: "🚚",
-    roles: ["admin"],
+    permission: "delivery_scheduling.view",
+    roles: ["admin", "staff"],
   },
 
   { section: "Blueprints & Production" },
@@ -125,13 +139,15 @@ const NAV_ITEMS = [
     label: "Blueprint Management",
     path: "/admin/blueprints",
     icon: "🗺️",
+    permission: "blueprint_management.view",
     roles: ["admin", "staff"],
   },
   {
     label: "Contracts",
     path: "/admin/contracts",
     icon: "📝",
-    roles: ["admin"],
+    permission: "contracts.view",
+    roles: ["admin", "staff"],
   },
 
   { section: "Customer Service" },
@@ -139,12 +155,14 @@ const NAV_ITEMS = [
     label: "Warranty",
     path: "/admin/warranty",
     icon: "🛡️",
+    permission: "warranty.view",
     roles: ["admin", "staff"],
   },
   {
     label: "Support",
     path: "/admin/support",
     icon: "💬",
+    permission: "support.view",
     roles: ["admin", "staff"],
   },
 
@@ -153,18 +171,21 @@ const NAV_ITEMS = [
     label: "Inventory Report",
     path: "/admin/reports/current-inventory",
     icon: "📦",
-    roles: ["admin"],
+    permission: "stock_movements.view",
+    roles: ["admin", "staff"],
   },
   {
     label: "Stock In Report",
     path: "/admin/reports/daily-stock-in",
     icon: "📥",
-    roles: ["admin"],
+    permission: "stock_movements.view",
+    roles: ["admin", "staff"],
   },
   {
     label: "Sales Report",
     path: "/admin/sales",
     icon: "📈",
+    permission: "sales_report.view",
     roles: ["admin", "staff"],
   },
 
@@ -173,19 +194,22 @@ const NAV_ITEMS = [
     label: "Customers",
     path: "/admin/customers",
     icon: "👥",
-    roles: ["admin"],
+    permission: "customers.view",
+    roles: ["admin", "staff"],
   },
   {
     label: "Users & Roles",
     path: "/admin/users",
     icon: "🔑",
-    roles: ["admin"],
+    permission: "users.view",
+    roles: ["admin", "staff"],
   },
   {
     label: "Audit Logs",
     path: "/admin/audit-logs",
     icon: "🧾",
-    roles: ["admin"],
+    permission: "audit_logs.view",
+    roles: ["admin", "staff"],
   },
 
   { section: "Website" },
@@ -193,30 +217,34 @@ const NAV_ITEMS = [
     label: "Site Settings",
     path: "/admin/website/settings",
     icon: "⚙️",
-    roles: ["admin"],
+    permission: "site_settings.view",
+    roles: ["admin", "staff"],
   },
   {
     label: "FAQs",
     path: "/admin/website/faqs",
     icon: "❓",
-    roles: ["admin"],
+    permission: "faqs.view",
+    roles: ["admin", "staff"],
   },
   {
     label: "Page Content",
     path: "/admin/website/pages",
     icon: "📄",
-    roles: ["admin"],
+    permission: "page_content.view",
+    roles: ["admin", "staff"],
   },
   {
     label: "Backup",
     path: "/admin/backup",
     icon: "💾",
-    roles: ["admin"],
+    permission: "backup.view",
+    roles: ["admin", "staff"],
   },
 ];
 
 export default function AdminLayout() {
-  const { user, logout } = useAuthStore();
+  const { user, logout, hasPermission } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [open, setOpen] = useState(true);
@@ -310,9 +338,16 @@ export default function AdminLayout() {
     }, durations.loading);
   };
 
-  const visibleItems = NAV_ITEMS.filter(
-    (item) => item.section || !item.roles || item.roles.includes(user?.role),
-  );
+  const visibleItems = NAV_ITEMS.filter((item) => {
+    if (item.section) return true;
+
+    const roleAllowed = !item.roles || item.roles.includes(user?.role);
+
+    const permissionAllowed =
+      !item.permission || hasPermission(item.permission);
+
+    return roleAllowed && permissionAllowed;
+  });
 
   return (
     <div

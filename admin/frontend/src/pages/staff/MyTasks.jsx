@@ -146,7 +146,8 @@ const getCurrentStep = (steps = []) => {
 };
 
 export default function MyTasks() {
-  const { user } = useAuthStore();
+  const { user, hasPermission } = useAuthStore();
+  const canManageTasks = hasPermission("task_assignments.manage");
 
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -537,10 +538,9 @@ export default function MyTasks() {
                 ORDER_STATUS_META.assigned;
 
               const isExpanded = expandedOrderKey === order.key;
-              const currentStep =
-                order.ready
-                  ? "Production Complete"
-                  : order.currentStep?.stepLabel || "Production Work";
+              const currentStep = order.ready
+                ? "Production Complete"
+                : order.currentStep?.stepLabel || "Production Work";
 
               return (
                 <article
@@ -658,9 +658,10 @@ export default function MyTasks() {
                             Number(focusedTaskId) === Number(step.task.id);
 
                           const isOwnedByCurrentUser =
-                            user?.role === "admin" ||
+                            canManageTasks ||
                             (step.task &&
-                              Number(step.task.assigned_to) === Number(user?.id));
+                              Number(step.task.assigned_to) ===
+                                Number(user?.id));
 
                           return (
                             <div
@@ -777,7 +778,9 @@ export default function MyTasks() {
 
                                         <button
                                           type="button"
-                                          onClick={() => openHoldDialog(step.task)}
+                                          onClick={() =>
+                                            openHoldDialog(step.task)
+                                          }
                                           disabled={busyId === step.task.id}
                                           style={
                                             busyId === step.task.id
@@ -1079,7 +1082,9 @@ function ProductionBlueprintPanel({ orderId, orderNumber }) {
           type="button"
           onClick={() => navigate(`/staff/tasks/${Number(orderId)}/blueprint`)}
           disabled={!blueprint}
-          style={blueprint ? productionOpenButton : productionOpenButtonDisabled}
+          style={
+            blueprint ? productionOpenButton : productionOpenButtonDisabled
+          }
         >
           View Blueprint
         </button>
@@ -1569,7 +1574,6 @@ const disabledButton = {
   color: "#a0a1a6",
   cursor: "not-allowed",
 };
-
 
 const productionBlueprintPanel = {
   marginTop: 14,

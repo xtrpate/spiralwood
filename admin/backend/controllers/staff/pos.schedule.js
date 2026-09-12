@@ -942,8 +942,12 @@ exports.updateAppointment = async (req, res) => {
       status = requestedStatus;
     }
 
+    // Evaluate the NEW date to see if it is valid
+    const finalDateToCheck = new Date(scheduledDate || preferredDate);
+    const isNowPastDue = finalDateToCheck < new Date();
+
     if (
-      isPastDue &&
+      isNowPastDue &&
       !["cancelled", "rejected", "completed"].includes(status) &&
       currentStatus !== "confirmed"
     ) {
@@ -951,7 +955,7 @@ exports.updateAppointment = async (req, res) => {
       transactionActive = false;
       return res.status(400).json({
         message:
-          "This appointment date has already passed. It can only be cancelled or rejected.",
+          "The chosen appointment date has already passed. Please select a future date.",
       });
     }
 

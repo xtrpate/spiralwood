@@ -5,6 +5,9 @@ const jwt = require("jsonwebtoken");
 // const nodemailer = require("nodemailer");
 const db = require("../../config/db"); // Uses the unified db config
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
+const {
+  getEffectivePermissionsForUser,
+} = require("../../services/permissionService");
 const { verifyRecaptcha } = require("../../utils/verifyRecaptcha");
 const { sendSms } = require("../../services/semaphore.service");
 const {
@@ -1614,6 +1617,8 @@ exports.login = async (req, res) => {
       });
     }
 
+    const permissions = await getEffectivePermissionsForUser(user);
+
     // 4. ISSUE UNIFIED JWT
     const token = jwt.sign(
       {
@@ -1642,6 +1647,7 @@ exports.login = async (req, res) => {
         role: user.role,
         authority_level: user.authority_level || "user",
         staff_type: user.staff_type || null,
+        permissions,
         phone: user.phone,
         address: user.address,
         address_lat: user.address_lat,

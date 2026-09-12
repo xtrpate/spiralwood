@@ -3,10 +3,12 @@
 // controllers/authController.js (Unified Gateway for Admin, Staff, and Customers)
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-console.log("[AUTH CONTROLLER LOADED]", __filename);
 // const nodemailer = require("nodemailer");
 const pool = require("../../config/db");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
+const {
+  getEffectivePermissionsForUser,
+} = require("../../services/permissionService");
 const {
   normalizePhilippinePhone,
   getPhoneLookupVariants,
@@ -214,6 +216,8 @@ exports.login = async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRES_IN || "8h" },
     );
 
+    const permissions = await getEffectivePermissionsForUser(user);
+
     // Return only the session/profile fields the frontend actually needs.
     // OTP hashes, reset tokens, pending contact changes, and password material
     // never leave the backend.
@@ -224,6 +228,7 @@ exports.login = async (req, res) => {
       role: user.role,
       authority_level: user.authority_level || "user",
       staff_type: user.staff_type || null,
+      permissions,
       phone: user.phone || null,
       address: user.address || null,
       address_lat: user.address_lat ?? null,
@@ -236,13 +241,6 @@ exports.login = async (req, res) => {
       last_login: user.last_login || null,
       must_change_password: Number(user.must_change_password) === 1 ? 1 : 0,
     };
-    console.log("[LOGIN DEBUG]", {
-      userId: user.id,
-      authority_level: user.authority_level,
-      token_version: user.token_version,
-      hasToken: Boolean(token),
-      tokenType: typeof token,
-    });
     res.json({ token, user: safeUser });
   } catch (err) {
     console.error("[Unified Login Error]", err);
@@ -258,24 +256,37 @@ exports.login = async (req, res) => {
 exports.getMe = async (req, res) => {
   try {
     const [[user]] = await pool.query(
-      `SELECT
-     id,
-     name,
-     email,
-     role,
-     authority_level,
-     staff_type,
-     phone,
-     address,
-     profile_photo,
-     last_login,
-     must_change_password
-   FROM users
-   WHERE id = ?`,
+      `
+  SELECT
+    id,
+    name,
+    email,
+    role,
+    authority_level,
+    staff_type,
+    phone,
+    address,
+    profile_photo,
+    last_login,
+    must_change_password
+  FROM users
+  WHERE id = ?
+  `,
       [req.user.id],
     );
 
-    res.json(user);
+    if (!user) {
+      return res.status(404).json({
+        message: "Account not found.",
+      });
+    }
+
+    const permissions = await getEffectivePermissionsForUser(user);
+
+    return res.json({
+      ...user,
+      permissions,
+    });
   } catch (err) {
     console.error("[getMe]", err);
     res.status(500).json({ message: "Unable to load account profile." });

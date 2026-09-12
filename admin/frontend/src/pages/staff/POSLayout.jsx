@@ -26,7 +26,7 @@ import {
 } from "../../components/MotionFeedbackOverlay";
 
 export default function POSLayout() {
-  const { user, logout } = useAuthStore();
+  const { user, logout, hasPermission } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
   const [showMiniLogout, setShowMiniLogout] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
@@ -40,6 +40,153 @@ export default function POSLayout() {
   const isDeliveryRider =
     user?.role === "staff" && user?.staff_type === "delivery_rider";
 
+  const permissionNavItems = [
+    {
+      to: "/staff/admin/dashboard",
+      icon: LayoutDashboard,
+      label: "Dashboard",
+      permission: "dashboard.view",
+    },
+    {
+      to: "/staff/admin/products",
+      icon: Search,
+      label: "Products",
+      permission: "products.view",
+    },
+    {
+      to: "/staff/admin/inventory/raw",
+      icon: Package,
+      label: "Raw Materials",
+      permission: "raw_materials.view",
+    },
+    {
+      to: "/staff/admin/inventory/build",
+      icon: Package,
+      label: "Build Materials",
+      permission: "build_materials.view",
+    },
+    {
+      to: "/staff/admin/suppliers",
+      icon: Package,
+      label: "Suppliers",
+      permission: "suppliers.view",
+    },
+    {
+      to: "/staff/admin/stock-movements",
+      icon: Package,
+      label: "Stock Movements",
+      permission: "stock_movements.view",
+    },
+    {
+      to: "/staff/admin/stock-transfer",
+      icon: Truck,
+      label: "Stock Transfer",
+      permission: "stock_transfer.view",
+    },
+    {
+      to: "/staff/admin/physical-inventory",
+      icon: Package,
+      label: "Physical Inventory",
+      permission: "physical_inventory.view",
+    },
+    {
+      to: "/staff/admin/orders",
+      icon: ShoppingCart,
+      label: "Orders",
+      permission: "orders.view",
+    },
+    {
+      to: "/staff/admin/orders/cancellations",
+      icon: FileText,
+      label: "Cancellations",
+      permission: "cancellations_refunds.view",
+    },
+    {
+      to: "/staff/admin/tasks",
+      icon: ClipboardList,
+      label: "Task Assignments",
+      permission: "task_assignments.view",
+    },
+    {
+      to: "/staff/admin/appointments",
+      icon: CalendarClock,
+      label: "Appointments",
+      permission: "appointments.view",
+    },
+    {
+      to: "/staff/admin/delivery",
+      icon: Truck,
+      label: "Delivery Scheduling",
+      permission: "delivery_scheduling.view",
+    },
+    {
+      to: "/staff/admin/blueprints",
+      icon: FileText,
+      label: "Blueprint Management",
+      permission: "blueprint_management.view",
+    },
+    {
+      to: "/staff/admin/contracts",
+      icon: FileText,
+      label: "Contracts",
+      permission: "contracts.view",
+    },
+    {
+      to: "/staff/admin/warranty",
+      icon: FileText,
+      label: "Warranty",
+      permission: "warranty.view",
+    },
+    {
+      to: "/staff/admin/sales",
+      icon: BarChart3,
+      label: "Sales Reports",
+      permission: "sales_report.view",
+    },
+    {
+      to: "/staff/admin/customers",
+      icon: Package,
+      label: "Customers",
+      permission: "customers.view",
+    },
+    {
+      to: "/staff/admin/users",
+      icon: FileText,
+      label: "Users & Roles",
+      permission: "users.view",
+    },
+    {
+      to: "/staff/admin/audit-logs",
+      icon: FileText,
+      label: "Audit Logs",
+      permission: "audit_logs.view",
+    },
+    {
+      to: "/staff/admin/website/settings",
+      icon: FileText,
+      label: "Site Settings",
+      permission: "site_settings.view",
+    },
+    {
+      to: "/staff/admin/website/faqs",
+      icon: FileText,
+      label: "FAQs",
+      permission: "faqs.view",
+    },
+    {
+      to: "/staff/admin/website/pages",
+      icon: FileText,
+      label: "Page Content",
+      permission: "page_content.view",
+    },
+    {
+      to: "/staff/admin/backup",
+      icon: FileText,
+      label: "Backup",
+      permission: "backup.view",
+    },
+  ];
+
   const navItems = useMemo(() => {
     if (isAdmin) {
       return [
@@ -51,8 +198,10 @@ export default function POSLayout() {
       ];
     }
 
+    let baseItems = [];
+
     if (isCashier) {
-      return [
+      baseItems = [
         { to: "/staff/products", icon: Search, label: "Product Search" },
         { to: "/staff/order", icon: ShoppingCart, label: "Process Order" },
         {
@@ -72,10 +221,8 @@ export default function POSLayout() {
         },
         { to: "/staff/reports", icon: BarChart3, label: "Sales Reports" },
       ];
-    }
-
-    if (isIndoorStaff) {
-      return [
+    } else if (isIndoorStaff) {
+      baseItems = [
         { to: "/staff/dashboard", icon: LayoutDashboard, label: "Dashboard" },
         { to: "/staff/tasks", icon: ClipboardList, label: "My Tasks" },
         {
@@ -85,10 +232,8 @@ export default function POSLayout() {
         },
         { to: "/staff/inventory", icon: Package, label: "Inventory Lookup" },
       ];
-    }
-
-    if (isDeliveryRider) {
-      return [
+    } else if (isDeliveryRider) {
+      baseItems = [
         {
           to: "/staff/rider-dashboard",
           icon: LayoutDashboard,
@@ -99,8 +244,33 @@ export default function POSLayout() {
       ];
     }
 
-    return [];
-  }, [isAdmin, isCashier, isIndoorStaff, isDeliveryRider]);
+    let additionalItems = [];
+
+    if (String(user?.authority_level || "").toLowerCase() === "manager") {
+      additionalItems = permissionNavItems
+        .filter((item) => hasPermission(item.permission))
+        .filter(
+          (item) => !baseItems.some((baseItem) => baseItem.to === item.to),
+        );
+    }
+
+    if (additionalItems.length > 0) {
+      return [
+        ...baseItems,
+        { isHeader: true, label: "Manager Permissions" },
+        ...additionalItems,
+      ];
+    }
+
+    return baseItems;
+  }, [
+    isAdmin,
+    isCashier,
+    isIndoorStaff,
+    isDeliveryRider,
+    hasPermission,
+    user?.authority_level,
+  ]);
 
   // WISDOM ROLE BASED SIDEBAR IDENTITY V1
   const roleLabel = isAdmin
@@ -190,24 +360,40 @@ export default function POSLayout() {
         </div>
 
         <nav className="sidebar-nav">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) =>
-                `nav-item ${isActive ? "active" : ""}`
-              }
-              onClick={() => {
-                if (window.innerWidth <= 768) {
-                  setSidebarOpen(false);
+          {navItems.map((item, index) => {
+            // 👉 If the item is a header, render a title text or a divider line
+            if (item.isHeader) {
+              return sidebarOpen ? (
+                <div key={`header-${index}`} className="sidebar-section-header">
+                  {item.label}
+                </div>
+              ) : (
+                <div key={`divider-${index}`} className="sidebar-divider" />
+              );
+            }
+
+            // Otherwise, render the normal navigation link
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) =>
+                  `nav-item ${isActive ? "active" : ""}`
                 }
-              }}
-            >
-              <item.icon size={20} />
-              {sidebarOpen && <span>{item.label}</span>}
-              {sidebarOpen && <ChevronRight size={14} className="nav-arrow" />}
-            </NavLink>
-          ))}
+                onClick={() => {
+                  if (window.innerWidth <= 768) {
+                    setSidebarOpen(false);
+                  }
+                }}
+              >
+                <item.icon size={20} />
+                {sidebarOpen && <span>{item.label}</span>}
+                {sidebarOpen && (
+                  <ChevronRight size={14} className="nav-arrow" />
+                )}
+              </NavLink>
+            );
+          })}
         </nav>
 
         <div

@@ -7,11 +7,24 @@ const {
   requireIndoorStaffOrAdmin,
 } = require("../middleware/auth");
 const { logAction } = require("../middleware/auditLog");
+const { requirePermission } = require("../middleware/permission");
 const posTasksController = require("../controllers/staff/pos.tasks");
 
 const allLoggedInStaffOrAdmin = [authenticate, requireStaffOrAdmin];
+
 const adminOnly = [authenticate, authorize("admin")];
+
 const indoorOnlyOrAdmin = [authenticate, requireIndoorStaffOrAdmin];
+
+const taskViewAccess = [
+  ...indoorOnlyOrAdmin,
+  requirePermission("task_assignments.view"),
+];
+
+const taskManageAccess = [
+  ...adminOnly,
+  requirePermission("task_assignments.manage"),
+];
 
 /* ══════════════════════════════════════════════════════════════
    NOTIFICATIONS
@@ -49,23 +62,28 @@ router.get("/staff", adminOnly, posTasksController.getStaff);
 /* ══════════════════════════════════════════════════════════════
    PROJECT TASKS
 ══════════════════════════════════════════════════════════════ */
-router.get("/", indoorOnlyOrAdmin, posTasksController.getTasks);
+router.get("/", taskViewAccess, posTasksController.getTasks);
 router.get(
   "/orders/:orderId/blueprint",
-  indoorOnlyOrAdmin,
+  taskViewAccess,
   posTasksController.getAssignedOrderBlueprint,
 );
-router.post("/", adminOnly, posTasksController.createTask);
+router.post(
+  "/",
+  taskManageAccess,
+  logAction("create_project_task", "project_tasks"),
+  posTasksController.createTask,
+);
 
 router.put(
   "/:id",
-  adminOnly,
+  taskManageAccess,
   logAction("update_project_task", "project_tasks"),
   posTasksController.updateTask,
 );
 router.delete(
   "/:id",
-  adminOnly,
+  taskManageAccess,
   logAction("delete_project_task", "project_tasks"),
   posTasksController.deleteTask,
 );
@@ -78,7 +96,7 @@ router.put("/:id/accept", indoorOnlyOrAdmin, (req, res) => {
 });
 router.put(
   "/:id/status",
-  indoorOnlyOrAdmin,
+  taskManageAccess,
   logAction("update_project_task_status", "project_tasks"),
   posTasksController.updateTaskStatus,
 );

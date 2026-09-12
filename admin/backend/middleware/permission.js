@@ -178,12 +178,34 @@ function createRequirePermissionMiddleware({
 
         const [roleRows] = await dbPool.query(roleQuery, roleParams);
 
+        const [overrideRows] = await dbPool.query(
+          `
+    SELECT upo.granted
+    FROM user_permission_overrides upo
+    INNER JOIN permissions p
+      ON p.id = upo.permission_id
+    WHERE upo.user_id = ?
+      AND p.permission_key = ?
+    LIMIT 1
+  `,
+          [req.user.id, normalizedPermission],
+        );
+
         const effectivePermissions = buildEffectivePermissionSet(
           authorityRows,
           roleRows,
         );
 
-        if (!hasPermission(effectivePermissions, normalizedPermission)) {
+        const hasUserOverride = overrideRows.length > 0;
+        const userOverrideGranted = hasUserOverride
+          ? Number(overrideRows[0].granted) === 1
+          : null;
+
+        const permissionAllowed = hasUserOverride
+          ? userOverrideGranted
+          : hasPermission(effectivePermissions, normalizedPermission);
+
+        if (!permissionAllowed) {
           await auditLogger({
             userId: req.user.id,
             action: "permission_denied",

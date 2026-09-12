@@ -140,6 +140,12 @@ function RequireAuth({ children, roles }) {
   return children;
 }
 
+function RequirePermission({ permission, children }) {
+  return (
+    <ProtectedRoute requiredPermission={permission}>{children}</ProtectedRoute>
+  );
+}
+
 function RequireStaffType({ children, allowedTypes }) {
   const { user } = useAuthStore();
 
@@ -474,153 +480,310 @@ export default function App() {
               <Route
                 path="/admin"
                 element={
-                  <RequireAuth roles={["admin"]}>
+                  <RequireAuth roles={["admin", "staff"]}>
                     <AdminLayout />
                   </RequireAuth>
                 }
               >
-                <Route path="tasks" element={<TasksPage />} />
+                <Route
+                  path="tasks"
+                  element={
+                    <RequirePermission permission="task_assignments.view">
+                      <TasksPage />
+                    </RequirePermission>
+                  }
+                />
 
                 <Route
                   path="appointments"
-                  element={<POSAppointmentScheduling />}
+                  element={
+                    <RequirePermission permission="appointments.view">
+                      <POSAppointmentScheduling />
+                    </RequirePermission>
+                  }
                 />
 
-                <Route path="delivery" element={<POSDeliveryScheduling />} />
+                <Route
+                  path="delivery"
+                  element={
+                    <RequirePermission permission="delivery_scheduling.view">
+                      <POSDeliveryScheduling />
+                    </RequirePermission>
+                  }
+                />
 
                 <Route index element={<Navigate to="dashboard" replace />} />
-                <Route path="dashboard" element={<DashboardPage />} />
-                <Route path="products" element={<ProductsPage />} />
-                <Route path="products/:id/edit" element={<ProductFormPage />} />
-                <Route path="inventory/raw" element={<RawMaterialsPage />} />
+                <Route
+                  path="dashboard"
+                  element={
+                    <RequirePermission permission="dashboard.view">
+                      <DashboardPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="products"
+                  element={
+                    <RequirePermission permission="products.view">
+                      <ProductsPage />
+                    </RequirePermission>
+                  }
+                />
+
+                <Route
+                  path="products/:id/edit"
+                  element={
+                    <RequirePermission permission="products.edit">
+                      <ProductFormPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="inventory/raw"
+                  element={
+                    <RequirePermission permission="raw_materials.view">
+                      <RawMaterialsPage />
+                    </RequirePermission>
+                  }
+                />
 
                 <Route
                   path="inventory/build"
-                  element={<BuildMaterialsPage />}
+                  element={
+                    <RequirePermission permission="build_materials.view">
+                      <BuildMaterialsPage />
+                    </RequirePermission>
+                  }
                 />
 
                 <Route
                   path="/admin/inventory/build/new"
-                  element={<BuildMaterialFormPage />}
+                  element={
+                    <RequirePermission permission="build_materials.create">
+                      <BuildMaterialFormPage />
+                    </RequirePermission>
+                  }
                 />
 
                 <Route
                   path="inventory/build/:id/edit"
-                  element={<BuildMaterialFormPage />}
+                  element={
+                    <RequirePermission permission="build_materials.edit">
+                      <BuildMaterialFormPage />
+                    </RequirePermission>
+                  }
                 />
 
                 <Route
                   path="inventory/movements"
-                  element={<StockMovementPage />}
+                  element={
+                    <RequirePermission permission="stock_movements.view">
+                      <StockMovementPage />
+                    </RequirePermission>
+                  }
                 />
 
                 <Route
                   path="inventory/physical-inventory"
-                  element={<PhysicalInventoryPage />}
+                  element={
+                    <RequirePermission permission="stock_movements.view">
+                      <PhysicalInventoryPage />
+                    </RequirePermission>
+                  }
                 />
 
                 <Route
                   path="inventory/transfers"
-                  element={<StockTransferPage />}
+                  element={
+                    <RequirePermission permission="stock_movements.manage">
+                      <StockTransferPage />
+                    </RequirePermission>
+                  }
                 />
 
-                <Route path="inventory/suppliers" element={<SuppliersPage />} />
-                <Route path="blueprints" element={<BlueprintsPage />} />
+                <Route
+                  path="inventory/suppliers"
+                  element={
+                    <RequirePermission permission="suppliers.view">
+                      <SuppliersPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="blueprints"
+                  element={
+                    <RequirePermission permission="blueprint_management.view">
+                      <BlueprintsPage />
+                    </RequirePermission>
+                  }
+                />
 
                 <Route
                   path="blueprints/:id/design"
-                  element={<BlueprintDesign />}
+                  element={
+                    <RequirePermission permission="blueprint_management.edit">
+                      <BlueprintDesign />
+                    </RequirePermission>
+                  }
                 />
 
                 <Route
                   path="blueprints/:id/estimation"
-                  element={<EstimationPage />}
+                  element={
+                    <RequirePermission permission="blueprint_management.edit">
+                      <EstimationPage />
+                    </RequirePermission>
+                  }
                 />
 
-                <Route path="contracts" element={<ContractsPage />} />
-                <Route path="orders" element={<OrdersPage />} />
-                <Route path="orders/:id" element={<OrderDetailPage />} />
+                <Route
+                  path="contracts"
+                  element={
+                    <RequirePermission permission="contracts.view">
+                      <ContractsPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="orders"
+                  element={
+                    <RequirePermission permission="orders.view">
+                      <OrdersPage />
+                    </RequirePermission>
+                  }
+                />
+
+                <Route
+                  path="orders/:id"
+                  element={
+                    <RequirePermission permission="orders.view">
+                      <OrderDetailPage />
+                    </RequirePermission>
+                  }
+                />
 
                 <Route
                   path="orders/cancellations"
-                  element={<CancellationsPage />}
+                  element={
+                    <RequirePermission permission="cancellations_refunds.view">
+                      <CancellationsPage />
+                    </RequirePermission>
+                  }
                 />
 
                 <Route
                   path="reports/current-inventory"
-                  element={<CurrentInventoryReportPage />}
+                  element={
+                    <RequirePermission permission="stock_movements.view">
+                      <CurrentInventoryReportPage />
+                    </RequirePermission>
+                  }
                 />
+
                 <Route
                   path="reports/daily-stock-in"
-                  element={<DailyStockInReportPage />}
+                  element={
+                    <RequirePermission permission="stock_movements.view">
+                      <DailyStockInReportPage />
+                    </RequirePermission>
+                  }
                 />
-                <Route path="sales" element={<SalesReportPage />} />
-                <Route path="pos-qr-recovery" element={<PosQrRecoveryPage />} />
-                <Route path="warranty" element={<WarrantyPage />} />
-                <Route path="support" element={<AdminSupportPage />} />
+
+                <Route
+                  path="sales"
+                  element={
+                    <RequirePermission permission="sales_report.view">
+                      <SalesReportPage />
+                    </RequirePermission>
+                  }
+                />
+
+                <Route
+                  path="pos-qr-recovery"
+                  element={
+                    <RequirePermission permission="pos_qr_recovery.view">
+                      <PosQrRecoveryPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="warranty"
+                  element={
+                    <RequirePermission permission="warranty.view">
+                      <WarrantyPage />
+                    </RequirePermission>
+                  }
+                />
+
+                <Route
+                  path="support"
+                  element={
+                    <RequirePermission permission="support.view">
+                      <AdminSupportPage />
+                    </RequirePermission>
+                  }
+                />
 
                 <Route
                   path="customers"
                   element={
-                    <RequireAuth roles={["admin"]}>
+                    <RequirePermission permission="customers.view">
                       <CustomersPage />
-                    </RequireAuth>
+                    </RequirePermission>
                   }
                 />
 
                 <Route
                   path="users"
                   element={
-                    <RequireAuth roles={["admin", "staff"]}>
-                      <ProtectedRoute allowedRoles={["manager", "admin"]}>
-                        <UsersPage />
-                      </ProtectedRoute>
-                    </RequireAuth>
+                    <RequirePermission permission="users.view">
+                      <UsersPage />
+                    </RequirePermission>
                   }
                 />
 
                 <Route
                   path="website/settings"
                   element={
-                    <RequireAuth roles={["admin"]}>
+                    <RequirePermission permission="site_settings.view">
                       <WebsiteSettingsPage />
-                    </RequireAuth>
+                    </RequirePermission>
                   }
                 />
 
                 <Route
                   path="website/faqs"
                   element={
-                    <RequireAuth roles={["admin"]}>
+                    <RequirePermission permission="faqs.view">
                       <FaqsPage />
-                    </RequireAuth>
+                    </RequirePermission>
                   }
                 />
 
                 <Route
                   path="website/pages"
                   element={
-                    <RequireAuth roles={["admin"]}>
+                    <RequirePermission permission="page_content.view">
                       <StaticPagesPage />
-                    </RequireAuth>
+                    </RequirePermission>
                   }
                 />
 
                 <Route
                   path="backup"
                   element={
-                    <RequireAuth roles={["admin"]}>
+                    <RequirePermission permission="backup.view">
                       <BackupPage />
-                    </RequireAuth>
+                    </RequirePermission>
                   }
                 />
 
                 <Route
                   path="audit-logs"
                   element={
-                    <RequireAuth roles={["admin"]}>
+                    <RequirePermission permission="audit_logs.view">
                       <AuditLogsPage />
-                    </RequireAuth>
+                    </RequirePermission>
                   }
                 />
               </Route>
@@ -812,6 +975,200 @@ export default function App() {
                     <RequireAuth roles={["admin"]}>
                       <POSBlueprintView />
                     </RequireAuth>
+                  }
+                />
+
+                {/*Staff + manager authority*/}
+                <Route
+                  path="/staff/admin/dashboard"
+                  element={
+                    <RequirePermission permission="dashboard.view">
+                      <DashboardPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/staff/admin/products"
+                  element={
+                    <RequirePermission permission="products.view">
+                      <ProductsPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/staff/admin/inventory/raw"
+                  element={
+                    <RequirePermission permission="raw_materials.view">
+                      <RawMaterialsPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/staff/admin/inventory/build"
+                  element={
+                    <RequirePermission permission="build_materials.view">
+                      <BuildMaterialsPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/staff/admin/suppliers"
+                  element={
+                    <RequirePermission permission="suppliers.view">
+                      <SuppliersPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/staff/admin/stock-movements"
+                  element={
+                    <RequirePermission permission="stock_movements.view">
+                      <StockMovementPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/staff/admin/stock-transfer"
+                  element={
+                    <RequirePermission permission="stock_movements.manage">
+                      <StockTransferPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/staff/admin/physical-inventory"
+                  element={
+                    <RequirePermission permission="stock_movements.view">
+                      <PhysicalInventoryPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/staff/admin/orders"
+                  element={
+                    <RequirePermission permission="orders.view">
+                      <OrdersPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/staff/admin/orders/cancellations"
+                  element={
+                    <RequirePermission permission="cancellations_refunds.view">
+                      <CancellationsPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/staff/admin/tasks"
+                  element={
+                    <RequirePermission permission="task_assignments.view">
+                      <TasksPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/staff/admin/appointments"
+                  element={
+                    <RequirePermission permission="appointments.view">
+                      <POSAppointmentScheduling />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/staff/admin/delivery"
+                  element={
+                    <RequirePermission permission="delivery_scheduling.view">
+                      <POSDeliveryScheduling />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/staff/admin/blueprints"
+                  element={
+                    <RequirePermission permission="blueprint_management.view">
+                      <BlueprintsPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/staff/admin/contracts"
+                  element={
+                    <RequirePermission permission="contracts.view">
+                      <ContractsPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/staff/admin/warranty"
+                  element={
+                    <RequirePermission permission="warranty.view">
+                      <WarrantyPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/staff/admin/sales"
+                  element={
+                    <RequirePermission permission="sales_report.view">
+                      <SalesReportPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/staff/admin/customers"
+                  element={
+                    <RequirePermission permission="customers.view">
+                      <CustomersPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/staff/admin/users"
+                  element={
+                    <RequirePermission permission="users.view">
+                      <UsersPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/staff/admin/audit-logs"
+                  element={
+                    <RequirePermission permission="audit_logs.view">
+                      <AuditLogsPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/staff/admin/website/settings"
+                  element={
+                    <RequirePermission permission="site_settings.view">
+                      <WebsiteSettingsPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/staff/admin/website/faqs"
+                  element={
+                    <RequirePermission permission="faqs.view">
+                      <FaqsPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/staff/admin/website/pages"
+                  element={
+                    <RequirePermission permission="page_content.view">
+                      <StaticPagesPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/staff/admin/backup"
+                  element={
+                    <RequirePermission permission="backup.view">
+                      <BackupPage />
+                    </RequirePermission>
                   }
                 />
               </Route>

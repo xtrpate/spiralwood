@@ -177,48 +177,90 @@ router.get("/dashboard", adminStaff, dashboard.getDashboard);
 // ══════════════════════════════════════════════════════════════════════════════
 // PRODUCTS
 // ══════════════════════════════════════════════════════════════════════════════
-router.get("/products/report", adminStaff, products.getReport);
-router.get("/products", adminStaff, products.getAll);
-router.get("/products/categories", adminStaff, products.getCategories);
-router.patch("/products/bulk-publish", adminOnly, products.bulkPublish);
-router.get("/products/:id", adminStaff, products.getOne);
+router.get(
+  "/products/report",
+  adminStaff,
+  requirePermission("products.view"),
+  products.getReport,
+);
+router.get(
+  "/products",
+  adminStaff,
+  requirePermission("products.view"),
+  products.getAll,
+);
+router.get(
+  "/products/categories",
+  adminStaff,
+  requirePermission("products.view"),
+  products.getCategories,
+);
+router.patch(
+  "/products/bulk-publish",
+  adminStaff,
+  requirePermission("products.manage"),
+  products.bulkPublish,
+);
+router.get(
+  "/products/:id",
+  adminStaff,
+  requirePermission("products.view"),
+  products.getOne,
+);
 router.post(
   "/products",
-  adminOnly,
+  adminStaff,
+  requirePermission("products.create"),
   upload.uploadProductImage,
   logAction("create_product", "products"),
   products.create,
 );
 router.put(
   "/products/:id",
-  adminOnly,
+  adminStaff,
+  requirePermission("products.edit"),
   upload.uploadProductImage,
   logAction("update_product", "products"),
   products.update,
 );
 router.delete(
   "/products/:id",
-  adminOnly,
+  adminStaff,
+  requirePermission("products.delete"),
   logAction("delete_product", "products"),
   products.remove,
 );
-router.patch("/products/:id/publish", adminOnly, products.togglePublish);
-router.patch("/products/:id/featured", adminOnly, products.toggleFeatured);
+router.patch(
+  "/products/:id/publish",
+  adminStaff,
+  requirePermission("products.manage"),
+  products.togglePublish,
+);
+
+router.patch(
+  "/products/:id/featured",
+  adminStaff,
+  requirePermission("products.manage"),
+  products.toggleFeatured,
+);
 router.patch(
   "/products/:id/active",
-  adminOnly,
+  adminStaff,
+  requirePermission("products.manage"),
   logAction("toggle_active_product", "products"),
   products.toggleActive,
 );
 router.put(
   "/products/blueprint/:blueprint_id/publish",
-  adminOnly,
+  adminStaff,
+  requirePermission("products.manage"),
   logAction("publish_blueprint_product", "products"),
   products.publishByBlueprint,
 );
 router.patch(
   "/products/blueprint/:blueprint_id/unpublish",
-  adminOnly,
+  adminStaff,
+  requirePermission("products.manage"),
   products.unpublishByBlueprint,
 );
 
@@ -228,78 +270,110 @@ router.patch(
 router.get(
   "/inventory/raw/categories",
   adminStaff,
+  requirePermission("raw_materials.view"),
   inventory.getRawMaterialCategories,
 );
 router.post(
   "/inventory/raw/categories",
-  adminOnly,
+  adminStaff,
+  requirePermission("raw_materials.create"),
   logAction("create_raw_material_category", "categories"),
   inventory.createRawMaterialCategory,
 );
-router.get("/inventory/raw", adminStaff, inventory.getRawMaterials);
-router.get("/inventory/report", adminOnly, inventoryReport.getInventoryReport);
+router.get(
+  "/inventory/raw",
+  adminStaff,
+  requirePermission("raw_materials.view"),
+  inventory.getRawMaterials,
+);
+router.get(
+  "/inventory/report",
+  adminStaff,
+  requirePermission("stock_movements.view"),
+  inventoryReport.getInventoryReport,
+);
 router.get(
   "/inventory/reports/daily-stock-in",
-  adminOnly,
+  adminStaff,
+  requirePermission("stock_movements.view"),
   dailyStockInReport.getDailyStockInReport,
 );
 router.post(
   "/inventory/raw",
-  adminOnly,
+  adminStaff,
+  requirePermission("raw_materials.create"),
   logAction("create_raw_material", "raw_materials"),
   inventory.createRawMaterial,
 );
 router.put(
   "/inventory/raw/:id",
-  adminOnly,
+  adminStaff,
+  requirePermission("raw_materials.edit"),
   logAction("update_raw_material", "raw_materials"),
   inventory.updateRawMaterial,
 );
 router.patch(
   "/inventory/raw/:id/archive",
-  adminOnly,
+  adminStaff,
+  requirePermission("raw_materials.manage"),
   logAction("archive_raw_material", "raw_materials"),
   inventory.archiveRawMaterial,
 );
 router.patch(
   "/inventory/raw/:id/restore",
-  adminOnly,
+  adminStaff,
+  requirePermission("raw_materials.manage"),
   logAction("restore_raw_material", "raw_materials"),
   inventory.restoreRawMaterial,
 );
 router.delete(
   "/inventory/raw/:id",
-  adminOnly,
+  adminStaff,
+  requirePermission("raw_materials.delete"),
   logAction("delete_raw_material", "raw_materials"),
   inventory.deleteRawMaterial,
 );
 
 // SUPPLIERS
-router.get("/suppliers", adminStaff, inventory.getSuppliers);
+router.get(
+  "/suppliers",
+  adminStaff,
+  requirePermission("suppliers.view"),
+  inventory.getSuppliers,
+);
 router.post(
   "/suppliers",
-  adminOnly,
+  adminStaff,
+  requirePermission("suppliers.create"),
   logAction("create_supplier", "suppliers"),
   inventory.createSupplier,
 );
 router.put(
   "/suppliers/:id",
-  adminOnly,
+  adminStaff,
+  requirePermission("suppliers.edit"),
   logAction("update_supplier", "suppliers"),
   inventory.updateSupplier,
 );
 router.delete(
   "/suppliers/:id",
-  adminOnly,
+  adminStaff,
+  requirePermission("suppliers.delete"),
   logAction("delete_supplier", "suppliers"),
   inventory.deleteSupplier,
 );
 
 // STOCK MOVEMENTS
-router.get("/inventory/movements", adminStaff, inventory.getStockMovements);
+router.get(
+  "/inventory/movements",
+  adminStaff,
+  requirePermission("stock_movements.view"),
+  inventory.getStockMovements,
+);
 router.post(
   "/inventory/movements",
   adminStaff,
+  requirePermission("stock_movements.create"),
   logAction("create_stock_movement", "stock_movements"),
   inventory.createStockMovement,
 );
@@ -307,39 +381,46 @@ router.post(
 // PHYSICAL INVENTORY
 router.get(
   "/inventory/physical-inventory/sessions",
-  adminOnly,
+  adminStaff,
+  requirePermission("stock_movements.view"),
   physicalInventory.listPhysicalInventorySessions,
 );
 router.post(
   "/inventory/physical-inventory/sessions",
-  adminOnly,
+  adminStaff,
+  requirePermission("stock_movements.manage"),
   logAction("start_physical_inventory", "physical_inventory_sessions"),
   physicalInventory.startPhysicalInventory,
 );
 router.get(
   "/inventory/physical-inventory/report",
-  adminOnly,
+  adminStaff,
+  requirePermission("stock_movements.view"),
   physicalInventory.getPhysicalInventoryReport,
 );
 router.get(
   "/inventory/physical-inventory/sessions/:id",
-  adminOnly,
+  adminStaff,
+  requirePermission("stock_movements.view"),
   physicalInventory.getPhysicalInventorySession,
 );
 router.put(
   "/inventory/physical-inventory/sessions/:id",
-  adminOnly,
+  adminStaff,
+  requirePermission("stock_movements.manage"),
   physicalInventory.savePhysicalInventoryDraft,
 );
 router.post(
   "/inventory/physical-inventory/sessions/:id/finalize",
-  adminOnly,
+  adminStaff,
+  requirePermission("stock_movements.manage"),
   logAction("finalize_physical_inventory", "physical_inventory_sessions"),
   physicalInventory.finalizePhysicalInventory,
 );
 router.post(
   "/inventory/physical-inventory/sessions/:id/cancel",
-  adminOnly,
+  adminStaff,
+  requirePermission("stock_movements.manage"),
   logAction("cancel_physical_inventory", "physical_inventory_sessions"),
   physicalInventory.cancelPhysicalInventory,
 );
@@ -347,20 +428,33 @@ router.post(
 // INTERNAL STOCK TRANSFER — ready-made products only
 router.get(
   "/inventory/transfers/inventory",
-  adminOnly,
+  adminStaff,
+  requirePermission("stock_movements.view"),
   stockTransfers.getTransferInventory,
 );
-router.get("/inventory/transfers", adminOnly, stockTransfers.listTransfers);
-router.get("/inventory/transfers/:id", adminOnly, stockTransfers.getTransfer);
+router.get(
+  "/inventory/transfers",
+  adminStaff,
+  requirePermission("stock_movements.view"),
+  stockTransfers.listTransfers,
+);
+router.get(
+  "/inventory/transfers/:id",
+  adminStaff,
+  requirePermission("stock_movements.view"),
+  stockTransfers.getTransfer,
+);
 router.post(
   "/inventory/transfers",
-  adminOnly,
+  adminStaff,
+  requirePermission("stock_movements.manage"),
   logAction("create_stock_transfer", "stock_transfers"),
   stockTransfers.createTransfer,
 );
 router.post(
   "/inventory/transfers/:id/reverse",
-  adminOnly,
+  adminStaff,
+  requirePermission("stock_movements.manage"),
   logAction("reverse_stock_transfer", "stock_transfers"),
   stockTransfers.reverseTransfer,
 );
@@ -368,11 +462,22 @@ router.post(
 // ══════════════════════════════════════════════════════════════════════════════
 // BLUEPRINTS
 // ══════════════════════════════════════════════════════════════════════════════
-router.get("/blueprints", adminStaff, blueprints.getAll);
-router.get("/blueprints/:id", adminStaff, blueprints.getOne);
+router.get(
+  "/blueprints",
+  adminStaff,
+  requirePermission("blueprint_management.view"),
+  blueprints.getAll,
+);
+router.get(
+  "/blueprints/:id",
+  adminStaff,
+  requirePermission("blueprint_management.view"),
+  blueprints.getOne,
+);
 router.post(
   "/blueprints",
   adminStaff,
+  requirePermission("blueprint_management.create"),
   upload.uploadBlueprintFile,
   logAction("create_blueprint", "blueprints"),
   blueprints.create,
@@ -380,6 +485,7 @@ router.post(
 router.put(
   "/blueprints/:id",
   adminStaff,
+  requirePermission("blueprint_management.edit"),
   upload.uploadBlueprintFile,
   logAction("update_blueprint", "blueprints"),
   blueprints.update,
@@ -387,31 +493,41 @@ router.put(
 router.delete(
   "/blueprints/:id",
   adminStaff,
+  requirePermission("blueprint_management.delete"),
   logAction("archive_blueprint", "blueprints"),
   blueprints.archive,
 );
 router.patch(
   "/blueprints/:id/restore",
   adminStaff,
+  requirePermission("blueprint_management.manage"),
   logAction("restore_blueprint", "blueprints"),
   blueprints.restore,
 );
 router.delete(
   "/blueprints/:id/permanent",
   adminStaff,
+  requirePermission("blueprint_management.delete"),
   logAction("permanently_delete_blueprint", "blueprints"),
   blueprints.permanentDelete,
 );
-router.get("/blueprints/:id/estimation", adminStaff, blueprints.getEstimation);
+router.get(
+  "/blueprints/:id/estimation",
+  adminStaff,
+  requirePermission("blueprint_management.view"),
+  blueprints.getEstimation,
+);
 router.post(
   "/blueprints/:id/estimation",
   adminStaff,
+  requirePermission("blueprint_management.edit"),
   logAction("create_blueprint_estimation", "estimations"),
   blueprints.saveEstimation,
 );
 router.patch(
   "/blueprints/:id/estimation/approve",
   adminStaff,
+  requirePermission("blueprint_management.manage"),
   logAction("send_blueprint_estimation", "estimations"),
   blueprints.approveEstimation,
 );
@@ -459,16 +575,25 @@ router.get(
 
 // Specific cancellation routes must be declared before /orders/:id so the
 // literal word "cancellations" is never treated as an order id.
-router.get("/orders/cancellations", adminOnly, cancellations.listRequests);
+router.get(
+  "/orders/cancellations",
+  adminStaff,
+  requirePermission("cancellations.view"),
+  cancellations.listRequests,
+);
+
 router.post(
   "/orders/cancellations/:requestId/approve",
   adminOnly,
+  requirePermission("cancellations.manage"),
   logAction("approve_custom_cancellation", "custom_cancellation_requests"),
   cancellations.approveRequest,
 );
+
 router.post(
   "/orders/cancellations/:requestId/decline",
   adminOnly,
+  requirePermission("cancellations.manage"),
   logAction("decline_custom_cancellation", "custom_cancellation_requests"),
   cancellations.declineRequest,
 );
@@ -536,10 +661,16 @@ router.post("/orders/:id/delivery-receipt", adminStaff, (req, res) => {
 // ══════════════════════════════════════════════════════════════════════════════
 // CONTRACTS
 // ══════════════════════════════════════════════════════════════════════════════
-router.get("/contracts", adminOnly, mgmt.getContracts);
+router.get(
+  "/contracts",
+  adminStaff,
+  requirePermission("contracts.view"),
+  mgmt.getContracts,
+);
 router.post(
   "/contracts",
-  adminOnly,
+  adminStaff,
+  requirePermission("contracts.create"),
   logAction("generate_contract", "contracts"),
   mgmt.generateContract,
 );
@@ -547,24 +678,41 @@ router.post(
 // ══════════════════════════════════════════════════════════════════════════════
 // SALES REPORTS
 // ══════════════════════════════════════════════════════════════════════════════
-router.get("/sales/report", adminStaff, sales.getReport);
-router.get("/sales/report/print", adminStaff, sales.getPrintData);
+router.get(
+  "/sales/report",
+  adminStaff,
+  requirePermission("sales_report.view"),
+  sales.getReport,
+);
+router.get(
+  "/sales/report/print",
+  adminStaff,
+  requirePermission("sales_report.export"),
+  sales.getPrintData,
+);
 
 // ══════════════════════════════════════════════════════════════════════════════
 // WARRANTY
 // ══════════════════════════════════════════════════════════════════════════════
-router.get("/warranty", adminOnly, warrantyController.getClaims);
+router.get(
+  "/warranty",
+  adminStaff,
+  requirePermission("warranty.view"),
+  warrantyController.getClaims,
+);
 
 router.patch(
   "/warranty/:id/decision",
-  adminOnly,
+  adminStaff,
+  requirePermission("warranty.manage"),
   logAction("decide_warranty_claim", "warranties"),
   warrantyController.decideClaim,
 );
 
 router.patch(
   "/warranty/:id/fulfill",
-  adminOnly,
+  adminStaff,
+  requirePermission("warranty.manage"),
   replacementUpload,
   logAction("fulfill_warranty_claim", "warranties"),
   warrantyController.fulfillClaim,
@@ -604,10 +752,17 @@ router.post(
 // ══════════════════════════════════════════════════════════════════════════════
 // CUSTOMER ACCOUNT MANAGEMENT
 // ══════════════════════════════════════════════════════════════════════════════
-router.get("/customers", adminOnly, mgmt.getCustomers);
+router.get(
+  "/customers",
+  adminStaff,
+  requirePermission("customers.view"),
+  mgmt.getCustomers,
+);
+
 router.put(
   "/customers/:id/status",
-  adminOnly,
+  adminStaff,
+  requirePermission("customers.manage"),
   logAction("update_customer_status", "users"),
   mgmt.updateCustomerStatus,
 );
@@ -620,6 +775,20 @@ router.get(
   accountAuthority,
   requirePermission("users.view"),
   mgmt.getUsers,
+);
+router.get(
+  "/users/:id/permissions",
+  accountAuthority,
+  requirePermission("users.view"),
+  mgmt.getUserPermissions,
+);
+
+router.put(
+  "/users/:id/permissions",
+  adminOnly,
+  requirePermission("users.manage"),
+  logAction("update_user_permissions", "user_permission_overrides"),
+  mgmt.updateUserPermissions,
 );
 router.post(
   "/users",
@@ -664,7 +833,19 @@ router.delete(
 // ══════════════════════════════════════════════════════════════════════════════
 // AUDIT LOGS (view-only, no direct DB access needed)
 // ══════════════════════════════════════════════════════════════════════════════
-router.get("/audit-logs", adminOnly, mgmt.getAuditLogs);
+router.get(
+  "/audit-logs",
+  adminStaff,
+  requirePermission("audit_logs.view"),
+  mgmt.getAuditLogs,
+);
+
+router.get(
+  "/audit-logs/export",
+  adminStaff,
+  requirePermission("audit_logs.export"),
+  mgmt.exportAuditLogs,
+);
 
 // ══════════════════════════════════════════════════════════════════════════════
 // WEBSITE MAINTENANCE
@@ -676,9 +857,24 @@ router.get("/website/pages", website.getPages);
 
 // PROTECTED READ ROUTES
 // Register the exact /pages/admin route before the public /pages/:slug route.
-router.get("/website/settings/admin", adminOnly, website.getAdminSettings);
-router.get("/website/faqs/admin", adminOnly, website.getAdminFaqs);
-router.get("/website/pages/admin", adminOnly, website.getAdminPages);
+router.get(
+  "/website/settings/admin",
+  adminOnly,
+  requirePermission("site_settings.view"),
+  website.getAdminSettings,
+);
+router.get(
+  "/website/faqs/admin",
+  adminOnly,
+  requirePermission("faqs.view"),
+  website.getAdminFaqs,
+);
+router.get(
+  "/website/pages/admin",
+  adminOnly,
+  requirePermission("page_content.view"),
+  website.getAdminPages,
+);
 
 // Public single-page reader must not shadow /website/pages/admin.
 router.get("/website/pages/:slug", website.getPage);
@@ -687,6 +883,7 @@ router.get("/website/pages/:slug", website.getPage);
 router.put(
   "/website/settings",
   adminOnly,
+  requirePermission("site_settings.edit"),
   upload.uploadSiteLogo,
   logAction("update_website_settings", "website_content"),
   website.updateSettings,
@@ -695,18 +892,23 @@ router.put(
 router.post(
   "/website/faqs",
   adminOnly,
+  requirePermission("faqs.create"),
   logAction("create_faq", "faqs"),
   website.createFaq,
 );
+
 router.put(
   "/website/faqs/:id",
   adminOnly,
+  requirePermission("faqs.edit"),
   logAction("update_faq", "faqs"),
   website.updateFaq,
 );
+
 router.delete(
   "/website/faqs/:id",
   adminOnly,
+  requirePermission("faqs.delete"),
   logAction("delete_faq", "faqs"),
   website.deleteFaq,
 );
@@ -714,6 +916,7 @@ router.delete(
 router.put(
   "/website/pages/:slug",
   adminOnly,
+  requirePermission("page_content.edit"),
   logAction("update_page", "website_content"),
   website.updatePage,
 );
@@ -721,9 +924,26 @@ router.put(
 // ══════════════════════════════════════════════════════════════════════════════
 // BACKUP
 // ══════════════════════════════════════════════════════════════════════════════
-router.get("/backup/logs", adminOnly, website.getBackupLogs);
-router.post("/backup/trigger", adminOnly, website.triggerManualBackup);
-router.get("/backup/download/:filename", adminOnly, website.downloadBackup);
+router.get(
+  "/backup/logs",
+  adminOnly,
+  requirePermission("backup.view"),
+  website.getBackupLogs,
+);
+
+router.post(
+  "/backup/trigger",
+  adminOnly,
+  requirePermission("backup.create"),
+  website.triggerManualBackup,
+);
+
+router.get(
+  "/backup/download/:filename",
+  adminOnly,
+  requirePermission("backup.view"),
+  website.downloadBackup,
+);
 
 router.post(
   "/orders/:id/custom-request/approve",

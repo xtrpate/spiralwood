@@ -1029,6 +1029,365 @@ exports.updateAuthority = async (req, res) => {
   }
 };
 
+// ══ USER PERMISSION MANAGEMENT ════════════════════════════════════════════════
+
+const {
+  getPermissionDetailsForUser,
+} = require("../../services/permissionService");
+
+const normalizePermissionKey = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
+
+exports.getUserPermissions = async (req, res) => {
+  try {
+    const targetId = Number.parseInt(req.params.id, 10);
+    const previewAuthority = req.query.preview_authority;
+
+    if (!Number.isInteger(targetId) || targetId <= 0) {
+      return res.status(400).json({
+        message: "Invalid account ID.",
+      });
+    }
+
+    const [[user]] = await pool.query(
+      `
+        SELECT
+          id,
+          name,
+          email,
+          role,
+          staff_type,
+          authority_level
+        FROM users
+        WHERE id = ?
+          AND role IN ('admin', 'staff')
+        LIMIT 1
+      `,
+      [targetId],
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        message: "Account not found.",
+      });
+    }
+
+    const userToEvaluate = {
+      ...user,
+      authority_level: previewAuthority
+        ? previewAuthority
+        : user.authority_level,
+    };
+
+    const [permissionRows] = await pool.query(
+      `
+        SELECT
+          id,
+          permission_key,
+          description,
+          module
+        FROM permissions
+        ORDER BY module, permission_key
+      `,
+    );
+
+    const details = await getPermissionDetailsForUser(userToEvaluate);
+
+    const overrideMap = new Map(
+      details.overrides.map((item) => [
+        Number(item.permission_id),
+        item.granted,
+      ]),
+    );
+
+    const effectiveSet = new Set(details.permissions);
+
+    const permissions = permissionRows
+      .map((permission) => {
+        const permissionId = Number(permission.id);
+        const permissionKey = normalizePermissionKey(permission.permission_key);
+
+        let override = null;
+
+        if (overrideMap.has(permissionId)) {
+          override = overrideMap.get(permissionId);
+        }
+
+        return {
+          id: permissionId,
+          permission_key: permissionKey,
+          description: permission.description || "",
+          module: permission.module || "other",
+
+          effective: effectiveSet.has(permissionKey),
+
+          override,
+        };
+      })
+      .filter((permission) => permission.permission_key);
+
+    return res.json({
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        staff_type: user.staff_type || null,
+        authority_level: userToEvaluate.authority_level || "user",
+      },
+
+      permissions,
+
+      effective_permissions: details.permissions,
+
+      can_edit:
+        String(req.user?.authority_level || "")
+          .trim()
+          .toLowerCase() === "admin",
+    });
+  } catch (err) {
+    console.error("[getUserPermissions]", err);
+
+    return res.status(500).json({
+      message: "Unable to load user permissions.",
+    });
+  }
+};
+
+exports.updateUserPermissions = async (req, res) => {
+  const targetId = Number.parseInt(req.params.id, 10);
+
+  if (!Number.isInteger(targetId) || targetId <= 0) {
+    return res.status(400).json({
+      message: "Invalid account ID.",
+    });
+  }
+
+  if (targetId === Number(req.user.id)) {
+    return res.status(403).json({
+      message: "You cannot modify your own permission overrides.",
+    });
+  }
+
+  const updates = Array.isArray(req.body?.overrides)
+    ? req.body.overrides
+    : null;
+
+  if (!updates) {
+    return res.status(400).json({
+      message: "overrides must be an array.",
+    });
+  }
+
+  try {
+    const [[target]] = await pool.query(
+      `
+        SELECT
+          id,
+          name,
+          email,
+          role,
+          staff_type,
+          authority_level
+        FROM users
+        WHERE id = ?
+          AND role IN ('admin', 'staff')
+        LIMIT 1
+      `,
+      [targetId],
+    );
+
+    if (!target) {
+      return res.status(404).json({
+        message: "Account not found.",
+      });
+    }
+
+    const uniquePermissionIds = new Set();
+
+    for (const item of updates) {
+      const permissionId = Number.parseInt(item?.permission_id, 10);
+
+      if (!Number.isInteger(permissionId) || permissionId <= 0) {
+        return res.status(400).json({
+          message: "Every permission_id must be a positive integer.",
+        });
+      }
+
+      if (uniquePermissionIds.has(permissionId)) {
+        return res.status(400).json({
+          message: "Duplicate permission_id in request.",
+        });
+      }
+
+      uniquePermissionIds.add(permissionId);
+
+      if (
+        item?.granted !== true &&
+        item?.granted !== false &&
+        item?.granted !== null
+      ) {
+        return res.status(400).json({
+          message:
+            "Each permission override must use granted=true, false, or null.",
+        });
+      }
+    }
+
+    const permissionIds = [...uniquePermissionIds];
+
+    const permissionRows =
+      permissionIds.length > 0
+        ? (
+            await pool.query(
+              `
+                SELECT
+                  id,
+                  permission_key,
+                  description,
+                  module
+                FROM permissions
+                WHERE id IN (${permissionIds.map(() => "?").join(",")})
+              `,
+              permissionIds,
+            )
+          )[0]
+        : [];
+
+    const permissionById = new Map(
+      permissionRows.map((row) => [Number(row.id), row]),
+    );
+
+    const { NEVER_GRANT } = require("../../config/permissionMatrix");
+
+    const blocked = new Set(NEVER_GRANT.map(normalizePermissionKey));
+
+    for (const item of updates) {
+      const permissionId = Number(item.permission_id);
+      const permission = permissionById.get(permissionId);
+
+      if (!permission) {
+        return res.status(400).json({
+          message: `Permission ID ${permissionId} does not exist.`,
+        });
+      }
+
+      const key = normalizePermissionKey(permission.permission_key);
+
+      if (blocked.has(key)) {
+        return res.status(403).json({
+          message: `Permission '${key}' is permanently restricted and cannot be assigned.`,
+        });
+      }
+    }
+
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const [beforeRows] = await connection.query(
+        `
+          SELECT
+            upo.permission_id,
+            p.permission_key,
+            upo.granted
+          FROM user_permission_overrides upo
+          INNER JOIN permissions p
+            ON p.id = upo.permission_id
+          WHERE upo.user_id = ?
+          ORDER BY p.permission_key
+        `,
+        [targetId],
+      );
+
+      for (const item of updates) {
+        const permissionId = Number(item.permission_id);
+
+        if (item.granted === null) {
+          await connection.query(
+            `
+              DELETE FROM user_permission_overrides
+              WHERE user_id = ?
+                AND permission_id = ?
+            `,
+            [targetId, permissionId],
+          );
+
+          continue;
+        }
+
+        await connection.query(
+          `
+            INSERT INTO user_permission_overrides
+              (
+                user_id,
+                permission_id,
+                granted,
+                updated_by
+              )
+            VALUES (?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+              granted = VALUES(granted),
+              updated_by = VALUES(updated_by),
+              updated_at = CURRENT_TIMESTAMP
+          `,
+          [targetId, permissionId, item.granted ? 1 : 0, req.user.id],
+        );
+      }
+
+      const [afterRows] = await connection.query(
+        `
+          SELECT
+            upo.permission_id,
+            p.permission_key,
+            upo.granted
+          FROM user_permission_overrides upo
+          INNER JOIN permissions p
+            ON p.id = upo.permission_id
+          WHERE upo.user_id = ?
+          ORDER BY p.permission_key
+        `,
+        [targetId],
+      );
+
+      await connection.commit();
+
+      req.auditRecord = {
+        id: targetId,
+        old: {
+          permission_overrides: beforeRows,
+        },
+        new: {
+          permission_overrides: afterRows,
+        },
+      };
+
+      const details = await getPermissionDetailsForUser(target);
+
+      return res.json({
+        message: "User permissions updated.",
+        user_id: targetId,
+        effective_permissions: details.permissions,
+        overrides: details.overrides,
+      });
+    } catch (transactionError) {
+      await connection.rollback();
+      throw transactionError;
+    } finally {
+      connection.release();
+    }
+  } catch (err) {
+    console.error("[updateUserPermissions]", err);
+
+    return res.status(500).json({
+      message: "Unable to update user permissions.",
+    });
+  }
+};
+
 // GET /api/audit-logs?limit=50
 // Lets admins view recent audit trail entries from the app itself,
 // without needing direct database access.
@@ -1228,5 +1587,203 @@ exports.getAuditLogs = async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+};
+
+exports.exportAuditLogs = async (req, res) => {
+  try {
+    const rawSearch =
+      typeof req.query.search === "string" ? req.query.search.trim() : "";
+
+    const rawAction =
+      typeof req.query.action === "string" ? req.query.action.trim() : "";
+
+    const rawTableName =
+      typeof req.query.table_name === "string"
+        ? req.query.table_name.trim()
+        : "";
+
+    const rawDateFrom =
+      typeof req.query.date_from === "string" ? req.query.date_from.trim() : "";
+
+    const rawDateTo =
+      typeof req.query.date_to === "string" ? req.query.date_to.trim() : "";
+
+    const where = ["1=1"];
+    const params = [];
+
+    if (rawSearch) {
+      const likeValue = `%${rawSearch}%`;
+
+      if (/^\d+$/.test(rawSearch)) {
+        where.push(
+          `(
+            u.name LIKE ?
+            OR u.email LIKE ?
+            OR al.action LIKE ?
+            OR al.table_name LIKE ?
+            OR al.old_values LIKE ?
+            OR al.new_values LIKE ?
+            OR al.record_id = ?
+          )`,
+        );
+
+        params.push(
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          Number(rawSearch),
+        );
+      } else {
+        where.push(
+          `(
+            u.name LIKE ?
+            OR u.email LIKE ?
+            OR al.action LIKE ?
+            OR al.table_name LIKE ?
+            OR al.old_values LIKE ?
+            OR al.new_values LIKE ?
+          )`,
+        );
+
+        params.push(
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+        );
+      }
+    }
+
+    if (rawAction) {
+      where.push("al.action = ?");
+      params.push(rawAction);
+    }
+
+    if (rawTableName) {
+      where.push("al.table_name = ?");
+      params.push(rawTableName);
+    }
+
+    if (rawDateFrom) {
+      if (!isValidDateString(rawDateFrom)) {
+        return res.status(400).json({
+          message: "Invalid date_from. Use YYYY-MM-DD format.",
+        });
+      }
+
+      where.push("al.created_at >= ?");
+      params.push(`${rawDateFrom} 00:00:00`);
+    }
+
+    if (rawDateTo) {
+      if (!isValidDateString(rawDateTo)) {
+        return res.status(400).json({
+          message: "Invalid date_to. Use YYYY-MM-DD format.",
+        });
+      }
+
+      where.push("al.created_at <= ?");
+      params.push(`${rawDateTo} 23:59:59`);
+    }
+
+    if (rawDateFrom && rawDateTo && rawDateFrom > rawDateTo) {
+      return res.status(400).json({
+        message: "date_from cannot be later than date_to.",
+      });
+    }
+
+    const [rows] = await pool.query(
+      `
+        SELECT
+          al.id,
+          al.created_at,
+          al.user_id,
+          u.name AS user_name,
+          u.email AS user_email,
+          al.action,
+          al.table_name,
+          al.record_id,
+          al.old_values,
+          al.new_values,
+          al.ip_address
+        FROM audit_logs al
+        LEFT JOIN users u
+          ON u.id = al.user_id
+        WHERE ${where.join(" AND ")}
+        ORDER BY al.created_at DESC, al.id DESC
+        LIMIT 10000
+      `,
+      params,
+    );
+
+    const escapeCsv = (value) => {
+      if (value === null || value === undefined) {
+        return "";
+      }
+
+      const text = String(value);
+
+      return `"${text.replace(/"/g, '""')}"`;
+    };
+
+    const header = [
+      "ID",
+      "Date",
+      "User ID",
+      "User Name",
+      "User Email",
+      "Action",
+      "Table",
+      "Record ID",
+      "Old Values",
+      "New Values",
+      "IP Address",
+    ];
+
+    const csvRows = [
+      header.map(escapeCsv).join(","),
+      ...rows.map((row) =>
+        [
+          row.id,
+          row.created_at,
+          row.user_id,
+          row.user_name,
+          row.user_email,
+          row.action,
+          row.table_name,
+          row.record_id,
+          row.old_values,
+          row.new_values,
+          row.ip_address,
+        ]
+          .map(escapeCsv)
+          .join(","),
+      ),
+    ];
+
+    const csv = csvRows.join("\r\n");
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="wisdom-audit-logs-${new Date()
+        .toISOString()
+        .slice(0, 10)}.csv"`,
+    );
+
+    return res.status(200).send(csv);
+  } catch (err) {
+    console.error("[exportAuditLogs]", err);
+
+    return res.status(500).json({
+      message: "Unable to export audit logs.",
+    });
   }
 };

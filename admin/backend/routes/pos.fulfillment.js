@@ -14,11 +14,29 @@ const {
   authorize,
   requireDeliveryRiderOrAdmin,
 } = require("../middleware/auth");
+const { requirePermission } = require("../middleware/permission");
 
 const posFulfillmentController = require("../controllers/staff/pos.fulfillment");
 
 const adminOnly = [authenticate, authorize("admin")];
-const deliveryAccess = [authenticate, requireDeliveryRiderOrAdmin];
+
+const deliveryViewAccess = [
+  authenticate,
+  requireDeliveryRiderOrAdmin,
+  requirePermission("delivery_scheduling.view"),
+];
+
+const deliveryManageAccess = [
+  authenticate,
+  authorize("admin"),
+  requirePermission("delivery_scheduling.manage"),
+];
+
+const deliveryStatusAccess = [
+  authenticate,
+  requireDeliveryRiderOrAdmin,
+  requirePermission("delivery_scheduling.edit"),
+];
 
 const DELIVERY_RECEIPT_EXTENSIONS = new Set([
   ".jpg",
@@ -41,7 +59,9 @@ const receiptUploadRaw = multer({
   limits: { fileSize: 5 * 1024 * 1024, files: 1 },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname || "").toLowerCase();
-    const mime = String(file.mimetype || "").trim().toLowerCase();
+    const mime = String(file.mimetype || "")
+      .trim()
+      .toLowerCase();
 
     if (
       DELIVERY_RECEIPT_EXTENSIONS.has(ext) &&
@@ -78,17 +98,16 @@ const handleReceiptUpload = (req, res, next) => {
     const file = req.file;
     if (file) {
       const ext = path.extname(file.originalname || "").toLowerCase();
-      const mime = String(file.mimetype || "").trim().toLowerCase();
+      const mime = String(file.mimetype || "")
+        .trim()
+        .toLowerCase();
       const extensionMatchesMime =
         ([".jpg", ".jpeg", ".jfif"].includes(ext) && mime === "image/jpeg") ||
         (ext === ".png" && mime === "image/png") ||
         (ext === ".webp" && mime === "image/webp") ||
         (ext === ".pdf" && mime === "application/pdf");
 
-      if (
-        !extensionMatchesMime ||
-        !verifyBufferSignature(file.buffer, ext)
-      ) {
+      if (!extensionMatchesMime || !verifyBufferSignature(file.buffer, ext)) {
         return res.status(400).json({
           message:
             "The Proof of Delivery file does not match its real file type.",
@@ -105,50 +124,50 @@ const handleReceiptUpload = (req, res, next) => {
 
 router.get(
   "/deliveries/dashboard",
-  deliveryAccess,
+  deliveryViewAccess,
   posFulfillmentController.getRiderDashboard,
 );
 router.get(
   "/deliveries/history",
-  deliveryAccess,
+  deliveryViewAccess,
   posFulfillmentController.getRiderHistory,
 );
 
 router.get(
   "/deliverable-orders",
-  adminOnly,
+  deliveryManageAccess,
   posFulfillmentController.getDeliverableOrders,
 );
 
 router.get(
   "/deliveries",
-  deliveryAccess,
+  deliveryViewAccess,
   posFulfillmentController.getDeliveries,
 );
 
 router.get(
   "/deliveries/:id/acknowledgement",
-  deliveryAccess,
+  deliveryViewAccess,
   posFulfillmentController.getDeliveryAcknowledgement,
 );
 
 router.post(
   "/deliveries",
-  adminOnly,
+  deliveryManageAccess,
   logAction("create_delivery", "deliveries"),
   posFulfillmentController.createDelivery,
 );
 
 router.post(
   "/deliveries/:id/reschedule",
-  adminOnly,
+  deliveryManageAccess,
   logAction("reschedule_delivery", "deliveries"),
   posFulfillmentController.rescheduleDelivery,
 );
 
 router.patch(
   "/deliveries/:id/status",
-  deliveryAccess,
+  deliveryStatusAccess,
   handleReceiptUpload,
   logAction("update_delivery_status", "deliveries"),
   posFulfillmentController.updateDeliveryStatus,

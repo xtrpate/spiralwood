@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import api from "../../services/api";
+import useAuthStore from "../../store/authStore";
 
 const ACTION_LABELS = {
   // Security and account access
@@ -58,8 +59,10 @@ const ACTION_LABELS = {
   record_blueprint_cash_payment: "Recorded blueprint cash payment",
   confirm_blueprint_rider_cash_collection: "Confirmed rider cash collection",
   select_blueprint_payment_method: "Selected blueprint payment method",
-  select_blueprint_remaining_payment_method: "Selected remaining payment method",
-  verify_blueprint_remaining_balance_payment: "Verified remaining balance payment",
+  select_blueprint_remaining_payment_method:
+    "Selected remaining payment method",
+  verify_blueprint_remaining_balance_payment:
+    "Verified remaining balance payment",
   submit_blueprint_down_payment: "Submitted blueprint down payment",
   verify_pos_qr_payment: "Verified POS QR payment",
   recovery_verify_pos_qr_payment: "Recovered POS QR payment",
@@ -414,7 +417,8 @@ const getChangedFieldKeys = (log) => {
 
   if (rawNew && !Array.isArray(rawNew)) {
     if (Array.isArray(rawNew.keys_changed)) rawNew.keys_changed.forEach(add);
-    if (Array.isArray(rawNew.changed_fields)) rawNew.changed_fields.forEach(add);
+    if (Array.isArray(rawNew.changed_fields))
+      rawNew.changed_fields.forEach(add);
 
     Object.entries(rawNew).forEach(([key, value]) => {
       if (key === "logo_uploaded_this_update" && value === true) {
@@ -430,7 +434,8 @@ const getChangedFieldKeys = (log) => {
   const union = new Set([...Object.keys(oldObject), ...Object.keys(newObject)]);
   union.forEach((key) => {
     if (key === "has_logo" || key === "logo_uploaded_this_update") return;
-    if (JSON.stringify(oldObject[key]) !== JSON.stringify(newObject[key])) add(key);
+    if (JSON.stringify(oldObject[key]) !== JSON.stringify(newObject[key]))
+      add(key);
   });
 
   return keys;
@@ -440,7 +445,10 @@ const getActivityLabel = (log) => {
   const base = ACTION_LABELS[log?.action] || humanize(log?.action);
   const newValues = getReadableObject(log?.new_values);
   const nextStatus = String(
-    newValues.status || newValues.order_status || newValues.payment_status || "",
+    newValues.status ||
+      newValues.order_status ||
+      newValues.payment_status ||
+      "",
   )
     .trim()
     .toLowerCase();
@@ -467,7 +475,9 @@ const getActivityLabel = (log) => {
       blocked: "Blocked production task",
       pending: "Returned production task to pending",
     };
-    return labels[nextStatus] || `Changed production task to ${humanize(nextStatus)}`;
+    return (
+      labels[nextStatus] || `Changed production task to ${humanize(nextStatus)}`
+    );
   }
 
   if (log?.action === "update_appointment" && nextStatus) {
@@ -484,18 +494,26 @@ const getActivityLabel = (log) => {
   }
 
   if (log?.action === "verify_payment") {
-    const decision = String(newValues.action || "").trim().toLowerCase();
+    const decision = String(newValues.action || "")
+      .trim()
+      .toLowerCase();
     if (decision === "verified") return "Verified payment";
     if (decision === "rejected") return "Rejected payment";
   }
 
   if (log?.action === "update_customer_status") {
     const active = newValues.is_active;
-    const decision = String(newValues.action || "").trim().toLowerCase();
+    const decision = String(newValues.action || "")
+      .trim()
+      .toLowerCase();
     if (active === true || active === 1 || decision === "activate") {
       return "Activated customer account";
     }
-    if (active === false || active === 0 || ["deactivate", "delete"].includes(decision)) {
+    if (
+      active === false ||
+      active === 0 ||
+      ["deactivate", "delete"].includes(decision)
+    ) {
       return "Deactivated customer account";
     }
   }
@@ -513,9 +531,13 @@ const getActivityLabel = (log) => {
   if (log?.action === "delete_user") return "Deactivated user account";
 
   if (log?.action === "login_failed") {
-    const reason = String(newValues.reason || "").trim().toLowerCase();
-    if (reason === "account_inactive") return "Sign-in blocked for inactive account";
-    if (reason === "email_not_verified") return "Sign-in blocked until email verification";
+    const reason = String(newValues.reason || "")
+      .trim()
+      .toLowerCase();
+    if (reason === "account_inactive")
+      return "Sign-in blocked for inactive account";
+    if (reason === "email_not_verified")
+      return "Sign-in blocked until email verification";
     return "Sign-in attempt failed";
   }
 
@@ -547,7 +569,8 @@ const getTargetLabel = (log) => {
       merged.order_id ||
       (log?.action === "verify_payment" ? log?.record_id : null);
 
-    if (paymentId && orderId) return `Payment #${paymentId} · Order #${orderId}`;
+    if (paymentId && orderId)
+      return `Payment #${paymentId} · Order #${orderId}`;
     if (paymentId) return `Payment #${paymentId}`;
     if (orderId) return `Order #${orderId} payment`;
   }
@@ -763,6 +786,74 @@ export default function AuditLogsPage() {
   const [error, setError] = useState("");
   const [detailLog, setDetailLog] = useState(null);
 
+  const hasPermission = useAuthStore((state) => state.hasPermission);
+
+  const canExportAuditLogs = hasPermission("audit_logs.export");
+
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    if (!canExportAuditLogs || exporting) return;
+
+    setExporting(true);
+
+    try {
+      const params = {};
+
+      if (filters.search) {
+        params.search = filters.search;
+      }
+
+      if (filters.action) {
+        params.action = filters.action;
+      }
+
+      if (filters.table_name) {
+        params.table_name = filters.table_name;
+      }
+
+      if (filters.date_from) {
+        params.date_from = filters.date_from;
+      }
+
+      if (filters.date_to) {
+        params.date_to = filters.date_to;
+      }
+
+      const response = await api.get("/audit-logs/export", {
+        params,
+        responseType: "blob",
+      });
+
+      const blob = new Blob([response.data], {
+        type: "text/csv;charset=utf-8;",
+      });
+
+      const url = window.URL.createObjectURL(blob);
+
+      const anchor = document.createElement("a");
+
+      anchor.href = url;
+      anchor.download = `wisdom-audit-logs-${new Date()
+        .toISOString()
+        .slice(0, 10)}.csv`;
+
+      document.body.appendChild(anchor);
+
+      anchor.click();
+
+      anchor.remove();
+
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("[Audit Export]", err);
+
+      setError(err?.response?.data?.message || "Unable to export audit logs.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   useEffect(() => {
     const trimmed = searchInput.trim();
     const timer = setTimeout(() => {
@@ -847,12 +938,36 @@ export default function AuditLogsPage() {
           <div style={eyebrow}>Management</div>
           <h1 style={pageTitle}>Audit Logs</h1>
           <p style={pageSubtitle}>
-            Review important security, account, sales, inventory, and staff activity across WISDOM.
+            Review important security, account, sales, inventory, and staff
+            activity across WISDOM.
           </p>
         </div>
 
-        <div style={recordCount}>
-          {Number(pagination.total || 0).toLocaleString("en-PH")} records
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <div style={recordCount}>
+            {Number(pagination.total || 0).toLocaleString("en-PH")} records
+          </div>
+
+          {canExportAuditLogs && (
+            <button
+              type="button"
+              onClick={handleExport}
+              disabled={exporting}
+              style={{
+                ...btnGhost,
+                opacity: exporting ? 0.6 : 1,
+                cursor: exporting ? "not-allowed" : "pointer",
+              }}
+            >
+              {exporting ? "Exporting..." : "Export CSV"}
+            </button>
+          )}
         </div>
       </header>
 
@@ -945,7 +1060,8 @@ export default function AuditLogsPage() {
           <div>
             <h2 style={tableTitle}>Activity History</h2>
             <p style={tableSubtitle}>
-              Newest activity first. Open Details to review the recorded changes.
+              Newest activity first. Open Details to review the recorded
+              changes.
             </p>
           </div>
         </div>
@@ -994,42 +1110,42 @@ export default function AuditLogsPage() {
                 logs.map((log) => {
                   const performedBy = getPerformedBy(log);
                   return (
-                  <tr key={log.id} style={tbodyRow}>
-                    <td style={td}>{formatDateTime(log.created_at)}</td>
+                    <tr key={log.id} style={tbodyRow}>
+                      <td style={td}>{formatDateTime(log.created_at)}</td>
 
-                    <td style={td}>
-                      <div style={personName}>{performedBy.name}</div>
-                      {performedBy.secondary && (
-                        <div style={personEmail}>{performedBy.secondary}</div>
-                      )}
-                    </td>
+                      <td style={td}>
+                        <div style={personName}>{performedBy.name}</div>
+                        {performedBy.secondary && (
+                          <div style={personEmail}>{performedBy.secondary}</div>
+                        )}
+                      </td>
 
-                    <td style={td}>
-                      <span style={activityText}>
-                        {getActivityLabel(log)}
-                      </span>
-                    </td>
+                      <td style={td}>
+                        <span style={activityText}>
+                          {getActivityLabel(log)}
+                        </span>
+                      </td>
 
-                    <td style={td}>
-                      <span style={secondaryText}>
-                        {formatModuleLabel(log.table_name)}
-                      </span>
-                    </td>
+                      <td style={td}>
+                        <span style={secondaryText}>
+                          {formatModuleLabel(log.table_name)}
+                        </span>
+                      </td>
 
-                    <td style={td}>
-                      <span style={targetText}>{getTargetLabel(log)}</span>
-                    </td>
+                      <td style={td}>
+                        <span style={targetText}>{getTargetLabel(log)}</span>
+                      </td>
 
-                    <td style={td}>
-                      <button
-                        type="button"
-                        style={btnView}
-                        onClick={() => setDetailLog(log)}
-                      >
-                        Details
-                      </button>
-                    </td>
-                  </tr>
+                      <td style={td}>
+                        <button
+                          type="button"
+                          style={btnView}
+                          onClick={() => setDetailLog(log)}
+                        >
+                          Details
+                        </button>
+                      </td>
+                    </tr>
                   );
                 })
               )}
@@ -1098,10 +1214,7 @@ export default function AuditLogsPage() {
       </section>
 
       {detailLog && (
-        <AuditDetailModal
-          log={detailLog}
-          onClose={() => setDetailLog(null)}
-        />
+        <AuditDetailModal log={detailLog} onClose={() => setDetailLog(null)} />
       )}
     </div>
   );
@@ -1131,23 +1244,28 @@ const getStructuredAuditTitle = (log, entry) =>
 const isStructuredAuditEntry = (log, entry) =>
   Boolean(
     getStructuredAuditTitle(log, entry) &&
-      Array.isArray(entry?.rawValue) &&
-      entry.rawValue.length > 0 &&
-      entry.rawValue.every(
-        (item) => item && typeof item === "object" && !Array.isArray(item),
-      ),
+    Array.isArray(entry?.rawValue) &&
+    entry.rawValue.length > 0 &&
+    entry.rawValue.every(
+      (item) => item && typeof item === "object" && !Array.isArray(item),
+    ),
   );
 
 const formatQuantityWithUnit = (value, unit) => {
   const formatted = formatValue(value);
   const cleanUnit = String(unit || "").trim();
-  return formatted === "—" || !cleanUnit ? formatted : `${formatted} ${cleanUnit}`;
+  return formatted === "—" || !cleanUnit
+    ? formatted
+    : `${formatted} ${cleanUnit}`;
 };
 
 const buildStructuredAuditFields = (entryKey, item) => {
   if (entryKey === "items") {
     return [
-      { label: "Product", value: item.product_name || `Product #${item.product_id || "—"}` },
+      {
+        label: "Product",
+        value: item.product_name || `Product #${item.product_id || "—"}`,
+      },
       { label: "Product ID", value: formatValue(item.product_id) },
       { label: "Quantity", value: formatValue(item.quantity) },
       { label: "Warehouse Before", value: formatValue(item.warehouse_before) },
@@ -1161,9 +1279,7 @@ const buildStructuredAuditFields = (entryKey, item) => {
     return [
       {
         label: "Raw Material",
-        value:
-          item.material_name ||
-          `Raw Material #${item.material_id || "—"}`,
+        value: item.material_name || `Raw Material #${item.material_id || "—"}`,
       },
       { label: "Material ID", value: formatValue(item.material_id) },
       {
@@ -1195,7 +1311,6 @@ const buildStructuredAuditFields = (entryKey, item) => {
 };
 
 function StructuredAuditValue({ entry, title }) {
-
   return (
     <div style={structuredValueList}>
       {entry.rawValue.map((item, index) => {
@@ -1255,7 +1370,10 @@ function ValuesPanel({ title, emptyLabel, entries, log }) {
 
                 {structured ? (
                   <div style={structuredValueContainer}>
-                    <StructuredAuditValue entry={entry} title={structuredTitle} />
+                    <StructuredAuditValue
+                      entry={entry}
+                      title={structuredTitle}
+                    />
                   </div>
                 ) : (
                   <span style={valueVal}>{entry.value}</span>
@@ -1317,10 +1435,7 @@ function AuditDetailModal({ log, onClose }) {
               value={performedBy.name}
               secondary={performedBy.secondary}
             />
-            <DetailRow
-              label="Area"
-              value={formatModuleLabel(log.table_name)}
-            />
+            <DetailRow label="Area" value={formatModuleLabel(log.table_name)} />
             <DetailRow label="Target" value={getTargetLabel(log)} />
             <DetailRow
               label="Source IP"

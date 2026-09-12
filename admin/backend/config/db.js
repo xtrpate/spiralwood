@@ -20,27 +20,27 @@ const pool = mysql.createPool({
 // Keep every pooled MySQL connection in UTC. The frontend is responsible
 // for displaying timestamps in Asia/Manila.
 pool.on("connection", (connection) => {
-  connection.query(
-    `SET SESSION time_zone = '${DB_TIME_ZONE}'`,
-    (error) => {
-      if (error) {
-        console.error(
-          "Failed to set MySQL UTC session time zone:",
-          error.message,
-        );
-      }
-    },
-  );
+  connection.query(`SET SESSION time_zone = '${DB_TIME_ZONE}'`, (error) => {
+    if (error) {
+      console.error(
+        "Failed to set MySQL UTC session time zone:",
+        error.message,
+      );
+    }
+  });
 });
 
 // Verify connectivity on startup
 (async () => {
   try {
     const conn = await pool.getConnection();
-    console.log("✅  MySQL connected →", process.env.DB_NAME);
+
+    console.log("✅ MySQL connected →", process.env.DB_NAME);
+
     conn.release();
   } catch (err) {
-    console.error("❌  MySQL connection failed:", err.message);
+    console.error("❌ MySQL connection failed:", err.message);
+
     process.exit(1);
   }
 })();

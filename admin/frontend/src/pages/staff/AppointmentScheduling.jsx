@@ -631,9 +631,9 @@ export default function AppointmentScheduling() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
-  const { user } = useAuthStore();
+  const { user, hasPermission } = useAuthStore();
 
-  const isAdmin = user?.role === "admin";
+  const canManageAppointments = hasPermission("appointments.manage");
   const isIndoorStaff = user?.role === "staff" && user?.staff_type === "indoor";
 
   const [appointments, setAppointments] = useState([]);
@@ -734,7 +734,7 @@ export default function AppointmentScheduling() {
   }, []);
 
   const fetchAssignStaff = useCallback(async () => {
-    if (!isAdmin) return;
+    if (!canManageAppointments) return;
 
     try {
       const res = await api.get("/users");
@@ -751,7 +751,7 @@ export default function AppointmentScheduling() {
       console.error("Failed to fetch assigned staff:", err);
       setAssignedStaff([]);
     }
-  }, [isAdmin]);
+  }, [canManageAppointments]);
 
   useEffect(() => {
     fetchAppointments();
@@ -779,7 +779,7 @@ export default function AppointmentScheduling() {
       return;
     }
 
-    if (isAdmin) {
+    if (canManageAppointments) {
       const status = String(match.status || "").toLowerCase();
 
       if (status === "pending") {
@@ -814,7 +814,7 @@ export default function AppointmentScheduling() {
       clearTimeout(scrollTimer);
       clearTimeout(highlightTimer);
     };
-  }, [searchParams, loading, appointments, isAdmin]);
+  }, [searchParams, loading, appointments, canManageAppointments]);
 
   useEffect(() => {
     const fetchWeeklyAvailability = async () => {
@@ -1283,9 +1283,13 @@ export default function AppointmentScheduling() {
 
   return (
     <div
-      style={isAdmin ? adminPageStyle : { fontFamily: "'Inter', sans-serif" }}
+      style={
+        canManageAppointments
+          ? adminPageStyle
+          : { fontFamily: "'Inter', sans-serif" }
+      }
     >
-      {isAdmin ? (
+      {canManageAppointments ? (
         <>
           <div
             style={{
@@ -1505,7 +1509,7 @@ export default function AppointmentScheduling() {
         </>
       ) : null}
 
-      {isAdmin && adminActiveTab === "calendar" && (
+      {canManageAppointments && adminActiveTab === "calendar" && (
         <SectionCard
           title="Appointment Calendar"
           subtitle="Check available time slots before assigning or creating appointments."
@@ -1847,7 +1851,7 @@ export default function AppointmentScheduling() {
         </div>
       ) : null}
 
-      {isAdmin && showForm && (
+      {canManageAppointments && showForm && (
         <div
           style={adminModalOverlayStyle}
           onMouseDown={(event) => {
@@ -2360,7 +2364,7 @@ export default function AppointmentScheduling() {
         </div>
       )}
 
-      {isAdmin && (
+      {canManageAppointments && (
         <>
           {adminActiveTab === "new" && (
             <SectionCard
