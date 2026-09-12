@@ -125,6 +125,7 @@ const NAV_ITEMS = [
     label: "Cancellations",
     path: "/admin/orders/cancellations",
     permission: "cancellations_refunds.view",
+    icon: RotateCcw,
     roles: ["admin", "staff"],
   },
   {
@@ -181,12 +182,6 @@ const NAV_ITEMS = [
     label: "Warranty",
     path: "/admin/warranty",
     permission: "warranty.view",
-    roles: ["admin", "staff"],
-  },
-  {
-    label: "Support",
-    path: "/admin/support",
-    permission: "support.view",
     icon: Shield,
     roles: ["admin", "staff"],
   },

@@ -724,8 +724,6 @@ export default function App() {
                     </RequirePermission>
                   }
                 />
-<<<<<<< HEAD
-=======
                 <Route
                   path="reports/deliveries"
                   element={<DeliveryReportPage />}
@@ -734,7 +732,6 @@ export default function App() {
                 <Route path="pos-qr-recovery" element={<PosQrRecoveryPage />} />
                 <Route path="warranty" element={<WarrantyPage />} />
                 <Route path="support" element={<AdminSupportPage />} />
->>>>>>> e303bc81d7e73c9629773cf7ed159a340d6192a6
 
                 <Route
                   path="customers"
