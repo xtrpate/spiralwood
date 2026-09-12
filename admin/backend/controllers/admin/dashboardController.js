@@ -22,9 +22,25 @@ function parseISODate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function getManilaToday() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, Number(part.value)]),
+  );
+
+  return new Date(values.year, values.month - 1, values.day);
+}
+
 function getDateRange(preset, rawFrom, rawTo) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = getManilaToday();
 
   if (rawFrom || rawTo) {
     if (!rawFrom || !rawTo) {
@@ -191,17 +207,24 @@ exports.getDashboard = async (req, res) => {
     const [[invStats]] = await pool.query(`
       SELECT
         COUNT(*) AS total_products,
+        COALESCE(SUM(stock_status = 'in_stock'), 0) AS healthy_stock_count,
         COALESCE(SUM(stock_status = 'low_stock'), 0) AS low_stock_count,
+        COALESCE(SUM(stock_status = 'critical_stock'), 0) AS critical_stock_count,
         COALESCE(SUM(stock_status = 'out_of_stock'), 0) AS out_of_stock_count
       FROM products
+      WHERE is_active = 1
+        AND type = 'standard'
     `);
 
     const [[rawStats]] = await pool.query(`
       SELECT
         COUNT(*) AS total_raw_materials,
+        COALESCE(SUM(stock_status = 'healthy_stock'), 0) AS raw_healthy_stock,
         COALESCE(SUM(stock_status = 'low_stock'), 0) AS raw_low_stock,
+        COALESCE(SUM(stock_status = 'critical_stock'), 0) AS raw_critical_stock,
         COALESCE(SUM(stock_status = 'out_of_stock'), 0) AS raw_out_of_stock
       FROM raw_materials
+      WHERE is_active = 1
     `);
 
     let stockMovements = { stock_in_total: 0, stock_out_total: 0 };
@@ -225,8 +248,10 @@ exports.getDashboard = async (req, res) => {
       ...stockMovements,
       alert_total:
         Number(invStats.low_stock_count) +
+        Number(invStats.critical_stock_count) +
         Number(invStats.out_of_stock_count) +
         Number(rawStats.raw_low_stock) +
+        Number(rawStats.raw_critical_stock) +
         Number(rawStats.raw_out_of_stock),
     };
 
@@ -238,7 +263,9 @@ exports.getDashboard = async (req, res) => {
         COALESCE(SUM(status = 'completed'), 0) AS completed_orders,
         COALESCE(SUM(status = 'pending'), 0) AS pending_orders,
         COALESCE(SUM(status = 'confirmed'), 0) AS confirmed_orders,
+        COALESCE(SUM(status = 'contract_released'), 0) AS contract_released_orders,
         COALESCE(SUM(status = 'production'), 0) AS production_orders,
+        COALESCE(SUM(status = 'ready_for_pickup'), 0) AS ready_for_pickup_orders,
         COALESCE(SUM(status = 'shipping'), 0) AS shipping_orders,
         COALESCE(SUM(status = 'delivered'), 0) AS delivered_orders,
         COALESCE(SUM(status = 'cancelled'), 0) AS cancelled_orders
@@ -252,6 +279,7 @@ exports.getDashboard = async (req, res) => {
     const [[currentOpsAllTime]] = await pool.query(`
       SELECT
         COALESCE(SUM(status NOT IN ('completed', 'cancelled')), 0) AS open_orders,
+        COALESCE(SUM(status = 'pending'), 0) AS open_pending_orders,
         COALESCE(SUM(status = 'delivered' AND (payment_status IS NULL OR payment_status != 'paid')), 0) AS delivered_unpaid_orders
       FROM orders
     `);
@@ -307,18 +335,23 @@ exports.getDashboard = async (req, res) => {
     } catch (e) {}
 
     // ── 5. BLUEPRINT PIPELINE (Strictly using order_type and valid statuses) ──
-    const [[blueprintDbRows]] = await pool.query(`
+    const [[blueprintDbRows]] = await pool.query(
+      `
       SELECT
         COUNT(*) AS total_blueprint_orders,
         COALESCE(SUM(status = 'pending'), 0) AS pending_custom_review,
         COALESCE(SUM(status = 'confirmed'), 0) AS quotation_approved,
         COALESCE(SUM(status = 'contract_released'), 0) AS contract_released,
         COALESCE(SUM(status = 'production'), 0) AS in_production,
-        COALESCE(SUM(status IN ('shipping', 'delivered')), 0) AS ready_for_dispatch,
-        COALESCE(SUM(status = 'completed'), 0) AS completed_blueprint_orders
+        COALESCE(SUM(status IN ('ready_for_pickup', 'shipping', 'delivered')), 0) AS fulfillment,
+        COALESCE(SUM(status = 'completed'), 0) AS completed_blueprint_orders,
+        COALESCE(SUM(status = 'cancelled'), 0) AS cancelled_blueprint_orders
       FROM orders
-      WHERE order_type = 'blueprint' OR blueprint_id IS NOT NULL
-    `);
+      WHERE (order_type = 'blueprint' OR blueprint_id IS NOT NULL)
+        AND DATE(DATE_ADD(created_at, INTERVAL 8 HOUR)) BETWEEN ? AND ?
+      `,
+      dateParams,
+    );
 
     const blueprint = {
       ...blueprintDbRows,
