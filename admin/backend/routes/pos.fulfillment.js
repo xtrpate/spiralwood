@@ -164,7 +164,7 @@ router.get(
 
 router.get(
   "/deliveries/:id/receipt",
-  deliveryAccess,
+  deliveryViewAccess,
   posFulfillmentController.getDeliveryReceipt,
 );
 
