@@ -2,6 +2,11 @@
 const db = require("../../config/db");
 const { createPosSaleReceipt } = require("../../services/receiptService");
 const { parseStrictPositiveInt } = require("../../utils/validators");
+const {
+  normalizePhilippinePhone,
+  getPhoneLookupVariants,
+  phoneDigitsSql,
+} = require("../../utils/phone");
 
 /* ── Helper: Generate Walk-in Order Number ── */
 const generateOrderNumber = async (conn) => {
@@ -471,8 +476,10 @@ exports.getOrderById = async (req, res) => {
 
 /* ── List Walk-in Orders (Paginated) ── */
 exports.getOrders = async (req, res) => {
-  const { from, to, page = 1, limit = 20 } = req.query;
-  const offset = (parseInt(page) - 1) * parseInt(limit);
+  const { from, to, search = "", page = 1, limit = 20 } = req.query;
+  const pageNumber = Math.max(1, parseInt(page, 10) || 1);
+  const limitNumber = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+  const offset = (pageNumber - 1) * limitNumber;
 
   try {
     let where = "WHERE o.type = 'walkin'";
@@ -482,9 +489,43 @@ exports.getOrders = async (req, res) => {
       where += " AND DATE(o.created_at) >= ?";
       params.push(from);
     }
+
     if (to) {
       where += " AND DATE(o.created_at) <= ?";
       params.push(to);
+    }
+
+    const term = String(search || "").trim();
+    if (term) {
+      const pattern = `%${term}%`;
+      const clauses = [
+        "o.order_number LIKE ?",
+        "o.walkin_customer_name LIKE ?",
+        "COALESCE(r.receipt_number, '') LIKE ?",
+        "o.id = ?",
+      ];
+      const searchParams = [pattern, pattern, pattern, parseInt(term, 10) || 0];
+
+      const rawDigits = term.replace(/\D/g, "");
+      const phoneVariants = new Set(rawDigits ? [rawDigits] : []);
+      try {
+        const canonicalPhone = normalizePhilippinePhone(term);
+        getPhoneLookupVariants(canonicalPhone).forEach((variant) => {
+          const digits = String(variant || "").replace(/\D/g, "");
+          if (digits) phoneVariants.add(digits);
+        });
+      } catch {
+        // Partial/non-phone search text is still valid for the other fields.
+      }
+
+      for (const phoneVariant of phoneVariants) {
+        if (phoneVariant.length < 4) continue;
+        clauses.push(`${phoneDigitsSql("o.walkin_customer_phone")} LIKE ?`);
+        searchParams.push(`%${phoneVariant}%`);
+      }
+
+      where += ` AND (${clauses.join(" OR ")})`;
+      params.push(...searchParams);
     }
 
     const [rows] = await db.query(
@@ -500,19 +541,22 @@ exports.getOrders = async (req, res) => {
       ORDER BY o.created_at DESC
       LIMIT ? OFFSET ?
       `,
-      [...params, parseInt(limit), parseInt(offset)],
+      [...params, limitNumber, offset],
     );
 
     const [count] = await db.query(
-      `SELECT COUNT(*) AS total FROM orders o ${where}`,
+      `SELECT COUNT(DISTINCT o.id) AS total
+       FROM orders o
+       LEFT JOIN receipts r ON r.order_id = o.id
+       ${where}`,
       params,
     );
 
     res.json({
       orders: rows,
-      total: count[0].total,
-      page: parseInt(page),
-      limit: parseInt(limit),
+      total: Number(count[0]?.total || 0),
+      page: pageNumber,
+      limit: limitNumber,
     });
   } catch (err) {
     console.error(err);

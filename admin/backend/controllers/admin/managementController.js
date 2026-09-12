@@ -102,6 +102,7 @@ exports.getContracts = async (req, res) => {
               COALESCE(u.name, c.customer_name)   AS customer_name,
               u.email                              AS customer_email,
               o.total                              AS total_amount,   -- schema: total
+              o.order_number                       AS order_number,
               b.title                              AS blueprint_title,
               au.name                              AS issued_by_name
        FROM contracts c
@@ -446,35 +447,122 @@ exports.generateContract = async (req, res) => {
 // ══ CUSTOMERS ════════════════════════════════════════════════════════════════
 exports.getCustomers = async (req, res) => {
   try {
-    const { search, approval_status, page = 1, limit = 20 } = req.query;
-    const where = ["role = 'customer'"];
+    const {
+      search = "",
+      approval_status,
+      email_status,
+      phone_status,
+      account_status,
+      page = 1,
+      limit = 20,
+    } = req.query;
+
+    const pageNumber = Math.max(1, parseInt(page, 10) || 1);
+    const limitNumber = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const offset = (pageNumber - 1) * limitNumber;
+    const where = ["u.role = 'customer'"];
     const params = [];
 
-    if (search) {
-      where.push("(name LIKE ? OR email LIKE ?)");
-      params.push(`%${search}%`, `%${search}%`);
+    const term = String(search || "").trim();
+    if (term) {
+      const pattern = `%${term}%`;
+      const clauses = ["u.name LIKE ?", "u.email LIKE ?"];
+      const searchParams = [pattern, pattern];
+
+      const rawDigits = term.replace(/\D/g, "");
+      const phoneVariants = new Set(rawDigits ? [rawDigits] : []);
+      try {
+        const canonicalPhone = normalizePhilippinePhone(term);
+        getPhoneLookupVariants(canonicalPhone).forEach((variant) => {
+          const digits = String(variant || "").replace(/\D/g, "");
+          if (digits) phoneVariants.add(digits);
+        });
+      } catch {
+        // Search may be a name/email/partial phone and should remain valid.
+      }
+
+      for (const phoneVariant of phoneVariants) {
+        if (phoneVariant.length < 4) continue;
+        clauses.push(`${phoneDigitsSql("u.phone")} LIKE ?`);
+        searchParams.push(`%${phoneVariant}%`);
+      }
+
+      where.push(`(${clauses.join(" OR ")})`);
+      params.push(...searchParams);
     }
+
     if (approval_status) {
-      where.push("approval_status = ?");
+      where.push("u.approval_status = ?");
       params.push(approval_status);
     }
 
+    if (email_status) {
+      if (!["verified", "not_verified"].includes(email_status)) {
+        return res.status(400).json({ message: "Invalid email status filter." });
+      }
+      where.push("u.is_verified = ?");
+      params.push(email_status === "verified" ? 1 : 0);
+    }
+
+    if (phone_status) {
+      if (!["verified", "not_verified"].includes(phone_status)) {
+        return res.status(400).json({ message: "Invalid phone status filter." });
+      }
+      where.push("u.phone_verified = ?");
+      params.push(phone_status === "verified" ? 1 : 0);
+    }
+
+    if (account_status) {
+      if (!["active", "inactive"].includes(account_status)) {
+        return res.status(400).json({ message: "Invalid account status filter." });
+      }
+      where.push("u.is_active = ?");
+      params.push(account_status === "active" ? 1 : 0);
+    }
+
     const [rows] = await pool.query(
-      `SELECT id, name, email, phone, address, is_active, is_verified, phone_verified,
-              approval_status, profile_photo, created_at, last_login
-       FROM users WHERE ${where.join(" AND ")}
-       ORDER BY created_at DESC
+      `SELECT u.id, u.name, u.email, u.phone, u.address, u.is_active,
+              u.is_verified, u.phone_verified, u.approval_status,
+              u.profile_photo, u.created_at, u.last_login
+       FROM users u
+       WHERE ${where.join(" AND ")}
+       ORDER BY u.created_at DESC, u.id DESC
        LIMIT ? OFFSET ?`,
-      [...params, parseInt(limit), (parseInt(page) - 1) * parseInt(limit)],
+      [...params, limitNumber, offset],
     );
+
     const [[{ total }]] = await pool.query(
-      `SELECT COUNT(*) AS total FROM users WHERE ${where.join(" AND ")}`,
+      `SELECT COUNT(*) AS total
+       FROM users u
+       WHERE ${where.join(" AND ")}`,
       params,
     );
-    res.json({ rows, total });
+
+    const [[summaryRow]] = await pool.query(
+      `SELECT
+         COUNT(*) AS total_customers,
+         COALESCE(SUM(CASE WHEN is_verified = 1 THEN 1 ELSE 0 END), 0) AS email_verified,
+         COALESCE(SUM(CASE WHEN phone_verified = 1 THEN 1 ELSE 0 END), 0) AS phone_verified,
+         COALESCE(SUM(CASE WHEN is_active = 0 THEN 1 ELSE 0 END), 0) AS inactive_accounts
+       FROM users
+       WHERE role = 'customer'`,
+    );
+
+    return res.json({
+      rows,
+      total: Number(total || 0),
+      page: pageNumber,
+      limit: limitNumber,
+      summary: {
+        total_customers: Number(summaryRow?.total_customers || 0),
+        email_verified: Number(summaryRow?.email_verified || 0),
+        phone_verified: Number(summaryRow?.phone_verified || 0),
+        inactive_accounts: Number(summaryRow?.inactive_accounts || 0),
+      },
+    });
   } catch (err) {
     console.error("[getCustomers]", err);
-    res.status(500).json({ message: "Unable to load customer accounts." });
+    return res.status(500).json({ message: err.message });
   }
 };
 

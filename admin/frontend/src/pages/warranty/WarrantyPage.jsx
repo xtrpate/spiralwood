@@ -120,6 +120,10 @@ export default function WarrantyPage() {
         String(row.status || "").toLowerCase() === statusFilter;
 
       const haystack = [
+        row.id,
+        row.id ? `claim ${row.id}` : "",
+        row.id ? `claim #${String(row.id).padStart(4, "0")}` : "",
+        row.id ? String(row.id).padStart(4, "0") : "",
         row.order_number,
         row.customer_name,
         row.product_name,

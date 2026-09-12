@@ -37,6 +37,11 @@ const {
   getGlobalEmailFooter,
   sendBrevoEmail,
 } = require("../../utils/emailHelper");
+const {
+  normalizePhilippinePhone,
+  getPhoneLookupVariants,
+  phoneDigitsSql,
+} = require("../../utils/phone");
 
 const normalize = (value) =>
   String(value || "")
@@ -631,11 +636,39 @@ exports.getAll = async (req, res) => {
       where.push("DATE(o.created_at) BETWEEN ? AND ?");
       params.push(from, to);
     }
-    if (search) {
-      where.push(
-        "(COALESCE(u.name, o.walkin_customer_name) LIKE ? OR o.id = ? OR o.order_number LIKE ?)",
-      );
-      params.push(`%${search}%`, parseInt(search) || 0, `%${search}%`);
+    if (search && String(search).trim()) {
+      const term = String(search).trim();
+      const pattern = `%${term}%`;
+      const clauses = [
+        "COALESCE(u.name, o.walkin_customer_name) LIKE ?",
+        "COALESCE(u.email, '') LIKE ?",
+        "o.id = ?",
+        "o.order_number LIKE ?",
+      ];
+      const searchParams = [pattern, pattern, parseInt(term, 10) || 0, pattern];
+
+      const rawDigits = term.replace(/\D/g, "");
+      const phoneVariants = new Set(rawDigits ? [rawDigits] : []);
+      try {
+        const canonicalPhone = normalizePhilippinePhone(term);
+        getPhoneLookupVariants(canonicalPhone).forEach((variant) => {
+          const digits = String(variant || "").replace(/\D/g, "");
+          if (digits) phoneVariants.add(digits);
+        });
+      } catch {
+        // Search text does not have to be a full Philippine mobile number.
+      }
+
+      for (const phoneVariant of phoneVariants) {
+        if (phoneVariant.length < 4) continue;
+        clauses.push(
+          `${phoneDigitsSql("COALESCE(u.phone, o.walkin_customer_phone, '')")} LIKE ?`,
+        );
+        searchParams.push(`%${phoneVariant}%`);
+      }
+
+      where.push(`(${clauses.join(" OR ")})`);
+      params.push(...searchParams);
     }
 
     const [orders] = await pool.query(
