@@ -364,15 +364,25 @@ export default function AdminLayout() {
     }, durations.loading);
   };
 
-  const visibleItems = NAV_ITEMS.filter((item) => {
+  const baseVisibleItems = NAV_ITEMS.filter((item) => {
     if (item.section) return true;
 
     const roleAllowed = !item.roles || item.roles.includes(user?.role);
 
+    // 👉 FIX: Automatically allow viewing for Administrators, otherwise check specific permissions
     const permissionAllowed =
-      !item.permission || hasPermission(item.permission);
+      user?.role === "admin" ||
+      !item.permission ||
+      hasPermission(item.permission);
 
     return roleAllowed && permissionAllowed;
+  });
+
+  // 👉 EXTRA POLISH: Hide empty section headers so your sidebar looks perfectly clean
+  const visibleItems = baseVisibleItems.filter((item, index, array) => {
+    if (!item.section) return true;
+    const nextItem = array[index + 1];
+    return nextItem && !nextItem.section; // Only keep the section header if it has links under it
   });
 
   return (
