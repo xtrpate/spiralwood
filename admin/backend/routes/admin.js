@@ -700,17 +700,17 @@ router.get(
 // ══════════════════════════════════════════════════════════════════════════════
 // WARRANTY
 // ══════════════════════════════════════════════════════════════════════════════
-<<<<<<< HEAD
 router.get(
   "/warranty",
   adminStaff,
   requirePermission("warranty.view"),
   warrantyController.getClaims,
 );
-=======
-router.get("/warranty", adminOnly, warrantyController.getClaims);
-router.get("/warranty/:id/resolution-options", adminOnly, warrantyController.getResolutionOptions);
->>>>>>> e303bc81d7e73c9629773cf7ed159a340d6192a6
+router.get(
+  "/warranty/:id/resolution-options",
+  adminStaff,
+  warrantyController.getResolutionOptions,
+);
 
 router.patch(
   "/warranty/:id/decision",
