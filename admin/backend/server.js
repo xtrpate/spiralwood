@@ -4,11 +4,13 @@ require("dotenv").config();
 process.env.TZ = process.env.TZ || "Asia/Manila";
 
 const express = require("express");
+const http = require("http");
 const compression = require("compression");
 const helmet = require("helmet");
 const cors = require("cors");
 const rateLimit = require("express-rate-limit");
 const path = require("path");
+const { Server: SocketIOServer } = require("socket.io");
 const { clientIpContextMiddleware } = require("./utils/clientIp");
 
 const adminRoutes = require("./routes/admin");
@@ -19,6 +21,116 @@ const pool = require("./config/db");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+const httpServer = http.createServer(app);
+
+const io = new SocketIOServer(httpServer, {
+  cors: {
+    origin: [
+      process.env.FRONTEND_URL,
+      process.env.ADMIN_URL,
+      "http://localhost:3000",
+      "http://localhost:3001",
+      "http://localhost:3002",
+    ].filter(Boolean),
+    credentials: true,
+  },
+});
+
+app.set("io", io);
+
+const jwt = require("jsonwebtoken");
+
+io.use(async (socket, next) => {
+  try {
+    const token = socket.handshake.auth?.token;
+
+    if (!token) {
+      return next(new Error("Authentication required."));
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    const [[user]] = await pool.query(
+      `SELECT
+         id,
+         name,
+         email,
+         role,
+         authority_level,
+         staff_type,
+         is_active,
+         token_version,
+         must_change_password
+       FROM users
+       WHERE id = ?
+       LIMIT 1`,
+      [decoded.id],
+    );
+
+    if (!user) {
+      return next(new Error("Account not found."));
+    }
+
+    if (Number(user.is_active) !== 1) {
+      return next(new Error("Account is inactive."));
+    }
+
+    if (
+      Number(user.token_version || 0) !== Number(decoded.token_version || 0)
+    ) {
+      return next(new Error("Session has been revoked."));
+    }
+
+    socket.user = user;
+
+    next();
+  } catch (err) {
+    next(new Error("Invalid or expired authentication token."));
+  }
+});
+
+// io.on("connection", (socket) => {
+//   const userId = Number(socket.user?.id);
+
+//   if (Number.isInteger(userId) && userId > 0) {
+//     socket.join(`user:${userId}`);
+//   }
+
+//   console.log(
+//     `[SOCKET CONNECTED] user=${socket.user?.id} role=${socket.user?.role}`,
+//   );
+// });
+
+io.on("connection", (socket) => {
+  const userId = Number(socket.user?.id);
+  const role = String(socket.user?.role || "")
+    .trim()
+    .toLowerCase();
+
+  if (Number.isInteger(userId) && userId > 0) {
+    socket.join(`user:${userId}`);
+  }
+
+  if (role === "admin" || role === "staff") {
+    socket.join("staff-updates");
+  }
+  console.log(
+    `[SOCKET ROOM] user=${socket.user?.id} role=${role} rooms=${[
+      ...socket.rooms,
+    ].join(",")}`,
+  );
+
+  console.log(
+    `[SOCKET CONNECTED] user=${socket.user?.id} role=${socket.user?.role}`,
+  );
+
+  socket.on("disconnect", (reason) => {
+    console.log(
+      `[SOCKET DISCONNECTED] user=${socket.user?.id} reason=${reason}`,
+    );
+  });
+});
 
 app.set("trust proxy", 1);
 
@@ -206,7 +318,7 @@ cron.schedule("0 * * * *", () => {
 
 app.use(errorHandler);
 
-app.listen(PORT, () => {
+httpServer.listen(PORT, () => {
   console.log(`\n🚀  WISDOM Unified API running on http://localhost:${PORT}`);
   console.log(`    Environment: ${process.env.NODE_ENV || "development"}\n`);
   startCronJobs();

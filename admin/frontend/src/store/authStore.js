@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import api from "../services/api";
+import { connectSocket, disconnectSocket } from "../services/socket";
 
 const AUTH_KEYS = ["wisdom_token", "wisdom_user", "token", "user"];
 const POS_KEYS = ["pos_token", "pos_user"];
@@ -111,6 +112,10 @@ const savedToken = getStoredToken();
 
 syncAuthHeader(savedToken);
 
+if (savedUser?.role && savedToken) {
+  connectSocket(savedToken);
+}
+
 const useAuthStore = create((set, get) => ({
   user: savedUser,
   token: savedToken,
@@ -180,6 +185,10 @@ const useAuthStore = create((set, get) => ({
         token: data.token,
         permissions,
       });
+
+      if (normalizedUser?.role) {
+        connectSocket(data.token);
+      }
 
       // 3. Return the user (which includes their role!)
       return data.user;
@@ -354,6 +363,7 @@ const useAuthStore = create((set, get) => ({
   },
 
   logout: () => {
+    disconnectSocket();
     clearSession();
 
     set({

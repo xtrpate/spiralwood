@@ -18,6 +18,7 @@ const {
 const {
   sendCustomerMilestoneNotificationSafe,
 } = require("../../services/customerMilestoneNotificationService");
+const { emitOrderStatusUpdate } = require("../../utils/orderStatusSocket");
 
 const {
   resolveLifecycleByOrder,
@@ -94,10 +95,7 @@ const validateDeliverySignatureData = (value) => {
   const base64Body = match[1];
   const buffer = Buffer.from(base64Body, "base64");
 
-  if (
-    buffer.length < 24 ||
-    buffer.length > DELIVERY_SIGNATURE_MAX_BYTES
-  ) {
+  if (buffer.length < 24 || buffer.length > DELIVERY_SIGNATURE_MAX_BYTES) {
     return { error: "Recipient signature image size is invalid." };
   }
 
@@ -114,22 +112,14 @@ const validateDeliverySignatureData = (value) => {
   const width = buffer.readUInt32BE(16);
   const height = buffer.readUInt32BE(20);
 
-  if (
-    width < 100 ||
-    height < 40 ||
-    width > 1600 ||
-    height > 800
-  ) {
+  if (width < 100 || height < 40 || width > 1600 || height > 800) {
     return {
       error: "Recipient signature canvas dimensions are invalid.",
     };
   }
 
   const canonicalBase64 = buffer.toString("base64");
-  if (
-    canonicalBase64.replace(/=+$/, "") !==
-    base64Body.replace(/=+$/, "")
-  ) {
+  if (canonicalBase64.replace(/=+$/, "") !== base64Body.replace(/=+$/, "")) {
     return { error: "Recipient signature encoding is invalid." };
   }
 
@@ -155,15 +145,13 @@ const parseDeliveryAcknowledgementInput = (body = {}) => {
 
   if (!DELIVERY_RECIPIENT_TYPES.has(recipientType)) {
     return {
-      error:
-        "Recipient must be the customer or an authorized representative.",
+      error: "Recipient must be the customer or an authorized representative.",
     };
   }
 
   if (note && note.length > 500) {
     return {
-      error:
-        "Delivery acknowledgement note must be 500 characters or fewer.",
+      error: "Delivery acknowledgement note must be 500 characters or fewer.",
     };
   }
 
@@ -227,35 +215,40 @@ const getBlueprintDeliveryReadiness = async (conn, orderId) => {
   if (!blueprint) {
     return {
       ok: false,
-      message: "A linked blueprint is required before delivery can be scheduled.",
+      message:
+        "A linked blueprint is required before delivery can be scheduled.",
     };
   }
 
   if (!estimation) {
     return {
       ok: false,
-      message: "Create and approve the project estimate before scheduling delivery.",
+      message:
+        "Create and approve the project estimate before scheduling delivery.",
     };
   }
 
   if (normalizeText(estimation.status).toLowerCase() !== "approved") {
     return {
       ok: false,
-      message: "The approved project estimate is required before scheduling delivery.",
+      message:
+        "The approved project estimate is required before scheduling delivery.",
     };
   }
 
   if (!(estimationTotal > 0) || !(totalAmount > 0)) {
     return {
       ok: false,
-      message: "Finalize the approved quotation amount before scheduling delivery.",
+      message:
+        "Finalize the approved quotation amount before scheduling delivery.",
     };
   }
 
   if (Math.abs(totalAmount - estimationTotal) > 0.01) {
     return {
       ok: false,
-      message: "The order total must match the approved estimate before scheduling delivery.",
+      message:
+        "The order total must match the approved estimate before scheduling delivery.",
     };
   }
 
@@ -269,7 +262,8 @@ const getBlueprintDeliveryReadiness = async (conn, orderId) => {
   if (verifiedTotal < Math.max(0, requiredDownPayment - 0.01)) {
     return {
       ok: false,
-      message: "At least 30% verified down payment is required before blueprint delivery.",
+      message:
+        "At least 30% verified down payment is required before blueprint delivery.",
     };
   }
 
@@ -300,7 +294,8 @@ const getBlueprintDeliveryReadiness = async (conn, orderId) => {
   if (missingRoles.length) {
     return {
       ok: false,
-      message: "Create all required production tasks before scheduling delivery.",
+      message:
+        "Create all required production tasks before scheduling delivery.",
     };
   }
 
@@ -311,7 +306,8 @@ const getBlueprintDeliveryReadiness = async (conn, orderId) => {
   if (incompleteRoles.length) {
     return {
       ok: false,
-      message: "Finish all required production tasks before scheduling delivery.",
+      message:
+        "Finish all required production tasks before scheduling delivery.",
     };
   }
 
@@ -763,16 +759,12 @@ exports.getDeliveryAcknowledgement = async (req, res) => {
       captured_by_name: acknowledgement.captured_by_name || null,
     });
   } catch (err) {
-    console.error(
-      "GET /api/pos/deliveries/:id/acknowledgement error:",
-      err,
-    );
+    console.error("GET /api/pos/deliveries/:id/acknowledgement error:", err);
     res.status(500).json({
       message: "Failed to load delivery e-signature acknowledgement.",
     });
   }
 };
-
 
 exports.getDeliveryReceipt = async (req, res) => {
   const deliveryId = toNullableInt(req.params.id);
@@ -863,10 +855,7 @@ exports.getDeliveryReceipt = async (req, res) => {
         row.captured_by_name || snapshot.recorded_by_name || null,
     });
   } catch (err) {
-    console.error(
-      "GET /api/pos/deliveries/:id/receipt error:",
-      err,
-    );
+    console.error("GET /api/pos/deliveries/:id/receipt error:", err);
     return res.status(500).json({
       message: "Failed to load digital delivery receipt.",
     });
@@ -1028,9 +1017,7 @@ exports.createDelivery = async (req, res) => {
           "standard" &&
         normalizeText(lockedOrder.type || "").toLowerCase() === "online";
 
-      if (
-        ["cancelled", "delivered", "completed"].includes(lockedOrderStatus)
-      ) {
+      if (["cancelled", "delivered", "completed"].includes(lockedOrderStatus)) {
         await scheduleConn.rollback();
         return res.status(409).json({
           message: "This order can no longer be scheduled for delivery.",
@@ -1082,7 +1069,7 @@ exports.createDelivery = async (req, res) => {
       }
 
       [result] = await scheduleConn.query(
-      `
+        `
       INSERT INTO deliveries (
         order_id,
         driver_id,
@@ -1097,14 +1084,7 @@ exports.createDelivery = async (req, res) => {
       )
       VALUES (?, ?, ?, NOW(), ?, NULL, ?, 'scheduled', ?, NULL)
       `,
-        [
-          orderId,
-          driverId,
-          req.user.id,
-          scheduledDate,
-          address,
-          finalNotes,
-        ],
+        [orderId, driverId, req.user.id, scheduledDate, address, finalNotes],
       );
 
       if (lockedIsBlueprintOrder) {
@@ -1151,7 +1131,7 @@ exports.createDelivery = async (req, res) => {
       }
 
       [[delivery]] = await scheduleConn.query(
-      `
+        `
       SELECT
         d.id,
         d.order_id,
@@ -1332,7 +1312,10 @@ exports.rescheduleDelivery = async (req, res) => {
       [sourceDelivery.order_id],
     );
 
-    if (!latestAttempt || Number(latestAttempt.id) !== Number(sourceDeliveryId)) {
+    if (
+      !latestAttempt ||
+      Number(latestAttempt.id) !== Number(sourceDeliveryId)
+    ) {
       await conn.rollback();
       return res.status(409).json({
         message: "Only the latest failed delivery attempt can be rescheduled.",
@@ -1400,10 +1383,7 @@ exports.rescheduleDelivery = async (req, res) => {
       }
     }
 
-    const finalNotes = [
-      `Reschedule Reason: ${rescheduleReason}`,
-      notes,
-    ]
+    const finalNotes = [`Reschedule Reason: ${rescheduleReason}`, notes]
       .filter(Boolean)
       .join("\n");
 
@@ -1532,7 +1512,10 @@ exports.rescheduleDelivery = async (req, res) => {
       try {
         await conn.rollback();
       } catch (rollbackErr) {
-        console.error("POST /api/pos/deliveries/:id/reschedule rollback error:", rollbackErr);
+        console.error(
+          "POST /api/pos/deliveries/:id/reschedule rollback error:",
+          rollbackErr,
+        );
       }
     }
     console.error("POST /api/pos/deliveries/:id/reschedule error:", err);
@@ -1672,14 +1655,11 @@ exports.updateDeliveryStatus = async (req, res) => {
         // New Blueprint delivery schedules enter Shipping as soon as the
         // rider is assigned. Production remains accepted only for legacy
         // scheduled deliveries created before that synchronization rule.
-        if (
-          !["production", "shipping"].includes(linkedOrderStatus)
-        ) {
+        if (!["production", "shipping"].includes(linkedOrderStatus)) {
           await conn.rollback();
           cleanupFreshUpload(req.file);
           return res.status(409).json({
-            message:
-              "This Blueprint order is not ready to start delivery.",
+            message: "This Blueprint order is not ready to start delivery.",
           });
         }
 
@@ -1946,9 +1926,7 @@ exports.updateDeliveryStatus = async (req, res) => {
     }
 
     if (isCompletingDeliveryNow) {
-      const acknowledgementResult = parseDeliveryAcknowledgementInput(
-        req.body,
-      );
+      const acknowledgementResult = parseDeliveryAcknowledgementInput(req.body);
 
       if (acknowledgementResult.error) {
         await conn.rollback();
@@ -2213,9 +2191,7 @@ exports.updateDeliveryStatus = async (req, res) => {
         [req.user.id, deliveryId],
       );
 
-      voidedDeliveryAcknowledgementCount = Number(
-        voidResult.affectedRows || 0,
-      );
+      voidedDeliveryAcknowledgementCount = Number(voidResult.affectedRows || 0);
     }
 
     await conn.query(
@@ -2285,8 +2261,7 @@ exports.updateDeliveryStatus = async (req, res) => {
           .filter((part) => ["year", "month", "day"].includes(part.type))
           .map((part) => [part.type, part.value]),
       );
-      const deliveryReceiptNumber =
-        `DR-${receiptDateParts.year}-${String(deliveryAcknowledgementId).padStart(6, "0")}`;
+      const deliveryReceiptNumber = `DR-${receiptDateParts.year}-${String(deliveryAcknowledgementId).padStart(6, "0")}`;
 
       const [[receiptOrder]] = await conn.query(
         `SELECT
@@ -2362,19 +2337,14 @@ exports.updateDeliveryStatus = async (req, res) => {
         total_items: totalItemCount,
         received_by_name: deliveryAcknowledgementInput.receivedByName,
         recipient_type: deliveryAcknowledgementInput.recipientType,
-        acknowledgement_text:
-          deliveryAcknowledgementInput.acknowledgementText,
+        acknowledgement_text: deliveryAcknowledgementInput.acknowledgementText,
         note: deliveryAcknowledgementInput.note,
         delivered_at:
           deliveredDate instanceof Date
             ? deliveredDate.toISOString()
             : receiptIssuedAt.toISOString(),
-        proof_of_delivery_recorded: Boolean(
-          normalizeText(nextSignedReceipt),
-        ),
-        signature_present: Boolean(
-          deliveryAcknowledgementInput.signatureData,
-        ),
+        proof_of_delivery_recorded: Boolean(normalizeText(nextSignedReceipt)),
+        signature_present: Boolean(deliveryAcknowledgementInput.signatureData),
         recorded_by_name: req.user.name || null,
       };
 
@@ -2515,7 +2485,8 @@ exports.updateDeliveryStatus = async (req, res) => {
 
       if (
         actualOrderStatus !== nextOrderStatus ||
-        actualPaymentStatus !== normalizeText(nextOrderPaymentStatus).toLowerCase()
+        actualPaymentStatus !==
+          normalizeText(nextOrderPaymentStatus).toLowerCase()
       ) {
         await conn.rollback();
         cleanupFreshUpload(req.file);
@@ -2751,22 +2722,7 @@ exports.updateDeliveryStatus = async (req, res) => {
       [deliveryId],
     );
 
-    await conn.commit();
-
-    const externalMilestoneEvent = isFailureUpdate
-      ? "delivery_failed"
-      : isStartingTransitNow
-        ? "out_for_delivery"
-        : isCompletingDeliveryNow
-          ? "delivered"
-          : null;
-
-    if (externalMilestoneEvent) {
-      await sendCustomerMilestoneNotificationSafe(db, {
-        orderId: existing.order_id,
-        event: externalMilestoneEvent,
-      });
-    }
+    const externalMilestoneEvent = isFailureUpdate;
 
     // PHASE 5 -- dedicated audit for the blueprint rider cash collection,
     // written only after the transaction has actually committed. Kept
@@ -2845,8 +2801,7 @@ exports.updateDeliveryStatus = async (req, res) => {
           : null,
         collection_skipped_due_to_pending_payment:
           collectionSkippedForPendingPayment,
-        delivery_acknowledgement_created:
-          Boolean(deliveryAcknowledgementId),
+        delivery_acknowledgement_created: Boolean(deliveryAcknowledgementId),
         delivery_acknowledgement_voided_count:
           voidedDeliveryAcknowledgementCount,
       },
@@ -2867,8 +2822,7 @@ exports.updateDeliveryStatus = async (req, res) => {
       message =
         "Delivery marked as delivered with proof and recipient acknowledgement.";
     } else if (requestedStatus === "delivered") {
-      message =
-        "Delivery marked as delivered with recipient acknowledgement.";
+      message = "Delivery marked as delivered with recipient acknowledgement.";
     } else if (requestedStatus === "failed") {
       message = "Delivery marked as failed successfully";
     } else if (uploadedReceiptPath) {
@@ -2879,6 +2833,19 @@ exports.updateDeliveryStatus = async (req, res) => {
 
     if (updated?.signed_receipt) {
       updated.signed_receipt = signUploadPath(updated.signed_receipt);
+    }
+
+    await conn.commit();
+
+    if (nextOrderStatus) {
+      const io = req.app.get("io");
+
+      emitOrderStatusUpdate(io, {
+        orderId: existing.order_id,
+        orderNumber: order.order_number,
+        status: nextOrderStatus,
+        customerId: order.customer_id,
+      });
     }
 
     res.json({
@@ -2962,15 +2929,21 @@ exports.getRiderHistory = async (req, res) => {
     const toDate = parseRiderHistoryDate(req.query.to);
 
     if (!["all", "delivered", "failed"].includes(status)) {
-      return res.status(400).json({ message: "Invalid delivery history status filter." });
+      return res
+        .status(400)
+        .json({ message: "Invalid delivery history status filter." });
     }
 
     if (fromDate === null || toDate === null) {
-      return res.status(400).json({ message: "Delivery history dates must use YYYY-MM-DD." });
+      return res
+        .status(400)
+        .json({ message: "Delivery history dates must use YYYY-MM-DD." });
     }
 
     if (fromDate && toDate && fromDate > toDate) {
-      return res.status(400).json({ message: "From date cannot be later than To date." });
+      return res
+        .status(400)
+        .json({ message: "From date cannot be later than To date." });
     }
 
     const successfulHistoryCondition = `(
@@ -3424,7 +3397,9 @@ exports.getDeliveryReport = async (req, res) => {
     });
   } catch (err) {
     console.error("GET /api/pos/deliveries/report error:", err);
-    return res.status(500).json({ message: "Failed to load the Delivery Report." });
+    return res
+      .status(500)
+      .json({ message: "Failed to load the Delivery Report." });
   }
 };
 
@@ -3556,6 +3531,8 @@ exports.getDeliveryReportDetail = async (req, res) => {
     return res.json({ ...record, items });
   } catch (err) {
     console.error("GET /api/pos/deliveries/report/:id error:", err);
-    return res.status(500).json({ message: "Failed to load the delivery record." });
+    return res
+      .status(500)
+      .json({ message: "Failed to load the delivery record." });
   }
 };

@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
+import { getSocket, subscribeSocketReady } from "../../services/socket";
 import toast from "react-hot-toast";
 import AdminSubmittedDesignPreview from "./AdminSubmittedDesignPreview";
 import OrderDiscussionPanel from "./OrderDiscussionPanel";
@@ -495,7 +496,10 @@ export default function OrderDetailPage() {
       setNewStatus(data.status);
     } catch (err) {
       if (silent) {
-        console.error("Background order refresh failed:", err?.response?.data || err);
+        console.error(
+          "Background order refresh failed:",
+          err?.response?.data || err,
+        );
       } else {
         toast.error(
           err?.response?.data?.message || "Failed to load order details.",
@@ -509,6 +513,45 @@ export default function OrderDetailPage() {
   useEffect(() => {
     load();
   }, [id]); // eslint-disable-line
+
+  useEffect(() => {
+    const handleOrderStatusUpdated = (payload) => {
+      const updatedOrderId = Number(payload?.order_id);
+
+      if (!Number.isInteger(updatedOrderId) || updatedOrderId !== Number(id)) {
+        return;
+      }
+
+      load({ silent: true });
+    };
+
+    const attachListener = (socket) => {
+      if (!socket) return;
+
+      socket.off("order:status_updated", handleOrderStatusUpdated);
+      socket.on("order:status_updated", handleOrderStatusUpdated);
+    };
+
+    const socket = getSocket();
+
+    if (socket) {
+      attachListener(socket);
+    }
+
+    const unsubscribeReady = subscribeSocketReady((readySocket) => {
+      attachListener(readySocket);
+    });
+
+    return () => {
+      const currentSocket = getSocket();
+
+      if (currentSocket) {
+        currentSocket.off("order:status_updated", handleOrderStatusUpdated);
+      }
+
+      unsubscribeReady();
+    };
+  }, [id]);
 
   // Refresh canonical order/delivery state when Admin returns to this tab.
   // A short de-duplication window prevents focus + visibilitychange from
@@ -2797,7 +2840,9 @@ export default function OrderDetailPage() {
                               border: `1px solid ${taskTone.border}`,
                             }}
                           >
-                            {taskStatus === "blocked" ? "On Hold" : titleCase(task.status)}
+                            {taskStatus === "blocked"
+                              ? "On Hold"
+                              : titleCase(task.status)}
                           </span>
                         </div>
 
@@ -2908,7 +2953,8 @@ export default function OrderDetailPage() {
                     "Custom Furniture"}
                 </h3>
                 <p style={modalSubtitle}>
-                  Review the exact submitted design, movable parts, and measurements.
+                  Review the exact submitted design, movable parts, and
+                  measurements.
                 </p>
               </div>
             </div>
@@ -3365,10 +3411,7 @@ function Section({ title, children }) {
   );
 }
 
-function AdminDeliveryAcknowledgement({
-  deliveryId,
-  deliveryStatus,
-}) {
+function AdminDeliveryAcknowledgement({ deliveryId, deliveryStatus }) {
   const [state, setState] = useState({
     loading: false,
     missing: false,
@@ -3465,10 +3508,7 @@ function AdminDeliveryAcknowledgement({
 
   return (
     <>
-      <InfoRow
-        label="Received By"
-        value={state.data.received_by_name || "—"}
-      />
+      <InfoRow label="Received By" value={state.data.received_by_name || "—"} />
       <InfoRow
         label="Recipient"
         value={prettify(state.data.recipient_type || "") || "—"}
@@ -3563,8 +3603,7 @@ function AdminDeliveryAcknowledgement({
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns:
-                  "repeat(auto-fit, minmax(160px, 1fr))",
+                gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
                 gap: 10,
               }}
             >

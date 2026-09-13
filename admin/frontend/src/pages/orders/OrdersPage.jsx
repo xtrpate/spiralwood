@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
+import { getSocket, subscribeSocketReady } from "../../services/socket";
 import toast from "react-hot-toast";
 import { Package2, Search } from "lucide-react";
 import CustomerBlueprintViewer from "../customer/CustomerBlueprintViewer";
@@ -189,7 +190,10 @@ const OrderThumbnail = ({ src, alt }) => {
 
   if (!resolved || failed) {
     return (
-      <div className="orders-product-thumb orders-product-thumb-empty" aria-hidden="true">
+      <div
+        className="orders-product-thumb orders-product-thumb-empty"
+        aria-hidden="true"
+      >
         <Package2 size={18} strokeWidth={1.65} />
       </div>
     );
@@ -284,17 +288,13 @@ const OrderBlueprintPreview = ({
   const [resolvedBlueprint, setResolvedBlueprint] = useState(
     () =>
       blueprint ||
-      (loadOrderDraft
-        ? readOrderDraftPreviewCache(orderId)
-        : null),
+      (loadOrderDraft ? readOrderDraftPreviewCache(orderId) : null),
   );
 
   useEffect(() => {
     setResolvedBlueprint(
       blueprint ||
-        (loadOrderDraft
-          ? readOrderDraftPreviewCache(orderId)
-          : null),
+        (loadOrderDraft ? readOrderDraftPreviewCache(orderId) : null),
     );
   }, [blueprint, loadOrderDraft, orderId]);
 
@@ -349,7 +349,10 @@ const CustomerAvatar = ({ src, name }) => {
 
   if (!resolved || failed) {
     return (
-      <div className="orders-customer-avatar orders-customer-avatar-fallback" aria-hidden="true">
+      <div
+        className="orders-customer-avatar orders-customer-avatar-fallback"
+        aria-hidden="true"
+      >
         {getInitials(name)}
       </div>
     );
@@ -385,29 +388,74 @@ export default function OrdersPage() {
     page: 1,
   });
 
-  const load = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) setLoading(true);
-    try {
-      const { data } = await api.get("/orders", {
-        params: { ...filters, limit: 20 },
-      });
+  const load = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!silent) setLoading(true);
+      try {
+        const { data } = await api.get("/orders", {
+          params: { ...filters, limit: 20 },
+        });
 
-      setOrders(Array.isArray(data?.orders) ? data.orders : []);
-      setTotal(Number(data?.total || 0));
-      setSummary(data?.summary || null);
-    } catch (err) {
-      if (silent) {
-        console.error("Background orders refresh failed:", err?.response?.data || err);
-      } else {
-        toast.error(err?.response?.data?.message || "Failed to load orders.");
+        setOrders(Array.isArray(data?.orders) ? data.orders : []);
+        setTotal(Number(data?.total || 0));
+        setSummary(data?.summary || null);
+      } catch (err) {
+        if (silent) {
+          console.error(
+            "Background orders refresh failed:",
+            err?.response?.data || err,
+          );
+        } else {
+          toast.error(err?.response?.data?.message || "Failed to load orders.");
+        }
+      } finally {
+        if (!silent) setLoading(false);
       }
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, [filters]);
+    },
+    [filters],
+  );
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  useEffect(() => {
+    const handleOrderStatusUpdated = (payload) => {
+      const orderId = Number(payload?.order_id);
+
+      if (!Number.isInteger(orderId)) {
+        return;
+      }
+
+      load({ silent: true });
+    };
+
+    const attachListener = (socket) => {
+      if (!socket) return;
+
+      socket.off("order:status_updated", handleOrderStatusUpdated);
+      socket.on("order:status_updated", handleOrderStatusUpdated);
+    };
+
+    const socket = getSocket();
+
+    if (socket) {
+      attachListener(socket);
+    }
+
+    const unsubscribeReady = subscribeSocketReady((readySocket) => {
+      attachListener(readySocket);
+    });
+
+    return () => {
+      const currentSocket = getSocket();
+
+      if (currentSocket) {
+        currentSocket.off("order:status_updated", handleOrderStatusUpdated);
+      }
+
+      unsubscribeReady();
+    };
   }, [load]);
 
   // Refresh canonical statuses when Admin returns to the Orders tab.
@@ -538,7 +586,9 @@ export default function OrdersPage() {
           <label className="orders-filter-field orders-filter-search">
             <span className="orders-filter-label">Search Orders</span>
             <div className="orders-search-control">
-              <span className="orders-search-icon" aria-hidden="true"><Search size={16} strokeWidth={1.8} /></span>
+              <span className="orders-search-icon" aria-hidden="true">
+                <Search size={16} strokeWidth={1.8} />
+              </span>
               <input
                 placeholder="Search by order ID, customer, phone, or email"
                 value={filters.search}
@@ -549,7 +599,10 @@ export default function OrdersPage() {
 
           <label className="orders-filter-field">
             <span className="orders-filter-label">Status</span>
-            <select value={filters.status} onChange={(e) => setF("status", e.target.value)}>
+            <select
+              value={filters.status}
+              onChange={(e) => setF("status", e.target.value)}
+            >
               <option value="">All Statuses</option>
               {STATUS_ORDER.map((statusKey) => (
                 <option key={statusKey} value={statusKey}>
@@ -561,7 +614,10 @@ export default function OrdersPage() {
 
           <label className="orders-filter-field">
             <span className="orders-filter-label">Channel</span>
-            <select value={filters.channel} onChange={(e) => setF("channel", e.target.value)}>
+            <select
+              value={filters.channel}
+              onChange={(e) => setF("channel", e.target.value)}
+            >
               <option value="">All Channels</option>
               <option value="online">Online</option>
               <option value="walkin">Walk-in</option>
@@ -570,7 +626,10 @@ export default function OrdersPage() {
 
           <label className="orders-filter-field">
             <span className="orders-filter-label">Type</span>
-            <select value={filters.orderType} onChange={(e) => setF("orderType", e.target.value)}>
+            <select
+              value={filters.orderType}
+              onChange={(e) => setF("orderType", e.target.value)}
+            >
               <option value="">All Types</option>
               <option value="standard">Standard</option>
               <option value="blueprint">Blueprint</option>
@@ -579,16 +638,28 @@ export default function OrdersPage() {
 
           <label className="orders-filter-field orders-filter-date">
             <span className="orders-filter-label">From</span>
-            <input type="date" value={filters.from} onChange={(e) => setF("from", e.target.value)} />
+            <input
+              type="date"
+              value={filters.from}
+              onChange={(e) => setF("from", e.target.value)}
+            />
           </label>
 
           <label className="orders-filter-field orders-filter-date">
             <span className="orders-filter-label">To</span>
-            <input type="date" value={filters.to} onChange={(e) => setF("to", e.target.value)} />
+            <input
+              type="date"
+              value={filters.to}
+              onChange={(e) => setF("to", e.target.value)}
+            />
           </label>
 
           {activeFilterCount > 0 && (
-            <button type="button" onClick={resetFilters} className="orders-filter-reset">
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="orders-filter-reset"
+            >
               Reset
             </button>
           )}
@@ -601,7 +672,9 @@ export default function OrdersPage() {
             <h2>All Orders</h2>
             <p>Review order details, payment status, and required actions.</p>
           </div>
-          <div className="orders-result-count">{total.toLocaleString()} orders</div>
+          <div className="orders-result-count">
+            {total.toLocaleString()} orders
+          </div>
         </div>
 
         <div className="orders-table-scroll">
@@ -621,7 +694,9 @@ export default function OrdersPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="orders-empty-cell">Loading orders...</td>
+                  <td colSpan={7} className="orders-empty-cell">
+                    Loading orders...
+                  </td>
                 </tr>
               ) : orders.length === 0 ? (
                 <tr>
@@ -629,7 +704,8 @@ export default function OrdersPage() {
                     <div className="orders-empty-state">
                       <div className="orders-empty-title">No orders found</div>
                       <div className="orders-empty-text">
-                        Try changing the search or filters to find another order.
+                        Try changing the search or filters to find another
+                        order.
                       </div>
                     </div>
                   </td>
@@ -639,17 +715,24 @@ export default function OrdersPage() {
                   const normalizedStatus = normalize(order.status);
                   const statusTone =
                     STATUS_STYLE[normalizedStatus] || STATUS_STYLE.pending;
-                  const paymentTone =
-                    PAYMENT_STYLE[
-                      normalize(order.payment_status_display || order.payment_status)
-                    ] || { label: "Unknown" };
-                  const channelMeta = getChannelMeta(order.channel || order.type);
+                  const paymentTone = PAYMENT_STYLE[
+                    normalize(
+                      order.payment_status_display || order.payment_status,
+                    )
+                  ] || { label: "Unknown" };
+                  const channelMeta = getChannelMeta(
+                    order.channel || order.type,
+                  );
                   const customRequest = isBlueprintOrder(order);
                   const quoteNeeded = needsCustomRequestReview(order);
                   const actionLabel =
-                    quoteNeeded || normalizedStatus === "pending" ? "Review" : "Details";
+                    quoteNeeded || normalizedStatus === "pending"
+                      ? "Review"
+                      : "Details";
                   const customerName =
-                    order.customer_name || order.walkin_customer_name || "Walk-in customer";
+                    order.customer_name ||
+                    order.walkin_customer_name ||
+                    "Walk-in customer";
                   const customerContact =
                     order.customer_phone ||
                     order.walkin_customer_phone ||
@@ -734,7 +817,9 @@ export default function OrdersPage() {
                             />
                           )}
                           <div className="orders-product-copy">
-                            <div className="orders-product-name">{itemName}</div>
+                            <div className="orders-product-name">
+                              {itemName}
+                            </div>
                             {itemCount > 0 && (
                               <div className="orders-product-meta">
                                 {itemCount} {itemCount === 1 ? "item" : "items"}
@@ -751,29 +836,38 @@ export default function OrdersPage() {
                             name={customerName}
                           />
                           <div className="orders-customer-copy">
-                            <div className="orders-customer-name">{customerName}</div>
-                            <div className="orders-customer-contact">{customerContact}</div>
+                            <div className="orders-customer-name">
+                              {customerName}
+                            </div>
+                            <div className="orders-customer-contact">
+                              {customerContact}
+                            </div>
                           </div>
                         </div>
                       </td>
 
                       <td>
                         <div className="orders-order-number">
-                          {order.order_number || `#${String(order.id).padStart(5, "0")}`}
+                          {order.order_number ||
+                            `#${String(order.id).padStart(5, "0")}`}
                         </div>
                         <div className="orders-order-meta">
-                          {formatDate(order.created_at)} · {channelMeta.label} · {customRequest ? "Blueprint" : "Standard"}
+                          {formatDate(order.created_at)} · {channelMeta.label} ·{" "}
+                          {customRequest ? "Blueprint" : "Standard"}
                         </div>
                       </td>
 
                       <td className="orders-align-right">
-                        <div className="orders-amount">{formatMoney(order.total_amount)}</div>
+                        <div className="orders-amount">
+                          {formatMoney(order.total_amount)}
+                        </div>
                       </td>
 
                       <td>
                         <span
                           className={`orders-status orders-status-${getPaymentColor(
-                            order.payment_status_display || order.payment_status,
+                            order.payment_status_display ||
+                              order.payment_status,
                           )}`}
                         >
                           {paymentTone.label || "Unknown"}

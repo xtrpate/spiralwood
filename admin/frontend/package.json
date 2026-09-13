@@ -30,6 +30,7 @@
     "react-router-dom": "^6.24.0",
     "react-scripts": "^5.0.1",
     "recharts": "^3.8.1",
+    "socket.io-client": "^4.8.3",
     "three": "^0.165.0",
     "webpack-dev-server": "^5.2.3",
     "xlsx-js-style": "1.2.0",

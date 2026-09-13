@@ -32,6 +32,7 @@ const {
   createNotification,
   createNotificationSafe,
 } = require("../../utils/notificationHelper");
+const { emitOrderStatusUpdate } = require("../../utils/orderStatusSocket");
 const {
   isSettingEnabled,
   getGlobalEmailFooter,
@@ -1051,11 +1052,7 @@ exports.getOne = async (req, res) => {
   }
 };
 
-async function restoreStandardOrderStock(
-  conn,
-  orderId,
-  actorUserId = null,
-) {
+async function restoreStandardOrderStock(conn, orderId, actorUserId = null) {
   const [[order]] = await conn.query(
     `SELECT order_number, order_type, type
      FROM orders
@@ -1094,7 +1091,9 @@ async function restoreStandardOrderStock(
         [item.quantity, item.product_id],
       );
       if (displayRestore.affectedRows !== 1) {
-        throw new Error("Sales / Display stock could not be restored for the cancelled walk-in order.");
+        throw new Error(
+          "Sales / Display stock could not be restored for the cancelled walk-in order.",
+        );
       }
     }
 
@@ -1651,6 +1650,15 @@ exports.updateStatus = async (req, res) => {
 
     await conn.commit();
 
+    const io = req.app.get("io");
+
+    emitOrderStatusUpdate(io, {
+      orderId: order.id,
+      orderNumber: order.order_number,
+      status: nextStatus,
+      customerId: order.customer_id,
+    });
+
     // 👉 C. Automated Customer Triggers (Toggles)
     if (order.customer_id) {
       try {
@@ -1799,11 +1807,15 @@ exports.accept = async (req, res) => {
         },
       };
 
+      let order = null;
+
       try {
-        const [[order]] = await pool.query(
+        const [[fetchedOrder]] = await pool.query(
           `SELECT id, customer_id, order_number FROM orders WHERE id = ? LIMIT 1`,
           [orderId],
         );
+        order = fetchedOrder;
+
         if (order?.customer_id) {
           await createNotificationSafe(pool, {
             userId: order.customer_id,
@@ -1821,6 +1833,15 @@ exports.accept = async (req, res) => {
           notificationErr.message || notificationErr,
         );
       }
+
+      const io = req.app.get("io");
+
+      emitOrderStatusUpdate(io, {
+        orderId: order.id,
+        orderNumber: order.order_number,
+        status: "confirmed",
+        customerId: order.customer_id,
+      });
     }
 
     res.json({ message: "Order accepted." });
@@ -1851,11 +1872,15 @@ exports.decline = async (req, res) => {
     await conn.commit();
 
     if (declineResult.affectedRows === 1) {
+      let order = null;
+
       try {
-        const [[order]] = await pool.query(
+        const [[fetchedOrder]] = await pool.query(
           `SELECT id, customer_id, order_number FROM orders WHERE id = ? LIMIT 1`,
           [orderId],
         );
+        order = fetchedOrder;
+
         if (order?.customer_id) {
           const declineReason = String(reason || "").trim();
           await createNotificationSafe(pool, {
@@ -1876,6 +1901,15 @@ exports.decline = async (req, res) => {
           notificationErr.message || notificationErr,
         );
       }
+
+      const io = req.app.get("io");
+
+      emitOrderStatusUpdate(io, {
+        orderId: order.id,
+        orderNumber: order.order_number,
+        status: "cancelled",
+        customerId: order.customer_id,
+      });
 
       req.auditRecord = {
         id: orderId,
@@ -3097,7 +3131,8 @@ exports.reassignStaff = async (req, res) => {
     };
 
     const responseBody = {
-      message: eligibleRows.length + " production step(s) reassigned successfully.",
+      message:
+        eligibleRows.length + " production step(s) reassigned successfully.",
       transferred_task_ids: eligibleRows.map((row) => row.id),
       preserved_completed_task_ids: completedTasksPreserved.map(
         (task) => task.task_id,
@@ -3195,7 +3230,8 @@ exports.updateTaskStatus = async (req, res) => {
     if (status === "blocked") {
       if (!holdReason) {
         return res.status(400).json({
-          message: "A reason is required before putting production work on hold.",
+          message:
+            "A reason is required before putting production work on hold.",
         });
       }
       if (holdReason.length > 500) {

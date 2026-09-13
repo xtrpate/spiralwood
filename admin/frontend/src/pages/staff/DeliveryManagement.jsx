@@ -465,9 +465,7 @@ export default function DeliveryManagement() {
         return;
       }
 
-      if (
-        !["customer", "authorized_representative"].includes(recipientType)
-      ) {
+      if (!["customer", "authorized_representative"].includes(recipientType)) {
         setError(
           "Select whether the recipient is the customer or an authorized representative.",
         );
@@ -601,7 +599,6 @@ export default function DeliveryManagement() {
       const { data } = await api.patch(
         `/pos/deliveries/${delivery.id}/status`,
         fd,
-        { headers: { "Content-Type": "multipart/form-data" } },
       );
 
       setReceiptFiles((prev) => ({
@@ -815,14 +812,12 @@ export default function DeliveryManagement() {
             const hasReusablePendingDeliveryCollection =
               isCorrectedDelivery &&
               pendingPaymentCount === 1 &&
-              Number(
-                delivery.delivery_has_reusable_pending_collection || 0,
-              ) === 1;
+              Number(delivery.delivery_has_reusable_pending_collection || 0) ===
+                1;
             const isCorrectedBlueprintWithReusablePendingCollection =
               isBlueprintDelivery && hasReusablePendingDeliveryCollection;
             const isCorrectedStandardCodWithReusablePendingCollection =
-              isStandardCodDelivery &&
-              hasReusablePendingDeliveryCollection;
+              isStandardCodDelivery && hasReusablePendingDeliveryCollection;
 
             const blueprintPendingCollectionBlocksCompletion =
               blueprintHasPendingCollection &&
@@ -1419,19 +1414,19 @@ export default function DeliveryManagement() {
                             {hasReceipt && delivery.signed_receipt ? (
                               <>
                                 <a
-                                href={buildAssetUrl(delivery.signed_receipt)}
-                                target="_blank"
-                                rel="noreferrer"
-                                style={viewLink}
-                              >
-                                View Current Proof
-                              </a>
-                              <DownloadFileButton
-                                url={buildAssetUrl(delivery.signed_receipt)}
-                                filename={`Proof_of_Delivery_${delivery.order_number || delivery.id}`}
-                                label="Download Proof"
-                                className="rider-btn rider-btn-secondary"
-                              />
+                                  href={buildAssetUrl(delivery.signed_receipt)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={viewLink}
+                                >
+                                  View Current Proof
+                                </a>
+                                <DownloadFileButton
+                                  url={buildAssetUrl(delivery.signed_receipt)}
+                                  filename={`Proof_of_Delivery_${delivery.order_number || delivery.id}`}
+                                  label="Download Proof"
+                                  className="rider-btn rider-btn-secondary"
+                                />
                               </>
                             ) : null}
                           </div>
@@ -1561,7 +1556,9 @@ export default function DeliveryManagement() {
                           </div>
 
                           <div style={{ marginTop: "14px" }}>
-                            <label style={infoLabel}>Recipient Signature (optional)</label>
+                            <label style={infoLabel}>
+                              Recipient Signature (optional)
+                            </label>
                             <DeliverySignaturePad
                               value={acknowledgementForm.signature_data}
                               disabled={savingId === delivery.id}
@@ -1700,19 +1697,19 @@ export default function DeliveryManagement() {
                           {hasReceipt && delivery.signed_receipt ? (
                             <>
                               <a
-                              href={buildAssetUrl(delivery.signed_receipt)}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={viewLink}
-                            >
-                              View Proof of Delivery
-                            </a>
-                            <DownloadFileButton
-                              url={buildAssetUrl(delivery.signed_receipt)}
-                              filename={`Proof_of_Delivery_${delivery.order_number || delivery.id}`}
-                              label="Download Proof"
-                              className="rider-btn rider-btn-secondary"
-                            />
+                                href={buildAssetUrl(delivery.signed_receipt)}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={viewLink}
+                              >
+                                View Proof of Delivery
+                              </a>
+                              <DownloadFileButton
+                                url={buildAssetUrl(delivery.signed_receipt)}
+                                filename={`Proof_of_Delivery_${delivery.order_number || delivery.id}`}
+                                label="Download Proof"
+                                className="rider-btn rider-btn-secondary"
+                              />
                             </>
                           ) : (
                             <div style={helperText}>
@@ -1721,7 +1718,8 @@ export default function DeliveryManagement() {
                           )}
 
                           {delivery.delivery_acknowledgement_id ? (
-                            Number(delivery.delivery_has_signature || 0) === 1 ? (
+                            Number(delivery.delivery_has_signature || 0) ===
+                            1 ? (
                               <div style={{ marginTop: 10 }}>
                                 <button
                                   type="button"
@@ -1940,9 +1938,7 @@ export default function DeliveryManagement() {
                   <div style={summaryItem}>
                     <span style={summaryLabel}>Signed On</span>
                     <span style={summaryValue}>
-                      {formatDateTime(
-                        signatureViewer.data.acknowledged_at,
-                      )}
+                      {formatDateTime(signatureViewer.data.acknowledged_at)}
                     </span>
                   </div>
                 </div>
@@ -1975,9 +1971,7 @@ export default function DeliveryManagement() {
                 {signatureViewer.data.note ? (
                   <div style={{ ...notesBox, marginTop: 12 }}>
                     <div style={notesLabel}>Delivery Note</div>
-                    <div style={notesText}>
-                      {signatureViewer.data.note}
-                    </div>
+                    <div style={notesText}>{signatureViewer.data.note}</div>
                   </div>
                 ) : null}
               </>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
+import { getSocket, subscribeSocketReady } from "../../services/socket";
 import "./orders.css";
 import { PackageSearch, ShoppingBag } from "lucide-react";
 import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
@@ -264,6 +265,56 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
         setOrder(null);
       })
       .finally(() => setLoading(false));
+  }, [orderId]);
+
+  useEffect(() => {
+    const handleOrderStatusUpdated = (payload) => {
+      console.log("[SOCKET RECEIVED] order:status_updated", payload);
+      const updatedOrderId = Number(payload?.order_id);
+
+      if (
+        !Number.isInteger(updatedOrderId) ||
+        updatedOrderId !== Number(orderId)
+      ) {
+        return;
+      }
+
+      setOrder((currentOrder) =>
+        currentOrder
+          ? {
+              ...currentOrder,
+              status: payload.status,
+            }
+          : currentOrder,
+      );
+    };
+
+    const attachListener = (socket) => {
+      if (!socket) return;
+
+      socket.off("order:status_updated", handleOrderStatusUpdated);
+      socket.on("order:status_updated", handleOrderStatusUpdated);
+    };
+
+    const socket = getSocket();
+
+    if (socket) {
+      attachListener(socket);
+    }
+
+    const unsubscribeReady = subscribeSocketReady((readySocket) => {
+      attachListener(readySocket);
+    });
+
+    return () => {
+      const currentSocket = getSocket();
+
+      if (currentSocket) {
+        currentSocket.off("order:status_updated", handleOrderStatusUpdated);
+      }
+
+      unsubscribeReady();
+    };
   }, [orderId]);
 
   const canPayNow =
@@ -597,9 +648,7 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
                         style={{ marginBottom: 12 }}
                       >
                         <span>Delivery Receipt</span>
-                        <strong>
-                          {order.delivery_receipt.receipt_number}
-                        </strong>
+                        <strong>{order.delivery_receipt.receipt_number}</strong>
                       </div>
 
                       <DeliveryReceiptButton
@@ -611,7 +660,9 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
                       {order.delivery_receipt?.proof_url ? (
                         <div style={{ marginTop: 8 }}>
                           <a
-                            href={buildAssetUrl(order.delivery_receipt.proof_url)}
+                            href={buildAssetUrl(
+                              order.delivery_receipt.proof_url,
+                            )}
                             target="_blank"
                             rel="noreferrer"
                             className="order-inline-btn om-action-btn"
@@ -621,7 +672,9 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
                           </a>
                           <div style={{ marginTop: 8 }}>
                             <DownloadFileButton
-                              url={buildAssetUrl(order.delivery_receipt.proof_url)}
+                              url={buildAssetUrl(
+                                order.delivery_receipt.proof_url,
+                              )}
                               filename={`Proof_of_Delivery_${order.order_number || order.id}`}
                               label="Download Proof of Delivery"
                               className="order-inline-btn om-action-btn"
@@ -716,6 +769,55 @@ export default function OrdersPage() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [focusedOrderId, setFocusedOrderId] = useState(null);
+
+  useEffect(() => {
+    const handleOrderStatusUpdated = (payload) => {
+      console.log("[SOCKET RECEIVED] order:status_updated", payload);
+      const orderId = Number(payload?.order_id);
+
+      if (!Number.isInteger(orderId)) {
+        return;
+      }
+
+      setOrders((currentOrders) =>
+        currentOrders.map((order) =>
+          Number(order?.id) === orderId
+            ? {
+                ...order,
+                status: payload.status,
+              }
+            : order,
+        ),
+      );
+    };
+
+    const attachListener = (socket) => {
+      if (!socket) return;
+
+      socket.off("order:status_updated", handleOrderStatusUpdated);
+      socket.on("order:status_updated", handleOrderStatusUpdated);
+    };
+
+    const socket = getSocket();
+
+    if (socket) {
+      attachListener(socket);
+    }
+
+    const unsubscribeReady = subscribeSocketReady((readySocket) => {
+      attachListener(readySocket);
+    });
+
+    return () => {
+      const currentSocket = getSocket();
+
+      if (currentSocket) {
+        currentSocket.off("order:status_updated", handleOrderStatusUpdated);
+      }
+
+      unsubscribeReady();
+    };
+  }, []);
 
   const fetchOrders = () => {
     setLoading(true);
