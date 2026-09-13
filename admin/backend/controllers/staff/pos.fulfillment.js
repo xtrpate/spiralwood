@@ -20,6 +20,38 @@ const {
 } = require("../../services/customerMilestoneNotificationService");
 const { emitOrderStatusUpdate } = require("../../utils/orderStatusSocket");
 
+const emitDeliveryAssigned = ({
+  io,
+  deliveryId,
+  orderId,
+  orderNumber,
+  driverId,
+  scheduledDate,
+  status = "scheduled",
+}) => {
+  if (!io || !driverId) return;
+
+  try {
+    const payload = {
+      delivery_id: Number(deliveryId),
+      order_id: Number(orderId),
+      order_number: orderNumber || `#${orderId}`,
+      driver_id: Number(driverId),
+      status,
+      scheduled_date: scheduledDate || null,
+    };
+
+    io.to(`user:${driverId}`).emit("delivery:assigned", payload);
+
+    console.log("[SOCKET EMIT] Delivery assigned:", payload);
+  } catch (socketErr) {
+    console.error(
+      "[DELIVERY ASSIGNMENT SOCKET EMIT]",
+      socketErr?.message || socketErr,
+    );
+  }
+};
+
 const {
   resolveLifecycleByOrder,
 } = require("../../services/blueprintLifecycleService");
@@ -1168,6 +1200,18 @@ exports.createDelivery = async (req, res) => {
       );
 
       await scheduleConn.commit();
+
+      const io = req.app.get("io");
+
+      emitDeliveryAssigned({
+        io,
+        deliveryId: delivery?.id ?? result.insertId,
+        orderId,
+        orderNumber: order.order_number,
+        driverId,
+        scheduledDate,
+        status: delivery?.status ?? "scheduled",
+      });
     } catch (scheduleErr) {
       if (scheduleConn) {
         try {
@@ -1448,6 +1492,18 @@ exports.rescheduleDelivery = async (req, res) => {
     );
 
     await conn.commit();
+
+    const io = req.app.get("io");
+
+    emitDeliveryAssigned({
+      io,
+      deliveryId: delivery?.id ?? insertResult.insertId,
+      orderId: sourceDelivery.order_id,
+      orderNumber: order.order_number,
+      driverId,
+      scheduledDate,
+      status: delivery?.status ?? "scheduled",
+    });
 
     req.auditRecord = {
       id: insertResult.insertId,

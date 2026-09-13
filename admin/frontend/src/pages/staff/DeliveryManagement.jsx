@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Navigation, UploadCloud, FileText } from "lucide-react";
 import api, { buildAssetUrl } from "../../services/api";
+import { getSocket, subscribeSocketReady } from "../../services/socket";
 import useAuthStore from "../../store/authStore";
 import DeliverySignaturePad from "./DeliverySignaturePad";
 import { DeliveryReceiptButton } from "../../components/delivery/DeliveryReceiptModal";
@@ -131,10 +132,16 @@ export default function DeliveryManagement() {
   const [focusedDeliveryId, setFocusedDeliveryId] = useState(null);
   const [expandedDeliveryId, setExpandedDeliveryId] = useState(null);
 
-  const loadDeliveries = useCallback(async () => {
-    setLoading(true);
+  const loadDeliveries = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+    }
+
     setError("");
-    setSuccess("");
+
+    if (!silent) {
+      setSuccess("");
+    }
 
     try {
       const res = await api.get("/pos/deliveries");
@@ -142,21 +149,91 @@ export default function DeliveryManagement() {
       setDeliveries(list);
     } catch (err) {
       console.error("Delivery load error:", err?.response?.data || err);
-      setError(
-        err?.response?.data?.message ||
-          `Failed to load deliveries.${
-            err?.response?.status ? ` (HTTP ${err.response.status})` : ""
-          }`,
-      );
-      setDeliveries([]);
+
+      if (!silent) {
+        setError(
+          err?.response?.data?.message ||
+            `Failed to load deliveries.${
+              err?.response?.status ? ` (HTTP ${err.response.status})` : ""
+            }`,
+        );
+        setDeliveries([]);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     loadDeliveries();
   }, [loadDeliveries]);
+
+  useEffect(() => {
+    const handleOrderStatusUpdated = (payload) => {
+      const updatedOrderId = Number(payload?.order_id);
+
+      if (!Number.isInteger(updatedOrderId)) {
+        return;
+      }
+
+      const ownsUpdatedOrder = deliveriesRef.current.some(
+        (delivery) => Number(delivery?.order_id) === updatedOrderId,
+      );
+
+      if (!ownsUpdatedOrder) {
+        return;
+      }
+
+      loadDeliveries({ silent: true });
+    };
+
+    const handleDeliveryAssigned = (payload) => {
+      const assignedDriverId = Number(payload?.driver_id);
+      const currentUserId = Number(user?.id);
+
+      if (
+        !Number.isInteger(assignedDriverId) ||
+        assignedDriverId !== currentUserId
+      ) {
+        return;
+      }
+
+      loadDeliveries({ silent: true });
+    };
+
+    const attachListener = (socket) => {
+      if (!socket) return;
+
+      socket.off("order:status_updated", handleOrderStatusUpdated);
+      socket.on("order:status_updated", handleOrderStatusUpdated);
+
+      socket.off("delivery:assigned", handleDeliveryAssigned);
+      socket.on("delivery:assigned", handleDeliveryAssigned);
+    };
+
+    const socket = getSocket();
+
+    if (socket) {
+      attachListener(socket);
+    }
+
+    const unsubscribeReady = subscribeSocketReady((readySocket) => {
+      attachListener(readySocket);
+    });
+
+    return () => {
+      const currentSocket = getSocket();
+
+      if (currentSocket) {
+        currentSocket.off("order:status_updated", handleOrderStatusUpdated);
+        currentSocket.off("delivery:assigned", handleDeliveryAssigned);
+      }
+
+      unsubscribeReady();
+    };
+  }, [loadDeliveries, user?.id]);
 
   // Notification double-click focus support: clears any status/search
   // filter that would hide the record, locates it, scrolls it into
