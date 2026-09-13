@@ -387,6 +387,19 @@ export default function OrdersPage() {
     to: "",
     page: 1,
   });
+  const [searchInput, setSearchInput] = useState("");
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setFilters((current) =>
+        current.search === searchInput
+          ? current
+          : { ...current, search: searchInput, page: 1 },
+      );
+    }, 300);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchInput]);
 
   const load = useCallback(
     async ({ silent = false } = {}) => {
@@ -489,7 +502,8 @@ export default function OrdersPage() {
   const setF = (key, value) =>
     setFilters((prev) => ({ ...prev, [key]: value, page: 1 }));
 
-  const resetFilters = () =>
+  const resetFilters = () => {
+    setSearchInput("");
     setFilters({
       search: "",
       status: "",
@@ -499,6 +513,7 @@ export default function OrdersPage() {
       to: "",
       page: 1,
     });
+  };
 
   const activeFilterCount = [
     "search",
@@ -591,8 +606,8 @@ export default function OrdersPage() {
               </span>
               <input
                 placeholder="Search by order ID, customer, phone, or email"
-                value={filters.search}
-                onChange={(e) => setF("search", e.target.value)}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
               />
             </div>
           </label>

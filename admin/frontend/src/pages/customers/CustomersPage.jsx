@@ -22,7 +22,6 @@ const FILTERS = {
 };
 
 const PAGE_SIZE = 20;
-const API_PAGE_SIZE = 500;
 
 const getInitial = (name) => {
   const words = String(name || "")
@@ -93,8 +92,16 @@ export default function CustomersPage() {
   }, []);
 
   const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [summary, setSummary] = useState({
+    total_customers: 0,
+    email_verified: 0,
+    phone_verified: 0,
+    inactive_accounts: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState(FILTERS);
+  const [searchInput, setSearchInput] = useState("");
   const [detail, setDetail] = useState(null);
   const [openMenuId, setOpenMenuId] = useState(null);
 
@@ -111,47 +118,55 @@ export default function CustomersPage() {
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setFilters((current) =>
+        current.search === searchInput.trim()
+          ? current
+          : { ...current, search: searchInput.trim(), page: 1 },
+      );
+    }, 300);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchInput]);
+
   const load = useCallback(async () => {
     setLoading(true);
 
     try {
-      const first = await api.get("/customers", {
-        params: { page: 1, limit: API_PAGE_SIZE },
+      const { data } = await api.get("/customers", {
+        params: {
+          search: filters.search || undefined,
+          email_status: filters.email_status || undefined,
+          phone_status: filters.phone_status || undefined,
+          account_status: filters.account_status || undefined,
+          page: filters.page,
+          limit: PAGE_SIZE,
+        },
       });
 
-      const firstRows = Array.isArray(first.data?.rows) ? first.data.rows : [];
-      const total = Number(first.data?.total || firstRows.length);
-      const pageCount = Math.max(1, Math.ceil(total / API_PAGE_SIZE));
-
-      if (pageCount === 1) {
-        setRows(firstRows);
-        return;
-      }
-
-      const remainingRequests = [];
-      for (let page = 2; page <= pageCount; page += 1) {
-        remainingRequests.push(
-          api.get("/customers", {
-            params: { page, limit: API_PAGE_SIZE },
-          }),
-        );
-      }
-
-      const remaining = await Promise.all(remainingRequests);
-      const combined = [...firstRows];
-
-      remaining.forEach(({ data }) => {
-        if (Array.isArray(data?.rows)) combined.push(...data.rows);
+      setRows(Array.isArray(data?.rows) ? data.rows : []);
+      setTotal(Number(data?.total || 0));
+      setSummary({
+        total_customers: Number(data?.summary?.total_customers || 0),
+        email_verified: Number(data?.summary?.email_verified || 0),
+        phone_verified: Number(data?.summary?.phone_verified || 0),
+        inactive_accounts: Number(data?.summary?.inactive_accounts || 0),
       });
-
-      setRows(combined);
     } catch (err) {
       toast.error(err?.response?.data?.message || "Unable to load customer accounts.");
       setRows([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [
+    filters.search,
+    filters.email_status,
+    filters.phone_status,
+    filters.account_status,
+    filters.page,
+  ]);
 
   useEffect(() => {
     load();
@@ -176,58 +191,7 @@ export default function CustomersPage() {
     }
   };
 
-  const verifiedCount = useMemo(
-    () => rows.filter((row) => Number(row.is_verified) === 1).length,
-    [rows],
-  );
-
-  const phoneVerifiedCount = useMemo(
-    () => rows.filter((row) => Number(row.phone_verified) === 1).length,
-    [rows],
-  );
-
-  const inactiveCount = useMemo(
-    () => rows.filter((row) => !row.is_active).length,
-    [rows],
-  );
-
-  const filteredRows = useMemo(() => {
-    const search = filters.search.trim().toLowerCase();
-
-    return rows.filter((row) => {
-      const searchable = [
-        row.name,
-        row.email,
-        row.phone,
-        formatPhoneForDisplay(row.phone),
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      const verified = Number(row.is_verified) === 1;
-      const phoneVerified = Number(row.phone_verified) === 1;
-      const active = !!row.is_active;
-
-      const matchesSearch = !search || searchable.includes(search);
-      const matchesEmail =
-        !filters.email_status ||
-        (filters.email_status === "verified" && verified) ||
-        (filters.email_status === "not_verified" && !verified);
-      const matchesPhone =
-        !filters.phone_status ||
-        (filters.phone_status === "verified" && phoneVerified) ||
-        (filters.phone_status === "not_verified" && !phoneVerified);
-      const matchesAccount =
-        !filters.account_status ||
-        (filters.account_status === "active" && active) ||
-        (filters.account_status === "inactive" && !active);
-
-      return matchesSearch && matchesEmail && matchesPhone && matchesAccount;
-    });
-  }, [rows, filters.search, filters.email_status, filters.phone_status, filters.account_status]);
-
-  const pageCount = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   useEffect(() => {
     if (filters.page > pageCount) {
@@ -235,13 +199,11 @@ export default function CustomersPage() {
     }
   }, [filters.page, pageCount]);
 
-  const pageRows = useMemo(() => {
-    const start = (filters.page - 1) * PAGE_SIZE;
-    return filteredRows.slice(start, start + PAGE_SIZE);
-  }, [filteredRows, filters.page]);
+  const resultStart = total > 0 ? (filters.page - 1) * PAGE_SIZE + 1 : 0;
+  const resultEnd = Math.min(total, filters.page * PAGE_SIZE);
 
   const activeFilterCount = [
-    filters.search,
+    searchInput,
     filters.email_status,
     filters.phone_status,
     filters.account_status,
@@ -254,7 +216,10 @@ export default function CustomersPage() {
       page: 1,
     }));
 
-  const resetFilters = () => setFilters(FILTERS);
+  const resetFilters = () => {
+    setSearchInput("");
+    setFilters(FILTERS);
+  };
 
   return (
     <div className="wisdom-admin-customers-v2">
@@ -273,22 +238,22 @@ export default function CustomersPage() {
       <section className="cm-summary-grid" aria-label="Customer account summary">
         <SummaryCard
           label="Total Customers"
-          value={rows.length}
+          value={summary.total_customers}
           icon={<UsersRound size={18} strokeWidth={1.9} />}
         />
         <SummaryCard
           label="Email Verified"
-          value={verifiedCount}
+          value={summary.email_verified}
           icon={<BadgeCheck size={18} strokeWidth={1.9} />}
         />
         <SummaryCard
           label="Phone Verified"
-          value={phoneVerifiedCount}
+          value={summary.phone_verified}
           icon={<UserRoundCheck size={18} strokeWidth={1.9} />}
         />
         <SummaryCard
           label="Inactive Accounts"
-          value={inactiveCount}
+          value={summary.inactive_accounts}
           icon={<UserRoundX size={18} strokeWidth={1.9} />}
         />
       </section>
@@ -303,7 +268,9 @@ export default function CustomersPage() {
           </div>
 
           <div className="cm-result-count">
-            {filteredRows.length} of {rows.length} customers
+            {total > 0
+              ? `${resultStart}-${resultEnd} of ${total} customers`
+              : "0 customers"}
           </div>
         </div>
 
@@ -313,8 +280,8 @@ export default function CustomersPage() {
             <div className="cm-search-wrap">
               <Search size={15} strokeWidth={1.8} aria-hidden="true" />
               <input
-                value={filters.search}
-                onChange={(event) => setFilter("search", event.target.value)}
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
                 placeholder="Search name, email, or phone..."
               />
             </div>
@@ -391,7 +358,7 @@ export default function CustomersPage() {
                     Loading customer accounts...
                   </td>
                 </tr>
-              ) : pageRows.length === 0 ? (
+              ) : rows.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="cm-empty">
                     <strong>No matching customers</strong>
@@ -399,7 +366,7 @@ export default function CustomersPage() {
                   </td>
                 </tr>
               ) : (
-                pageRows.map((row) => (
+                rows.map((row) => (
                   <CustomerRow
                     key={row.id}
                     row={row}

@@ -439,6 +439,7 @@ export default function ContractsPage() {
       const haystack = [
         `CNT-${String(contract.id || "").padStart(5, "0")}`,
         contract.order_id ? `#${String(contract.order_id).padStart(5, "0")}` : "",
+        contract.order_number,
         contract.blueprint_id
           ? `BP-${String(contract.blueprint_id).padStart(5, "0")}`
           : "",
@@ -1046,7 +1047,8 @@ export default function ContractsPage() {
                         className="contracts-text-link"
                         onClick={() => navigate(`/admin/orders/${contract.order_id}`)}
                       >
-                        #{String(contract.order_id).padStart(5, "0")}
+                        {contract.order_number ||
+                          `#${String(contract.order_id).padStart(5, "0")}`}
                       </button>
                     </td>
                     <td>

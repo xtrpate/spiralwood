@@ -30,6 +30,8 @@ const formatPaymentMethod = (value) => {
   return PAYMENT_METHOD_LABELS[normalized] || normalized.replace("_", " ");
 };
 
+const PAGE_SIZE = 20;
+
 export default function OrderHistory() {
   const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
@@ -39,30 +41,55 @@ export default function OrderHistory() {
   // Filters
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 300);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchInput]);
 
   const fetchHistory = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      // Build query string based on filters
-      let query = `?limit=50`;
-      if (dateFrom) query += `&from=${dateFrom}`;
-      if (dateTo) query += `&to=${dateTo}`;
-
-      const { data } = await api.get(`/pos/orders${query}`);
-      setOrders(data.orders || []);
+      const { data } = await api.get("/pos/orders", {
+        params: {
+          limit: PAGE_SIZE,
+          page,
+          search: search || undefined,
+          from: dateFrom || undefined,
+          to: dateTo || undefined,
+        },
+      });
+      setOrders(Array.isArray(data?.orders) ? data.orders : []);
+      setTotal(Number(data?.total || 0));
     } catch (err) {
       setError(
         err.response?.data?.message || "Failed to load transaction history.",
       );
+      setOrders([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
-  }, [dateFrom, dateTo]);
+  }, [dateFrom, dateTo, search, page]);
 
   useEffect(() => {
     fetchHistory();
   }, [fetchHistory]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   return (
     <div style={{ fontFamily: "'Inter', sans-serif", paddingBottom: 40 }}>
@@ -100,6 +127,31 @@ export default function OrderHistory() {
           </p>
         </div>
 
+        <div style={historySearchStyle}>
+          <Search size={16} color="#71717a" />
+          <input
+            type="search"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Search order, customer, phone, or receipt"
+            aria-label="Search transaction history"
+            style={historySearchInputStyle}
+          />
+          {searchInput && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchInput("");
+                setSearch("");
+                setPage(1);
+              }}
+              style={btnClear}
+            >
+              Clear Search
+            </button>
+          )}
+        </div>
+
         {/* 👉 Date Range Filter */}
         <div
           style={{
@@ -119,7 +171,10 @@ export default function OrderHistory() {
             <input
               type="date"
               value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
+              onChange={(e) => {
+                setDateFrom(e.target.value);
+                setPage(1);
+              }}
               style={dateInputStyle}
             />
             <span style={{ color: "#71717a", fontSize: 13, fontWeight: 600 }}>
@@ -128,7 +183,10 @@ export default function OrderHistory() {
             <input
               type="date"
               value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
+              onChange={(e) => {
+                setDateTo(e.target.value);
+                setPage(1);
+              }}
               style={dateInputStyle}
             />
           </div>
@@ -137,6 +195,7 @@ export default function OrderHistory() {
               onClick={() => {
                 setDateFrom("");
                 setDateTo("");
+                setPage(1);
               }}
               style={btnClear}
               onMouseEnter={(e) =>
@@ -201,7 +260,7 @@ export default function OrderHistory() {
                 color: "#52525b",
               }}
             >
-              No transactions found for the selected dates.
+              No transactions found for the current search or selected dates.
             </p>
           </div>
         ) : (
@@ -337,12 +396,83 @@ export default function OrderHistory() {
             </table>
           </div>
         )}
+
+        {!loading && !error && totalPages > 1 && (
+          <div style={paginationStyle}>
+            <button
+              type="button"
+              style={paginationButtonStyle}
+              disabled={page <= 1}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+            >
+              Previous
+            </button>
+            <span style={paginationTextStyle}>
+              Page {page} of {totalPages} · {total} transactions
+            </span>
+            <button
+              type="button"
+              style={paginationButtonStyle}
+              disabled={page >= totalPages}
+              onClick={() =>
+                setPage((current) => Math.min(totalPages, current + 1))
+              }
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 // ── Reusable Styles ──────────────────────────────────────────
+
+const historySearchStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  background: "#ffffff",
+  padding: "8px 12px",
+  border: "1px solid #dcdce0",
+  minWidth: 300,
+};
+
+const historySearchInputStyle = {
+  flex: 1,
+  minWidth: 180,
+  border: "none",
+  outline: "none",
+  fontSize: 13,
+  color: "#18181b",
+  background: "transparent",
+};
+
+const paginationStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  padding: "14px 20px",
+  borderTop: "1px solid #e4e4e7",
+  background: "#fafafa",
+};
+
+const paginationButtonStyle = {
+  background: "#ffffff",
+  border: "1px solid #d4d4d8",
+  padding: "8px 14px",
+  fontSize: 12,
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
+const paginationTextStyle = {
+  fontSize: 12,
+  color: "#52525b",
+  fontWeight: 600,
+};
 
 const cardStyle = {
   background: "#ffffff",

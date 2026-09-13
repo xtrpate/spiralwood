@@ -96,13 +96,34 @@ const dateTime = (value) => {
   });
 };
 
-const toYMD = (date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
+const REPORT_TIME_ZONE = "Asia/Manila";
 
-  return `${year}-${month}-${day}`;
+const getManilaDateParts = (date = new Date()) => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: REPORT_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const values = Object.fromEntries(
+    parts
+      .filter(({ type }) => ["year", "month", "day"].includes(type))
+      .map(({ type, value }) => [type, value]),
+  );
+
+  return {
+    year: Number(values.year),
+    month: Number(values.month),
+    day: Number(values.day),
+  };
 };
+
+const toCalendarYMD = (year, month, day) =>
+  `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+
+const shiftCalendarDate = (year, month, day, days) =>
+  new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
 
 const formatDateOnly = (value) => {
   if (!value) return "—";
@@ -257,37 +278,33 @@ export default function SalesReportPage() {
       return `${formatDateOnly(from)} – ${formatDateOnly(to)}`;
     }
 
-    const now = new Date();
+    const { year, month, day } = getManilaDateParts();
+    const today = toCalendarYMD(year, month, day);
 
     if (period === "daily") {
-      const today = toYMD(now);
       return formatDateOnly(today);
     }
 
     if (period === "weekly") {
-      const start = new Date(now);
-      const day = start.getDay();
-      const diff = day === 0 ? -6 : 1 - day;
+      const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+      const mondayOffset = weekday === 0 ? -6 : 1 - weekday;
+      const start = shiftCalendarDate(year, month, day, mondayOffset);
+      const end = shiftCalendarDate(year, month, day, mondayOffset + 6);
 
-      start.setDate(start.getDate() + diff);
-
-      const end = new Date(start);
-      end.setDate(start.getDate() + 6);
-
-      return `${formatDateOnly(toYMD(start))} – ${formatDateOnly(toYMD(end))}`;
+      return `${formatDateOnly(start)} – ${formatDateOnly(end)}`;
     }
 
     if (period === "yearly") {
-      const start = new Date(now.getFullYear(), 0, 1);
-      const end = new Date(now.getFullYear(), 11, 31);
+      const start = toCalendarYMD(year, 1, 1);
+      const end = toCalendarYMD(year, 12, 31);
 
-      return `${formatDateOnly(toYMD(start))} – ${formatDateOnly(toYMD(end))}`;
+      return `${formatDateOnly(start)} – ${formatDateOnly(end)}`;
     }
 
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const start = toCalendarYMD(year, month, 1);
+    const end = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
 
-    return `${formatDateOnly(toYMD(start))} – ${formatDateOnly(toYMD(end))}`;
+    return `${formatDateOnly(start)} – ${formatDateOnly(end)}`;
   }, [from, period, to]);
 
   const channelLabel =
@@ -307,8 +324,6 @@ export default function SalesReportPage() {
         const response = await api.get("/sales/report", {
           params: {
             period: "all",
-            channel: channel,
-            payment: payment,
           },
         });
         exportData = response.data;

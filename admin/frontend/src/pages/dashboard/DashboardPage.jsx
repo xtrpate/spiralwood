@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Line, Bar } from "react-chartjs-2";
+import { Line, Bar, Doughnut } from "react-chartjs-2";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -7,6 +7,7 @@ import {
   PointElement,
   LineElement,
   BarElement,
+  ArcElement,
   Filler,
   Title,
   Tooltip,
@@ -21,6 +22,7 @@ ChartJS.register(
   PointElement,
   LineElement,
   BarElement,
+  ArcElement,
   Filler,
   Title,
   Tooltip,
@@ -46,6 +48,7 @@ const peso = new Intl.NumberFormat("en-PH", {
 });
 
 const num = new Intl.NumberFormat("en-PH");
+
 
 function formatChartLabel(value, chartMode) {
   if (!value) return "—";
@@ -382,25 +385,43 @@ export default function DashboardPage() {
   const currentTotalOrders = Number(currentOps.total_orders || 0);
   const currentPending = Number(currentOps.pending_orders || 0);
   const currentConfirmed = Number(currentOps.confirmed_orders || 0);
+  const currentContractReleased = Number(
+    currentOps.contract_released_orders || 0,
+  );
   const currentProduction = Number(currentOps.production_orders || 0);
+  const currentReadyForPickup = Number(
+    currentOps.ready_for_pickup_orders || 0,
+  );
   const currentShipping = Number(currentOps.shipping_orders || 0);
   const currentDelivered = Number(currentOps.delivered_orders || 0);
   const currentCompleted = Number(currentOps.completed_orders || 0);
   const currentCancelled = Number(currentOps.cancelled_orders || 0);
   const currentOpenOrders = Number(currentOps.open_orders || 0);
+  const currentOpenPending = Number(currentOps.open_pending_orders || 0);
   const deliveredUnpaid = Number(currentOps.delivered_unpaid_orders || 0);
 
   const onlineOrders = Number(sales.online_orders || 0);
   const walkinOrders = Number(sales.walkin_orders || 0);
   const totalChannelOrders = onlineOrders + walkinOrders;
 
+  const healthyStockTotal =
+    Number(inventory.healthy_stock_count || 0) +
+    Number(inventory.raw_healthy_stock || 0);
+
   const lowStockTotal =
     Number(inventory.low_stock_count || 0) +
     Number(inventory.raw_low_stock || 0);
 
+  const criticalStockTotal =
+    Number(inventory.critical_stock_count || 0) +
+    Number(inventory.raw_critical_stock || 0);
+
   const outOfStockTotal =
     Number(inventory.out_of_stock_count || 0) +
     Number(inventory.raw_out_of_stock || 0);
+
+  const inventoryHealthTotal =
+    healthyStockTotal + lowStockTotal + criticalStockTotal + outOfStockTotal;
 
   const stockAlerts = Number(inventory.alert_total || 0);
   const pendingReviews = Number(payments.pending_reviews || 0);
@@ -408,7 +429,7 @@ export default function DashboardPage() {
   const activeBlueprintJobs =
     Number(blueprint.contract_released || 0) +
     Number(blueprint.in_production || 0) +
-    Number(blueprint.ready_for_dispatch || 0);
+    Number(blueprint.fulfillment || 0);
 
   const chartLabels = useMemo(
     () => salesChart.map((row) => formatChartLabel(row.date, chartMode)),
@@ -498,6 +519,59 @@ export default function DashboardPage() {
       ],
     }),
     [topProducts],
+  );
+
+  const inventoryHealthData = useMemo(
+    () => ({
+      labels: ["Healthy", "Low Stock", "Critical", "Out of Stock"],
+      datasets: [
+        {
+          data: [
+            healthyStockTotal,
+            lowStockTotal,
+            criticalStockTotal,
+            outOfStockTotal,
+          ],
+          backgroundColor: ["#15803d", "#d97706", "#ea580c", "#dc2626"],
+          borderColor: "#ffffff",
+          borderWidth: 2,
+          hoverOffset: 2,
+        },
+      ],
+    }),
+    [
+      healthyStockTotal,
+      lowStockTotal,
+      criticalStockTotal,
+      outOfStockTotal,
+    ],
+  );
+
+  const inventoryHealthOptions = useMemo(
+    () => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: "68%",
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: "#18181b",
+          padding: 9,
+          titleFont: { size: 11, weight: 700, family: dashboardFontFamily },
+          bodyFont: { size: 11, family: dashboardFontFamily },
+          callbacks: {
+            label: (context) => {
+              const value = Number(context.raw || 0);
+              const percent = inventoryHealthTotal
+                ? (value / inventoryHealthTotal) * 100
+                : 0;
+              return ` ${context.label}: ${num.format(value)} (${percent.toFixed(1)}%)`;
+            },
+          },
+        },
+      },
+    }),
+    [dashboardFontFamily, inventoryHealthTotal],
   );
 
   const lineOptions = useMemo(
@@ -825,7 +899,7 @@ export default function DashboardPage() {
         <MetricCard
           title="Open orders"
           value={num.format(currentOpenOrders)}
-          meta={`${num.format(currentPending)} pending`}
+          meta={`${num.format(currentOpenPending)} pending`}
           onClick={() => navigate("/admin/orders")}
         />
 
@@ -844,13 +918,15 @@ export default function DashboardPage() {
           value={num.format(stockAlerts)}
           meta={
             <>
-              <span>{num.format(lowStockTotal)} low stock</span>
+              <span>{num.format(lowStockTotal)} low</span>
               <span className="metric-card__separator">•</span>
-              <span>{num.format(outOfStockTotal)} out of stock</span>
+              <span>{num.format(criticalStockTotal)} critical</span>
+              <span className="metric-card__separator">•</span>
+              <span>{num.format(outOfStockTotal)} out</span>
             </>
           }
           tone={
-            outOfStockTotal > 0
+            outOfStockTotal > 0 || criticalStockTotal > 0
               ? "danger"
               : lowStockTotal > 0
                 ? "warning"
@@ -925,10 +1001,22 @@ export default function DashboardPage() {
               color="#2563eb"
             />
             <ProgressRow
+              label="Contract released"
+              value={currentContractReleased}
+              total={currentTotalOrders}
+              color="#7c3aed"
+            />
+            <ProgressRow
               label="In production"
               value={currentProduction}
               total={currentTotalOrders}
-              color="#7c3aed"
+              color="#6d28d9"
+            />
+            <ProgressRow
+              label="Ready for pickup"
+              value={currentReadyForPickup}
+              total={currentTotalOrders}
+              color="#c2410c"
             />
             <ProgressRow
               label="Shipping"
@@ -962,22 +1050,68 @@ export default function DashboardPage() {
         <div className="dash-card">
           <div className="card-header">
             <div>
-              <h2 className="card-title">Inventory attention</h2>
+              <h2 className="card-title">Inventory health</h2>
               <p className="card-description">
-                Current stock issues that need review.
+                Current active stock position.
               </p>
             </div>
           </div>
 
-          <div className="inventory-attention">
+          <div className="inventory-health">
+            <div className="inventory-health__overview">
+              <div className="inventory-health__legend">
+                <div>
+                  <span className="inventory-health__dot inventory-health__dot--healthy" />
+                  <span>Healthy</span>
+                  <strong>{num.format(healthyStockTotal)}</strong>
+                </div>
+                <div>
+                  <span className="inventory-health__dot inventory-health__dot--low" />
+                  <span>Low Stock</span>
+                  <strong>{num.format(lowStockTotal)}</strong>
+                </div>
+                <div>
+                  <span className="inventory-health__dot inventory-health__dot--critical" />
+                  <span>Critical</span>
+                  <strong>{num.format(criticalStockTotal)}</strong>
+                </div>
+                <div>
+                  <span className="inventory-health__dot inventory-health__dot--out" />
+                  <span>Out of Stock</span>
+                  <strong>{num.format(outOfStockTotal)}</strong>
+                </div>
+              </div>
+
+              <div className="inventory-health__chart-wrap">
+                <Doughnut
+                  data={inventoryHealthData}
+                  options={inventoryHealthOptions}
+                />
+                <div className="inventory-health__center">
+                  <strong>{num.format(inventoryHealthTotal)}</strong>
+                  <span>active items</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="inventory-health__note">
+              Current stock does not change with the dashboard period filter.
+            </div>
+
             <div className="inventory-attention__row">
               <div>
                 <strong>Finished products</strong>
-                <span>Ready-made inventory</span>
+                <span>Active ready-made inventory</span>
               </div>
               <div className="inventory-attention__counts">
+                <span className="stock-count stock-count--healthy">
+                  Healthy {num.format(Number(inventory.healthy_stock_count || 0))}
+                </span>
                 <span className="stock-count stock-count--low">
                   Low {num.format(Number(inventory.low_stock_count || 0))}
+                </span>
+                <span className="stock-count stock-count--critical">
+                  Critical {num.format(Number(inventory.critical_stock_count || 0))}
                 </span>
                 <span className="stock-count stock-count--out">
                   Out {num.format(Number(inventory.out_of_stock_count || 0))}
@@ -988,11 +1122,17 @@ export default function DashboardPage() {
             <div className="inventory-attention__row">
               <div>
                 <strong>Raw materials</strong>
-                <span>Production inventory</span>
+                <span>Active production inventory</span>
               </div>
               <div className="inventory-attention__counts">
+                <span className="stock-count stock-count--healthy">
+                  Healthy {num.format(Number(inventory.raw_healthy_stock || 0))}
+                </span>
                 <span className="stock-count stock-count--low">
                   Low {num.format(Number(inventory.raw_low_stock || 0))}
+                </span>
+                <span className="stock-count stock-count--critical">
+                  Critical {num.format(Number(inventory.raw_critical_stock || 0))}
                 </span>
                 <span className="stock-count stock-count--out">
                   Out {num.format(Number(inventory.raw_out_of_stock || 0))}
@@ -1024,7 +1164,7 @@ export default function DashboardPage() {
             <div>
               <h2 className="card-title">Custom orders</h2>
               <p className="card-description">
-                Blueprint orders moving through approval and production.
+                Blueprint orders created in the selected period.
               </p>
             </div>
 
@@ -1076,8 +1216,8 @@ export default function DashboardPage() {
               color="#6d28d9"
             />
             <ProgressRow
-              label="Ready for dispatch"
-              value={Number(blueprint.ready_for_dispatch || 0)}
+              label="Fulfillment"
+              value={Number(blueprint.fulfillment || 0)}
               total={Number(blueprint.total_blueprint_orders || 0)}
               color="#ea580c"
             />
@@ -1086,6 +1226,12 @@ export default function DashboardPage() {
               value={Number(blueprint.completed_blueprint_orders || 0)}
               total={Number(blueprint.total_blueprint_orders || 0)}
               color="#15803d"
+            />
+            <ProgressRow
+              label="Cancelled"
+              value={Number(blueprint.cancelled_blueprint_orders || 0)}
+              total={Number(blueprint.total_blueprint_orders || 0)}
+              color="#dc2626"
             />
           </div>
         </div>
@@ -1566,6 +1712,88 @@ const dashboardCss = `
     border-radius: 0;
   }
 
+  .inventory-health {
+    padding: 12px 14px 14px;
+  }
+
+  .inventory-health__overview {
+    display: grid;
+    grid-template-columns: minmax(122px, 0.9fr) minmax(166px, 1.1fr);
+    align-items: center;
+    gap: 4px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #ededf0;
+  }
+
+  .inventory-health__chart-wrap {
+    position: relative;
+    height: 166px;
+    min-width: 0;
+  }
+
+  .inventory-health__center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  .inventory-health__center strong {
+    color: #18181b;
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .inventory-health__center span {
+    margin-top: 4px;
+    color: #71717a;
+    font-size: 9.5px;
+    font-weight: 500;
+  }
+
+  .inventory-health__legend {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-left: 20px;
+  }
+
+  .inventory-health__legend > div {
+    display: grid;
+    grid-template-columns: 9px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 7px;
+    color: #52525b;
+    font-size: 10.5px;
+  }
+
+  .inventory-health__legend strong {
+    color: #18181b;
+    font-weight: 600;
+  }
+
+  .inventory-health__dot {
+    width: 8px;
+    height: 8px;
+    display: inline-block;
+  }
+
+  .inventory-health__dot--healthy { background: #15803d; }
+  .inventory-health__dot--low { background: #d97706; }
+  .inventory-health__dot--critical { background: #ea580c; }
+  .inventory-health__dot--out { background: #dc2626; }
+
+  .inventory-health__note {
+    padding: 8px 0 2px;
+    color: #71717a;
+    font-size: 9.5px;
+    line-height: 1.4;
+  }
+
   .inventory-attention {
     padding: 4px 14px 14px;
   }
@@ -1601,6 +1829,8 @@ const dashboardCss = `
   .inventory-attention__counts {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     gap: 6px;
   }
 
@@ -1618,10 +1848,22 @@ const dashboardCss = `
     white-space: nowrap;
   }
 
+  .stock-count--healthy {
+    border-color: #bbf7d0;
+    background: #f0fdf4;
+    color: #15803d;
+  }
+
   .stock-count--low {
     border-color: #fde68a;
     background: #fffbeb;
     color: #a16207;
+  }
+
+  .stock-count--critical {
+    border-color: #fed7aa;
+    background: #fff7ed;
+    color: #c2410c;
   }
 
   .stock-count--out {
@@ -1870,6 +2112,19 @@ const dashboardCss = `
     .card-header__actions {
       width: 100%;
       justify-content: space-between;
+    }
+
+    .inventory-health__overview {
+      grid-template-columns: 1fr;
+    }
+
+    .inventory-health__chart-wrap {
+      width: min(220px, 100%);
+      margin: 0 auto;
+    }
+
+    .inventory-attention__counts {
+      justify-content: flex-start;
     }
 
     .inventory-attention__row {

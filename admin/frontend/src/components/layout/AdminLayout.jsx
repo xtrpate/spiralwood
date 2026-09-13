@@ -128,13 +128,6 @@ const NAV_ITEMS = [
     icon: RotateCcw,
     roles: ["admin", "staff"],
   },
-  {
-    label: "POS QR Recovery",
-    path: "/admin/pos-qr-recovery",
-    icon: RotateCcw,
-    permission: "pos_qr_recovery.view",
-    roles: ["admin", "staff"],
-  },
   // POS QR Recovery remains routed and functional, but is intentionally
   // hidden from the Admin sidebar for the current evaluation build.
 
