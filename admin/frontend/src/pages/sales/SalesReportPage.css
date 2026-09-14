@@ -679,16 +679,19 @@
     margin: 12mm;
   }
 
-  body {
+  /* WISDOM PRINT SCOPE R7.3.1
+     The Sales stylesheet is also bundled globally. Limit its visibility
+     isolation to pages where the dedicated Sales print root exists. */
+  body:has(.sales-print-report) {
     background: #ffffff !important;
   }
 
-  body * {
+  body:has(.sales-print-report) * {
     visibility: hidden !important;
   }
 
-  .sales-print-report,
-  .sales-print-report * {
+  body:has(.sales-print-report) .sales-print-report,
+  body:has(.sales-print-report) .sales-print-report * {
     visibility: visible !important;
   }
 

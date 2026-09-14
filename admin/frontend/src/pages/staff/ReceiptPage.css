@@ -217,8 +217,11 @@
 }
 
 @media print {
-  html,
-  body {
+  /* WISDOM PRINT SCOPE R7.3.1
+     This stylesheet is bundled globally, so generic print rules must only run
+     while an actual receipt print root is mounted. */
+  html:has(.receipt-wrapper #receipt-print),
+  body:has(.receipt-wrapper #receipt-print) {
     margin: 0 !important;
     padding: 0 !important;
     background: #ffffff !important;
@@ -226,27 +229,27 @@
     print-color-adjust: exact;
   }
 
-  body {
+  body:has(.receipt-wrapper #receipt-print) {
     min-height: auto !important;
     height: auto !important;
     overflow: visible !important;
   }
 
-  .page-header,
-  .btn,
-  aside,
-  nav {
+  body:has(.receipt-wrapper #receipt-print) .page-header,
+  body:has(.receipt-wrapper #receipt-print) .btn,
+  body:has(.receipt-wrapper #receipt-print) aside,
+  body:has(.receipt-wrapper #receipt-print) nav {
     display: none !important;
   }
 
-  body * {
+  body:has(.receipt-wrapper #receipt-print) * {
     visibility: hidden !important;
   }
 
-  .receipt-wrapper,
-  .receipt-wrapper *,
-  #receipt-print,
-  #receipt-print * {
+  body:has(.receipt-wrapper #receipt-print) .receipt-wrapper,
+  body:has(.receipt-wrapper #receipt-print) .receipt-wrapper *,
+  body:has(.receipt-wrapper #receipt-print) #receipt-print,
+  body:has(.receipt-wrapper #receipt-print) #receipt-print * {
     visibility: visible !important;
   }
 
