@@ -50,11 +50,7 @@ const productImageFileFilter = (req, file, cb) => {
     .replace(".", "");
   const mime = String(file.mimetype || "").toLowerCase();
 
-  const allowedMime = [
-    "image/jpeg",
-    "image/png",
-    "image/webp",
-  ];
+  const allowedMime = ["image/jpeg", "image/png", "image/webp"];
 
   if (ALLOWED_IMAGES.includes(ext) && allowedMime.includes(mime)) {
     cb(null, true);
@@ -131,9 +127,7 @@ exports.uploadProductImage = (req, res, next) => {
     }
 
     const legacy = req.files?.image?.[0] || null;
-    const gallery = Array.isArray(req.files?.images)
-      ? req.files.images
-      : [];
+    const gallery = Array.isArray(req.files?.images) ? req.files.images : [];
     const all = [...(legacy ? [legacy] : []), ...gallery];
 
     if (all.length > MAX_PRODUCT_IMAGES) {
@@ -344,34 +338,11 @@ exports.uploadDeliveryReceipt = multer({
   limits: { fileSize: MAX_MB * 1024 * 1024 },
 }).single("receipt");
 
-/* ── Support message attachment ── */
-const ALLOWED_SUPPORT_ATTACHMENTS = ["jpg", "jpeg", "png", "webp", "pdf"];
-
-const supportAttachmentStorage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder: "wisdom_uploads/support",
-    resource_type: "auto",
-    allowed_formats: ALLOWED_SUPPORT_ATTACHMENTS,
-  },
-});
-
-exports.uploadSupportAttachment = multer({
-  storage: supportAttachmentStorage,
-  limits: {
-    fileSize: MAX_MB * 1024 * 1024,
-  },
-}).array("attachments", 5);
-
 // WISDOM SITE LOGO HARDENING V1.0.0
 // Parse into memory first so extension/MIME/magic bytes can be checked BEFORE
 // the logo is written to local storage or sent to Cloudinary.
 const SITE_LOGO_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
-const SITE_LOGO_MIME_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-]);
+const SITE_LOGO_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const SITE_LOGO_MAX_BYTES = 5 * 1024 * 1024;
 
 const configuredUploadDir =
@@ -391,10 +362,7 @@ const siteLogoFileFilter = (req, file, cb) => {
     .trim()
     .toLowerCase();
 
-  if (
-    SITE_LOGO_EXTENSIONS.has(ext) &&
-    SITE_LOGO_MIME_TYPES.has(mime)
-  ) {
+  if (SITE_LOGO_EXTENSIONS.has(ext) && SITE_LOGO_MIME_TYPES.has(mime)) {
     cb(null, true);
     return;
   }
@@ -449,10 +417,7 @@ exports.uploadSiteLogo = (req, res, next) => {
       (ext === ".png" && mime === "image/png") ||
       (ext === ".webp" && mime === "image/webp");
 
-    if (
-      !extensionMatchesMime ||
-      !verifyBufferSignature(req.file.buffer, ext)
-    ) {
+    if (!extensionMatchesMime || !verifyBufferSignature(req.file.buffer, ext)) {
       return res.status(400).json({
         message: "Site logo content does not match its image file type.",
       });
@@ -502,8 +467,7 @@ exports.persistSiteLogo = async (file) => {
 
   if (useLocalSiteLogoStorage) {
     const ext = path.extname(file.originalname || "").toLowerCase();
-    const filename =
-      `site-logo-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+    const filename = `site-logo-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
     const absolutePath = path.join(siteLogoLocalDir, filename);
 
     try {
@@ -527,10 +491,7 @@ exports.persistSiteLogo = async (file) => {
   try {
     return await uploadSiteLogoBufferToCloudinary(file);
   } catch (uploadErr) {
-    console.error(
-      "[site logo cloudinary]",
-      uploadErr?.message || uploadErr,
-    );
+    console.error("[site logo cloudinary]", uploadErr?.message || uploadErr);
     const error = new Error("Site logo upload failed. Please try again.");
     error.statusCode = 502;
     error.cause = uploadErr;

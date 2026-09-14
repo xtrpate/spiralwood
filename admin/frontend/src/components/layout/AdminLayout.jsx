@@ -7,6 +7,7 @@ import {
   Boxes,
   Building2,
   Calendar,
+  ChartCandlestick,
   ClipboardList,
   Database,
   Download,
@@ -153,6 +154,13 @@ const NAV_ITEMS = [
     permission: "delivery_scheduling.view",
     roles: ["admin", "staff"],
   },
+  {
+    label: "Warranty",
+    path: "/admin/warranty",
+    permission: "warranty.view",
+    icon: Shield,
+    roles: ["admin", "staff"],
+  },
 
   { section: "Blueprints & Production" },
   {
@@ -170,21 +178,18 @@ const NAV_ITEMS = [
     roles: ["admin", "staff"],
   },
 
-  { section: "Customer Service" },
-  {
-    label: "Warranty",
-    path: "/admin/warranty",
-    permission: "warranty.view",
-    icon: Shield,
-    roles: ["admin", "staff"],
-  },
-
   { section: "Reports" },
   {
     label: "Inventory Report",
     path: "/admin/reports/current-inventory",
     icon: Boxes,
     permission: "stock_movements.view",
+    roles: ["admin", "staff"],
+  },
+  {
+    label: "Stock Report",
+    path: "/admin/reports/stock",
+    icon: ChartCandlestick,
     roles: ["admin", "staff"],
   },
   {
@@ -199,6 +204,12 @@ const NAV_ITEMS = [
     path: "/admin/reports/deliveries",
     icon: Truck,
     roles: ["admin"],
+  },
+  {
+    label: "Operations Report",
+    path: "/admin/reports/operations",
+    icon: ClipboardList,
+    roles: ["admin", "staff"],
   },
   {
     label: "Sales Report",

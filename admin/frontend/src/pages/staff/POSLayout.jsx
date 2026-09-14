@@ -210,11 +210,6 @@ export default function POSLayout() {
           label: "Transaction History",
         },
         {
-          to: "/staff/support",
-          icon: MessageSquare,
-          label: "Support",
-        },
-        {
           to: "/staff/blueprint-payments",
           icon: FileText,
           label: "Blueprint Payments",

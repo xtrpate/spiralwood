@@ -3,8 +3,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import toast from "react-hot-toast";
-import * as XLSX from "xlsx-js-style";
-import { FileDown } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 
 const STOCK_COLORS = {
   healthy_stock: ["#f0fdf4", "#15803d", "#bbf7d0"],
@@ -209,11 +208,10 @@ export default function RawMaterialsPage() {
   const [reservationFilter, setReservationFilter] = useState("all");
   const [actionMenuId, setActionMenuId] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
-  const [exporting, setExporting] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
-  const [exportScope, setExportScope] = useState("filtered");
   const [bulkModal, setBulkModal] = useState(null);
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const handleDatePreset = (preset) => {
     const today = new Date();
@@ -250,129 +248,34 @@ export default function RawMaterialsPage() {
     }));
   };
 
-  const handleExportReport = async () => {
-    setExporting(true);
+  const load = useCallback(async () => {
+    setLoading(true);
+
     try {
-      const params =
-        exportScope === "filtered"
-          ? {
-              limit: 5000,
-              search: filters.search || undefined,
-              category_id: filters.category_id || undefined,
-              status: filters.status || undefined,
-              archive_status: filters.archive_status || undefined,
-              from: filters.from || undefined,
-              to: filters.to || undefined,
-            }
-          : { limit: 5000, archive_status: "all" };
-
-      const { data } = await api.get("/inventory/raw", { params });
-      const rows = data.rows || [];
-      if (!rows.length) {
-        toast.error("No materials found to export.");
-        return;
-      }
-
-      const wb = XLSX.utils.book_new();
-      const exportData = [
-        [{ v: "RAW MATERIALS INVENTORY REPORT", s: { font: { bold: true } } }],
-        [],
-        [
-          "Material Name",
-          "Category",
-          "Supplier",
-          "Unit",
-          "On Hand",
-          "Reserved",
-          "Available",
-          "Order Need",
-          "Safety Stock",
-          "Reorder",
-          "Lead Time",
-          "30-Day Avg Use / Day",
-          "Lead-Time Need",
-          "Supplier Price",
-          "Stock Level",
-          "Status Reason",
-        ].map((t) => ({
-          v: t,
-          s: {
-            font: { bold: true, color: { rgb: "FFFFFF" } },
-            fill: { fgColor: { rgb: "000000" } },
-          },
-        })),
-      ];
-
-      rows.forEach((row) => {
-        const onHand = Number(row.on_hand_quantity ?? row.quantity ?? 0);
-        const reserved = Number(row.reserved_quantity || 0);
-        const available = Number(
-          row.available_quantity ?? Math.max(0, onHand - reserved),
-        );
-        const needed = Number(row.pending_need_quantity || 0);
-        const cost = Number(row.unit_cost || 0);
-
-        exportData.push([
-          row.name,
-          row.category_name || "Uncategorized",
-          row.supplier_name || "—",
-          row.unit,
-          onHand,
-          reserved,
-          available,
-          needed,
-          Number(row.safety_stock || 0),
-          Number(row.reorder_point || 0),
-          Number(row.lead_time_days || 0),
-          Number(row.avg_daily_usage_30d || 0),
-          Number(row.lead_time_need_quantity || 0),
-          cost,
-          formatStatus(
-            row.availability_status || row.stock_status || "",
-          ).toUpperCase(),
-          formatStockReason(row) || "—",
-        ]);
+      const { data } = await api.get("/inventory/raw", {
+        params: { ...filters, limit: 20 },
       });
 
-      const ws = XLSX.utils.aoa_to_sheet(exportData);
-      ws["!cols"] = [
-        { wch: 35 },
-        { wch: 20 },
-        { wch: 25 },
-        { wch: 16 },
-        { wch: 12 },
-        { wch: 12 },
-        { wch: 12 },
-        { wch: 18 },
-        { wch: 14 },
-        { wch: 15 },
-        { wch: 16 },
-        { wch: 20 },
-        { wch: 16 },
-        { wch: 18 },
-        { wch: 16 },
-        { wch: 34 },
-      ];
-      XLSX.utils.book_append_sheet(wb, ws, "Raw Materials");
-      XLSX.writeFile(
-        wb,
-        `Raw-Materials-Report-${new Date().toISOString().slice(0, 10)}.xlsx`,
+      setItems(data.rows || []);
+      setTotal(Number(data.total || 0));
+    } catch (error) {
+      toast.error(
+        error?.response?.data?.message || "Failed to load raw materials.",
       );
-      toast.success("Excel report exported successfully.");
-    } catch (err) {
-      toast.error("Failed to export report.");
     } finally {
-      setExporting(false);
+      setLoading(false);
+    }
+  }, [filters]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
     }
   };
-
-  const load = useCallback(async () => {
-    const { data } = await api.get("/inventory/raw", {
-      params: { ...filters, limit: 20 },
-    });
-    setItems(data.rows || []);
-    setTotal(Number(data.total || 0));
-  }, [filters]);
 
   useEffect(() => {
     load();
@@ -390,8 +293,7 @@ export default function RawMaterialsPage() {
     loadCategories().catch(() => {});
   }, [loadCategories]);
 
-  const openAdd = () =>
-    setBulkModal({ rows: [createEmptyBulkMaterial()] });
+  const openAdd = () => setBulkModal({ rows: [createEmptyBulkMaterial()] });
 
   const openEdit = (item) =>
     setModal({
@@ -702,7 +604,9 @@ export default function RawMaterialsPage() {
         </div>
         <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
           <button
-            onClick={() => setExportOpen(true)}
+            type="button"
+            onClick={handleRefresh}
+            disabled={refreshing}
             style={{
               padding: "9px 18px",
               background: "#ffffff",
@@ -711,15 +615,17 @@ export default function RawMaterialsPage() {
               borderRadius: "2px",
               fontSize: "13px",
               fontWeight: "600",
-              cursor: "pointer",
+              cursor: refreshing ? "wait" : "pointer",
               display: "inline-flex",
               alignItems: "center",
               gap: "6px",
+              opacity: refreshing ? 0.65 : 1,
             }}
           >
-            <FileDown size={14} />
-            {exporting ? "Exporting..." : "Export Report"}
+            <RefreshCw size={14} />
+            {refreshing ? "Refreshing..." : "Refresh"}
           </button>
+
           <button onClick={openAdd} style={btnPrimary}>
             Add material
           </button>
@@ -919,7 +825,13 @@ export default function RawMaterialsPage() {
             </tr>
           </thead>
           <tbody>
-            {sortedItems.length === 0 ? (
+            {loading ? (
+              <tr>
+                <td colSpan={12} style={emptyCell}>
+                  Loading raw materials...
+                </td>
+              </tr>
+            ) : sortedItems.length === 0 ? (
               <tr>
                 <td colSpan={12} style={emptyCell}>
                   No raw materials found for the selected filters.
@@ -1210,19 +1122,27 @@ export default function RawMaterialsPage() {
               maxWidth: "calc(100vw - 36px)",
             }}
           >
-            <h3 style={modalTitle}>{bulkModal.rows.length === 1 ? "Add Raw Material" : "Add Raw Materials"}</h3>
+            <h3 style={modalTitle}>
+              {bulkModal.rows.length === 1
+                ? "Add Raw Material"
+                : "Add Raw Materials"}
+            </h3>
             <div style={modalInfo}>
               Create several material records in one operation. New materials
-              start at 0 stock; add physical stock later through Stock
-              Movements so every quantity change stays traceable. If any row is
-              invalid, none of the rows will be created.
+              start at 0 stock; add physical stock later through Stock Movements
+              so every quantity change stays traceable. If any row is invalid,
+              none of the rows will be created.
             </div>
 
             <form onSubmit={handleBulkSave}>
               <div style={{ display: "grid", gap: 14 }}>
                 {bulkModal.rows.map((row, index) => {
-                  const form = String(row.material_form || "other").toLowerCase();
-                  const showDimensions = ["sheet", "linear", "piece"].includes(form);
+                  const form = String(
+                    row.material_form || "other",
+                  ).toLowerCase();
+                  const showDimensions = ["sheet", "linear", "piece"].includes(
+                    form,
+                  );
                   const decimalQuantity = unitAllowsDecimalQuantity(row.unit);
 
                   return (
@@ -1244,14 +1164,24 @@ export default function RawMaterialsPage() {
                           marginBottom: 14,
                         }}
                       >
-                        <div style={{ fontSize: 13, fontWeight: 700, color: "#18181b" }}>
+                        <div
+                          style={{
+                            fontSize: 13,
+                            fontWeight: 700,
+                            color: "#18181b",
+                          }}
+                        >
                           Material {index + 1}
                         </div>
                         {bulkModal.rows.length > 1 && (
                           <button
                             type="button"
                             onClick={() => removeBulkRow(index)}
-                            style={{ ...btnGhost, padding: "6px 10px", color: "#b42318" }}
+                            style={{
+                              ...btnGhost,
+                              padding: "6px 10px",
+                              color: "#b42318",
+                            }}
                           >
                             Remove
                           </button>
@@ -1261,7 +1191,8 @@ export default function RawMaterialsPage() {
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                          gridTemplateColumns:
+                            "repeat(auto-fit, minmax(180px, 1fr))",
                           gap: "12px 14px",
                         }}
                       >
@@ -1309,7 +1240,11 @@ export default function RawMaterialsPage() {
                             required
                             value={row.category_id}
                             onChange={(event) =>
-                              setBulkField(index, "category_id", event.target.value)
+                              setBulkField(
+                                index,
+                                "category_id",
+                                event.target.value,
+                              )
                             }
                             style={inputFull}
                           >
@@ -1351,7 +1286,11 @@ export default function RawMaterialsPage() {
                           <select
                             value={row.material_form}
                             onChange={(event) =>
-                              setBulkField(index, "material_form", event.target.value)
+                              setBulkField(
+                                index,
+                                "material_form",
+                                event.target.value,
+                              )
                             }
                             style={inputFull}
                           >
@@ -1399,7 +1338,11 @@ export default function RawMaterialsPage() {
                             step="0.01"
                             value={row.unit_cost}
                             onChange={(event) =>
-                              setBulkField(index, "unit_cost", event.target.value)
+                              setBulkField(
+                                index,
+                                "unit_cost",
+                                event.target.value,
+                              )
                             }
                             style={inputFull}
                           />
@@ -1414,7 +1357,10 @@ export default function RawMaterialsPage() {
                               setBulkField(
                                 index,
                                 "lead_time_days",
-                                String(event.target.value || "").replace(/[^0-9]/g, ""),
+                                String(event.target.value || "").replace(
+                                  /[^0-9]/g,
+                                  "",
+                                ),
                               )
                             }
                             style={inputFull}
@@ -1464,7 +1410,11 @@ export default function RawMaterialsPage() {
                           <select
                             value={row.supplier_id}
                             onChange={(event) =>
-                              setBulkField(index, "supplier_id", event.target.value)
+                              setBulkField(
+                                index,
+                                "supplier_id",
+                                event.target.value,
+                              )
                             }
                             style={inputFull}
                           >
@@ -2116,101 +2066,6 @@ export default function RawMaterialsPage() {
           </div>
         </div>
       )}
-      {exportOpen && (
-        <div style={modalBackdrop}>
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="export-materials-title"
-            style={{ ...dialog, width: "min(520px, 100%)" }}
-          >
-            <div style={dialogEyebrow}>Report Generation</div>
-
-            <h2 id="export-materials-title" style={dialogTitle}>
-              Export raw materials report
-            </h2>
-
-            <p style={{ ...dialogText, marginBottom: 16 }}>
-              Create an Excel report using the selected raw-material scope.
-            </p>
-
-            <div style={exportScopeList}>
-              <button
-                type="button"
-                onClick={() => setExportScope("filtered")}
-                style={{
-                  ...exportScopeOption,
-                  ...(exportScope === "filtered"
-                    ? exportScopeOptionSelected
-                    : {}),
-                }}
-                disabled={exporting}
-              >
-                <span style={exportScopeTitle}>Current filters</span>
-
-                <span style={exportScopeMeta}>
-                  {total.toLocaleString("en-PH")} matching material
-                  {total === 1 ? "" : "s"}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setExportScope("all")}
-                style={{
-                  ...exportScopeOption,
-                  ...(exportScope === "all" ? exportScopeOptionSelected : {}),
-                }}
-                disabled={exporting}
-              >
-                <span style={exportScopeTitle}>All materials</span>
-
-                <span style={exportScopeMeta}>
-                  Export entire active catalog
-                </span>
-              </button>
-            </div>
-
-            <div style={exportContents}>
-              <div style={exportContentsLabel}>Included in Excel</div>
-
-              <div style={exportContentsText}>
-                Catalog summary, availability, order need, reorder point, and
-                total physical value.
-              </div>
-            </div>
-
-            <div style={dialogActions}>
-              <button
-                type="button"
-                onClick={() => setExportOpen(false)}
-                style={btnSecondaryExport}
-                disabled={exporting}
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                onClick={handleExportReport}
-                style={{
-                  ...btnPrimaryExport,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 7,
-                  opacity: exporting ? 0.65 : 1,
-                  cursor: exporting ? "wait" : "pointer",
-                }}
-                disabled={exporting}
-              >
-                <FileDown size={14} strokeWidth={1.8} aria-hidden="true" />
-
-                {exporting ? "Preparing..." : "Export Excel"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -2685,33 +2540,6 @@ const moreActionsDanger = {
   color: "#b42318",
 };
 
-const exportScopeList = {
-  display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  gap: 8,
-  marginBottom: 12,
-};
-const exportScopeOption = {
-  minHeight: 76,
-  padding: "12px 13px",
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "flex-start",
-  justifyContent: "center",
-  gap: 5,
-  background: "#ffffff",
-  color: "#27272a",
-  border: "1px solid #d4d4d8",
-  borderRadius: 2,
-  fontFamily: "inherit",
-  textAlign: "left",
-  cursor: "pointer",
-};
-const exportScopeOptionSelected = {
-  background: "#fafafa",
-  borderColor: "#18181b",
-  boxShadow: "inset 0 0 0 1px #18181b",
-};
 const exportScopeTitle = {
   color: "#18181b",
   fontSize: 12.5,
@@ -2787,18 +2615,7 @@ const btnSecondaryExport = {
   fontWeight: 500,
   cursor: "pointer",
 };
-const btnPrimaryExport = {
-  minHeight: 36,
-  padding: "0 14px",
-  background: "#18181b",
-  color: "#ffffff",
-  border: "1px solid #18181b",
-  borderRadius: 2,
-  fontFamily: "inherit",
-  fontSize: 12,
-  fontWeight: 600,
-  cursor: "pointer",
-};
+
 const modalBackdrop = {
   position: "fixed",
   inset: 0,

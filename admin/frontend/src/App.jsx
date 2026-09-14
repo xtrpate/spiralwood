@@ -42,6 +42,8 @@ import SalesReportPage from "./pages/sales/SalesReportPage";
 import CurrentInventoryReportPage from "./pages/reports/CurrentInventoryReportPage";
 import DailyStockInReportPage from "./pages/reports/DailyStockInReportPage";
 import DeliveryReportPage from "./pages/reports/DeliveryReportPage";
+import OperationsReportPage from "./pages/reports/OperationsReportPage";
+import StockReportPage from "./pages/reports/StockReportPage";
 import WarrantyPage from "./pages/warranty/WarrantyPage";
 import CustomersPage from "./pages/customers/CustomersPage";
 import UsersPage from "./pages/users/UsersPage";
@@ -81,8 +83,6 @@ import PendingApprovalPage from "./pages/customer/pendingapprovalpage";
 import TermsPage from "./pages/customer/TermsPage";
 import PrivacyPolicyPage from "./pages/customer/PrivacyPolicyPage";
 import CustomerStaticPage from "./pages/customer/customerstaticpage";
-import SupportPage from "./pages/customer/supportpage";
-import AdminSupportPage from "./pages/support/SupportPage";
 import ARViewPage from "./pages/customer/ar/ARViewPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -103,7 +103,6 @@ import POSInventoryLookup from "./pages/staff/InventoryLookup";
 import POSOrderHistory from "./pages/staff/OrderHistory";
 import RiderDashboard from "./pages/staff/RiderDashboard";
 import RiderHistory from "./pages/staff/RiderHistory";
-import StaffSupportPage from "./pages/staff/SupportPage";
 
 window.addEventListener("error", (e) => {
   if (
@@ -458,15 +457,6 @@ export default function App() {
                   />
 
                   <Route
-                    path="support"
-                    element={
-                      <RequireAuth roles={["customer"]}>
-                        <SupportPage />
-                      </RequireAuth>
-                    }
-                  />
-
-                  <Route
                     path="profilesettings"
                     element={
                       <RequireAuth roles={["customer"]}>
@@ -717,21 +707,17 @@ export default function App() {
                 />
 
                 <Route
-                  path="support"
-                  element={
-                    <RequirePermission permission="support.view">
-                      <AdminSupportPage />
-                    </RequirePermission>
-                  }
-                />
-                <Route
                   path="reports/deliveries"
                   element={<DeliveryReportPage />}
                 />
+                <Route
+                  path="reports/operations"
+                  element={<OperationsReportPage />}
+                />
+                <Route path="reports/stock" element={<StockReportPage />} />
                 <Route path="sales" element={<SalesReportPage />} />
                 <Route path="pos-qr-recovery" element={<PosQrRecoveryPage />} />
                 <Route path="warranty" element={<WarrantyPage />} />
-                <Route path="support" element={<AdminSupportPage />} />
 
                 <Route
                   path="customers"
@@ -893,15 +879,6 @@ export default function App() {
                   element={
                     <RequireStaffType allowedTypes={["cashier"]}>
                       <POSOrderHistory />
-                    </RequireStaffType>
-                  }
-                />
-
-                <Route
-                  path="support"
-                  element={
-                    <RequireStaffType allowedTypes={["cashier"]}>
-                      <StaffSupportPage />
                     </RequireStaffType>
                   }
                 />

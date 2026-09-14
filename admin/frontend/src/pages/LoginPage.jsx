@@ -41,7 +41,6 @@ const getCustomerPostLoginRoute = (redirectTo) => {
     "/orders",
     "/appointment",
     "/warranty",
-    "/support",
     "/profilesettings",
     "/custom-requests/",
   ];

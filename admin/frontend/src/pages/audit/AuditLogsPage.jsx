@@ -97,7 +97,7 @@ const ACTION_LABELS = {
   request_custom_estimate_revision: "Requested quotation revision",
   reject_custom_estimate: "Rejected custom quotation",
 
-  // Appointments, warranty, and support
+  // Appointments and Warranty
   request_appointment: "Requested appointment",
   create_appointment: "Created appointment",
   update_appointment: "Updated appointment",
@@ -106,11 +106,6 @@ const ACTION_LABELS = {
   cancel_warranty_claim: "Cancelled warranty claim",
   decide_warranty_claim: "Reviewed warranty claim",
   fulfill_warranty_claim: "Completed warranty service",
-  create_support_ticket: "Created support ticket",
-  assign_support_ticket: "Assigned support ticket",
-  update_support_ticket: "Updated support ticket",
-  reply_support_ticket: "Replied to support ticket",
-  close_support_ticket: "Closed support ticket",
 
   // Users and customer accounts
   update_customer_status: "Updated customer account",
@@ -151,7 +146,6 @@ const MODULE_LABELS = {
   deliveries: "Deliveries",
   appointments: "Appointments",
   warranties: "Warranty",
-  support_tickets: "Support",
   website_content: "Website Settings",
   website_settings: "Website Settings",
   faqs: "FAQs",
@@ -181,7 +175,6 @@ const TARGET_LABELS = {
   deliveries: "Delivery",
   appointments: "Appointment",
   warranties: "Warranty Claim",
-  support_tickets: "Support Ticket",
   website_content: "Website Settings",
   website_settings: "Website Settings",
   faqs: "FAQ",
@@ -487,10 +480,6 @@ const getActivityLabel = (log) => {
   if (log?.action === "decide_warranty_claim" && nextStatus) {
     if (nextStatus === "approved") return "Approved warranty claim";
     if (nextStatus === "rejected") return "Rejected warranty claim";
-  }
-
-  if (log?.action === "update_support_ticket" && nextStatus) {
-    return `Changed support ticket to ${humanize(nextStatus)}`;
   }
 
   if (log?.action === "verify_payment") {

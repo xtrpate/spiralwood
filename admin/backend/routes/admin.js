@@ -40,7 +40,6 @@ const sales = require("../controllers/admin/salesController");
 const mgmt = require("../controllers/admin/managementController");
 const website = require("../controllers/admin/websiteController");
 const warrantyController = require("../controllers/admin/warrantyController");
-const supportController = require("../controllers/admin/supportController");
 
 // ── Auth guards ───────────────────────────────────────────────────────────────
 const adminOnly = [
@@ -728,37 +727,6 @@ router.patch(
   replacementUpload,
   logAction("fulfill_warranty_claim", "warranties"),
   warrantyController.fulfillClaim,
-);
-
-// ══════════════════════════════════════════════════════════════════════════════
-// SUPPORT
-// ══════════════════════════════════════════════════════════════════════════════
-
-router.get("/support/tickets", adminStaff, supportController.getTickets);
-router.get(
-  "/support/assignable-users",
-  adminStaff,
-  supportController.getAssignableUsers,
-);
-router.get("/support/tickets/:id", adminStaff, supportController.getTicket);
-router.patch(
-  "/support/tickets/:id/assign",
-  adminOnly,
-  logAction("assign_support_ticket", "support_tickets"),
-  supportController.assignTicket,
-);
-router.patch(
-  "/support/tickets/:id/status",
-  adminStaff,
-  logAction("update_support_ticket", "support_tickets"),
-  supportController.updateTicketStatus,
-);
-router.post(
-  "/support/tickets/:id/messages",
-  adminStaff,
-  customDiscussionUpload,
-  logAction("reply_support_ticket", "support_tickets"),
-  supportController.replyToTicket,
 );
 
 // ══════════════════════════════════════════════════════════════════════════════

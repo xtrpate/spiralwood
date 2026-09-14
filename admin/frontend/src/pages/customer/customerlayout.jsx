@@ -51,7 +51,6 @@ const navItems = [
   { to: "/cart", icon: ShoppingCart, label: "Cart" },
   { to: "/orders", icon: Package, label: "My Orders" },
   { to: "/warranty", icon: Shield, label: "Warranty" },
-  { to: "/support", icon: Headphones, label: "Support" },
 ];
 
 /* WISDOM CUSTOMER FOOTER RESTRUCTURE V1.0.0 */
@@ -1941,19 +1940,6 @@ export default function CustomerLayout() {
                     </NavLink>
                   </li>
                 )}
-                <li>
-                  <NavLink
-                    to="/support"
-                    className="cust-footer-nav-link cust-footer-icon-link"
-                  >
-                    <Headphones
-                      size={15}
-                      strokeWidth={1.8}
-                      aria-hidden="true"
-                    />
-                    <span>Customer Support</span>
-                  </NavLink>
-                </li>
                 <li>
                   <NavLink
                     to="/warranty"

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
-import * as XLSX from "xlsx-js-style";
 import toast from "react-hot-toast";
 import {
   Package2,
@@ -9,7 +8,7 @@ import {
   CircleX,
   Globe2,
   EyeOff,
-  FileDown,
+  RefreshCw,
 } from "lucide-react";
 import CustomerBlueprintViewer from "../customer/CustomerBlueprintViewer";
 
@@ -85,262 +84,6 @@ const buildProductBlueprintPreview = (product = {}) => {
     view_3d_data: product.blueprint_view_3d_data || null,
     components,
   };
-};
-
-const productReportPdfText = (value) =>
-  String(value ?? "-")
-    .replace(/[–—]/g, "-")
-    .replace(/₱/g, "PHP ");
-
-const productReportMoney = (value) =>
-  `PHP ${Number(value || 0).toLocaleString("en-PH", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-
-const productReportStatus = (value) =>
-  String(value || "-")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-
-const productReportYesNo = (value) => (Number(value) === 1 ? "Yes" : "No");
-
-const exportProductReportExcel = ({ rows, scopeLabel, filterLabel }) => {
-  const wb = XLSX.utils.book_new();
-  const excelData = [];
-  const generatedAt = new Date();
-
-  // 👉 1. Simple bold black text for Section Titles (No background, no merge)
-  const titleStyle = { font: { bold: true, color: { rgb: "000000" } } };
-
-  // 👉 2. Black background with white text for Table Headers
-  const tableHeaderStyle = {
-    font: { bold: true, color: { rgb: "FFFFFF" } },
-    fill: { fgColor: { rgb: "000000" } },
-    border: {
-      top: { style: "thin", color: { rgb: "000000" } },
-      bottom: { style: "thin", color: { rgb: "000000" } },
-      left: { style: "thin", color: { rgb: "000000" } },
-      right: { style: "thin", color: { rgb: "000000" } },
-    },
-  };
-
-  // 👉 3. Alternating row colors (White and Light Grey)
-  const cellStyleLight = {
-    border: {
-      top: { style: "thin", color: { rgb: "000000" } },
-      bottom: { style: "thin", color: { rgb: "000000" } },
-      left: { style: "thin", color: { rgb: "000000" } },
-      right: { style: "thin", color: { rgb: "000000" } },
-    },
-  };
-
-  const cellStyleDark = {
-    fill: { fgColor: { rgb: "F3F4F6" } }, // Light Gray background
-    border: {
-      top: { style: "thin", color: { rgb: "000000" } },
-      bottom: { style: "thin", color: { rgb: "000000" } },
-      left: { style: "thin", color: { rgb: "000000" } },
-      right: { style: "thin", color: { rgb: "000000" } },
-    },
-  };
-
-  // Helper functions to apply styles
-  const t = (text) => ({ v: text, s: titleStyle });
-  const th = (text) => ({ v: text, s: tableHeaderStyle });
-
-  // Determines if the row should be white or grey based on its index
-  const c = (val, rowIndex) => ({
-    v: val ?? "",
-    s: rowIndex % 2 === 0 ? cellStyleLight : cellStyleDark,
-  });
-
-  const readyMade = rows.filter((row) => row.type !== "blueprint");
-  const blueprints = rows.filter((row) => row.type === "blueprint");
-
-  const summary = {
-    total: rows.length,
-    readyMade: readyMade.length,
-    blueprints: blueprints.length,
-    active: rows.filter((row) => Number(row.is_active) === 1).length,
-    published: rows.filter((row) => Number(row.is_published) === 1).length,
-    needsAttention: readyMade.filter((row) =>
-      ["low_stock", "out_of_stock"].includes(String(row.stock_status || "")),
-    ).length,
-  };
-
-  // 1. Report Metadata
-  excelData.push([
-    t("SPIRAL WOOD SERVICES - PRODUCT CATALOG & INVENTORY REPORT"),
-  ]);
-  excelData.push([
-    { v: "Scope:", s: titleStyle },
-    productReportPdfText(scopeLabel),
-  ]);
-  excelData.push([
-    { v: "Filters:", s: titleStyle },
-    productReportPdfText(filterLabel || "None"),
-  ]);
-  excelData.push([
-    { v: "Generated:", s: titleStyle },
-    generatedAt.toLocaleString("en-PH"),
-  ]);
-  excelData.push([]);
-
-  // 2. Catalog Overview
-  excelData.push([t("1. CATALOG OVERVIEW")]);
-  excelData.push(
-    [
-      "Products",
-      "Ready-made",
-      "Blueprints",
-      "Active",
-      "Published",
-      "Low / Out of Stock",
-    ].map(th),
-  );
-  excelData.push(
-    [
-      String(summary.total),
-      String(summary.readyMade),
-      String(summary.blueprints),
-      String(summary.active),
-      String(summary.published),
-      String(summary.needsAttention),
-    ].map((val) => c(val, 0)),
-  ); // Pass 0 for the first row to be white
-  excelData.push([]);
-
-  let sectionNum = 2;
-
-  // 3. Ready-Made Catalog & Pricing
-  if (readyMade.length > 0) {
-    excelData.push([t(`${sectionNum}. READY-MADE CATALOG & PRICING`)]);
-    excelData.push(
-      [
-        "Product",
-        "Barcode",
-        "Category",
-        "Price",
-        "Production Cost",
-        "Profit",
-        "Published",
-        "Active",
-      ].map(th),
-    );
-    readyMade.forEach((row, idx) => {
-      excelData.push(
-        [
-          productReportPdfText(row.name),
-          productReportPdfText(row.barcode || "-"),
-          productReportPdfText(row.category || "-"),
-          productReportMoney(row.price),
-          productReportMoney(row.production_cost),
-          productReportMoney(row.profit_margin),
-          productReportYesNo(row.is_published),
-          productReportYesNo(row.is_active),
-        ].map((val) => c(val, idx)),
-      ); // idx creates the alternating striping
-    });
-    excelData.push([]);
-    sectionNum++;
-
-    // 4. Ready-Made Inventory Status
-    excelData.push([t(`${sectionNum}. READY-MADE INVENTORY STATUS`)]);
-    excelData.push(
-      [
-        "Product",
-        "Barcode",
-        "Stock",
-        "Reorder Point",
-        "Stock Status",
-        "Homepage New Product",
-        "Active",
-      ].map(th),
-    );
-    readyMade.forEach((row, idx) => {
-      excelData.push(
-        [
-          productReportPdfText(row.name),
-          productReportPdfText(row.barcode || "-"),
-          Number(row.stock || 0),
-          Number(row.reorder_point || 0),
-          productReportPdfText(productReportStatus(row.stock_status)),
-          productReportYesNo(row.is_featured),
-          productReportYesNo(row.is_active),
-        ].map((val) => c(val, idx)),
-      );
-    });
-    excelData.push([]);
-    sectionNum++;
-  }
-
-  // 5. Blueprint Product Catalog
-  if (blueprints.length > 0) {
-    excelData.push([t(`${sectionNum}. BLUEPRINT PRODUCT CATALOG`)]);
-    excelData.push(
-      [
-        "Product",
-        "Barcode",
-        "Category",
-        "Blueprint Source",
-        "Pricing",
-        "Inventory",
-        "Published",
-        "Active",
-      ].map(th),
-    );
-    blueprints.forEach((row, idx) => {
-      excelData.push(
-        [
-          productReportPdfText(row.name),
-          productReportPdfText(row.barcode || "-"),
-          productReportPdfText(row.category || "-"),
-          row.blueprint_source_id
-            ? `#${row.blueprint_source_id}`
-            : "Archived source",
-          "After estimation",
-          "Made to order",
-          productReportYesNo(row.is_published),
-          productReportYesNo(row.is_active),
-        ].map((val) => c(val, idx)),
-      );
-    });
-  }
-
-  const ws = XLSX.utils.aoa_to_sheet(excelData);
-
-  // Dynamic Auto-Fit Columns
-  const colWidths = [];
-  excelData.forEach((row) => {
-    row.forEach((cell, colIndex) => {
-      const cellValue = cell && cell.v ? String(cell.v) : "";
-      const textLength = cellValue.length;
-      if (!colWidths[colIndex] || colWidths[colIndex].wch < textLength + 3) {
-        colWidths[colIndex] = { wch: textLength + 3 };
-      }
-    });
-  });
-
-  ws["!cols"] = colWidths.map((col) => ({
-    wch: Math.min(Math.max(col.wch, 12), 65),
-  }));
-
-  XLSX.utils.book_append_sheet(wb, ws, "Product Report");
-
-  const dateStamp = [
-    generatedAt.getFullYear(),
-    String(generatedAt.getMonth() + 1).padStart(2, "0"),
-    String(generatedAt.getDate()).padStart(2, "0"),
-  ].join("-");
-
-  XLSX.writeFile(
-    wb,
-    `spiral-wood-product-report-${scopeLabel
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "")}-${dateStamp}.xlsx`,
-  );
 };
 
 function ProductThumbnail({ product }) {
@@ -457,12 +200,11 @@ export default function ProductsPage() {
   const [actionMenuId, setActionMenuId] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
-  const [exportScope, setExportScope] = useState("filtered");
-  const [exporting, setExporting] = useState(false);
 
   const [pendingUnpublish, setPendingUnpublish] = useState(null);
   const [unpublishing, setUnpublishing] = useState(false);
+  const [pendingPublish, setPendingPublish] = useState(null);
+  const [publishing, setPublishing] = useState(false);
 
   const [filters, setFilters] = useState(() => {
     const fromEdit = sessionStorage.getItem("wisdom_navigating_to_edit");
@@ -478,7 +220,7 @@ export default function ProductsPage() {
       search: "",
       category_id: "",
       type: "",
-      status: "",
+      is_published: "",
       page: 1,
     };
   });
@@ -492,18 +234,31 @@ export default function ProductsPage() {
   }, [filters]);
 
   const buildListParams = useCallback(() => {
-    const params = {
+    const hasSearch = Boolean(filters.search?.trim());
+    const hasCategory = Boolean(filters.category_id);
+    const hasType = Boolean(filters.type);
+
+    const hasOtherFilter = hasSearch || hasCategory || hasType;
+
+    let isPublished;
+
+    if (filters.is_published !== "") {
+      isPublished = filters.is_published;
+    } else if (hasOtherFilter) {
+      isPublished = undefined;
+    } else {
+      isPublished = "1";
+    }
+
+    return {
       search: filters.search || undefined,
       category_id: filters.category_id || undefined,
       type: filters.type || undefined,
-      status: filters.status || undefined,
+      is_published: isPublished,
       page: filters.page,
       limit: 20,
-      is_published: 1,
       sort: "admin_product_management",
     };
-
-    return params;
   }, [filters]);
 
   const load = useCallback(async () => {
@@ -541,6 +296,10 @@ export default function ProductsPage() {
       // Keep the list usable even if the secondary summary request fails.
     }
   }, []);
+
+  const handleRefresh = async () => {
+    await Promise.all([load(), loadSummary()]);
+  };
 
   useEffect(() => {
     load();
@@ -677,13 +436,31 @@ export default function ProductsPage() {
         ids: [pendingUnpublish.id],
         is_published: false,
       });
-      toast.success("Removed from product page.");
+      toast.success("Product unpublished.");
       setPendingUnpublish(null);
       await Promise.all([load(), loadSummary()]);
     } catch (err) {
-      toast.error("Failed to remove from product page.");
+      toast.error("Failed to unpublish product.");
     } finally {
       setUnpublishing(false);
+    }
+  };
+
+  const confirmPublish = async () => {
+    if (!pendingPublish?.id) return;
+    setPublishing(true);
+    try {
+      await api.patch("/products/bulk-publish", {
+        ids: [pendingPublish.id],
+        is_published: true,
+      });
+      toast.success("Product published.");
+      setPendingPublish(null);
+      await Promise.all([load(), loadSummary()]);
+    } catch (err) {
+      toast.error("Failed to publish product.");
+    } finally {
+      setPublishing(false);
     }
   };
 
@@ -745,57 +522,14 @@ export default function ProductsPage() {
       );
     }
 
-    if (filters.status) {
-      labels.push(`Stock: ${productReportStatus(filters.status)}`);
+    if (filters.is_published !== undefined && filters.is_published !== "") {
+      labels.push(
+        `Status: ${filters.is_published === "1" ? "Published" : "Unpublished"}`,
+      );
     }
 
     return labels.length > 0 ? labels.join(" | ") : "None";
   }, [categories, filters]);
-
-  const handleExportReport = async () => {
-    setExporting(true);
-
-    try {
-      const params =
-        exportScope === "filtered"
-          ? {
-              search: filters.search || undefined,
-              category_id: filters.category_id || undefined,
-              type: filters.type || undefined,
-              status: filters.status || undefined,
-              is_active:
-                filters.is_active === "" ? undefined : filters.is_active,
-            }
-          : {};
-
-      const { data } = await api.get("/products/report", { params });
-      const rows = Array.isArray(data) ? data : [];
-
-      if (!rows.length) {
-        toast.error("No products found for this report.");
-        return;
-      }
-
-      exportProductReportExcel({
-        rows,
-        scopeLabel:
-          exportScope === "filtered" ? "Current filters" : "All products",
-        filterLabel:
-          exportScope === "filtered" ? productReportFilterLabel : "None",
-      });
-
-      toast.success(
-        `Product report created for ${rows.length} product${rows.length === 1 ? "" : "s"}.`,
-      );
-      setExportOpen(false);
-    } catch (err) {
-      toast.error(
-        err?.response?.data?.message || "Failed to create product report.",
-      );
-    } finally {
-      setExporting(false);
-    }
-  };
 
   const pageCount = Math.max(1, Math.ceil(total / 20));
 
@@ -825,16 +559,26 @@ export default function ProductsPage() {
           </span>
           <button
             type="button"
-            onClick={() => setExportOpen(true)}
+            onClick={handleRefresh}
+            disabled={loading}
             style={{
               ...btnSecondary,
               display: "inline-flex",
               alignItems: "center",
               gap: 7,
+              opacity: loading ? 0.65 : 1,
+              cursor: loading ? "wait" : "pointer",
             }}
           >
-            <FileDown size={14} strokeWidth={1.8} aria-hidden="true" />
-            Export report
+            <RefreshCw
+              size={14}
+              strokeWidth={1.8}
+              aria-hidden="true"
+              style={{
+                animation: loading ? "spin 1s linear infinite" : "none",
+              }}
+            />
+            {loading ? "Refreshing..." : "Refresh"}
           </button>
         </div>
       </div>
@@ -880,15 +624,14 @@ export default function ProductsPage() {
         </select>
 
         <select
-          value={filters.status}
-          onChange={(event) => updateFilter("status", event.target.value)}
-          aria-label="Filter by stock level"
+          value={filters.is_published}
+          onChange={(event) => updateFilter("is_published", event.target.value)}
+          aria-label="Filter by status"
           style={filterControl}
         >
-          <option value="">All stock levels</option>
-          <option value="in_stock">In stock</option>
-          <option value="low_stock">Low stock</option>
-          <option value="out_of_stock">Out of stock</option>
+          <option value="">All statuses</option>
+          <option value="1">Published</option>
+          <option value="0">Unpublished</option>
         </select>
 
         {selectedIds.length > 0 ? (
@@ -899,7 +642,7 @@ export default function ProductsPage() {
               onClick={() => handleBulkPublish(false)}
               style={btnDangerSmall}
             >
-              Remove from product page
+              Unpublish selected
             </button>
           </div>
         ) : (
@@ -941,15 +684,13 @@ export default function ProductsPage() {
           <colgroup>
             <col style={{ width: 38 }} />
             <col style={{ width: 58 }} />
-            <col style={{ width: "18%" }} />
-            <col style={{ width: "13%" }} />
-            <col style={{ width: "10%" }} />
-            <col style={{ width: "13%" }} />
-            <col style={{ width: "9%" }} />
-            <col style={{ width: "10%" }} />
-            <col style={{ width: "10%" }} />
-            <col style={{ width: "7%" }} />
-            <col style={{ width: "10%" }} />
+            <col style={{ width: "22%" }} />
+            <col style={{ width: "15%" }} />
+            <col style={{ width: "12%" }} />
+            <col style={{ width: "12%" }} />
+            <col style={{ width: "12%" }} />
+            <col style={{ width: "8%" }} />
+            <col style={{ width: "12%" }} />
           </colgroup>
 
           <thead>
@@ -972,8 +713,6 @@ export default function ProductsPage() {
                 "Category",
                 "Type",
                 "Price",
-                "Stock",
-                "Status",
                 "Published",
                 "Featured",
                 "Actions",
@@ -988,13 +727,13 @@ export default function ProductsPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={11} style={emptyCell}>
+                <td colSpan={9} style={emptyCell}>
                   Loading products...
                 </td>
               </tr>
             ) : products.length === 0 ? (
               <tr>
-                <td colSpan={11} style={emptyCell}>
+                <td colSpan={9} style={emptyCell}>
                   No products found for the selected filters.
                 </td>
               </tr>
@@ -1073,35 +812,6 @@ export default function ProductsPage() {
                           ? "After estimation"
                           : formatPeso(product.online_price)}
                       </div>
-                    </td>
-
-                    <td style={td}>
-                      {isBlueprint ? (
-                        <span style={madeToOrderBadge}>Made to order</span>
-                      ) : (
-                        <span style={primaryValue}>
-                          {Number(product.stock || 0).toLocaleString("en-PH")}
-                        </span>
-                      )}
-                    </td>
-
-                    <td style={td}>
-                      {isBlueprint ? (
-                        <span style={blueprintStatusBadge}>
-                          Build on request
-                        </span>
-                      ) : (
-                        <span
-                          style={{
-                            ...statusBadge,
-                            background: badge.background,
-                            color: badge.color,
-                            borderColor: badge.border,
-                          }}
-                        >
-                          {badge.label}
-                        </span>
-                      )}
                     </td>
 
                     <td style={td}>
@@ -1212,17 +922,31 @@ export default function ProductsPage() {
 
                           {actionMenuId === product.id && (
                             <div role="menu" style={moreMenu}>
-                              <button
-                                type="button"
-                                role="menuitem"
-                                style={menuItem}
-                                onClick={() => {
-                                  setActionMenuId(null);
-                                  setPendingUnpublish(product);
-                                }}
-                              >
-                                Unpublish product
-                              </button>
+                              {Number(product.is_published) === 1 ? (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  style={menuItem}
+                                  onClick={() => {
+                                    setActionMenuId(null);
+                                    setPendingUnpublish(product);
+                                  }}
+                                >
+                                  Unpublish product
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  style={menuItem}
+                                  onClick={() => {
+                                    setActionMenuId(null);
+                                    setPendingPublish(product);
+                                  }}
+                                >
+                                  Publish product
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1287,91 +1011,42 @@ export default function ProductsPage() {
         </div>
       </div>
 
-      {exportOpen && (
+      {pendingPublish && (
         <div style={modalBackdrop}>
           <div
             role="dialog"
             aria-modal="true"
-            aria-labelledby="export-products-title"
-            style={{ ...dialog, width: "min(520px, 100%)" }}
+            aria-labelledby="publish-product-title"
+            style={dialog}
           >
-            <div style={dialogEyebrow}>Product report</div>
-            <h2 id="export-products-title" style={dialogTitle}>
-              Export product report
+            <div style={dialogEyebrow}>Publish Product</div>
+
+            <h2 id="publish-product-title" style={dialogTitle}>
+              Do you want to continue?
             </h2>
-            <p style={{ ...dialogText, marginBottom: 16 }}>
-              Create an Excel report using the same internal report format as
-              the Sales Report.
+
+            <p style={dialogText}>
+              Publishing "{pendingPublish.name}" will make this product visible
+              on the front store and product page.
             </p>
-
-            <div style={exportScopeList}>
-              <button
-                type="button"
-                onClick={() => setExportScope("filtered")}
-                style={{
-                  ...exportScopeOption,
-                  ...(exportScope === "filtered"
-                    ? exportScopeOptionSelected
-                    : {}),
-                }}
-                disabled={exporting}
-              >
-                <span style={exportScopeTitle}>Current filters</span>
-                <span style={exportScopeMeta}>
-                  {total.toLocaleString("en-PH")} matching product
-                  {total === 1 ? "" : "s"}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setExportScope("all")}
-                style={{
-                  ...exportScopeOption,
-                  ...(exportScope === "all" ? exportScopeOptionSelected : {}),
-                }}
-                disabled={exporting}
-              >
-                <span style={exportScopeTitle}>All products</span>
-                <span style={exportScopeMeta}>
-                  {summary.total.toLocaleString("en-PH")} total product
-                  {summary.total === 1 ? "" : "s"}
-                </span>
-              </button>
-            </div>
-
-            <div style={exportContents}>
-              <div style={exportContentsLabel}>Included in Excel</div>
-              <div style={exportContentsText}>
-                Catalog summary, ready-made pricing, inventory status, Blueprint
-                products, publishing, and availability.
-              </div>
-            </div>
 
             <div style={dialogActions}>
               <button
                 type="button"
-                onClick={() => setExportOpen(false)}
+                onClick={() => setPendingPublish(null)}
                 style={btnSecondary}
-                disabled={exporting}
+                disabled={publishing}
               >
                 Cancel
               </button>
+
               <button
                 type="button"
-                onClick={handleExportReport}
-                style={{
-                  ...btnPrimary,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 7,
-                  opacity: exporting ? 0.65 : 1,
-                  cursor: exporting ? "wait" : "pointer",
-                }}
-                disabled={exporting}
+                onClick={confirmPublish}
+                style={btnPrimary}
+                disabled={publishing}
               >
-                <FileDown size={14} strokeWidth={1.8} aria-hidden="true" />
-                {exporting ? "Preparing..." : "Export Excel"}
+                {publishing ? "Publishing..." : "Publish product"}
               </button>
             </div>
           </div>
@@ -1996,74 +1671,6 @@ const emptyCell = {
   fontSize: 12,
   fontWeight: 400,
   textAlign: "center",
-};
-
-const exportScopeList = {
-  display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  gap: 8,
-  marginBottom: 12,
-};
-
-const exportScopeOption = {
-  minHeight: 76,
-  padding: "12px 13px",
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "flex-start",
-  justifyContent: "center",
-  gap: 5,
-  background: "#ffffff",
-  color: "#27272a",
-  border: "1px solid #d4d4d8",
-  borderRadius: 2,
-  fontFamily: "inherit",
-  textAlign: "left",
-  cursor: "pointer",
-};
-
-const exportScopeOptionSelected = {
-  background: "#fafafa",
-  borderColor: "#18181b",
-  boxShadow: "inset 0 0 0 1px #18181b",
-};
-
-const exportScopeTitle = {
-  color: "#18181b",
-  fontSize: 12.5,
-  fontWeight: 600,
-  lineHeight: 1.25,
-};
-
-const exportScopeMeta = {
-  color: "#71717a",
-  fontSize: 10.5,
-  fontWeight: 400,
-  lineHeight: 1.35,
-};
-
-const exportContents = {
-  marginBottom: 18,
-  padding: "11px 12px",
-  background: "#fafafa",
-  border: "1px solid #e4e4e7",
-  borderRadius: 2,
-};
-
-const exportContentsLabel = {
-  marginBottom: 4,
-  color: "#3f3f46",
-  fontSize: 9.5,
-  fontWeight: 600,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-};
-
-const exportContentsText = {
-  color: "#71717a",
-  fontSize: 11.5,
-  fontWeight: 400,
-  lineHeight: 1.45,
 };
 
 const modalBackdrop = {

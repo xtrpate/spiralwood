@@ -132,11 +132,9 @@ const getManilaDateInput = () => {
 
 const materialSpec = (row) => {
   const form = humanize(row?.material_form || "other");
-  const dimensions = [
-    row?.length_mm,
-    row?.width_mm,
-    row?.thickness_mm,
-  ].filter((value) => value !== null && value !== undefined && value !== "");
+  const dimensions = [row?.length_mm, row?.width_mm, row?.thickness_mm].filter(
+    (value) => value !== null && value !== undefined && value !== "",
+  );
 
   if (dimensions.length === 0) return form;
 
@@ -438,7 +436,10 @@ export default function CurrentInventoryReportPage() {
         [title("Inventory Type:"), typeLabel],
         [title("Stock Health:"), healthLabel],
         [title("Search:"), search.trim() || "None"],
-        [title("History Status:"), warnings.length ? "Review warnings" : "Complete"],
+        [
+          title("History Status:"),
+          warnings.length ? "Review warnings" : "Complete",
+        ],
         [],
         [title("REPORT SUMMARY")],
         [
@@ -568,14 +569,36 @@ export default function CurrentInventoryReportPage() {
         .replace(/[:.]/g, "-")
         .slice(0, 19);
 
-      XLSX.writeFile(
-        workbook,
-        `wisdom_inventory_report_${appliedReportDate}_${stamp}.xlsx`,
-      );
+      const fileName = `wisdom_inventory_report_${appliedReportDate}_${stamp}.xlsx`;
+
+      if (window.showSaveFilePicker) {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: fileName,
+          types: [
+            {
+              description: "Excel Document",
+              accept: {
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+                  [".xlsx"],
+              },
+            },
+          ],
+        });
+        const writable = await handle.createWritable();
+        const buffer = XLSX.write(workbook, {
+          bookType: "xlsx",
+          type: "array",
+        });
+        await writable.write(buffer);
+        await writable.close();
+      } else {
+        XLSX.writeFile(workbook, fileName);
+      }
 
       toast.success("Inventory report exported.");
     } catch (err) {
-      toast.error("Failed to export the Inventory report.");
+      if (err.name !== "AbortError")
+        toast.error("Failed to export the Inventory report.");
     } finally {
       setExporting(false);
     }
@@ -642,10 +665,9 @@ export default function CurrentInventoryReportPage() {
 
       {warnings.length > 0 ? (
         <div className="cir-warning">
-          <strong>Historical data warning:</strong>{" "}
-          {warnings.length} item/history issue(s) could not be reconstructed
-          safely. Unavailable quantities are shown as “—” instead of being
-          guessed.
+          <strong>Historical data warning:</strong> {warnings.length}{" "}
+          item/history issue(s) could not be reconstructed safely. Unavailable
+          quantities are shown as “—” instead of being guessed.
         </div>
       ) : null}
 

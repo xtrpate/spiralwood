@@ -2,8 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
-import * as XLSX from "xlsx-js-style";
-import { FileDown } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 
 import "./BuildMaterialsPage.css";
 // WISDOM BUILD MATERIALS UI POLISH V1.0.1
@@ -49,6 +48,7 @@ export default function BuildMaterialsPage() {
   const [categories, setCategories] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [filters, setFilters] = useState(() => {
     const fromEdit = sessionStorage.getItem("wisdom_navigating_to_build_edit");
@@ -81,93 +81,6 @@ export default function BuildMaterialsPage() {
   const [publishing, setPublishing] = useState(false);
   const [bulkPublishModal, setBulkPublishModal] = useState(false);
   const [bulkPublishing, setBulkPublishing] = useState(false);
-  const [exporting, setExporting] = useState(false);
-
-  const handleExport = async () => {
-    setExporting(true);
-    try {
-      const { data } = await api.get("/products", {
-        params: {
-          limit: 5000,
-          search: filters.search || undefined,
-          category_id: filters.categoryFilter || undefined,
-          status: filters.stockFilter || undefined,
-          type: "standard",
-        },
-      });
-
-      const rows = data.products || [];
-      if (!rows.length) {
-        toast.error("No materials found to export.");
-        return;
-      }
-
-      const wb = XLSX.utils.book_new();
-      const exportData = [
-        [
-          {
-            v: "BUILD MATERIALS INVENTORY REPORT",
-            s: { font: { bold: true } },
-          },
-        ],
-        [],
-        [
-          "Material Name",
-          "Category",
-          "Walk-in Price",
-          "Product Cost",
-          "Available Stock",
-          "Reorder Point",
-          "Stock Level",
-          "Published",
-          "Active",
-        ].map((t) => ({
-          v: t,
-          s: {
-            font: { bold: true, color: { rgb: "FFFFFF" } },
-            fill: { fgColor: { rgb: "000000" } },
-          },
-        })),
-      ];
-
-      rows.forEach((row) => {
-        exportData.push([
-          row.name,
-          row.category_name || "—",
-          Number(row.walkin_price || 0),
-          Number(row.production_cost || 0),
-          Number(row.stock || 0),
-          Number(row.reorder_point || 0),
-          getStatus(row).label.toUpperCase(),
-          Number(row.is_published) === 1 ? "Yes" : "No",
-          Number(row.is_active) === 1 ? "Yes" : "No",
-        ]);
-      });
-
-      const ws = XLSX.utils.aoa_to_sheet(exportData);
-      ws["!cols"] = [
-        { wch: 35 },
-        { wch: 20 },
-        { wch: 15 },
-        { wch: 15 },
-        { wch: 15 },
-        { wch: 15 },
-        { wch: 15 },
-        { wch: 10 },
-        { wch: 10 },
-      ];
-      XLSX.utils.book_append_sheet(wb, ws, "Build Materials");
-      XLSX.writeFile(
-        wb,
-        `Build-Materials-Report-${new Date().toISOString().slice(0, 10)}.xlsx`,
-      );
-      toast.success("Excel report exported successfully.");
-    } catch (err) {
-      toast.error("Failed to export report.");
-    } finally {
-      setExporting(false);
-    }
-  };
 
   useEffect(() => {
     sessionStorage.removeItem("wisdom_navigating_to_build_edit");
@@ -242,6 +155,18 @@ export default function BuildMaterialsPage() {
     filters.visibilityFilter,
   ]);
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+
+    try {
+      await loadData();
+    } catch (error) {
+      toast.error("Failed to refresh build materials.");
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   useEffect(() => {
     loadData();
   }, [loadData]);
@@ -269,11 +194,11 @@ export default function BuildMaterialsPage() {
         ids: [pendingPublish.id],
         is_published: true,
       });
-      toast.success("Added to product page.");
+      toast.success("Product published.");
       setPendingPublish(null);
       loadData();
     } catch {
-      toast.error("Failed to add to product page.");
+      toast.error("Failed to publish product.");
     } finally {
       setPublishing(false);
     }
@@ -287,12 +212,12 @@ export default function BuildMaterialsPage() {
         ids: selectedIds,
         is_published: true,
       });
-      toast.success("Added to product page.");
+      toast.success("Products published.");
       setBulkPublishModal(false);
       setSelectedIds([]);
       loadData();
     } catch {
-      toast.error("Failed to add to product page.");
+      toast.error("Failed to publish products.");
     } finally {
       setBulkPublishing(false);
     }
@@ -300,12 +225,27 @@ export default function BuildMaterialsPage() {
 
   const confirmArchive = async () => {
     if (!pendingArchive?.id) return;
+
+    // Safety check: published products must be removed from the product page first.
+    if (Number(pendingArchive.is_published) === 1) {
+      setPendingArchive(null);
+
+      toast.error(
+        "Please remove the product from the product page first before you can archive it.",
+      );
+
+      return;
+    }
+
     setArchiving(true);
+
     try {
       await api.patch(`/products/${pendingArchive.id}/active`, {
         is_active: false,
       });
+
       toast.success("Build material archived.");
+
       setPendingArchive(null);
       loadData();
     } catch (err) {
@@ -323,11 +263,11 @@ export default function BuildMaterialsPage() {
         ids: [pendingUnpublish.id],
         is_published: false,
       });
-      toast.success("Removed from product page.");
+      toast.success("Product unpublished.");
       setPendingUnpublish(null);
       loadData();
     } catch (err) {
-      toast.error("Failed to remove from product page.");
+      toast.error("Failed to unpublish product.");
     } finally {
       setUnpublishing(false);
     }
@@ -387,7 +327,7 @@ export default function BuildMaterialsPage() {
         is_published: isPublished,
       });
       toast.success(
-        isPublished ? "Added to product page." : "Removed from product page.",
+        isPublished ? "Products published." : "Products unpublished.",
       );
       loadData();
     } catch {
@@ -397,14 +337,32 @@ export default function BuildMaterialsPage() {
 
   const confirmBulkArchive = async () => {
     if (selectedIds.length === 0) return;
+
+    const publishedProducts = products.filter(
+      (product) =>
+        selectedIds.includes(product.id) && Number(product.is_published) === 1,
+    );
+
+    if (publishedProducts.length > 0) {
+      toast.error(
+        "Please remove all selected published products from the product page before you can archive them.",
+      );
+      return;
+    }
+
     setArchiving(true);
+
     try {
       await Promise.all(
         selectedIds.map((id) =>
-          api.patch(`/products/${id}/active`, { is_active: false }),
+          api.patch(`/products/${id}/active`, {
+            is_active: false,
+          }),
         ),
       );
+
       toast.success("Selected materials archived.");
+
       setBulkArchiveModal(false);
       setSelectedIds([]);
       loadData();
@@ -429,8 +387,8 @@ export default function BuildMaterialsPage() {
           <button
             type="button"
             className="build-materials-view-button"
-            onClick={handleExport}
-            disabled={exporting}
+            onClick={handleRefresh}
+            disabled={refreshing}
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -438,11 +396,14 @@ export default function BuildMaterialsPage() {
               background: "#ffffff",
               color: "#18181b",
               border: "1px solid #d4d4d8",
+              opacity: refreshing ? 0.65 : 1,
+              cursor: refreshing ? "wait" : "pointer",
             }}
           >
-            <FileDown size={14} />
-            {exporting ? "Exporting..." : "Export Report"}
+            <RefreshCw size={14} />
+            {refreshing ? "Refreshing..." : "Refresh"}
           </button>
+
           <button
             type="button"
             className="build-materials-primary-button"
@@ -534,31 +495,18 @@ export default function BuildMaterialsPage() {
                 onClick={() => setBulkPublishModal(true)}
                 style={btnPrimarySmall}
               >
-                Add to product page
+                Publish selected
               </button>
               <button
                 type="button"
                 onClick={() => handleBulkPublish(false)}
                 style={btnSecondarySmall}
               >
-                Remove from product page
+                Unpublish selected
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  const hasPublished = products.some(
-                    (p) =>
-                      selectedIds.includes(p.id) &&
-                      Number(p.is_published) === 1,
-                  );
-                  if (hasPublished) {
-                    toast.error(
-                      "Please unpublish the selected products from the product page before you can archive them.",
-                    );
-                  } else {
-                    setBulkArchiveModal(true);
-                  }
-                }}
+                onClick={() => setBulkArchiveModal(true)}
                 style={btnDangerSmall}
               >
                 Archive
@@ -603,7 +551,13 @@ export default function BuildMaterialsPage() {
                 </tr>
               </thead>
               <tbody>
-                {!loading && products.length === 0 ? (
+                {loading ? (
+                  <tr>
+                    <td colSpan="9" className="build-materials-empty">
+                      Loading products...
+                    </td>
+                  </tr>
+                ) : products.length === 0 ? (
                   <tr>
                     <td colSpan="9" className="build-materials-empty">
                       No ready-made products match the selected filters.
@@ -808,7 +762,7 @@ export default function BuildMaterialsPage() {
                                             setPendingUnpublish(product);
                                           }}
                                         >
-                                          Remove from product page
+                                          Unpublish product
                                         </button>
                                       ) : (
                                         <button
@@ -820,7 +774,7 @@ export default function BuildMaterialsPage() {
                                             setPendingPublish(product);
                                           }}
                                         >
-                                          Add to product page
+                                          Publish product
                                         </button>
                                       )}
                                       <button
@@ -832,6 +786,7 @@ export default function BuildMaterialsPage() {
                                         }}
                                         onClick={() => {
                                           setActionMenuId(null);
+
                                           if (
                                             Number(product.is_published) === 1
                                           ) {
@@ -908,7 +863,7 @@ export default function BuildMaterialsPage() {
             <h2 style={dialogTitle}>Publish {selectedIds.length} Materials?</h2>
             <p style={dialogText}>
               Do you want to continue? This action will publish the selected
-              products and will be shown on the front store.
+              products and make them visible on the customer storefront.
             </p>
             <div style={dialogActions}>
               <button
@@ -925,7 +880,7 @@ export default function BuildMaterialsPage() {
                 style={btnPrimaryModal}
                 disabled={bulkPublishing}
               >
-                {bulkPublishing ? "Publishing..." : "Add to product page"}
+                {bulkPublishing ? "Publishing..." : "Publish products"}
               </button>
             </div>
           </div>
@@ -939,7 +894,7 @@ export default function BuildMaterialsPage() {
             <h2 style={dialogTitle}>Publish "{pendingPublish.name}"?</h2>
             <p style={dialogText}>
               Do you want to continue? This action will publish the product and
-              will be shown on the front store.
+              make it visible on the customer storefront.
             </p>
 
             <div style={dialogActions}>
@@ -957,7 +912,7 @@ export default function BuildMaterialsPage() {
                 style={btnPrimaryModal}
                 disabled={publishing}
               >
-                {publishing ? "Publishing..." : "Add to product page"}
+                {publishing ? "Publishing..." : "Publish product"}
               </button>
             </div>
           </div>
@@ -971,7 +926,8 @@ export default function BuildMaterialsPage() {
             <h2 style={dialogTitle}>Archive {selectedIds.length} Materials?</h2>
             <p style={dialogText}>
               This will remove the selected items from your active Build
-              Materials inventory.
+              Materials inventory. If any items are currently published, they
+              will also be automatically unpublished from the product page.
             </p>
             <div style={dialogActions}>
               <button
@@ -998,12 +954,12 @@ export default function BuildMaterialsPage() {
       {pendingUnpublish && (
         <div style={modalBackdrop}>
           <div role="dialog" aria-modal="true" style={dialog}>
-            <div style={dialogEyebrow}>Remove Product</div>
-            <h2 style={dialogTitle}>Remove "{pendingUnpublish.name}"?</h2>
+            <div style={dialogEyebrow}>Unpublish Product</div>
+            <h2 style={dialogTitle}>Unpublish "{pendingUnpublish.name}"?</h2>
             <p style={dialogText}>
-              Are you sure you want to remove "{pendingUnpublish.name}" from the
-              product page? Doing this will unpublish the product and completely
-              hide it from the customer store.
+              Are you sure you want to unpublish "{pendingUnpublish.name}"?
+              Doing this will hide it from the customer store, but it will
+              remain in your Product Management list.
             </p>
 
             <div style={dialogActions}>
@@ -1021,7 +977,7 @@ export default function BuildMaterialsPage() {
                 style={btnDanger}
                 disabled={unpublishing}
               >
-                {unpublishing ? "Removing..." : "Remove from product page"}
+                {unpublishing ? "Unpublishing..." : "Unpublish product"}
               </button>
             </div>
           </div>
@@ -1032,10 +988,12 @@ export default function BuildMaterialsPage() {
         <div style={modalBackdrop}>
           <div role="dialog" aria-modal="true" style={dialog}>
             <div style={dialogEyebrow}>Archive Material</div>
+
             <h2 style={dialogTitle}>Archive "{pendingArchive.name}"?</h2>
+
             <p style={dialogText}>
               This will remove the item from your active Build Materials
-              inventory.
+              inventory and archive it.
             </p>
 
             <div style={dialogActions}>
@@ -1047,6 +1005,7 @@ export default function BuildMaterialsPage() {
               >
                 Cancel
               </button>
+
               <button
                 type="button"
                 onClick={confirmArchive}

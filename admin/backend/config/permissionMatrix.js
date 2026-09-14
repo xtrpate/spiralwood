@@ -74,8 +74,6 @@ const MODULE_ACTIONS = Object.freeze({
 
   warranty: ["view", "create", "edit", "manage", "export"],
 
-  support: ["view", "create", "edit", "manage", "delete"],
-
   sales_report: ["view", "export"],
 
   customers: ["view", "create", "edit", "manage", "delete", "export"],
@@ -125,7 +123,6 @@ const AUTHORITY_DEFAULTS = Object.freeze({
 
     contracts: [],
     warranty: ["view"],
-    support: ["view"],
 
     sales_report: [],
     customers: [],
@@ -173,8 +170,6 @@ const AUTHORITY_DEFAULTS = Object.freeze({
     contracts: ["view", "create", "edit", "delete", "manage", "export"],
 
     warranty: ["view", "create", "edit", "manage", "export"],
-
-    support: ["view", "create", "edit", "manage", "delete"],
 
     sales_report: ["view", "export"],
 
@@ -226,8 +221,6 @@ const AUTHORITY_DEFAULTS = Object.freeze({
 
     warranty: ["view", "create", "edit", "manage", "export"],
 
-    support: ["view", "create", "edit", "manage", "delete"],
-
     sales_report: ["view", "export"],
 
     customers: ["view", "create", "edit", "manage", "delete", "export"],
@@ -270,8 +263,6 @@ const ROLE_DEFAULTS = Object.freeze({
 
     appointments: ["create", "view"],
 
-    support: ["create", "view"],
-
     warranty: ["create", "view"],
   },
 
@@ -305,8 +296,6 @@ const ROLE_DEFAULTS = Object.freeze({
     contracts: ["view"],
 
     warranty: ["view"],
-
-    support: ["view"],
   },
 
   delivery_rider: {
