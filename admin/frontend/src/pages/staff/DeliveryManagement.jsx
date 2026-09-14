@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Navigation, UploadCloud, FileText } from "lucide-react";
+import { Navigation, UploadCloud, FileText, X } from "lucide-react";
 import api, { buildAssetUrl } from "../../services/api";
 import { getSocket, subscribeSocketReady } from "../../services/socket";
 import useAuthStore from "../../store/authStore";
@@ -826,14 +826,12 @@ export default function DeliveryManagement() {
               delivery.delivery_lng,
             );
 
-            // 👉 NEW: Added isCompleted boolean
             const canStartTransit = status === "scheduled";
             const canCompleteDelivery = status === "in_transit";
             const isDelivered = status === "delivered";
             const isCompleted = status === "completed";
             const isFailed = status === "failed";
 
-            // 👉 NEW: Summary should show for both Delivered AND Completed
             const showSummary = isDelivered || isCompleted;
 
             const paymentBalance = Number(delivery.payment_balance || 0);
@@ -1696,10 +1694,35 @@ export default function DeliveryManagement() {
                             }
                             disabled={completeDeliveryDisabled}
                             className={`rider-btn ${completeDeliveryDisabled ? "rider-btn-disabled" : "rider-btn-primary"}`}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: "8px",
+                            }}
                           >
-                            {savingId === delivery.id
-                              ? "Saving..."
-                              : "Complete Delivery"}
+                            {savingId === delivery.id ? (
+                              <>
+                                <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
+                                <svg
+                                  width="16"
+                                  height="16"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="3"
+                                  strokeLinecap="round"
+                                  style={{
+                                    animation: "spin 0.7s linear infinite",
+                                  }}
+                                >
+                                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                                </svg>
+                                Saving...
+                              </>
+                            ) : (
+                              "Complete Delivery"
+                            )}
                           </button>
                         </div>
                       </div>
@@ -1724,7 +1747,6 @@ export default function DeliveryManagement() {
                       </div>
                     )}
 
-                    {/* 👉 NEW: showSummary covers both Delivered and Completed statuses */}
                     {showSummary && (
                       <div style={actionSection}>
                         <div style={sectionTitle}>Delivery Summary</div>
@@ -1830,7 +1852,6 @@ export default function DeliveryManagement() {
                             </div>
                           ) : null}
 
-                          {/* 👉 NEW: The entire upload and Undo section is strictly hidden if Completed */}
                           {isDelivered && (
                             <>
                               <div style={{ ...proofPanel, marginTop: 12 }}>
@@ -1926,7 +1947,6 @@ export default function DeliveryManagement() {
                             </>
                           )}
 
-                          {/* 👉 NEW: Give the rider a way to dismiss the card once completed */}
                           {isCompleted && (
                             <div
                               className="rider-button-row"
@@ -2212,6 +2232,101 @@ export default function DeliveryManagement() {
   );
 }
 
+function ProofPreviewModal({ url, name, onClose }) {
+  if (!url) return null;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 2000,
+        background: "rgba(0, 0, 0, 0.75)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "16px",
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: "#ffffff",
+          borderRadius: "8px",
+          padding: "16px",
+          width: "100%",
+          maxWidth: "520px",
+          maxHeight: "90vh",
+          display: "flex",
+          flexDirection: "column",
+          gap: "12px",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <h3
+            style={{
+              margin: 0,
+              fontSize: "15px",
+              fontWeight: 700,
+              color: "#18181b",
+            }}
+          >
+            Proof Preview
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: "4px",
+              display: "grid",
+              placeItems: "center",
+              color: "#52525b",
+            }}
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div
+          style={{
+            flex: 1,
+            overflow: "hidden",
+            borderRadius: "4px",
+            border: "1px solid #e4e4e7",
+          }}
+        >
+          <img
+            src={url}
+            alt={name}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "contain",
+              maxHeight: "65vh",
+            }}
+          />
+        </div>
+
+        <div
+          style={{ fontSize: "12px", color: "#52525b", textAlign: "center" }}
+        >
+          {name}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ProofUploadField({
   inputId,
   disabled,
@@ -2220,39 +2335,148 @@ function ProofUploadField({
   title,
   helper,
 }) {
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const isImage = selectedFile && selectedFile.type.startsWith("image/");
+  const previewUrl = isImage ? URL.createObjectURL(selectedFile) : null;
+
   return (
-    <label
-      htmlFor={inputId}
-      className={`rider-proof-upload${disabled ? " is-disabled" : ""}`}
-    >
-      <input
-        id={inputId}
-        className="rider-proof-upload-input"
-        type="file"
-        accept="image/*,.pdf"
-        disabled={disabled}
-        onChange={(event) => onSelect(event.target.files?.[0] || null)}
-      />
-
-      <div className="rider-proof-upload-icon">
-        <UploadCloud size={20} strokeWidth={1.8} />
-      </div>
-
-      <div className="rider-proof-upload-copy">
-        <strong>{title}</strong>
-        <span>{helper}</span>
+    <>
+      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         {selectedFile ? (
-          <span className="rider-proof-selected">
-            <FileText size={13} strokeWidth={1.8} />
-            {selectedFile.name}
-          </span>
-        ) : null}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "12px",
+              background: "#ffffff",
+              border: "1px solid #d4d4d8",
+              borderRadius: "8px",
+            }}
+          >
+            {isImage ? (
+              <button
+                type="button"
+                onClick={() => setModalOpen(true)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                  background: "transparent",
+                  border: "none",
+                  padding: 0,
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+                title="Click to review full size"
+              >
+                <img
+                  src={previewUrl}
+                  alt="Proof preview"
+                  style={{
+                    width: "48px",
+                    height: "48px",
+                    objectFit: "cover",
+                    borderRadius: "4px",
+                    border: "1px solid #e4e4e7",
+                  }}
+                />
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <span
+                    style={{
+                      fontSize: "13px",
+                      fontWeight: 700,
+                      color: "#18181b",
+                    }}
+                  >
+                    {selectedFile.name}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      color: "#3b82f6",
+                      fontWeight: 600,
+                      marginTop: "2px",
+                    }}
+                  >
+                    Click to review
+                  </span>
+                </div>
+              </button>
+            ) : (
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "12px" }}
+              >
+                <FileText size={32} color="#71717a" />
+                <span
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    color: "#18181b",
+                  }}
+                >
+                  {selectedFile.name}
+                </span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => onSelect(null)}
+              disabled={disabled}
+              style={{
+                padding: "8px 12px",
+                background: "#fef2f2",
+                color: "#991b1b",
+                border: "1px solid #fecaca",
+                borderRadius: "6px",
+                fontSize: "12px",
+                fontWeight: 700,
+                cursor: disabled ? "not-allowed" : "pointer",
+                opacity: disabled ? 0.5 : 1,
+              }}
+            >
+              Remove
+            </button>
+          </div>
+        ) : (
+          <label
+            htmlFor={inputId}
+            className={`rider-proof-upload${disabled ? " is-disabled" : ""}`}
+          >
+            <input
+              id={inputId}
+              className="rider-proof-upload-input"
+              type="file"
+              accept="image/*,.pdf"
+              capture="environment"
+              disabled={disabled}
+              onChange={(event) => onSelect(event.target.files?.[0] || null)}
+            />
+
+            <div className="rider-proof-upload-icon">
+              <UploadCloud size={20} strokeWidth={1.8} />
+            </div>
+
+            <div className="rider-proof-upload-copy">
+              <strong>{title}</strong>
+              <span>{helper}</span>
+            </div>
+
+            <span className="rider-proof-upload-action">Select File</span>
+          </label>
+        )}
       </div>
 
-      <span className="rider-proof-upload-action">
-        {selectedFile ? "Change File" : "Select File"}
-      </span>
-    </label>
+      {modalOpen && isImage && (
+        <ProofPreviewModal
+          url={previewUrl}
+          name={selectedFile.name}
+          onClose={() => setModalOpen(false)}
+        />
+      )}
+    </>
   );
 }
 
@@ -2518,8 +2742,6 @@ const selectedFileText = {
   color: "#71717a",
   fontWeight: 600,
 };
-
-// 👉 NOTE: We removed the hardcoded button styles here because they are now controlled dynamically by RiderScreen.css!
 
 const summaryRow = {
   display: "grid",

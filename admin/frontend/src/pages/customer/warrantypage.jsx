@@ -11,6 +11,10 @@ import {
   ChevronUp,
   FileText,
 } from "lucide-react";
+import {
+  MotionFeedbackOverlay,
+  getMotionFeedbackDurations,
+} from "../../components/MotionFeedbackOverlay";
 import "./warrantypage.css";
 
 const StatusBadge = ({ status }) => {
@@ -117,6 +121,10 @@ export default function WarrantyPage() {
   const [showForm, setShowForm] = useState(false);
   const [warrantyCenterTab, setWarrantyCenterTab] = useState("file");
 
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackStatus, setFeedbackStatus] = useState("loading");
+  const [feedbackMsg, setFeedbackMsg] = useState("");
+
   const [claims, setClaims] = useState([]);
   const [loadingClaims, setLoadingClaims] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -203,14 +211,22 @@ export default function WarrantyPage() {
       return;
     }
 
-    const selectedItem = products.find((item) => String(item.order_item_id) === String(selectedOrderItemId));
+    const selectedItem = products.find(
+      (item) => String(item.order_item_id) === String(selectedOrderItemId),
+    );
     if (!selectedItem) {
       setFormError("Please select the exact affected item from the order.");
       return;
     }
     const claimQty = Number(claimQuantity);
-    if (!Number.isInteger(claimQty) || claimQty < 1 || claimQty > Number(selectedItem.quantity || 1)) {
-      setFormError(`Claim quantity must be between 1 and ${Number(selectedItem.quantity || 1)}.`);
+    if (
+      !Number.isInteger(claimQty) ||
+      claimQty < 1 ||
+      claimQty > Number(selectedItem.quantity || 1)
+    ) {
+      setFormError(
+        `Claim quantity must be between 1 and ${Number(selectedItem.quantity || 1)}.`,
+      );
       return;
     }
 
@@ -240,18 +256,27 @@ export default function WarrantyPage() {
     if (orderNumber) formData.append("order_number", orderNumber);
 
     setSubmitting(true);
+    setFeedbackOpen(true);
+    setFeedbackStatus("loading");
+    setFeedbackMsg("Uploading files and submitting claim...");
 
     try {
       await api.post("/customer/warranty", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
-      await Promise.all([fetchClaims(), fetchOrders()]);
+      setFeedbackStatus("success");
+      setFeedbackMsg("Claim submitted successfully!");
 
-
-      setSubmitted(true);
-      setFormError("");
+      const durations = getMotionFeedbackDurations();
+      setTimeout(async () => {
+        setFeedbackOpen(false);
+        setSubmitted(true);
+        setFormError("");
+        await Promise.all([fetchClaims(), fetchOrders()]);
+      }, durations.success);
     } catch (err) {
+      setFeedbackOpen(false);
       setFormError(
         err?.response?.data?.message ||
           "Something went wrong. Please try again.",
@@ -612,7 +637,10 @@ export default function WarrantyPage() {
                           </div>
                         </div>
 
-                        <form onSubmit={handleSubmit} className="warranty-form">
+                        <form
+                          onSubmit={(e) => e.preventDefault()}
+                          className="warranty-form"
+                        >
                           <div className="wfield">
                             <label className="wlabel">
                               Eligible order{" "}
@@ -662,7 +690,10 @@ export default function WarrantyPage() {
                               <select
                                 className="winput wselect"
                                 value={selectedOrderItemId}
-                                onChange={(e) => { setSelectedOrderItemId(e.target.value); setClaimQuantity("1"); }}
+                                onChange={(e) => {
+                                  setSelectedOrderItemId(e.target.value);
+                                  setClaimQuantity("1");
+                                }}
                               >
                                 <option value="">
                                   Select the affected product
@@ -684,13 +715,20 @@ export default function WarrantyPage() {
 
                           <div className="wfield">
                             <label className="wlabel">
-                              Claim quantity <span className="wrequired">*</span>
+                              Claim quantity{" "}
+                              <span className="wrequired">*</span>
                             </label>
                             <input
                               className="winput"
                               type="number"
                               min="1"
-                              max={Number(products.find((item) => String(item.order_item_id) === String(selectedOrderItemId))?.quantity || 1)}
+                              max={Number(
+                                products.find(
+                                  (item) =>
+                                    String(item.order_item_id) ===
+                                    String(selectedOrderItemId),
+                                )?.quantity || 1,
+                              )}
                               step="1"
                               value={claimQuantity}
                               onChange={(e) => setClaimQuantity(e.target.value)}
@@ -757,7 +795,8 @@ export default function WarrantyPage() {
                           )}
 
                           <button
-                            type="submit"
+                            type="button"
+                            onClick={handleSubmit}
                             className="wsubmit-btn"
                             disabled={submitting || !hasEligibleOrders}
                           >
@@ -768,7 +807,6 @@ export default function WarrantyPage() {
                               </>
                             ) : (
                               <>
-                                <ShieldCheck size={16} />
                                 <span>Submit claim</span>
                               </>
                             )}
@@ -941,6 +979,12 @@ export default function WarrantyPage() {
           </div>
         </div>
       )}
+      <MotionFeedbackOverlay
+        open={feedbackOpen}
+        status={feedbackStatus}
+        message={feedbackMsg}
+        blocking
+      />
     </div>
   );
 }

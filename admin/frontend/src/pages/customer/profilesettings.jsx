@@ -17,6 +17,10 @@ import {
 import "./profile.css";
 import useAuthStore from "../../store/authStore";
 import LocationPicker from "../../components/LocationPicker";
+import {
+  MotionFeedbackOverlay,
+  getMotionFeedbackDurations,
+} from "../../components/MotionFeedbackOverlay";
 
 /* ── Password strength helper ── */
 const getStrength = (pw) => {
@@ -300,6 +304,11 @@ export default function ProfileSettings() {
     return () => timers.forEach(clearTimeout);
   }, [emailCooldown, passCooldown, phoneCooldown]);
 
+  /* ── Fullscreen Overlay State ── */
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackStatus, setFeedbackStatus] = useState("loading");
+  const [feedbackMsg, setFeedbackMsg] = useState("");
+
   /* ── Page Loading State ── */
   const [pageLoading, setPageLoading] = useState(true);
 
@@ -375,16 +384,19 @@ export default function ProfileSettings() {
     reader.readAsDataURL(file);
   };
 
-  const saveAvatar = async () => {
+  const saveAvatar = async (e) => {
+    if (e) e.preventDefault();
     if (!avatarFile) return;
     setAvatarLoading(true);
     setAvatarMsg({ type: "", text: "" });
 
+    setFeedbackOpen(true);
+    setFeedbackStatus("loading");
+    setFeedbackMsg("Uploading photo...");
+
     try {
       const fd = new FormData();
       fd.append("avatar", avatarFile);
-
-      // set it correctly with the required multi-part boundary!
       const res = await api.post("/customer/profile/avatar", fd);
       const savedProfilePhoto = res.data.profile_photo;
 
@@ -393,11 +405,17 @@ export default function ProfileSettings() {
       }
       setAvatarPreview(getAvatarUrl(savedProfilePhoto));
 
-      setAvatarMsg({ type: "success", text: "Profile picture updated!" });
-      setAvatarFile(null);
-    } catch (err) {
-      console.error("FRONTEND CRASH LOG:", err);
+      setFeedbackStatus("success");
+      setFeedbackMsg("Profile picture updated!");
 
+      const durations = getMotionFeedbackDurations();
+      setTimeout(() => {
+        setFeedbackOpen(false);
+        setAvatarFile(null);
+      }, durations.success);
+    } catch (err) {
+      setFeedbackOpen(false);
+      console.error("FRONTEND CRASH LOG:", err);
       setAvatarMsg({
         type: "error",
         text:
@@ -410,7 +428,9 @@ export default function ProfileSettings() {
   };
 
   /* ════ NAME ════ */
-  const saveName = async () => {
+  const saveName = async (e) => {
+    if (e) e.preventDefault();
+
     const trimmedFirst = (nameForm.firstName || "").trim();
     const trimmedLast = (nameForm.lastName || "").trim();
 
@@ -422,11 +442,15 @@ export default function ProfileSettings() {
       return;
     }
 
-    // Merges into the exact format from your screenshot: "Last Name, First Name"
     const combinedName = `${trimmedLast}, ${trimmedFirst}`;
 
     setNameLoading(true);
     setNameMsg({ type: "", text: "" });
+
+    setFeedbackOpen(true);
+    setFeedbackStatus("loading");
+    setFeedbackMsg("Updating profile...");
+
     try {
       await api.put("/customer/profile/basic", {
         name: combinedName,
@@ -435,9 +459,17 @@ export default function ProfileSettings() {
         address_lng: user?.address_lng ?? null,
       });
       setUser((prev) => ({ ...prev, name: combinedName }));
-      setNameMsg({ type: "success", text: "Profile updated successfully!" });
-      setEditName(false);
+
+      setFeedbackStatus("success");
+      setFeedbackMsg("Profile updated successfully!");
+
+      const durations = getMotionFeedbackDurations();
+      setTimeout(() => {
+        setFeedbackOpen(false);
+        setEditName(false);
+      }, durations.success);
     } catch (err) {
+      setFeedbackOpen(false);
       setNameMsg({
         type: "error",
         text: err.response?.data?.message || "Update failed.",
@@ -448,7 +480,8 @@ export default function ProfileSettings() {
   };
 
   /* ════ DEFAULT DELIVERY ADDRESS ════ */
-  const saveDefaultAddress = async () => {
+  const saveDefaultAddress = async (e) => {
+    if (e) e.preventDefault();
     const trimmedAddress = (addressForm.address || "").trim();
     const hasLat =
       addressForm.address_lat !== null &&
@@ -459,43 +492,39 @@ export default function ProfileSettings() {
       addressForm.address_lng !== undefined &&
       addressForm.address_lng !== "";
 
-    if (!trimmedAddress) {
-      setAddressMsg({ type: "error", text: "Address is required." });
-      return;
-    }
-    if (hasLat !== hasLng) {
-      setAddressMsg({
+    if (!trimmedAddress)
+      return setAddressMsg({ type: "error", text: "Address is required." });
+    if (hasLat !== hasLng)
+      return setAddressMsg({
         type: "error",
         text: "Both latitude and longitude must be set together.",
       });
-      return;
-    }
-    if (!hasLat || !hasLng) {
-      setAddressMsg({
+    if (!hasLat || !hasLng)
+      return setAddressMsg({
         type: "error",
         text: "Please set a map pin for your default delivery address.",
       });
-      return;
-    }
+
     const latNum = Number(addressForm.address_lat);
     const lngNum = Number(addressForm.address_lng);
-    if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
-      setAddressMsg({
+    if (!Number.isFinite(latNum) || !Number.isFinite(lngNum))
+      return setAddressMsg({
         type: "error",
         text: "Invalid map pin. Please set the pin again.",
       });
-      return;
-    }
-    if (latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180) {
-      setAddressMsg({
+    if (latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180)
+      return setAddressMsg({
         type: "error",
         text: "Invalid map pin coordinates. Please set the pin again.",
       });
-      return;
-    }
 
     setAddressLoading(true);
     setAddressMsg({ type: "", text: "" });
+
+    setFeedbackOpen(true);
+    setFeedbackStatus("loading");
+    setFeedbackMsg("Saving address...");
+
     try {
       await api.put("/customer/profile/basic", {
         name: user?.name || "",
@@ -509,12 +538,17 @@ export default function ProfileSettings() {
         address_lat: latNum,
         address_lng: lngNum,
       }));
-      setAddressMsg({
-        type: "success",
-        text: "Default delivery address saved!",
-      });
-      setEditAddress(false);
+
+      setFeedbackStatus("success");
+      setFeedbackMsg("Default delivery address saved!");
+
+      const durations = getMotionFeedbackDurations();
+      setTimeout(() => {
+        setFeedbackOpen(false);
+        setEditAddress(false);
+      }, durations.success);
     } catch (err) {
+      setFeedbackOpen(false);
       setAddressMsg({
         type: "error",
         text: err.response?.data?.message || "Update failed.",
@@ -604,21 +638,35 @@ export default function ProfileSettings() {
   };
 
   // STEP 4: Verify New Email OTP & Save
-  const verifyNewEmailOtp = async () => {
+  const verifyNewEmailOtp = async (e) => {
+    if (e) e.preventDefault();
     if (!newEmailOtp.trim())
       return setEmailMsg({ type: "error", text: "Enter the OTP." });
+
     setEmailLoading(true);
+    setFeedbackOpen(true);
+    setFeedbackStatus("loading");
+    setFeedbackMsg("Updating email...");
+
     try {
       await api.post("/customer/profile/verify-email-change", {
         otp: newEmailOtp,
       });
       setUser((prev) => ({ ...prev, email: newEmail }));
-      setEmailMsg({ type: "success", text: "Email updated successfully!" });
-      setEditEmail(false);
-      setEmailStep(1);
-      setNewEmail("");
-      setNewEmailOtp("");
+
+      setFeedbackStatus("success");
+      setFeedbackMsg("Email updated successfully!");
+
+      const durations = getMotionFeedbackDurations();
+      setTimeout(() => {
+        setFeedbackOpen(false);
+        setEditEmail(false);
+        setEmailStep(1);
+        setNewEmail("");
+        setNewEmailOtp("");
+      }, durations.success);
     } catch (err) {
+      setFeedbackOpen(false);
       setEmailMsg({
         type: "error",
         text: err.response?.data?.message || "Invalid OTP.",
@@ -720,7 +768,8 @@ export default function ProfileSettings() {
     }
   };
 
-  const verifyPhoneOtp = async (formattedPhone) => {
+  const verifyPhoneOtp = async (formattedPhone, e) => {
+    if (e) e.preventDefault();
     if (!phoneOtp.trim())
       return setPhoneMsg({ type: "error", text: "Enter the OTP code." });
 
@@ -728,20 +777,29 @@ export default function ProfileSettings() {
       typeof formattedPhone === "string" ? formattedPhone : "0" + newPhone;
 
     setPhoneLoading(true);
+    setFeedbackOpen(true);
+    setFeedbackStatus("loading");
+    setFeedbackMsg("Updating phone number...");
+
     try {
       const res = await api.post("/customer/profile/verify-phone-change", {
         otp: phoneOtp,
         new_phone: phoneToSend,
       });
       setUser({ ...user, phone: res.data.phone });
-      setPhoneMsg({
-        type: "success",
-        text: "Phone number updated successfully!",
-      });
-      setEditPhone(false);
-      setPhoneStep(1);
-      setPhoneOtp("");
+
+      setFeedbackStatus("success");
+      setFeedbackMsg("Phone number updated successfully!");
+
+      const durations = getMotionFeedbackDurations();
+      setTimeout(() => {
+        setFeedbackOpen(false);
+        setEditPhone(false);
+        setPhoneStep(1);
+        setPhoneOtp("");
+      }, durations.success);
     } catch (err) {
+      setFeedbackOpen(false);
       setPhoneMsg({
         type: "error",
         text: err.response?.data?.message || "Invalid OTP code.",
@@ -782,8 +840,8 @@ export default function ProfileSettings() {
     }
   };
 
-  const verifyPassOtp = async () => {
-    // Check everything else before sending to backend
+  const verifyPassOtp = async (e) => {
+    if (e) e.preventDefault();
     if (!passForm.newPass)
       return setPassMsg({ type: "error", text: "Enter a new password." });
     if (passForm.newPass !== passForm.confirm)
@@ -797,17 +855,29 @@ export default function ProfileSettings() {
     }
 
     setPassLoading(true);
+    setFeedbackOpen(true);
+    setFeedbackStatus("loading");
+    setFeedbackMsg("Saving new password...");
+
     try {
       await api.post("/customer/profile/verify-password-change", {
         otp: passOtp,
         new_password: passForm.newPass,
       });
-      setPassMsg({ type: "success", text: "Password changed successfully!" });
-      setEditPass(false);
-      setPassStep(1);
-      setPassForm({ current: "", newPass: "", confirm: "" });
-      setPassOtp("");
+
+      setFeedbackStatus("success");
+      setFeedbackMsg("Password changed successfully!");
+
+      const durations = getMotionFeedbackDurations();
+      setTimeout(() => {
+        setFeedbackOpen(false);
+        setEditPass(false);
+        setPassStep(1);
+        setPassForm({ current: "", newPass: "", confirm: "" });
+        setPassOtp("");
+      }, durations.success);
     } catch (err) {
+      setFeedbackOpen(false);
       setPassMsg({
         type: "error",
         text: err.response?.data?.message || "Invalid OTP or request failed.",
@@ -914,11 +984,12 @@ export default function ProfileSettings() {
               {avatarFile && (
                 <div className="profile-form-actions" style={{ marginTop: 16 }}>
                   <button
+                    type="button"
                     className="btn btn-primary"
                     onClick={saveAvatar}
                     disabled={avatarLoading}
                   >
-                    {avatarLoading ? "Uploading…" : "✓ Save Photo"}
+                    {avatarLoading ? "Uploading…" : "Save Photo"}
                   </button>
                   <button
                     className="btn btn-secondary"
@@ -986,10 +1057,28 @@ export default function ProfileSettings() {
                   <div className="profile-form-actions">
                     <button
                       className="btn btn-primary"
-                      onClick={() => requestPhoneOtp("09" + newPhone)}
-                      disabled={phoneLoading || newPhone.length < 10}
+                      onClick={saveName}
+                      disabled={nameLoading || !isNameChanged}
                     >
-                      {phoneLoading ? "Sending OTP…" : "Send Verification OTP"}
+                      {nameLoading ? (
+                        <>
+                          <svg
+                            className="spinner-icon"
+                            width="20"
+                            height="20"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                          >
+                            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                          </svg>
+                          Saving…
+                        </>
+                      ) : (
+                        "Save Changes"
+                      )}
                     </button>
                     <button
                       className="btn btn-secondary"
@@ -1090,6 +1179,7 @@ export default function ProfileSettings() {
                   </div>
                   <div className="profile-form-actions">
                     <button
+                      type="button"
                       className="btn btn-primary"
                       onClick={saveDefaultAddress}
                       disabled={addressLoading || !isAddressChanged}
@@ -1097,9 +1187,7 @@ export default function ProfileSettings() {
                       {addressLoading ? (
                         "Saving…"
                       ) : (
-                        <>
-                          <Check size={14} /> Set as Default Delivery Address
-                        </>
+                        <>Set as Default Delivery Address</>
                       )}
                     </button>
                     <button
@@ -1188,12 +1276,31 @@ export default function ProfileSettings() {
                     <input type="email" value={user?.email || ""} readOnly />
                   </div>
                   <div className="profile-form-actions">
+                    {/* Step 1: Request Current Auth */}
                     <button
                       className="btn btn-primary"
                       onClick={() => requestCurrentEmailAuth("email")}
                       disabled={emailLoading}
                     >
-                      {emailLoading ? "Sending…" : "Send Verification OTP"}
+                      {emailLoading ? (
+                        <>
+                          <svg
+                            className="spinner-icon"
+                            width="20"
+                            height="20"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                          >
+                            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                          </svg>
+                          Sending…
+                        </>
+                      ) : (
+                        "Send Verification OTP"
+                      )}
                     </button>
                     <button
                       className="btn btn-secondary"
@@ -1263,12 +1370,31 @@ export default function ProfileSettings() {
                     className="profile-form-actions"
                     style={{ marginTop: 14 }}
                   >
+                    {/* Step 2: Verify Current Auth */}
                     <button
                       className="btn btn-primary"
                       onClick={verifyCurrentEmailAuth}
                       disabled={emailLoading || currentEmailOtp.length < 6}
                     >
-                      {emailLoading ? "Verifying…" : "Next"}
+                      {emailLoading ? (
+                        <>
+                          <svg
+                            className="spinner-icon"
+                            width="20"
+                            height="20"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                          >
+                            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                          </svg>
+                          Verifying…
+                        </>
+                      ) : (
+                        "Next"
+                      )}
                     </button>
                     <button
                       className="btn btn-secondary"
@@ -1290,12 +1416,31 @@ export default function ProfileSettings() {
                     />
                   </div>
                   <div className="profile-form-actions">
+                    {/* Step 3: Request New Email OTP */}
                     <button
                       className="btn btn-primary"
                       onClick={requestNewEmailOtp}
                       disabled={emailLoading}
                     >
-                      {emailLoading ? "Sending…" : "Send Verification OTP"}
+                      {emailLoading ? (
+                        <>
+                          <svg
+                            className="spinner-icon"
+                            width="20"
+                            height="20"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                          >
+                            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                          </svg>
+                          Sending…
+                        </>
+                      ) : (
+                        "Send Verification OTP"
+                      )}
                     </button>
                     <button
                       className="btn btn-secondary"
@@ -1342,7 +1487,9 @@ export default function ProfileSettings() {
                     className="profile-form-actions"
                     style={{ marginTop: 14 }}
                   >
+                    {/* Step 4: Verify New Email OTP */}
                     <button
+                      type="button"
                       className="btn btn-primary"
                       onClick={verifyNewEmailOtp}
                       disabled={emailLoading}
@@ -1456,14 +1603,31 @@ export default function ProfileSettings() {
                     </div>
                   </div>
                   <div className="profile-form-actions">
+                    {/* Step 1: Request Current Auth */}
                     <button
                       className="btn btn-primary"
                       onClick={() => requestCurrentPhoneAuth("sms")}
                       disabled={phoneLoading}
                     >
-                      {phoneLoading
-                        ? "Sending OTP…"
-                        : "Send SMS Verification Code"}
+                      {phoneLoading ? (
+                        <>
+                          <svg
+                            className="spinner-icon"
+                            width="20"
+                            height="20"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                          >
+                            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                          </svg>
+                          Sending OTP…
+                        </>
+                      ) : (
+                        "Send SMS Verification Code"
+                      )}
                     </button>
                     <button
                       className="btn btn-secondary"
@@ -1532,12 +1696,31 @@ export default function ProfileSettings() {
                     className="profile-form-actions"
                     style={{ marginTop: 14 }}
                   >
+                    {/* Step 2: Verify Current Auth */}
                     <button
                       className="btn btn-primary"
                       onClick={verifyCurrentPhoneAuth}
                       disabled={phoneLoading || currentPhoneOtp.length < 6}
                     >
-                      {phoneLoading ? "Verifying…" : "Next"}
+                      {phoneLoading ? (
+                        <>
+                          <svg
+                            className="spinner-icon"
+                            width="20"
+                            height="20"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                          >
+                            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                          </svg>
+                          Verifying…
+                        </>
+                      ) : (
+                        "Next"
+                      )}
                     </button>
                     <button
                       className="btn btn-secondary"
@@ -1610,12 +1793,31 @@ export default function ProfileSettings() {
                     </div>
                   </div>
                   <div className="profile-form-actions">
+                    {/* Step 3: Request New Phone OTP */}
                     <button
                       className="btn btn-primary"
                       onClick={() => requestPhoneOtp("0" + newPhone)}
                       disabled={phoneLoading || newPhone.length < 10}
                     >
-                      {phoneLoading ? "Sending OTP…" : "Send Verification OTP"}
+                      {phoneLoading ? (
+                        <>
+                          <svg
+                            className="spinner-icon"
+                            width="20"
+                            height="20"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                          >
+                            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                          </svg>
+                          Sending OTP…
+                        </>
+                      ) : (
+                        "Send Verification OTP"
+                      )}
                     </button>
                     <button
                       className="btn btn-secondary"
@@ -1669,9 +1871,11 @@ export default function ProfileSettings() {
                     className="profile-form-actions"
                     style={{ marginTop: 14 }}
                   >
+                    {/* Step 4: Verify New Phone OTP */}
                     <button
+                      type="button"
                       className="btn btn-primary"
-                      onClick={() => verifyPhoneOtp("0" + newPhone)}
+                      onClick={(e) => verifyPhoneOtp("0" + newPhone, e)}
                       disabled={phoneLoading || phoneOtp.length < 6}
                     >
                       {phoneLoading ? (
@@ -1774,12 +1978,31 @@ export default function ProfileSettings() {
                     </div>
                   </div>
                   <div className="profile-form-actions">
+                    {/* Step 1: Request Current Auth */}
                     <button
                       className="btn btn-primary"
                       onClick={requestPassOtp}
                       disabled={passLoading || !passForm.current.trim()}
                     >
-                      {passLoading ? "Sending…" : "Send Verification OTP"}
+                      {passLoading ? (
+                        <>
+                          <svg
+                            className="spinner-icon"
+                            width="20"
+                            height="20"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                          >
+                            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                          </svg>
+                          Sending…
+                        </>
+                      ) : (
+                        "Send Verification OTP"
+                      )}
                     </button>
                     <button
                       className="btn btn-secondary"
@@ -1924,7 +2147,9 @@ export default function ProfileSettings() {
                     className="profile-form-actions"
                     style={{ marginTop: 14 }}
                   >
+                    {/* Step 3: Save New Password */}
                     <button
+                      type="button"
                       className="btn btn-primary"
                       onClick={verifyPassOtp}
                       disabled={
@@ -1955,6 +2180,12 @@ export default function ProfileSettings() {
           </div>
         </div>
       </div>
+      <MotionFeedbackOverlay
+        open={feedbackOpen}
+        status={feedbackStatus}
+        message={feedbackMsg}
+        blocking
+      />
     </div>
   );
 }

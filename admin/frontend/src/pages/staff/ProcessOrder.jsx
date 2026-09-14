@@ -11,8 +11,7 @@ const isValidPHPhone = (value) => {
   return digits.length === 11 && digits.startsWith("09");
 };
 
-const POS_QR_ENABLED =
-  process.env.REACT_APP_POS_QR_ENABLED === "true";
+const POS_QR_ENABLED = process.env.REACT_APP_POS_QR_ENABLED === "true";
 const POS_QR_STORAGE_KEY = "pos_qr_attempt";
 
 const safeParseJson = (value, fallback = null) => {
@@ -231,9 +230,7 @@ export default function ProcessOrder() {
 
   const cashReceived = parseFloat(form.cash_received) || 0;
   const change =
-    effectivePaymentMethod === "cash"
-      ? Math.max(cashReceived - total, 0)
-      : 0;
+    effectivePaymentMethod === "cash" ? Math.max(cashReceived - total, 0) : 0;
 
   const normalizedPhone = String(form.customer_phone || "").replace(/\D/g, "");
   const phoneIsRequired = form.need_delivery;
@@ -293,8 +290,7 @@ export default function ProcessOrder() {
     if (directImage) return directImage;
 
     const localCartItem = cart.find(
-      (cartItem) =>
-        String(cartItem?.product_id) === String(item?.product_id),
+      (cartItem) => String(cartItem?.product_id) === String(item?.product_id),
     );
 
     return String(localCartItem?.image_url || "").trim();
@@ -430,9 +426,7 @@ export default function ProcessOrder() {
       quantity: Number(item.quantity),
     })),
     discount: Number(discountAmount.toFixed(2)),
-    delivery_fee: form.need_delivery
-      ? Number(deliveryFeeAmt.toFixed(2))
-      : 0,
+    delivery_fee: form.need_delivery ? Number(deliveryFeeAmt.toFixed(2)) : 0,
     delivery: form.need_delivery
       ? {
           address: form.delivery_address.trim(),
@@ -595,9 +589,7 @@ export default function ProcessOrder() {
         const nextAttempt = { ...activeAttempt, state: "pending" };
         persistQrAttempt(nextAttempt);
         setQrNoticeTone("info");
-        setQrNotice(
-          data.message || "Payment has not been confirmed yet.",
-        );
+        setQrNotice(data.message || "Payment has not been confirmed yet.");
         return;
       }
 
@@ -870,7 +862,6 @@ export default function ProcessOrder() {
       silent: true,
       verifyAfterResume: storedAttempt.state === "returning",
     });
-
   }, []);
 
   if (success) {
@@ -1096,7 +1087,10 @@ export default function ProcessOrder() {
       </div>
 
       <div className="pos-order-grid">
-        <div className="pos-order-form-card" style={{ ...cardStyle, padding: 32 }}>
+        <div
+          className="pos-order-form-card"
+          style={{ ...cardStyle, padding: 32 }}
+        >
           <h3
             style={{
               margin: "0 0 24px",
@@ -1117,319 +1111,350 @@ export default function ProcessOrder() {
 
           <form className="pos-order-form" onSubmit={handleSubmit}>
             {!qrAttempt && (
-            <fieldset
-              disabled={Boolean(qrAttempt)}
-              className="pos-order-fieldset"
-            >
-            <div className="pos-form-field pos-field-customer" style={formField}>
-              <label style={labelStyle}>Customer Name *</label>
-              <input
-                type="text"
-                placeholder="Walk-in Customer"
-                value={form.customer_name}
-                onChange={(e) =>
-                  setForm({ ...form, customer_name: e.target.value })
-                }
-                required
-                style={inputStyle}
-              />
-            </div>
-
-            <div className="pos-form-field pos-field-phone" style={formField}>
-              <label style={labelStyle}>
-                Phone Number{phoneIsRequired ? " *" : ""}
-              </label>
-              <input
-                type="tel"
-                placeholder="09XXXXXXXXX"
-                value={form.customer_phone}
-                maxLength={11}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    customer_phone: e.target.value
-                      .replace(/\D/g, "")
-                      .slice(0, 11),
-                  })
-                }
-                style={{
-                  ...inputStyle,
-                  borderColor:
-                    form.customer_phone && !phoneIsValid
-                      ? "#dc2626"
-                      : "#e4e4e7",
-                }}
-              />
-              {form.customer_phone && !phoneIsValid && (
+              <fieldset
+                disabled={Boolean(qrAttempt)}
+                className="pos-order-fieldset"
+              >
                 <div
-                  style={{
-                    color: "#dc2626",
-                    fontSize: 12,
-                    marginTop: 6,
-                    fontWeight: 600,
-                  }}
+                  className="pos-form-field pos-field-customer"
+                  style={formField}
                 >
-                  Enter a valid 11-digit PH mobile number starting with 09.
+                  <label style={labelStyle}>Customer Name *</label>
+                  <input
+                    type="text"
+                    placeholder="Walk-in Customer"
+                    value={form.customer_name}
+                    onChange={(e) =>
+                      setForm({ ...form, customer_name: e.target.value })
+                    }
+                    required
+                    style={inputStyle}
+                  />
                 </div>
-              )}
-            </div>
 
-            <div className="pos-form-field pos-field-payment" style={formField}>
-              <label style={labelStyle}>Payment Method *</label>
-              <select
-                value={effectivePaymentMethod}
-                disabled={Boolean(qrAttempt) || !POS_QR_ENABLED}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    payment_method: e.target.value,
-                    cash_received:
-                      e.target.value === "cash" ? form.cash_received : "",
-                  })
-                }
-                style={{
-                  ...inputStyle,
-                  background: POS_QR_ENABLED ? "#ffffff" : "#f4f4f5",
-                  color: "#52525b",
-                }}
-              >
-                <option value="cash">Cash</option>
-                {POS_QR_ENABLED && (
-                  <option value="online">Online Payment</option>
-                )}
-              </select>
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "#71717a",
-                  marginTop: 6,
-                }}
-              >
-                {POS_QR_ENABLED
-                  ? "Choose cash or online payment."
-                  : "Cash only."}
-              </div>
-            </div>
-
-            <div className="pos-form-field pos-field-discount" style={formField}>
-              <label style={labelStyle}>Discount</label>
-              <div style={{ display: "flex", gap: "8px" }}>
-                <select
-                  value={form.discount_type}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      discount_type: e.target.value,
-                      discount: "",
-                    })
-                  }
-                  style={{
-                    width: "80px",
-                    padding: "10px 14px",
-                    border: "1px solid #e4e4e7",
-                    borderRadius: 8,
-                    outline: "none",
-                    background: "#fff",
-                    color: "#18181b",
-                    fontSize: 13,
-                  }}
+                <div
+                  className="pos-form-field pos-field-phone"
+                  style={formField}
                 >
-                  <option value="amount">₱</option>
-                  <option value="percent">%</option>
-                </select>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder={
-                    form.discount_type === "amount"
-                      ? "Amount (e.g. 500)"
-                      : "Percent (e.g. 20)"
-                  }
-                  value={form.discount}
-                  onChange={(e) =>
-                    setForm({ ...form, discount: e.target.value })
-                  }
-                  style={{ ...inputStyle, flex: 1 }}
-                />
-              </div>
-            </div>
-
-            {effectivePaymentMethod === "cash" && (
-              <div className="pos-form-field pos-field-cash" style={formField}>
-                <label style={labelStyle}>Cash Received (₱) *</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="Enter amount received"
-                  value={form.cash_received}
-                  onChange={(e) =>
-                    setForm({ ...form, cash_received: e.target.value })
-                  }
-                  required
-                  style={inputStyle}
-                />
-              </div>
-            )}
-
-            <div
-              className="pos-delivery-section"
-              style={{
-                marginTop: 24,
-                marginBottom: 24,
-                background: "#fafafa",
-                border: "1px solid #e4e4e7",
-                borderRadius: 12,
-                padding: 24,
-              }}
-            >
-              <h4
-                style={{
-                  margin: "0 0 16px",
-                  fontWeight: 700,
-                  fontSize: 15,
-                  color: "#0a0a0a",
-                }}
-              >
-                Delivery
-              </h4>
-              <div
-                style={{ display: "flex", flexDirection: "column", gap: 16 }}
-              >
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: "#18181b",
-                    cursor: "pointer",
-                  }}
-                >
-                  <div
-                    className={`pos-delivery-toggle ${
-                      form.need_delivery ? "is-on" : "is-off"
-                    }`}
-                    onClick={() =>
-                      setForm({ ...form, need_delivery: !form.need_delivery })
+                  <label style={labelStyle}>
+                    Phone Number{phoneIsRequired ? " *" : ""}
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="09XXXXXXXXX"
+                    value={form.customer_phone}
+                    maxLength={11}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        customer_phone: e.target.value
+                          .replace(/\D/g, "")
+                          .slice(0, 11),
+                      })
                     }
                     style={{
-                      width: 44,
-                      height: 24,
-                      borderRadius: 12,
-                      cursor: "pointer",
-                      background: form.need_delivery ? "#18181b" : "#d4d4d8",
-                      position: "relative",
-                      transition: "background .2s",
-                      flexShrink: 0,
+                      ...inputStyle,
+                      borderColor:
+                        form.customer_phone && !phoneIsValid
+                          ? "#dc2626"
+                          : "#e4e4e7",
+                    }}
+                  />
+                  {form.customer_phone && !phoneIsValid && (
+                    <div
+                      style={{
+                        color: "#dc2626",
+                        fontSize: 12,
+                        marginTop: 6,
+                        fontWeight: 600,
+                      }}
+                    >
+                      Enter a valid 11-digit PH mobile number starting with 09.
+                    </div>
+                  )}
+                </div>
+
+                <div
+                  className="pos-form-field pos-field-payment"
+                  style={formField}
+                >
+                  <label style={labelStyle}>Payment Method *</label>
+                  <select
+                    value={effectivePaymentMethod}
+                    disabled={Boolean(qrAttempt) || !POS_QR_ENABLED}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        payment_method: e.target.value,
+                        cash_received:
+                          e.target.value === "cash" ? form.cash_received : "",
+                      })
+                    }
+                    style={{
+                      ...inputStyle,
+                      background: POS_QR_ENABLED ? "#ffffff" : "#f4f4f5",
+                      color: "#52525b",
                     }}
                   >
-                    <div
-                      className="pos-delivery-toggle-knob"
-                      style={{
-                        width: 18,
-                        height: 18,
-                        borderRadius: "50%",
-                        background: "#fff",
-                        position: "absolute",
-                        top: 3,
-                        left: form.need_delivery ? 23 : 3,
-                        transition: "left .2s",
-                        boxShadow: "0 1px 3px rgba(0,0,0,.2)",
-                      }}
-                    />
-                  </div>
-                  Add delivery
-                </label>
-
-                {form.need_delivery && (
+                    <option value="cash">Cash</option>
+                    {POS_QR_ENABLED && (
+                      <option value="online">Online Payment</option>
+                    )}
+                  </select>
                   <div
                     style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: 16,
-                      marginTop: 8,
+                      fontSize: 12,
+                      color: "#71717a",
+                      marginTop: 6,
                     }}
                   >
-                    <div style={{ gridColumn: "1 / -1" }}>
-                      <LocationPicker
-                        label="Delivery Address *"
-                        addressValue={form.delivery_address}
-                        onAddressChange={handleDeliveryAddressChange}
-                        value={deliveryPin}
-                        onChange={handleDeliveryPinChange}
-                        height={220}
-                        showCurrentLocation={false}
-                        reverseGeocodeOnPin={true}
-                      />
-                    </div>
+                    {POS_QR_ENABLED
+                      ? "Choose cash or online payment."
+                      : "Cash only."}
+                  </div>
+                </div>
 
-                    <div>
-                      <label style={labelStyle}>Delivery Fee (₱)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        placeholder="e.g. 150"
-                        value={form.delivery_fee}
-                        onChange={(e) =>
-                          setForm({ ...form, delivery_fee: e.target.value })
-                        }
-                        style={inputStyle}
-                      />
-                    </div>
+                <div
+                  className="pos-form-field pos-field-discount"
+                  style={formField}
+                >
+                  <label style={labelStyle}>Discount</label>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <select
+                      value={form.discount_type}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          discount_type: e.target.value,
+                          discount: "",
+                        })
+                      }
+                      style={{
+                        width: "80px",
+                        padding: "10px 14px",
+                        border: "1px solid #e4e4e7",
+                        borderRadius: 8,
+                        outline: "none",
+                        background: "#fff",
+                        color: "#18181b",
+                        fontSize: 13,
+                      }}
+                    >
+                      <option value="amount">₱</option>
+                      <option value="percent">%</option>
+                    </select>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder={
+                        form.discount_type === "amount"
+                          ? "Amount (e.g. 500)"
+                          : "Percent (e.g. 20)"
+                      }
+                      value={form.discount}
+                      onChange={(e) =>
+                        setForm({ ...form, discount: e.target.value })
+                      }
+                      style={{ ...inputStyle, flex: 1 }}
+                    />
+                  </div>
+                </div>
 
-                    <div>
-                      <label style={labelStyle}>Delivery Date *</label>
-                      <input
-                        type="datetime-local"
-                        value={form.delivery_requested_date}
-                        onChange={(e) =>
-                          setForm({
-                            ...form,
-                            delivery_requested_date: e.target.value,
-                          })
-                        }
-                        required={form.need_delivery}
-                        style={inputStyle}
-                      />
-                    </div>
-
-                    <div style={{ gridColumn: "1 / -1" }}>
-                      <label style={labelStyle}>Delivery Notes</label>
-                      <input
-                        type="text"
-                        placeholder="Optional delivery notes"
-                        value={form.delivery_notes}
-                        onChange={(e) =>
-                          setForm({ ...form, delivery_notes: e.target.value })
-                        }
-                        style={inputStyle}
-                      />
-                    </div>
+                {effectivePaymentMethod === "cash" && (
+                  <div
+                    className="pos-form-field pos-field-cash"
+                    style={formField}
+                  >
+                    <label style={labelStyle}>Cash Received (₱) *</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="Enter amount received"
+                      value={form.cash_received}
+                      onChange={(e) =>
+                        setForm({ ...form, cash_received: e.target.value })
+                      }
+                      required
+                      style={inputStyle}
+                    />
                   </div>
                 )}
-              </div>
-            </div>
 
-            <div className="pos-form-field pos-field-notes" style={formField}>
-              <label style={labelStyle}>Order Notes</label>
-              <textarea
-                rows={3}
-                placeholder="Add optional notes for this order"
-                value={form.notes}
-                onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                style={{
-                  ...inputStyle,
-                  resize: "vertical",
-                  fontFamily: "inherit",
-                }}
-              />
-            </div>
+                <div
+                  className="pos-delivery-section"
+                  style={{
+                    marginTop: 24,
+                    marginBottom: 24,
+                    background: "#fafafa",
+                    border: "1px solid #e4e4e7",
+                    borderRadius: 12,
+                    padding: 24,
+                  }}
+                >
+                  <h4
+                    style={{
+                      margin: "0 0 16px",
+                      fontWeight: 700,
+                      fontSize: 15,
+                      color: "#0a0a0a",
+                    }}
+                  >
+                    Delivery
+                  </h4>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 16,
+                    }}
+                  >
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: "#18181b",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div
+                        className={`pos-delivery-toggle ${
+                          form.need_delivery ? "is-on" : "is-off"
+                        }`}
+                        onClick={() =>
+                          setForm({
+                            ...form,
+                            need_delivery: !form.need_delivery,
+                          })
+                        }
+                        style={{
+                          width: 44,
+                          height: 24,
+                          borderRadius: 12,
+                          cursor: "pointer",
+                          background: form.need_delivery
+                            ? "#18181b"
+                            : "#d4d4d8",
+                          position: "relative",
+                          transition: "background .2s",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <div
+                          className="pos-delivery-toggle-knob"
+                          style={{
+                            width: 18,
+                            height: 18,
+                            borderRadius: "50%",
+                            background: "#fff",
+                            position: "absolute",
+                            top: 3,
+                            left: form.need_delivery ? 23 : 3,
+                            transition: "left .2s",
+                            boxShadow: "0 1px 3px rgba(0,0,0,.2)",
+                          }}
+                        />
+                      </div>
+                      Add delivery
+                    </label>
 
-            </fieldset>
+                    {form.need_delivery && (
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr 1fr",
+                          gap: 16,
+                          marginTop: 8,
+                        }}
+                      >
+                        <div style={{ gridColumn: "1 / -1" }}>
+                          <LocationPicker
+                            label="Delivery Address *"
+                            addressValue={form.delivery_address}
+                            onAddressChange={handleDeliveryAddressChange}
+                            value={deliveryPin}
+                            onChange={handleDeliveryPinChange}
+                            height={220}
+                            showCurrentLocation={false}
+                            reverseGeocodeOnPin={true}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={labelStyle}>Delivery Fee (₱)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="e.g. 150"
+                            value={form.delivery_fee}
+                            onChange={(e) =>
+                              setForm({ ...form, delivery_fee: e.target.value })
+                            }
+                            style={inputStyle}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={labelStyle}>Delivery Date *</label>
+                          <input
+                            type="datetime-local"
+                            value={form.delivery_requested_date}
+                            onChange={(e) =>
+                              setForm({
+                                ...form,
+                                delivery_requested_date: e.target.value,
+                              })
+                            }
+                            required={form.need_delivery}
+                            style={inputStyle}
+                          />
+                        </div>
+
+                        <div style={{ gridColumn: "1 / -1" }}>
+                          <label style={labelStyle}>Delivery Notes</label>
+                          <input
+                            type="text"
+                            placeholder="Optional delivery notes"
+                            value={form.delivery_notes}
+                            onChange={(e) =>
+                              setForm({
+                                ...form,
+                                delivery_notes: e.target.value,
+                              })
+                            }
+                            style={inputStyle}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div
+                  className="pos-form-field pos-field-notes"
+                  style={formField}
+                >
+                  <label style={labelStyle}>Order Notes</label>
+                  <textarea
+                    rows={3}
+                    placeholder="Add optional notes for this order"
+                    value={form.notes}
+                    onChange={(e) =>
+                      setForm({ ...form, notes: e.target.value })
+                    }
+                    style={{
+                      ...inputStyle,
+                      resize: "vertical",
+                      fontFamily: "inherit",
+                    }}
+                  />
+                </div>
+              </fieldset>
             )}
 
             {error && (
@@ -1456,8 +1481,8 @@ export default function ProcessOrder() {
                     Online Payment Pending
                   </div>
                   <p className="pos-qr-pending-copy">
-                    The item stock is reserved for this payment attempt. Ask
-                    the customer to scan the QR code below, or open PayMongo
+                    The item stock is reserved for this payment attempt. Ask the
+                    customer to scan the QR code below, or open PayMongo
                     Checkout as a fallback.
                   </p>
                   <div className="pos-qr-pending-amount">
@@ -1552,9 +1577,9 @@ export default function ProcessOrder() {
                 </div>
 
                 <p className="pos-qr-lock-note">
-                  Order details are locked while this payment attempt is
-                  active. Do not create another payment or change the reserved
-                  cart until this attempt is resolved.
+                  Order details are locked while this payment attempt is active.
+                  Do not create another payment or change the reserved cart
+                  until this attempt is resolved.
                 </p>
               </div>
             )}
@@ -1601,7 +1626,7 @@ export default function ProcessOrder() {
                   <button
                     type="submit"
                     style={
-                      canSubmit
+                      canSubmit || loading // Keep button fully opaque while loading so spinner looks good
                         ? btnPrimary
                         : {
                             ...btnPrimary,
@@ -1609,11 +1634,27 @@ export default function ProcessOrder() {
                             cursor: "not-allowed",
                           }
                     }
-                    disabled={!canSubmit}
+                    disabled={!canSubmit || loading}
                   >
-                    {loading
-                      ? "Processing..."
-                      : "Confirm Order and Payment"}
+                    {loading ? (
+                      <>
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                          style={{ animation: "wSpin 0.7s linear infinite" }}
+                        >
+                          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                        </svg>
+                        Processing...
+                      </>
+                    ) : (
+                      "Confirm Order and Payment"
+                    )}
                   </button>
                 )}
               </div>
@@ -1695,7 +1736,8 @@ export default function ProcessOrder() {
                   <div
                     style={{ color: "#71717a", marginTop: 4, fontWeight: 500 }}
                   >
-                    Quantity {item.quantity} at ₱{Number(item.unit_price).toLocaleString()} each
+                    Quantity {item.quantity} at ₱
+                    {Number(item.unit_price).toLocaleString()} each
                   </div>
                 </div>
                 <div style={{ fontWeight: 650, color: "#0a0a0a" }}>

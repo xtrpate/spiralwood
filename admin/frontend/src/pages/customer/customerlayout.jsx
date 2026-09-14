@@ -215,19 +215,10 @@ export default function CustomerLayout() {
     const params = new URLSearchParams(location.search);
     setHeaderSearch(params.get("q") || "");
 
-    if (
-      location.pathname === "/" &&
-      !location.hash &&
-      !isAuthOverlayPage
-    ) {
+    if (location.pathname === "/" && !location.hash && !isAuthOverlayPage) {
       scrollToLandingTop();
     }
-  }, [
-    location.pathname,
-    location.search,
-    location.hash,
-    isAuthOverlayPage,
-  ]);
+  }, [location.pathname, location.search, location.hash, isAuthOverlayPage]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -807,7 +798,7 @@ export default function CustomerLayout() {
               <span>Menu</span>
             </button>
 
-            <div style={{ position: "relative" }}>
+            <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
               <form
                 className="cust-header-search"
                 onSubmit={handleHeaderSearch}
@@ -1419,15 +1410,12 @@ export default function CustomerLayout() {
                                   )}`
                                 : undefined
                             }
-                            onFocus={(event) =>
-                              event.currentTarget.select()
-                            }
+                            onFocus={(event) => event.currentTarget.select()}
                             onInput={(event) => {
-                              const digits =
-                                event.currentTarget.value.replace(
-                                  /[^0-9]/g,
-                                  "",
-                                );
+                              const digits = event.currentTarget.value.replace(
+                                /[^0-9]/g,
+                                "",
+                              );
 
                               if (event.currentTarget.value !== digits) {
                                 event.currentTarget.value = digits;
@@ -1453,22 +1441,17 @@ export default function CustomerLayout() {
                                 ? Math.min(requested, stockLimit)
                                 : requested;
 
-                              event.currentTarget.value =
-                                String(nextQuantity);
+                              event.currentTarget.value = String(nextQuantity);
 
                               if (nextQuantity !== quantity) {
-                                updateQty(
-                                  item.key,
-                                  nextQuantity - quantity,
-                                );
+                                updateQty(item.key, nextQuantity - quantity);
                               }
                             }}
                             onKeyDown={(event) => {
                               if (event.key === "Enter") {
                                 event.currentTarget.blur();
                               } else if (event.key === "Escape") {
-                                event.currentTarget.value =
-                                  String(quantity);
+                                event.currentTarget.value = String(quantity);
                                 event.currentTarget.blur();
                               }
                             }}

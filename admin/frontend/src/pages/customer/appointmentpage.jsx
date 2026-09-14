@@ -13,6 +13,10 @@ import {
 } from "lucide-react";
 import useAuthStore from "../../store/authStore";
 import api from "../../services/api";
+import {
+  MotionFeedbackOverlay,
+  getMotionFeedbackDurations,
+} from "../../components/MotionFeedbackOverlay";
 import "./appointmentpage.css";
 
 // Helper: Get tomorrow's date as YYYY-MM-DD
@@ -180,6 +184,10 @@ export default function AppointmentPage() {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
 
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackStatus, setFeedbackStatus] = useState("loading");
+  const [feedbackMsg, setFeedbackMsg] = useState("");
+
   const [apptToCancel, setApptToCancel] = useState(null);
   const [isCancellingAppt, setIsCancellingAppt] = useState(false);
 
@@ -271,6 +279,10 @@ export default function AppointmentPage() {
     }
 
     setSubmitting(true);
+    setFeedbackOpen(true);
+    setFeedbackStatus("loading");
+    setFeedbackMsg("Sending request...");
+
     try {
       await api.post("/customer/appointments", {
         purpose,
@@ -282,13 +294,21 @@ export default function AppointmentPage() {
         notes: notes.trim() || undefined,
       });
 
-      setSubmitted(true);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-      await fetchAppointments();
+      setFeedbackStatus("success");
+      setFeedbackMsg("Request sent successfully!");
 
-      // Refresh current week's calendar blocks
-      setWeekStart(new Date(weekStart));
+      const durations = getMotionFeedbackDurations();
+      setTimeout(async () => {
+        setFeedbackOpen(false);
+        setSubmitted(true);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        await fetchAppointments();
+
+        // Refresh current week's calendar blocks
+        setWeekStart(new Date(weekStart));
+      }, durations.success);
     } catch (err) {
+      setFeedbackOpen(false);
       setError(
         err.response?.data?.message ||
           "Something went wrong. Please try again.",
@@ -1217,6 +1237,12 @@ export default function AppointmentPage() {
           </div>
         </div>
       )}
+      <MotionFeedbackOverlay
+        open={feedbackOpen}
+        status={feedbackStatus}
+        message={feedbackMsg}
+        blocking
+      />
     </div>
   );
 }
