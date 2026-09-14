@@ -13,7 +13,6 @@ import {
   X,
   ChevronRight,
   ClipboardList,
-  MessageSquare,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import "./POSLayout.css";
@@ -208,11 +207,6 @@ export default function POSLayout() {
           to: "/staff/history",
           icon: ClipboardList,
           label: "Transaction History",
-        },
-        {
-          to: "/staff/support",
-          icon: MessageSquare,
-          label: "Support",
         },
         {
           to: "/staff/blueprint-payments",
