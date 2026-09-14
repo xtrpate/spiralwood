@@ -52,6 +52,39 @@ const emitDeliveryAssigned = ({
   }
 };
 
+const emitDeliveryUnassigned = ({
+  io,
+  deliveryId,
+  orderId,
+  orderNumber,
+  previousDriverId,
+  newDriverId,
+  scheduledDate,
+}) => {
+  if (!io || !previousDriverId) return;
+
+  try {
+    const payload = {
+      delivery_id: Number(deliveryId),
+      order_id: Number(orderId),
+      order_number: orderNumber || `#${orderId}`,
+      previous_driver_id: Number(previousDriverId),
+      new_driver_id: Number(newDriverId),
+      status: "scheduled",
+      scheduled_date: scheduledDate || null,
+    };
+
+    io.to(`user:${previousDriverId}`).emit("delivery:unassigned", payload);
+
+    console.log("[SOCKET EMIT] Delivery unassigned:", payload);
+  } catch (socketErr) {
+    console.error(
+      "[DELIVERY UNASSIGNMENT SOCKET EMIT]",
+      socketErr?.message || socketErr,
+    );
+  }
+};
+
 const {
   resolveLifecycleByOrder,
 } = require("../../services/blueprintLifecycleService");
@@ -1282,6 +1315,308 @@ exports.createDelivery = async (req, res) => {
   } catch (err) {
     console.error("POST /api/pos/deliveries error:", err);
     res.status(500).json({ message: "Failed to schedule delivery" });
+  }
+};
+
+exports.reassignDeliveryRider = async (req, res) => {
+  const deliveryId = toNullableInt(req.params.id);
+  const driverId = toNullableInt(req.body.driver_id);
+  const reassignmentReason = normalizeText(req.body.reassignment_reason);
+
+  if (!deliveryId) {
+    return res.status(400).json({ message: "Invalid delivery id." });
+  }
+
+  if (!driverId || !reassignmentReason) {
+    return res.status(400).json({
+      message: "driver_id and reassignment_reason are required.",
+    });
+  }
+
+  if (reassignmentReason.length > 500) {
+    return res.status(400).json({
+      message: "Reassignment reason must be 500 characters or fewer.",
+    });
+  }
+
+  let conn;
+  let transactionActive = false;
+
+  try {
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+    transactionActive = true;
+
+    // Lock the delivery first. updateDeliveryStatus() uses the same
+    // delivery -> order lock order, so a rider starting the trip at the
+    // same moment as an admin reassignment is serialized safely.
+    const [[existing]] = await conn.query(
+      `
+      SELECT
+        id,
+        order_id,
+        driver_id,
+        assigned_by,
+        assigned_at,
+        DATE_FORMAT(scheduled_date, '%Y-%m-%d') AS scheduled_date,
+        status
+      FROM deliveries
+      WHERE id = ?
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [deliveryId],
+    );
+
+    if (!existing) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(404).json({ message: "Delivery not found." });
+    }
+
+    const currentStatus = normalizeText(existing.status).toLowerCase();
+
+    if (currentStatus !== "scheduled") {
+      await conn.rollback();
+      transactionActive = false;
+
+      if (currentStatus === "in_transit") {
+        return res.status(409).json({
+          message:
+            "This delivery has already started and can no longer be reassigned.",
+        });
+      }
+
+      if (currentStatus === "failed") {
+        return res.status(409).json({
+          message:
+            "Failed deliveries must use Reschedule to create a new delivery attempt.",
+        });
+      }
+
+      return res.status(409).json({
+        message: "Only a scheduled delivery can be reassigned.",
+      });
+    }
+
+    const previousDriverId = toNullableInt(existing.driver_id);
+
+    if (previousDriverId === driverId) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message: "This rider is already assigned to the delivery.",
+      });
+    }
+
+    const [[order]] = await conn.query(
+      `
+      SELECT id, order_number, customer_id, status
+      FROM orders
+      WHERE id = ?
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [existing.order_id],
+    );
+
+    if (!order) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(404).json({ message: "Linked order not found." });
+    }
+
+    const orderStatus = normalizeText(order.status).toLowerCase();
+    if (["cancelled", "delivered", "completed"].includes(orderStatus)) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message: "This order can no longer have its delivery reassigned.",
+      });
+    }
+
+    const [[rider]] = await conn.query(
+      `
+      SELECT id, name, role, staff_type, is_active
+      FROM users
+      WHERE id = ?
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [driverId],
+    );
+
+    if (
+      !rider ||
+      rider.role !== "staff" ||
+      rider.staff_type !== "delivery_rider" ||
+      Number(rider.is_active) !== 1
+    ) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "Selected delivery rider was not found or is inactive.",
+      });
+    }
+
+    let previousDriverName = null;
+    if (previousDriverId) {
+      const [[previousDriver]] = await conn.query(
+        `SELECT id, name FROM users WHERE id = ? LIMIT 1`,
+        [previousDriverId],
+      );
+      previousDriverName = previousDriver?.name || null;
+    }
+
+    const [updateResult] = await conn.query(
+      `
+      UPDATE deliveries
+      SET
+        driver_id = ?,
+        assigned_by = ?,
+        assigned_at = NOW()
+      WHERE id = ?
+        AND status = 'scheduled'
+      `,
+      [driverId, req.user.id, deliveryId],
+    );
+
+    if (Number(updateResult.affectedRows || 0) !== 1) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message:
+          "The delivery changed before reassignment completed. Refresh and try again.",
+      });
+    }
+
+    const [[delivery]] = await conn.query(
+      `
+      SELECT
+        d.id,
+        d.order_id,
+        d.driver_id,
+        d.assigned_by,
+        d.assigned_at,
+        DATE_FORMAT(d.scheduled_date, '%Y-%m-%d') AS scheduled_date,
+        d.delivered_date,
+        d.address,
+        d.status,
+        d.notes,
+        d.signed_receipt,
+        d.updated_at,
+        o.order_number,
+        driver.name AS driver_name
+      FROM deliveries d
+      INNER JOIN orders o ON o.id = d.order_id
+      LEFT JOIN users driver ON driver.id = d.driver_id
+      WHERE d.id = ?
+      LIMIT 1
+      `,
+      [deliveryId],
+    );
+
+    const auditRecord = {
+      id: deliveryId,
+      old: {
+        driver_id: previousDriverId,
+        driver_name: previousDriverName,
+        assigned_by: existing.assigned_by || null,
+        assigned_at: existing.assigned_at || null,
+        scheduled_date: existing.scheduled_date || null,
+        status: currentStatus,
+      },
+      new: {
+        driver_id: driverId,
+        driver_name: rider.name || null,
+        assigned_by: req.user.id,
+        assigned_at: delivery?.assigned_at || null,
+        scheduled_date: delivery?.scheduled_date || existing.scheduled_date || null,
+        status: normalizeText(delivery?.status || existing.status).toLowerCase(),
+        reassignment_reason: reassignmentReason,
+      },
+    };
+
+    await conn.commit();
+    transactionActive = false;
+
+    req.auditRecord = auditRecord;
+
+    const io = req.app.get("io");
+
+    emitDeliveryUnassigned({
+      io,
+      deliveryId,
+      orderId: existing.order_id,
+      orderNumber: order.order_number,
+      previousDriverId,
+      newDriverId: driverId,
+      scheduledDate: delivery?.scheduled_date || existing.scheduled_date,
+    });
+
+    emitDeliveryAssigned({
+      io,
+      deliveryId,
+      orderId: existing.order_id,
+      orderNumber: order.order_number,
+      driverId,
+      scheduledDate: delivery?.scheduled_date || existing.scheduled_date,
+      status: "scheduled",
+    });
+
+    if (previousDriverId) {
+      await createNotificationSafe(db, {
+        userId: previousDriverId,
+        type: "assignment",
+        title: "Delivery Reassigned",
+        message: `Delivery for ${order.order_number || `Order #${existing.order_id}`} has been reassigned to another rider by an administrator.`,
+      });
+    }
+
+    await createNotificationSafe(db, {
+      userId: driverId,
+      type: "assignment",
+      title: "Delivery Reassigned to You",
+      message: `You have been assigned the delivery for ${order.order_number || `Order #${existing.order_id}`}, scheduled for ${delivery?.scheduled_date || existing.scheduled_date}.`,
+      targetType: "delivery",
+      targetId: deliveryId,
+      targetOrderId: existing.order_id,
+    });
+
+    return res.json({
+      message: "Delivery rider reassigned successfully.",
+      delivery,
+      previous_driver: {
+        id: previousDriverId,
+        name: previousDriverName,
+      },
+      assigned_driver: {
+        id: rider.id,
+        name: rider.name,
+      },
+    });
+  } catch (err) {
+    if (conn && transactionActive) {
+      try {
+        await conn.rollback();
+      } catch (rollbackErr) {
+        console.error(
+          "PATCH /api/pos/deliveries/:id/assignment rollback error:",
+          rollbackErr,
+        );
+      }
+      transactionActive = false;
+    }
+
+    console.error(
+      "PATCH /api/pos/deliveries/:id/assignment error:",
+      err,
+    );
+    return res.status(500).json({
+      message: "Failed to reassign delivery rider.",
+    });
+  } finally {
+    if (conn) conn.release();
   }
 };
 

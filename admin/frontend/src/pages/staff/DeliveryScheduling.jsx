@@ -16,6 +16,7 @@ import {
 // WISDOM DELIVERY SCHEDULING MODAL FORM UI FIX V1.0.1
 // WISDOM DELIVERY SCHEDULING FORM SIZE AND ORDER WIDTH FIX V1.0.1
 // WISDOM FAILED DELIVERY RESCHEDULE FLOW V1.1.2
+// WISDOM SCHEDULED DELIVERY RIDER REASSIGNMENT V1.0.0
 
 const formatDateTime = (value) => {
   if (!value) return "—";
@@ -264,6 +265,14 @@ export default function DeliveryScheduling() {
   const [rescheduleLoading, setRescheduleLoading] = useState(false);
   const [rescheduleError, setRescheduleError] = useState("");
   const [rescheduleFieldErrors, setRescheduleFieldErrors] = useState({});
+  const [reassignTarget, setReassignTarget] = useState(null);
+  const [reassignForm, setReassignForm] = useState({
+    driver_id: "",
+    reason: "",
+  });
+  const [reassignLoading, setReassignLoading] = useState(false);
+  const [reassignError, setReassignError] = useState("");
+  const [reassignFieldErrors, setReassignFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [listLoading, setListLoading] = useState(true);
   const [error, setError] = useState("");
@@ -534,7 +543,7 @@ export default function DeliveryScheduling() {
   };
 
   useEffect(() => {
-    if (!showForm && !rescheduleTarget) return undefined;
+    if (!showForm && !rescheduleTarget && !reassignTarget) return undefined;
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -542,7 +551,7 @@ export default function DeliveryScheduling() {
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [showForm, rescheduleTarget]);
+  }, [showForm, rescheduleTarget, reassignTarget]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -706,6 +715,112 @@ export default function DeliveryScheduling() {
       );
     } finally {
       setRescheduleLoading(false);
+    }
+  };
+
+  const openReassignModal = (delivery) => {
+    if (normalizeStatus(delivery?.status) !== "scheduled") {
+      setError("Only a scheduled delivery can be reassigned.");
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+    setReassignError("");
+    setReassignFieldErrors({});
+    setReassignTarget(delivery);
+    setReassignForm({
+      driver_id: "",
+      reason: "",
+    });
+  };
+
+  const closeReassignModal = () => {
+    if (reassignLoading) return;
+
+    setReassignTarget(null);
+    setReassignForm({
+      driver_id: "",
+      reason: "",
+    });
+    setReassignError("");
+    setReassignFieldErrors({});
+  };
+
+  const validateReassignForm = () => {
+    const nextErrors = {};
+    const currentDriverId = Number(reassignTarget?.driver_id);
+    const nextDriverId = Number(reassignForm.driver_id);
+
+    if (!reassignForm.driver_id) {
+      nextErrors.driver_id = "Please select a new delivery rider.";
+    } else if (
+      Number.isInteger(currentDriverId) &&
+      currentDriverId > 0 &&
+      currentDriverId === nextDriverId
+    ) {
+      nextErrors.driver_id = "Please select a different rider.";
+    }
+
+    const reason = String(reassignForm.reason || "").trim();
+    if (!reason) {
+      nextErrors.reason = "Reassignment reason is required.";
+    } else if (reason.length > 500) {
+      nextErrors.reason = "Reassignment reason must be 500 characters or fewer.";
+    }
+
+    setReassignFieldErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const handleReassignSubmit = async (event) => {
+    event.preventDefault();
+    setReassignError("");
+
+    if (!reassignTarget || !validateReassignForm()) return;
+
+    const deliveryId = Number(reassignTarget.id);
+    if (!Number.isInteger(deliveryId) || deliveryId <= 0) {
+      setReassignError("Invalid scheduled delivery record.");
+      return;
+    }
+
+    setReassignLoading(true);
+
+    try {
+      const response = await api.patch(
+        `/pos/deliveries/${deliveryId}/assignment`,
+        {
+          driver_id: reassignForm.driver_id,
+          reassignment_reason: String(reassignForm.reason || "").trim(),
+        },
+      );
+
+      const previousName =
+        response.data?.previous_driver?.name ||
+        reassignTarget.driver_name ||
+        "Previous rider";
+      const assignedName =
+        response.data?.assigned_driver?.name || "new rider";
+
+      setReassignTarget(null);
+      setReassignForm({
+        driver_id: "",
+        reason: "",
+      });
+      setReassignFieldErrors({});
+      setReassignError("");
+      setSuccess(
+        `Delivery reassigned from ${previousName} to ${assignedName}.`,
+      );
+
+      await fetchDeliveries();
+    } catch (err) {
+      setReassignError(
+        err.response?.data?.message || "Failed to reassign delivery rider.",
+      );
+    } finally {
+      setReassignLoading(false);
     }
   };
 
@@ -1172,6 +1287,236 @@ export default function DeliveryScheduling() {
         </div>
       )}
 
+      {reassignTarget && (
+        <div
+          style={deliveryModalBackdropStyle}
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeReassignModal();
+            }
+          }}
+        >
+          <div
+            style={deliveryModalStyle}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delivery-reassign-modal-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div style={deliveryModalHeaderStyle}>
+              <div>
+                <h2
+                  id="delivery-reassign-modal-title"
+                  style={deliveryModalTitleStyle}
+                >
+                  Reassign rider
+                </h2>
+                <p style={deliveryModalSubtitleStyle}>
+                  Change the rider for this scheduled delivery. The delivery
+                  date, address, and delivery attempt stay unchanged.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                style={deliveryModalCloseStyle}
+                onClick={closeReassignModal}
+                disabled={reassignLoading}
+                aria-label="Close reassign rider"
+              >
+                &times;
+              </button>
+            </div>
+
+            {reassignError ? (
+              <div style={deliveryModalErrorStyle}>{reassignError}</div>
+            ) : null}
+
+            <form onSubmit={handleReassignSubmit}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                  gap: 12,
+                }}
+              >
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label style={labelStyle}>Order</label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={`${reassignTarget.order_number || "-"} - ${
+                      reassignTarget.customer_name || "-"
+                    }`}
+                    style={{ ...inputStyle, background: "#f4f4f5" }}
+                  />
+                </div>
+
+                <div>
+                  <label style={labelStyle}>Current rider</label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={reassignTarget.driver_name || "Unassigned"}
+                    style={{ ...inputStyle, background: "#f4f4f5" }}
+                  />
+                </div>
+
+                <div>
+                  <label style={labelStyle}>Delivery date</label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={formatScheduledDate(reassignTarget.scheduled_date)}
+                    style={{ ...inputStyle, background: "#f4f4f5" }}
+                  />
+                </div>
+
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label style={labelStyle}>
+                    New rider <span style={{ color: "#dc2626" }}>*</span>
+                  </label>
+                  <select
+                    value={reassignForm.driver_id}
+                    onChange={(event) => {
+                      setReassignForm((prev) => ({
+                        ...prev,
+                        driver_id: event.target.value,
+                      }));
+                      setReassignFieldErrors((prev) => ({
+                        ...prev,
+                        driver_id: "",
+                      }));
+                    }}
+                    style={{
+                      ...inputStyle,
+                      borderColor: reassignFieldErrors.driver_id
+                        ? "#dc2626"
+                        : "#d9dce1",
+                    }}
+                  >
+                    <option value="">Select a new rider</option>
+                    {riders
+                      .filter(
+                        (rider) =>
+                          Number(rider.id) !==
+                          Number(reassignTarget.driver_id),
+                      )
+                      .map((rider) => (
+                        <option key={rider.id} value={rider.id}>
+                          {rider.name}
+                        </option>
+                      ))}
+                  </select>
+
+                  {reassignFieldErrors.driver_id ? (
+                    <p
+                      style={{
+                        color: "#dc2626",
+                        fontSize: 11,
+                        margin: "6px 0 0",
+                      }}
+                    >
+                      {reassignFieldErrors.driver_id}
+                    </p>
+                  ) : null}
+
+                  {riders.filter(
+                    (rider) =>
+                      Number(rider.id) !== Number(reassignTarget.driver_id),
+                  ).length === 0 ? (
+                    <p
+                      style={{
+                        color: "#71717a",
+                        fontSize: 11,
+                        margin: "6px 0 0",
+                      }}
+                    >
+                      No other active delivery rider is available.
+                    </p>
+                  ) : null}
+                </div>
+
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label style={labelStyle}>
+                    Reassignment reason{" "}
+                    <span style={{ color: "#dc2626" }}>*</span>
+                  </label>
+                  <textarea
+                    rows={2}
+                    maxLength={500}
+                    placeholder="Example: Assigned rider is unavailable"
+                    value={reassignForm.reason}
+                    onChange={(event) => {
+                      setReassignForm((prev) => ({
+                        ...prev,
+                        reason: event.target.value,
+                      }));
+                      setReassignFieldErrors((prev) => ({
+                        ...prev,
+                        reason: "",
+                      }));
+                    }}
+                    style={{
+                      ...inputStyle,
+                      resize: "vertical",
+                      fontFamily: "inherit",
+                      borderColor: reassignFieldErrors.reason
+                        ? "#dc2626"
+                        : "#d9dce1",
+                    }}
+                  />
+                  {reassignFieldErrors.reason ? (
+                    <p
+                      style={{
+                        color: "#dc2626",
+                        fontSize: 11,
+                        margin: "6px 0 0",
+                      }}
+                    >
+                      {reassignFieldErrors.reason}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  marginTop: 16,
+                  paddingTop: 16,
+                  borderTop: "1px solid #ececef",
+                  justifyContent: "flex-end",
+                  flexWrap: "wrap",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={closeReassignModal}
+                  disabled={reassignLoading}
+                  style={btnGhost}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={reassignLoading}
+                  style={
+                    reassignLoading
+                      ? { ...btnPrimary, opacity: 0.6, cursor: "not-allowed" }
+                      : btnPrimary
+                  }
+                >
+                  {reassignLoading ? "Reassigning..." : "Reassign rider"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {rescheduleTarget && (
         <div
           style={deliveryModalBackdropStyle}
@@ -1580,6 +1925,8 @@ export default function DeliveryScheduling() {
                           delivery.delivered_date,
                         )
                       : "";
+                  const canReassign =
+                    normalizeStatus(delivery.status) === "scheduled";
                   const canReschedule =
                     normalizeStatus(delivery.status) === "failed" &&
                     Number(
@@ -1643,7 +1990,26 @@ export default function DeliveryScheduling() {
                       </td>
 
                       <td style={tdStyle}>
-                        {canReschedule ? (
+                        {canReassign ? (
+                          <button
+                            type="button"
+                            onClick={() => openReassignModal(delivery)}
+                            style={{
+                              ...btnGhost,
+                              minHeight: 30,
+                              padding: "5px 9px",
+                              fontSize: 11,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            <Truck
+                              size={13}
+                              strokeWidth={1.8}
+                              aria-hidden="true"
+                            />
+                            Reassign rider
+                          </button>
+                        ) : canReschedule ? (
                           <button
                             type="button"
                             onClick={() => openRescheduleModal(delivery)}

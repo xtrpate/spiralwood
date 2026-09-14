@@ -175,6 +175,13 @@ router.post(
   posFulfillmentController.createDelivery,
 );
 
+router.patch(
+  "/deliveries/:id/assignment",
+  deliveryManageAccess,
+  logAction("reassign_delivery_rider", "deliveries"),
+  posFulfillmentController.reassignDeliveryRider,
+);
+
 router.post(
   "/deliveries/:id/reschedule",
   deliveryManageAccess,

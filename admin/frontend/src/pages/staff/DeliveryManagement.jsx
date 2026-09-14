@@ -65,6 +65,33 @@ const toDeliveryDateKey = (value) => {
   return match ? `${match[1]}-${match[2]}-${match[3]}` : "";
 };
 
+// Confirmed delivery schedule is a DATE-ONLY business field.
+// Format from the YYYY-MM-DD key instead of new Date(...) so the browser
+// can never invent a local 8:00 AM (or any other timezone-derived time).
+const formatScheduledDateOnly = (value) => {
+  const key = toDeliveryDateKey(value);
+  if (!key) return value || "\u2014";
+
+  const [year, month, day] = key.split("-").map(Number);
+  const monthLabel = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ][month - 1];
+
+  if (!monthLabel || !year || !day) return key;
+  return `${monthLabel} ${day}, ${year}`;
+};
+
 const getLocalTodayKey = () => {
   const now = new Date();
   return [
@@ -203,6 +230,20 @@ export default function DeliveryManagement() {
       loadDeliveries({ silent: true });
     };
 
+    const handleDeliveryUnassigned = (payload) => {
+      const previousDriverId = Number(payload?.previous_driver_id);
+      const currentUserId = Number(user?.id);
+
+      if (
+        !Number.isInteger(previousDriverId) ||
+        previousDriverId !== currentUserId
+      ) {
+        return;
+      }
+
+      loadDeliveries({ silent: true });
+    };
+
     const attachListener = (socket) => {
       if (!socket) return;
 
@@ -211,6 +252,9 @@ export default function DeliveryManagement() {
 
       socket.off("delivery:assigned", handleDeliveryAssigned);
       socket.on("delivery:assigned", handleDeliveryAssigned);
+
+      socket.off("delivery:unassigned", handleDeliveryUnassigned);
+      socket.on("delivery:unassigned", handleDeliveryUnassigned);
     };
 
     const socket = getSocket();
@@ -229,6 +273,7 @@ export default function DeliveryManagement() {
       if (currentSocket) {
         currentSocket.off("order:status_updated", handleOrderStatusUpdated);
         currentSocket.off("delivery:assigned", handleDeliveryAssigned);
+        currentSocket.off("delivery:unassigned", handleDeliveryUnassigned);
       }
 
       unsubscribeReady();
@@ -1085,7 +1130,7 @@ export default function DeliveryManagement() {
                     label="Scheduled"
                     value={
                       <div>
-                        <div>{formatDateTime(delivery.scheduled_date)}</div>
+                        <div>{formatScheduledDateOnly(delivery.scheduled_date)}</div>
                         {isDeliveryRider && isRiderOverdueDelivery(delivery) ? (
                           <span style={overdueScheduleText}>Overdue</span>
                         ) : null}
