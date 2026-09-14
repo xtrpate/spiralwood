@@ -215,8 +215,8 @@ exports.getAppointments = async (req, res) => {
         a.id,
         a.order_id,
         a.purpose,
-        a.scheduled_date,
-        a.preferred_date,
+        DATE_FORMAT(a.scheduled_date, '%Y-%m-%dT%H:%i:%s') AS scheduled_date,
+        DATE_FORMAT(a.preferred_date, '%Y-%m-%dT%H:%i:%s') AS preferred_date,
         a.status,
         a.notes,
         a.created_at,
@@ -384,8 +384,8 @@ exports.getWeeklyAvailability = async (req, res) => {
     const [rows] = await db.query(
       `
       SELECT
-        DATE(scheduled_date) AS booked_date,
-        TIME(scheduled_date) AS booked_time
+        DATE_FORMAT(scheduled_date, '%Y-%m-%d') AS booked_date,
+        DATE_FORMAT(scheduled_date, '%H:%i') AS booked_time
       FROM appointments
       WHERE DATE(scheduled_date) BETWEEN ? AND DATE_ADD(?, INTERVAL 6 DAY)
         AND status IN (
@@ -400,20 +400,21 @@ exports.getWeeklyAvailability = async (req, res) => {
     const result = {};
 
     // Always return all 7 days, even when there are no bookings.
+    // UTC is used only as a neutral calendar arithmetic container here.
     for (let i = 0; i < 7; i++) {
-      const date = new Date(`${start}T00:00:00`);
-      date.setDate(date.getDate() + i);
+      const date = new Date(`${start}T00:00:00Z`);
+      date.setUTCDate(date.getUTCDate() + i);
 
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, "0");
-      const day = String(date.getDate()).padStart(2, "0");
+      const year = date.getUTCFullYear();
+      const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(date.getUTCDate()).padStart(2, "0");
 
       result[`${year}-${month}-${day}`] = [];
     }
 
     rows.forEach((row) => {
       const dateKey = row.booked_date
-        ? new Date(row.booked_date).toISOString().slice(0, 10)
+        ? String(row.booked_date).slice(0, 10)
         : null;
 
       const timeValue = row.booked_time

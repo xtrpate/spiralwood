@@ -20,9 +20,18 @@ const appointmentAccess = [
   requirePermission("appointments.view"),
 ];
 
-const appointmentManageAccess = [
+const appointmentAdminManageAccess = [
   authenticate,
   authorize("admin"),
+  requirePermission("appointments.manage"),
+];
+
+// Indoor staff need this route for the controller's deliberately restricted
+// Accept / Return to Admin / Complete / Cancel transitions. The controller
+// still verifies that a staff user is the appointment's assigned provider.
+const appointmentUpdateAccess = [
+  authenticate,
+  requireIndoorStaffOrAdmin,
   requirePermission("appointments.manage"),
 ];
 
@@ -44,14 +53,14 @@ router.get(
 
 router.post(
   "/appointments",
-  appointmentManageAccess,
+  appointmentAdminManageAccess,
   logAction("create_appointment", "appointments"),
   posScheduleController.createAppointment,
 );
 
 router.patch(
   "/appointments/:id",
-  appointmentManageAccess,
+  appointmentUpdateAccess,
   logAction("update_appointment", "appointments"),
   posScheduleController.updateAppointment,
 );

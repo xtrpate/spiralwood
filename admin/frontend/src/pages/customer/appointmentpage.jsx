@@ -117,19 +117,61 @@ const formatTimeForDisplay = (t) => {
   return `${hr > 12 ? hr - 12 : hr === 0 ? 12 : hr}:${m} ${hr >= 12 ? "PM" : "AM"}`;
 };
 
+// WISDOM APPOINTMENT WALL CLOCK CUSTOMER UI FIX R5.3
+// Appointment schedules are Asia/Manila business wall-clock values.
+// A synthetic UTC Date is used only for formatting so the browser timezone
+// cannot shift the stored calendar date or time.
+const appointmentWallClockToSyntheticUtc = (value) => {
+  const raw = String(value || "").trim().replace(" ", "T");
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(
+      raw,
+    );
+
+  if (!match) return null;
+
+  const [, year, month, day, hour = "00", minute = "00", second = "00"] =
+    match;
+
+  return new Date(
+    Date.UTC(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second),
+    ),
+  );
+};
+
+const formatAppointmentDateOnly = (value, options = {}) => {
+  const d = appointmentWallClockToSyntheticUtc(value);
+  if (!d) return "—";
+
+  return d.toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    ...options,
+  });
+};
+
 const formatDateTime = (str) => {
-  if (!str) return "—";
-  const d = new Date(str);
+  const d = appointmentWallClockToSyntheticUtc(str);
+  if (!d) return "—";
+
   return (
     d.toLocaleDateString("en-PH", {
+      timeZone: "UTC",
       month: "short",
       day: "numeric",
       year: "numeric",
     }) +
     " at " +
     d.toLocaleTimeString("en-PH", {
+      timeZone: "UTC",
       hour: "2-digit",
       minute: "2-digit",
+      hour12: true,
     })
   );
 };
@@ -587,7 +629,7 @@ export default function AppointmentPage() {
                     <div className="appt-success-row">
                       <Calendar size={15} />
                       <span>
-                        {new Date(preferred_date).toLocaleDateString("en-US", {
+                        {formatAppointmentDateOnly(preferred_date, {
                           weekday: "long",
                           year: "numeric",
                           month: "long",
@@ -819,14 +861,11 @@ export default function AppointmentPage() {
                         <div className="weekly-selection-feedback">
                           Selected:{" "}
                           <strong>
-                            {new Date(preferred_date).toLocaleDateString(
-                              "en-US",
-                              {
-                                month: "long",
-                                day: "numeric",
-                                year: "numeric",
-                              },
-                            )}{" "}
+                            {formatAppointmentDateOnly(preferred_date, {
+                              month: "long",
+                              day: "numeric",
+                              year: "numeric",
+                            })}{" "}
                             at {formatTimeForDisplay(preferred_time)}
                           </strong>
                         </div>
