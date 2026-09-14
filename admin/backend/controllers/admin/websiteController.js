@@ -2,6 +2,7 @@
 const pool = require("../../config/db");
 const path = require("path");
 const fs = require("fs");
+const axios = require("axios");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const {
   persistSiteLogo,
@@ -9,6 +10,8 @@ const {
 } = require("../../config/upload");
 const {
   getBackupDirectory,
+  isCloudinaryBackupStoragePath,
+  getCloudinaryBackupDownloadUrl,
   runDatabaseBackup,
 } = require("../../services/databaseBackupService");
 
@@ -951,6 +954,31 @@ exports.updatePage = async (req, res) => {
 };
 
 // ── BACKUP ───────────────────────────────────────────────────────────────────
+// WISDOM BACKUP DOWNLOAD AVAILABILITY V1
+const localBackupExists = (filename) => {
+  if (!filename) return false;
+
+  const backupDir = path.resolve(getBackupDirectory());
+  const filePath = path.resolve(backupDir, filename);
+
+  return (
+    path.dirname(filePath) === backupDir &&
+    fs.existsSync(filePath)
+  );
+};
+
+const isBackupDownloadAvailable = (row) => {
+  if (String(row?.status || "").toLowerCase() !== "success") {
+    return false;
+  }
+
+  if (isCloudinaryBackupStoragePath(row?.storage_path)) {
+    return true;
+  }
+
+  return localBackupExists(row?.file_name);
+};
+
 exports.getBackupLogs = async (req, res) => {
   try {
     const [rows] = await pool.query(
@@ -958,6 +986,7 @@ exports.getBackupLogs = async (req, res) => {
          bl.id,
          bl.type,
          bl.file_name,
+         bl.storage_path,
          bl.file_size_kb,
          bl.status,
          bl.notes,
@@ -969,20 +998,24 @@ exports.getBackupLogs = async (req, res) => {
     );
 
     res.json(
-      rows.map((row) => ({
-        id: row.id,
-        type: row.type,
-        filename: row.file_name,
-        file_size: row.file_size_kb,
-        status: row.status,
-        created_at: row.created_at,
-        triggered_by: row.triggered_by_name || "System",
-        error_message: row.status === "failed" ? row.notes || null : null,
-        file_url:
-          row.status === "success"
+      rows.map((row) => {
+        const downloadAvailable = isBackupDownloadAvailable(row);
+
+        return {
+          id: row.id,
+          type: row.type,
+          filename: row.file_name,
+          file_size: row.file_size_kb,
+          status: row.status,
+          created_at: row.created_at,
+          triggered_by: row.triggered_by_name || "System",
+          error_message: row.status === "failed" ? row.notes || null : null,
+          download_available: downloadAvailable,
+          file_url: downloadAvailable
             ? `/backup/download/${row.file_name}`
             : null,
-      })),
+        };
+      }),
     );
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -1064,34 +1097,130 @@ exports.downloadBackup = async (req, res) => {
       return res.status(400).json({ message: "Invalid backup filename." });
     }
 
-    const absDir = getBackupDirectory();
-    const filePath = path.join(absDir, filename);
+    const [[backupRow]] = await pool.query(
+      `SELECT id, file_name, storage_path, status
+       FROM backup_logs
+       WHERE file_name = ?
+       ORDER BY id DESC
+       LIMIT 1`,
+      [filename],
+    );
 
-    // Defense in depth: resolved file must still live directly inside absDir.
-    if (path.dirname(filePath) !== absDir) {
+    if (
+      !backupRow ||
+      String(backupRow.status || "").toLowerCase() !== "success"
+    ) {
+      return res.status(404).json({
+        message: "Successful backup record not found.",
+      });
+    }
+
+    if (isCloudinaryBackupStoragePath(backupRow.storage_path)) {
+      const signedUrl = getCloudinaryBackupDownloadUrl(
+        backupRow.storage_path,
+      );
+
+      if (!signedUrl) {
+        return res.status(503).json({
+          message:
+            "Protected backup storage is not configured on the server.",
+        });
+      }
+
+      let cloudResponse;
+      try {
+        cloudResponse = await axios.get(signedUrl, {
+          responseType: "stream",
+          timeout: 60000,
+          maxRedirects: 5,
+        });
+      } catch (cloudError) {
+        const upstreamStatus = Number(cloudError?.response?.status || 0);
+
+        console.error(
+          "[backup download cloud storage]",
+          cloudError?.message || cloudError,
+        );
+
+        return res.status(upstreamStatus === 404 ? 404 : 502).json({
+          message:
+            upstreamStatus === 404
+              ? "This backup file is no longer available in protected storage."
+              : "Backup storage could not be reached. Please try again.",
+        });
+      }
+
+      await writeAuditLogSafe({
+        userId: req.user.id,
+        action: "backup_downloaded",
+        tableName: "backup_logs",
+        recordId: backupRow.id,
+        newValues: {
+          file_name: filename,
+          storage: "cloudinary_authenticated_raw",
+          result: "download_started",
+        },
+        ipAddress: req.ip || null,
+      });
+
+      res.setHeader("Content-Type", "application/sql; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${filename}"`,
+      );
+
+      const contentLength = cloudResponse.headers?.["content-length"];
+      if (contentLength) {
+        res.setHeader("Content-Length", contentLength);
+      }
+
+      cloudResponse.data.on("error", (streamError) => {
+        console.error(
+          "[backup download cloud stream]",
+          streamError?.message || streamError,
+        );
+
+        if (res.headersSent) {
+          res.destroy(streamError);
+        }
+      });
+
+      cloudResponse.data.pipe(res);
+      return;
+    }
+
+    const backupDir = path.resolve(getBackupDirectory());
+    const filePath = path.resolve(backupDir, filename);
+
+    if (path.dirname(filePath) !== backupDir) {
       return res.status(400).json({ message: "Invalid backup filename." });
     }
 
     if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ message: "Backup file not found." });
+      return res.status(404).json({
+        message:
+          "This older backup record exists, but its local file is no longer available.",
+      });
     }
-
-    const [[backupRow]] = await pool.query(
-      `SELECT id FROM backup_logs WHERE file_name = ? ORDER BY id DESC LIMIT 1`,
-      [filename],
-    );
 
     await writeAuditLogSafe({
       userId: req.user.id,
       action: "backup_downloaded",
       tableName: "backup_logs",
-      recordId: backupRow?.id || null,
-      newValues: { file_name: filename, result: "download_started" },
+      recordId: backupRow.id,
+      newValues: {
+        file_name: filename,
+        storage: "local",
+        result: "download_started",
+      },
       ipAddress: req.ip || null,
     });
 
-    res.download(filePath, filename);
+    return res.download(filePath, filename);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("[backup download]", err);
+    return res.status(500).json({
+      message: "Backup download failed. Please try again.",
+    });
   }
 };
