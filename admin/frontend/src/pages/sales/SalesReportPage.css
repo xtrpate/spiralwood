@@ -692,11 +692,19 @@
     visibility: visible !important;
   }
 
+  /* WISDOM SALES REPORT PRINT PAGINATION FIX V1
+     The screen report used to stay in print layout while merely invisible,
+     which could reserve enough vertical space to create an extra blank page.
+     The print report is a direct child of .sales-admin-v3, so remove its
+     screen-only siblings from print layout and keep the print report in normal
+     document flow. */
+  .sales-admin-v3 > :not(.sales-print-report) {
+    display: none !important;
+  }
+
   .sales-print-report {
     display: block !important;
-    position: absolute;
-    top: 0;
-    left: 0;
+    position: static !important;
     width: 100%;
     color: #111111;
     background: #ffffff;

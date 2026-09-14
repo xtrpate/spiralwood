@@ -81,6 +81,68 @@ const formatDateTime = (value) => {
   });
 };
 
+// WISDOM APPOINTMENT WALL CLOCK UI FIX R5.3
+// Appointment schedule fields are naive Asia/Manila business times.
+// Format schedule fields without browser timezone reinterpretation.
+// Convert to +08:00 only when comparing a slot against the real clock.
+const APPOINTMENT_TIME_ZONE_OFFSET = "+08:00";
+
+const parseAppointmentWallClock = (value) => {
+  const raw = String(value || "").trim().replace(" ", "T");
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(raw);
+
+  if (!match) return null;
+
+  const [, year, month, day, hour, minute, second = "00"] = match;
+
+  return {
+    year: Number(year),
+    month: Number(month),
+    day: Number(day),
+    hour: Number(hour),
+    minute: Number(minute),
+    second: Number(second),
+    datePart: `${year}-${month}-${day}`,
+    timePart: `${hour}:${minute}:${second}`,
+  };
+};
+
+const formatAppointmentDateTime = (value) => {
+  const parts = parseAppointmentWallClock(value);
+  if (!parts) return "—";
+
+  const syntheticUtc = new Date(
+    Date.UTC(
+      parts.year,
+      parts.month - 1,
+      parts.day,
+      parts.hour,
+      parts.minute,
+      parts.second,
+    ),
+  );
+
+  return syntheticUtc.toLocaleString("en-PH", {
+    timeZone: "UTC",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
+
+const appointmentWallClockToEpochMs = (value) => {
+  const parts = parseAppointmentWallClock(value);
+  if (!parts) return Number.NaN;
+
+  return Date.parse(
+    `${parts.datePart}T${parts.timePart}${APPOINTMENT_TIME_ZONE_OFFSET}`,
+  );
+};
+
 const getMinDateYMD = () => {
   const d = new Date();
   d.setDate(d.getDate() + 1);
@@ -232,8 +294,8 @@ const formatRequestNumber = (id) =>
   id ? `APT-${String(id).padStart(4, "0")}` : "—";
 
 const isPastDue = (dateString) => {
-  if (!dateString) return false;
-  return new Date(dateString) < new Date();
+  const epochMs = appointmentWallClockToEpochMs(dateString);
+  return Number.isFinite(epochMs) ? epochMs < Date.now() : false;
 };
 
 const getStatusLabel = (status) =>
@@ -633,7 +695,13 @@ export default function AppointmentScheduling() {
   }, []);
   const { user, hasPermission } = useAuthStore();
 
-  const canManageAppointments = hasPermission("appointments.manage");
+  // WISDOM APPOINTMENT REASSIGNMENT FIX V1
+  // appointments.manage is also intentionally granted to indoor staff for
+  // Accept / Return / Complete / Cancel. Do not use that permission alone to
+  // decide who receives the admin appointment-management workspace.
+  const isAdmin = user?.role === "admin";
+  const canManageAppointments =
+    isAdmin && hasPermission("appointments.manage");
   const isIndoorStaff = user?.role === "staff" && user?.staff_type === "indoor";
 
   const [appointments, setAppointments] = useState([]);
@@ -662,15 +730,24 @@ export default function AppointmentScheduling() {
   const [success, setSuccess] = useState("");
 
   const [rescheduleModal, setRescheduleModal] = useState(null);
+  const [rescheduleMode, setRescheduleMode] = useState("manage");
   const [rescheduleDate, setRescheduleDate] = useState("");
   const [rescheduleTime, setRescheduleTime] = useState("");
   const [rescheduleStaffId, setRescheduleStaffId] = useState("");
 
-  const openReschedule = (appointment) => {
+  const openReschedule = (appointment, mode = "manage") => {
+    setRescheduleMode(mode);
     setRescheduleModal(appointment);
-    setRescheduleStaffId(
-      String(appointment.assigned_staff_id || appointment.assigned_to || ""),
+    setError("");
+    setSuccess("");
+
+    const currentStaffId = String(
+      appointment.assigned_staff_id || appointment.assigned_to || "",
     );
+
+    // A reassignment must choose somebody different. Starting blank avoids a
+    // same-staff no-op and makes the admin make an explicit choice.
+    setRescheduleStaffId(mode === "reassign" ? "" : currentStaffId);
 
     const existingDate =
       appointment.scheduled_date || appointment.preferred_date;
@@ -1169,7 +1246,7 @@ export default function AppointmentScheduling() {
         <div
           style={{ fontWeight: 400, color: pastDue ? "#991b1b" : "#3f3f46" }}
         >
-          {formatDateTime(
+          {formatAppointmentDateTime(
             appointment.preferred_date || appointment.scheduled_date,
           )}
         </div>
@@ -1199,7 +1276,7 @@ export default function AppointmentScheduling() {
         <div
           style={{ fontWeight: 400, color: pastDue ? "#991b1b" : "#3f3f46" }}
         >
-          {formatDateTime(
+          {formatAppointmentDateTime(
             appointment.scheduled_date || appointment.preferred_date,
           )}
         </div>
@@ -1640,8 +1717,9 @@ export default function AppointmentScheduling() {
                         {(() => {
                           const date = toYMD(day);
                           const isSunday = day.getDay() === 0;
-                          const slotDateTime = new Date(`${date}T${slot}:00`);
-                          const isPastSlot = slotDateTime < new Date();
+                          const isPastSlot = isPastDue(
+                            `${date}T${slot}:00`,
+                          );
                           const booking = (bookedSlots[date] || []).find(
                             (b) => b.time === slot || b === slot,
                           );
@@ -2038,8 +2116,7 @@ export default function AppointmentScheduling() {
                         let statusText = "Available";
 
                         if (d) {
-                          const slotDateTime = new Date(`${d}T${slot}:00`);
-                          const isPast = slotDateTime < new Date();
+                          const isPast = isPastDue(`${d}T${slot}:00`);
 
                           const dateObj = new Date(`${d}T00:00:00`);
                           const isSunday = dateObj.getDay() === 0;
@@ -2163,19 +2240,51 @@ export default function AppointmentScheduling() {
             </button>
 
             <SectionCard
-              title="Manage Appointment"
-              subtitle={`Update schedule or assign staff for ${formatRequestNumber(rescheduleModal.id)}.`}
+              title={
+                rescheduleMode === "reassign"
+                  ? "Reassign Appointment"
+                  : "Manage Appointment"
+              }
+              subtitle={
+                rescheduleMode === "reassign"
+                  ? `Choose a different indoor staff member for ${formatRequestNumber(rescheduleModal.id)}. The existing schedule will stay unchanged.`
+                  : `Update schedule or assign staff for ${formatRequestNumber(rescheduleModal.id)}.`
+              }
             >
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
-                  const newDateTime = `${rescheduleDate}T${rescheduleTime}`;
 
                   const currentStaffId = String(
                     rescheduleModal.assigned_staff_id ||
                       rescheduleModal.assigned_to ||
                       "",
                   );
+
+                  if (rescheduleMode === "reassign") {
+                    if (!rescheduleStaffId) {
+                      setError("Select a different indoor staff member.");
+                      return;
+                    }
+
+                    if (rescheduleStaffId === currentStaffId) {
+                      setError(
+                        "Choose a different indoor staff member for reassignment.",
+                      );
+                      return;
+                    }
+
+                    await handleAction(
+                      rescheduleModal.id,
+                      { assigned_staff_id: Number(rescheduleStaffId) },
+                      "Appointment reassigned. Waiting for the new staff member to accept.",
+                    );
+                    setRescheduleModal(null);
+                    setRescheduleMode("manage");
+                    return;
+                  }
+
+                  const newDateTime = `${rescheduleDate}T${rescheduleTime}`;
                   const isDateChanged =
                     newDateTime !==
                     (rescheduleModal.scheduled_date ||
@@ -2224,7 +2333,9 @@ export default function AppointmentScheduling() {
                   <div>
                     <label style={labelStyle}>
                       Assign Staff{" "}
-                      {rescheduleModal.status === "pending" ? (
+                      {rescheduleMode === "reassign" ? (
+                        <span style={{ color: "#ef4444" }}>*</span>
+                      ) : rescheduleModal.status === "pending" ? (
                         "(Optional)"
                       ) : (
                         <span style={{ color: "#ef4444" }}>*</span>
@@ -2234,20 +2345,38 @@ export default function AppointmentScheduling() {
                       style={inputStyle}
                       value={rescheduleStaffId}
                       onChange={(e) => setRescheduleStaffId(e.target.value)}
-                      required={rescheduleModal.status !== "pending"}
+                      required={
+                        rescheduleMode === "reassign" ||
+                        rescheduleModal.status !== "pending"
+                      }
                     >
-                      {rescheduleModal.status === "pending" ? (
+                      {rescheduleMode === "reassign" ? (
+                        <option value="" disabled>
+                          Select a different staff member...
+                        </option>
+                      ) : rescheduleModal.status === "pending" ? (
                         <option value="">Not assigned</option>
                       ) : (
                         <option value="" disabled>
                           Select staff...
                         </option>
                       )}
-                      {assignedStaff.map((staff) => (
-                        <option key={staff.id} value={staff.id}>
-                          {staff.name}
-                        </option>
-                      ))}
+                      {assignedStaff
+                        .filter(
+                          (staff) =>
+                            rescheduleMode !== "reassign" ||
+                            String(staff.id) !==
+                              String(
+                                rescheduleModal.assigned_staff_id ||
+                                  rescheduleModal.assigned_to ||
+                                  "",
+                              ),
+                        )
+                        .map((staff) => (
+                          <option key={staff.id} value={staff.id}>
+                            {staff.name}
+                          </option>
+                        ))}
                     </select>
                   </div>
 
@@ -2262,6 +2391,7 @@ export default function AppointmentScheduling() {
                       value={rescheduleDate}
                       onChange={(e) => setRescheduleDate(e.target.value)}
                       required
+                      disabled={rescheduleMode === "reassign"}
                     />
                   </div>
 
@@ -2283,7 +2413,9 @@ export default function AppointmentScheduling() {
                       }}
                       value={rescheduleTime}
                       onChange={(e) => setRescheduleTime(e.target.value)}
-                      disabled={!rescheduleDate}
+                      disabled={
+                        !rescheduleDate || rescheduleMode === "reassign"
+                      }
                       required
                     >
                       <option value="" disabled>
@@ -2292,10 +2424,9 @@ export default function AppointmentScheduling() {
                       {TIME_SLOTS.map((slot) => {
                         let statusText = "Available";
                         if (rescheduleDate) {
-                          const slotDateTime = new Date(
+                          const isPast = isPastDue(
                             `${rescheduleDate}T${slot}:00`,
                           );
-                          const isPast = slotDateTime < new Date();
                           const dateObj = new Date(
                             `${rescheduleDate}T00:00:00`,
                           );
@@ -2355,7 +2486,9 @@ export default function AppointmentScheduling() {
                     <Check size={14} />
                     {actionLoadingId === rescheduleModal.id
                       ? "Saving..."
-                      : "Save changes"}
+                      : rescheduleMode === "reassign"
+                        ? "Reassign appointment"
+                        : "Save changes"}
                   </button>
                 </div>
               </form>
@@ -2489,9 +2622,9 @@ export default function AppointmentScheduling() {
                               <button
                                 style={btnGhost}
                                 disabled={actionLoadingId === a.id}
-                                onClick={() => openReschedule(a)}
+                                onClick={() => openReschedule(a, "reassign")}
                               >
-                                <Calendar size={14} /> Manage
+                                <UserCheck size={14} /> Reassign
                               </button>
 
                               <button
@@ -2755,7 +2888,7 @@ export default function AppointmentScheduling() {
                         />
                         <IndoorInfo
                           label="Schedule"
-                          value={formatDateTime(
+                          value={formatAppointmentDateTime(
                             a.preferred_date || a.scheduled_date,
                           )}
                           important
@@ -2869,7 +3002,7 @@ export default function AppointmentScheduling() {
                         />
                         <IndoorInfo
                           label="Schedule"
-                          value={formatDateTime(
+                          value={formatAppointmentDateTime(
                             a.scheduled_date || a.preferred_date,
                           )}
                           important
@@ -3001,7 +3134,7 @@ export default function AppointmentScheduling() {
                             {humanizePurpose(a.purpose)}
                           </td>
                           <td style={indoorHistoryTdStyle}>
-                            {formatDateTime(
+                            {formatAppointmentDateTime(
                               a.scheduled_date || a.preferred_date,
                             )}
                           </td>

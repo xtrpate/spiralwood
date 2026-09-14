@@ -765,3 +765,47 @@
   padding-left: 37px !important;
 }
 /* END WISDOM ORDERS SEARCH ICON INSIDE INPUT V1.0.2 */
+
+/* ==========================================================================
+   WISDOM ADMIN ORDERS 100 PERCENT VIEWPORT FIT V1
+   The Orders content area is narrower than the browser viewport because the
+   admin sidebar and page padding consume width. At common 1366/1440 desktop
+   sizes, the old 1180px viewport breakpoint did not fire even when the actual
+   Orders workspace was already too narrow. Wrap the toolbar earlier without
+   changing table data, columns, or business behavior.
+   ========================================================================== */
+
+@media (min-width: 1025px) and (max-width: 1440px) {
+  .orders-admin-v2 .orders-toolbar-row {
+    grid-template-columns:
+      minmax(240px, 1.6fr)
+      repeat(3, minmax(120px, 1fr)) !important;
+  }
+
+  .orders-admin-v2 .orders-summary-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  .orders-admin-v2 .orders-filter-reset {
+    justify-self: start;
+    min-width: 88px;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1024px) {
+  .orders-admin-v2 .orders-toolbar-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .orders-admin-v2 .orders-search-control {
+    grid-column: 1 / -1;
+  }
+
+  .orders-admin-v2 .orders-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .orders-admin-v2 .orders-filter-reset {
+    justify-self: start;
+  }
+}

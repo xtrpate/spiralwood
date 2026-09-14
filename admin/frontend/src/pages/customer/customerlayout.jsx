@@ -10,7 +10,6 @@ import {
   ShoppingCart,
   Package,
   Shield,
-  Headphones,
   MapPin,
   Phone,
   Mail,

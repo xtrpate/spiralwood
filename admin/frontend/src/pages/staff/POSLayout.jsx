@@ -13,7 +13,6 @@ import {
   X,
   ChevronRight,
   ClipboardList,
-  MessageSquare,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import "./POSLayout.css";

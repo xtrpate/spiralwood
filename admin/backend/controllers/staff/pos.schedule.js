@@ -66,6 +66,30 @@ const normalizeDateTime = (value) => {
   return cleaned.length === 16 ? `${cleaned}:00` : cleaned;
 };
 
+// WISDOM APPOINTMENT WALL CLOCK API FIX R5.1
+// Appointment slots are business wall-clock times in Asia/Manila.
+// Convert only when comparing against the real clock; do not reinterpret the
+// stored 09:00 slot as 09:00 UTC.
+const APPOINTMENT_TIME_ZONE_OFFSET = "+08:00";
+
+const appointmentWallClockToEpochMs = (value) => {
+  const raw = normalizeText(value).replace(" ", "T");
+  const match =
+    /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::(\d{2}))?/.exec(raw);
+
+  if (!match) return Number.NaN;
+
+  const [, datePart, timePart, seconds = "00"] = match;
+  return Date.parse(
+    `${datePart}T${timePart}:${seconds}${APPOINTMENT_TIME_ZONE_OFFSET}`,
+  );
+};
+
+const isAppointmentPastDue = (value) => {
+  const epochMs = appointmentWallClockToEpochMs(value);
+  return Number.isFinite(epochMs) ? epochMs < Date.now() : false;
+};
+
 const ensureUserHasRole = async (userId, allowedRoles) => {
   if (!userId) return null;
 
@@ -176,8 +200,8 @@ const getAppointmentById = async (appointmentId) => {
       a.reviewed_by AS reviewed_by_id,
       a.assigned_staff_id AS assigned_to,
       a.purpose,
-      a.scheduled_date,
-      a.preferred_date,
+      DATE_FORMAT(a.scheduled_date, '%Y-%m-%dT%H:%i:%s') AS scheduled_date,
+      DATE_FORMAT(a.preferred_date, '%Y-%m-%dT%H:%i:%s') AS preferred_date,
       a.status,
       a.notes,
       a.updated_at,
@@ -225,8 +249,8 @@ exports.getAppointments = async (req, res) => {
         a.reviewed_by AS reviewed_by_id,
         a.assigned_staff_id AS assigned_to,
         a.purpose,
-        a.scheduled_date,
-        a.preferred_date,
+        DATE_FORMAT(a.scheduled_date, '%Y-%m-%dT%H:%i:%s') AS scheduled_date,
+        DATE_FORMAT(a.preferred_date, '%Y-%m-%dT%H:%i:%s') AS preferred_date,
         a.status,
         a.notes,
         a.updated_at,
@@ -616,11 +640,11 @@ exports.updateAppointment = async (req, res) => {
     const currentStatus = normalizeText(existing.status).toLowerCase();
     const isAdmin = req.user.role === "admin";
 
-    // Check if the appointment date has already passed
-    const appointmentDate = new Date(
+    // Check the stored business wall-clock schedule against real time using
+    // the explicit Asia/Manila offset, independent of the server OS timezone.
+    const isPastDue = isAppointmentPastDue(
       existing.scheduled_date || existing.preferred_date,
     );
-    const isPastDue = appointmentDate < new Date();
 
     if (["completed", "rejected", "cancelled"].includes(currentStatus)) {
       await conn.rollback();
@@ -942,9 +966,10 @@ exports.updateAppointment = async (req, res) => {
       status = requestedStatus;
     }
 
-    // Evaluate the NEW date to see if it is valid
-    const finalDateToCheck = new Date(scheduledDate || preferredDate);
-    const isNowPastDue = finalDateToCheck < new Date();
+    // Evaluate the NEW business wall-clock date using Asia/Manila semantics.
+    const isNowPastDue = isAppointmentPastDue(
+      scheduledDate || preferredDate,
+    );
 
     if (
       isNowPastDue &&
