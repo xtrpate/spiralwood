@@ -1,4 +1,4 @@
-/* WISDOM ROOMLE-STYLE AR V1.0.18 - Scene Viewer functional-front parity hardening */
+/* WISDOM ROOMLE-STYLE AR V1.0.16 - double-sided AR export hardening */
 import * as THREE from "three";
 import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter";
 import { USDZExporter } from "three/examples/jsm/exporters/USDZExporter";
@@ -252,168 +252,6 @@ const normalizeUnsupportedMaterials = (object3d) => {
   });
 };
 
-const AR_DIRECT_FRONT_TYPES = new Set([
-  "wr_drawer_front",
-  "wr_door",
-  "door_single",
-  "door_double",
-]);
-
-const AR_CASEWORK_FRONT_TYPES = new Set([
-  "upper_cabinet",
-  "base_cabinet",
-  "kitchen_cabinet",
-  "tv_stand",
-  "sideboard",
-  "wardrobe",
-  "dresser",
-  "nightstand",
-  "drawer",
-]);
-
-const AR_FRONT_NEAR_MAX_Z_MM = 45;
-const AR_FRONT_MAX_THICKNESS_MM = 30;
-const AR_FRONT_MIN_FACE_AREA_MM2 = 2500;
-const AR_FRONT_EMISSIVE_RATIO = 0.12;
-const AR_FRONT_MIN_ROUGHNESS = 0.55;
-
-const cloneArVisibleFrontMaterial = (material) => {
-  if (!material?.clone) return material;
-
-  const cloned = material.clone();
-
-  cloned.transparent = false;
-  cloned.opacity = 1;
-  cloned.alphaTest = 0;
-  cloned.depthTest = true;
-  cloned.depthWrite = true;
-  cloned.side = THREE.DoubleSide;
-  cloned.shadowSide = THREE.DoubleSide;
-
-  if (cloned.color?.isColor && cloned.emissive?.isColor) {
-    cloned.emissive
-      .copy(cloned.color)
-      .multiplyScalar(AR_FRONT_EMISSIVE_RATIO);
-    cloned.emissiveIntensity = 1;
-  }
-
-  if (Number.isFinite(Number(cloned.roughness))) {
-    cloned.roughness = Math.max(
-      AR_FRONT_MIN_ROUGHNESS,
-      Number(cloned.roughness),
-    );
-  }
-
-  if (Number.isFinite(Number(cloned.metalness))) {
-    cloned.metalness = Math.min(0.08, Number(cloned.metalness));
-  }
-
-  cloned.needsUpdate = true;
-  return cloned;
-};
-
-const patchArFrontMeshMaterial = (mesh) => {
-  if (!mesh?.isMesh || !mesh.material) return;
-
-  mesh.material = Array.isArray(mesh.material)
-    ? mesh.material.map(cloneArVisibleFrontMaterial)
-    : cloneArVisibleFrontMaterial(mesh.material);
-};
-
-const hardenArFunctionalFrontMaterials = (
-  object3d,
-  component = {},
-) => {
-  if (!object3d) return;
-
-  const type = String(component?.type || "")
-    .trim()
-    .toLowerCase();
-
-  const role = String(
-    component?.partRole || component?.assemblyRole || "",
-  )
-    .trim()
-    .toLowerCase();
-
-  const isDirectFront =
-    AR_DIRECT_FRONT_TYPES.has(type) ||
-    role === "drawer_front" ||
-    role === "door";
-
-  if (isDirectFront) {
-    object3d.traverse((child) => {
-      if (child?.isMesh) {
-        patchArFrontMeshMaterial(child);
-      }
-    });
-    return;
-  }
-
-  if (!AR_CASEWORK_FRONT_TYPES.has(type)) {
-    return;
-  }
-
-  object3d.updateMatrixWorld(true);
-
-  const objectBox = new THREE.Box3().setFromObject(object3d);
-  if (objectBox.isEmpty()) return;
-
-  object3d.traverse((child) => {
-    if (!child?.isMesh || !child.geometry || !child.material) {
-      return;
-    }
-
-    const meshBox = new THREE.Box3().setFromObject(child);
-    if (meshBox.isEmpty()) return;
-
-    const size = new THREE.Vector3();
-    meshBox.getSize(size);
-
-    const nearFront =
-      objectBox.max.z - meshBox.max.z <=
-      AR_FRONT_NEAR_MAX_Z_MM;
-
-    const thinFront =
-      size.z > 0 &&
-      size.z <= AR_FRONT_MAX_THICKNESS_MM;
-
-    const broadEnough =
-      Math.max(0, size.x) * Math.max(0, size.y) >=
-      AR_FRONT_MIN_FACE_AREA_MM2;
-
-    if (nearFront && thinFront && broadEnough) {
-      patchArFrontMeshMaterial(child);
-    }
-  });
-};
-
-const sanitizeArMeshName = (value) =>
-  String(value || "part")
-    .trim()
-    .replace(/[^a-zA-Z0-9_-]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 80) || "part";
-
-const tagArExportMeshes = (object3d, component = {}) => {
-  const semanticName = sanitizeArMeshName(
-    component?.partCode ||
-      component?.technicalId ||
-      component?.label ||
-      component?.type ||
-      component?.id,
-  );
-
-  let meshIndex = 0;
-
-  object3d.traverse((child) => {
-    if (!child?.isMesh) return;
-
-    child.name =
-      `WISDOM_${semanticName}_${String(meshIndex).padStart(2, "0")}`;
-    meshIndex += 1;
-  });
-};
 const readTargetDimensions = (source = {}) => {
   const read = (key) => {
     const number = Number(source?.[key]);
@@ -658,8 +496,6 @@ const buildARScene = (components, dimensionsMm) => {
       applySolidColorOverride(object, solidHex);
     }
 
-    hardenArFunctionalFrontMaterials(object, component);
-    tagArExportMeshes(object, component);
     hardenArMeshGeometry(object);
 
     object.position.set(
