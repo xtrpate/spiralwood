@@ -443,3 +443,66 @@
     flex-direction: column;
   }
 }
+
+/* WISDOM REPORTS USABILITY R7 - STOCK IN */
+.dsir-print-only { display: none; }
+.dsir-summary-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.dsir-table { min-width: 920px; }
+.dsir-action-cell { width: 112px; text-align: right; }
+.dsir-row-action {
+  min-height: 30px; padding: 0 10px; border: 1px solid #cfd3d8; border-radius: 2px;
+  background: #fff; color: #18181b; font: inherit; font-size: 10.5px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.dsir-row-action:hover { border-color: #8e949b; background: #fafafa; }
+.dsir-detail-overlay {
+  position: fixed; inset: 0; z-index: 1200; display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: rgba(0,0,0,.48);
+}
+.dsir-detail-card { width: min(820px,100%); max-height: 90vh; overflow: auto; border: 1px solid #d4d4d8; border-radius: 2px; background: #fff; }
+.dsir-detail-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 20px; border-bottom: 1px solid #e4e4e7;
+}
+.dsir-detail-head > div > span {
+  display: block; margin-bottom: 5px; color: #71717a; font-size: 9.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+}
+.dsir-detail-head h2 { margin: 0; color: #18181b; font-size: 20px; line-height: 1.25; }
+.dsir-detail-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); padding: 4px 20px 10px; }
+.dsir-detail-grid > div { min-width: 0; padding: 14px 14px 14px 0; border-bottom: 1px solid #eeeeef; }
+.dsir-detail-grid span, .dsir-detail-notes > span {
+  display: block; margin-bottom: 5px; color: #71717a; font-size: 9.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+}
+.dsir-detail-grid strong { display: block; overflow-wrap: anywhere; color: #18181b; font-size: 12.5px; font-weight: 600; }
+.dsir-detail-notes { padding: 14px 20px; }
+.dsir-detail-notes p { margin: 0; color: #3f3f46; font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
+.dsir-detail-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 20px;
+  border-top: 1px solid #e4e4e7; color: #71717a; font-size: 10.5px;
+}
+.dsir-detail-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+@media (max-width:760px) {
+  .dsir-detail-overlay { align-items: flex-end; padding: 0; }
+  .dsir-detail-card { width: 100%; max-height: 92vh; }
+  .dsir-detail-grid { grid-template-columns: 1fr; }
+  .dsir-detail-foot { align-items: flex-start; flex-direction: column; }
+}
+@media print {
+  .wisdom-sidebar,
+  .wisdom-admin-topbar,
+  .wisdom-sidebar-overlay,
+  .wisdom-hamburger-btn { display: none !important; }
+  .wisdom-admin-shell,
+  .wisdom-admin-main,
+  .wisdom-admin-shell main {
+    display: block !important; width: 100% !important; height: auto !important;
+    min-height: 0 !important; overflow: visible !important; padding: 0 !important; background: #fff !important;
+  }
+  .dsir-print-only { display: flex !important; }
+  .daily-stock-in-report.dsir-record-open > :not(.dsir-detail-overlay) { display: none !important; }
+  .daily-stock-in-report.dsir-record-open .dsir-detail-overlay {
+    position: static !important; display: block !important; padding: 0 !important; background: #fff !important;
+  }
+  .daily-stock-in-report.dsir-record-open .dsir-detail-card {
+    width: 100% !important; max-width: none !important; max-height: none !important; overflow: visible !important; border: 0 !important;
+  }
+  .daily-stock-in-report.dsir-record-open .dsir-detail-actions { display: none !important; }
+}

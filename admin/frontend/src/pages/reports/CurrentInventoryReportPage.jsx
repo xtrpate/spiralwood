@@ -218,6 +218,7 @@ export default function CurrentInventoryReportPage() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
+  const [selectedInventoryItem, setSelectedInventoryItem] = useState(null);
 
   const [reportDate, setReportDate] = useState(todayManila);
   const [appliedReportDate, setAppliedReportDate] = useState(todayManila);
@@ -605,7 +606,9 @@ export default function CurrentInventoryReportPage() {
   };
 
   return (
-    <div className="current-inventory-report">
+    <div
+      className={`current-inventory-report${selectedInventoryItem ? " cir-record-open" : ""}`}
+    >
       <div className="cir-page-header">
         <div>
           <h1>Inventory Report</h1>
@@ -650,7 +653,7 @@ export default function CurrentInventoryReportPage() {
         </span>
       </div>
 
-      <div className="cir-report-meta">
+      <div className="cir-report-meta cir-print-only">
         <span>
           <strong>Generated:</strong> {formatDateTime(generatedAt)}
         </span>
@@ -758,24 +761,17 @@ export default function CurrentInventoryReportPage() {
         <>
           <div className="cir-summary-grid">
             <SummaryCard
-              label="Inventory Items"
+              label="Total Items"
               value={formatQuantity(summary.inventoryItems, 0)}
-              note="SKUs/material records in the current filtered view"
-            />
-            <SummaryCard
-              label="Raw Materials"
-              value={formatQuantity(summary.rawCount, 0)}
-              note="Active raw material records shown"
-            />
-            <SummaryCard
-              label="Ready-made SKUs"
-              value={formatQuantity(summary.readyCount, 0)}
-              note="Active finished-product records shown"
+              note={`${formatQuantity(summary.rawCount, 0)} raw • ${formatQuantity(
+                summary.readyCount,
+                0,
+              )} ready-made`}
             />
             <SummaryCard
               label="Ready-made Units"
               value={formatQuantity(summary.readyUnits, 0)}
-              note="Historical company-wide finished-product units shown"
+              note="Finished-product units in the current filtered view"
             />
             <SummaryCard
               label="Stock Alerts"
@@ -783,11 +779,13 @@ export default function CurrentInventoryReportPage() {
               note={
                 summary.unavailableCount > 0
                   ? `${summary.unavailableCount} item(s) have unavailable history`
-                  : `${formatQuantity(
-                      summary.pendingNeedCount,
-                      0,
-                    )} raw material item(s) have pending order need`
+                  : "Low, critical, or out-of-stock items"
               }
+            />
+            <SummaryCard
+              label="Pending Material Demand"
+              value={formatQuantity(summary.pendingNeedCount, 0)}
+              note="Raw materials still needed by pending Blueprint reservations"
             />
           </div>
 
@@ -812,62 +810,64 @@ export default function CurrentInventoryReportPage() {
                   <thead>
                     <tr>
                       <th>Material</th>
-                      <th>Unit</th>
                       <th className="cir-align-right">On Hand</th>
                       <th className="cir-align-right">Reserved</th>
                       <th className="cir-align-right">Available</th>
-                      <th className="cir-align-right">Pending Need</th>
-                      <th className="cir-align-right">Reorder Point</th>
-                      <th className="cir-align-right">Safety Stock</th>
+                      <th className="cir-align-right">Reorder</th>
                       <th>Stock Health</th>
+                      <th aria-label="Action" />
                     </tr>
                   </thead>
                   <tbody>
                     {filteredRaw.length === 0 ? (
                       <EmptyRow
-                        colSpan={9}
+                        colSpan={7}
                         text="No Raw Materials match the current filters."
                       />
                     ) : (
                       filteredRaw.map((row) => (
-                        <tr key={`raw-${row.id}`}>
+                        <tr
+                          key={`raw-${row.id}`}
+                          className="cir-clickable-row"
+                          onDoubleClick={() =>
+                            setSelectedInventoryItem({ type: "raw", row })
+                          }
+                        >
                           <td>
                             <div className="cir-primary-text">
                               {row.name || "Unnamed material"}
                             </div>
                             <div className="cir-secondary-text">
-                              {row.category_name || "Uncategorized"} •{" "}
-                              {materialSpec(row)}
-                              {row.supplier_name
-                                ? ` • ${row.supplier_name}`
-                                : ""}
+                              {row.category_name || "Uncategorized"} • {materialSpec(row)}
                             </div>
                           </td>
-                          <td>{row.unit || "—"}</td>
                           <td className="cir-align-right cir-key-number">
-                            {formatQuantity(row.on_hand_quantity)}
+                            {formatQuantity(row.on_hand_quantity)} {row.unit || ""}
                           </td>
                           <td className="cir-align-right">
-                            {formatQuantity(row.reserved_quantity)}
+                            {formatQuantity(row.reserved_quantity)} {row.unit || ""}
                           </td>
                           <td className="cir-align-right cir-key-number">
-                            {formatQuantity(row.available_quantity)}
+                            {formatQuantity(row.available_quantity)} {row.unit || ""}
                           </td>
                           <td className="cir-align-right">
-                            {formatQuantity(row.pending_need_quantity)}
-                          </td>
-                          <td className="cir-align-right">
-                            {formatQuantity(row.reorder_point)}
-                          </td>
-                          <td className="cir-align-right">
-                            {formatQuantity(row.safety_stock)}
+                            {formatQuantity(row.reorder_point)} {row.unit || ""}
                           </td>
                           <td>
                             <StatusBadge
-                              value={
-                                row.availability_status || row.stock_status
-                              }
+                              value={row.availability_status || row.stock_status}
                             />
+                          </td>
+                          <td className="cir-action-cell">
+                            <button
+                              type="button"
+                              className="cir-row-action"
+                              onClick={() =>
+                                setSelectedInventoryItem({ type: "raw", row })
+                              }
+                            >
+                              View Details
+                            </button>
                           </td>
                         </tr>
                       ))
@@ -899,30 +899,34 @@ export default function CurrentInventoryReportPage() {
                   <thead>
                     <tr>
                       <th>Product</th>
-                      <th>Barcode</th>
                       <th className="cir-align-right">Total</th>
                       <th className="cir-align-right">Warehouse</th>
                       <th className="cir-align-right">Display</th>
-                      <th className="cir-align-right">Reorder Point</th>
+                      <th className="cir-align-right">Reorder</th>
                       <th>Stock Health</th>
-                      <th>Location Note</th>
+                      <th aria-label="Action" />
                     </tr>
                   </thead>
                   <tbody>
                     {filteredReadyMade.length === 0 ? (
                       <EmptyRow
-                        colSpan={8}
+                        colSpan={7}
                         text="No Ready-made products match the current filters."
                       />
                     ) : (
                       filteredReadyMade.map((row) => (
-                        <tr key={`ready-${row.id}`}>
+                        <tr
+                          key={`ready-${row.id}`}
+                          className="cir-clickable-row"
+                          onDoubleClick={() =>
+                            setSelectedInventoryItem({ type: "ready_made", row })
+                          }
+                        >
                           <td>
                             <div className="cir-primary-text">
                               {row.name || "Unnamed product"}
                             </div>
                           </td>
-                          <td>{row.barcode || "—"}</td>
                           <td className="cir-align-right cir-key-number">
                             {formatQuantity(row.total_stock, 0)}
                           </td>
@@ -938,7 +942,17 @@ export default function CurrentInventoryReportPage() {
                           <td>
                             <StatusBadge value={row.stock_status} />
                           </td>
-                          <td>{readyLocationNote(row)}</td>
+                          <td className="cir-action-cell">
+                            <button
+                              type="button"
+                              className="cir-row-action"
+                              onClick={() =>
+                                setSelectedInventoryItem({ type: "ready_made", row })
+                              }
+                            >
+                              View Details
+                            </button>
+                          </td>
                         </tr>
                       ))
                     )}
@@ -949,6 +963,83 @@ export default function CurrentInventoryReportPage() {
           ) : null}
         </>
       ) : null}
+      {selectedInventoryItem ? (
+        <div
+          className="cir-detail-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cir-detail-title"
+          onClick={() => setSelectedInventoryItem(null)}
+        >
+          <div
+            className="cir-detail-card"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="cir-detail-head">
+              <div>
+                <span className="cir-detail-eyebrow">
+                  {selectedInventoryItem.type === "raw"
+                    ? "Raw Material"
+                    : "Ready-made Product"}
+                </span>
+                <h2 id="cir-detail-title">
+                  {selectedInventoryItem.row?.name || "Inventory Item"}
+                </h2>
+              </div>
+              <StatusBadge
+                value={
+                  selectedInventoryItem.type === "raw"
+                    ? selectedInventoryItem.row?.availability_status ||
+                      selectedInventoryItem.row?.stock_status
+                    : selectedInventoryItem.row?.stock_status
+                }
+              />
+            </div>
+
+            {selectedInventoryItem.type === "raw" ? (
+              <div className="cir-detail-grid">
+                <div><span>Category</span><strong>{selectedInventoryItem.row?.category_name || "Uncategorized"}</strong></div>
+                <div><span>Supplier</span><strong>{selectedInventoryItem.row?.supplier_name || "—"}</strong></div>
+                <div><span>Form / Size</span><strong>{materialSpec(selectedInventoryItem.row)}</strong></div>
+                <div><span>Unit</span><strong>{selectedInventoryItem.row?.unit || "—"}</strong></div>
+                <div><span>On Hand</span><strong>{formatQuantity(selectedInventoryItem.row?.on_hand_quantity)}</strong></div>
+                <div><span>Reserved</span><strong>{formatQuantity(selectedInventoryItem.row?.reserved_quantity)}</strong></div>
+                <div><span>Available</span><strong>{formatQuantity(selectedInventoryItem.row?.available_quantity)}</strong></div>
+                <div><span>Pending Need</span><strong>{formatQuantity(selectedInventoryItem.row?.pending_need_quantity)}</strong></div>
+                <div><span>Reorder Point</span><strong>{formatQuantity(selectedInventoryItem.row?.reorder_point)}</strong></div>
+                <div><span>Safety Stock</span><strong>{formatQuantity(selectedInventoryItem.row?.safety_stock)}</strong></div>
+                <div><span>Lead Time</span><strong>{formatQuantity(selectedInventoryItem.row?.lead_time_days, 0)} day(s)</strong></div>
+                <div><span>Used — Last 30 Days</span><strong>{formatQuantity(selectedInventoryItem.row?.used_last_30_days)}</strong></div>
+                <div><span>Average Daily Usage</span><strong>{formatQuantity(selectedInventoryItem.row?.avg_daily_usage_30d)}</strong></div>
+                <div><span>History</span><strong>{selectedInventoryItem.row?.history_complete === false ? "Incomplete" : "Available"}</strong></div>
+              </div>
+            ) : (
+              <div className="cir-detail-grid">
+                <div><span>Barcode</span><strong>{selectedInventoryItem.row?.barcode || "—"}</strong></div>
+                <div><span>Total Stock</span><strong>{formatQuantity(selectedInventoryItem.row?.total_stock, 0)}</strong></div>
+                <div><span>Warehouse</span><strong>{formatQuantity(selectedInventoryItem.row?.warehouse_stock, 0)}</strong></div>
+                <div><span>Display Area</span><strong>{formatQuantity(selectedInventoryItem.row?.display_stock, 0)}</strong></div>
+                <div><span>Reorder Point</span><strong>{formatQuantity(selectedInventoryItem.row?.reorder_point, 0)}</strong></div>
+                <div><span>Location</span><strong>{readyLocationNote(selectedInventoryItem.row)}</strong></div>
+                <div><span>History</span><strong>{selectedInventoryItem.row?.history_complete === false ? "Incomplete" : "Available"}</strong></div>
+              </div>
+            )}
+
+            <div className="cir-detail-foot">
+              <span>Inventory report date: {formatReportDate(appliedReportDate)}</span>
+              <div className="cir-detail-actions">
+                <button type="button" className="cir-button cir-button-secondary" onClick={() => window.print()}>
+                  Print Record
+                </button>
+                <button type="button" className="cir-button cir-button-primary" onClick={() => setSelectedInventoryItem(null)}>
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
     </div>
   );
 }

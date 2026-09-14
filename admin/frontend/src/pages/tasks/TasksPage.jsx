@@ -726,6 +726,25 @@ export default function TasksPage() {
   const selectedProductionOrder =
     productionOrderGroups.find((order) => order.key === detailsOrderKey) ||
     null;
+  const handleExportSelectedProductionOrderPdf = () => {
+    if (!selectedProductionOrder) return;
+    try {
+      exportTaskAssignmentsReportPdf({
+        orders: [selectedProductionOrder],
+        requiredStepCount: REQUIRED_PRODUCTION_ROLES.length,
+        filters: {
+          search: selectedProductionOrder.orderNumber || "",
+          status: selectedProductionOrder.overallStatus,
+          staffLabel: selectedProductionOrder.currentStaffLabel,
+          dueFrom: "",
+          dueTo: "",
+        },
+      });
+    } catch (exportError) {
+      toast.error(exportError?.message || "Failed to export production order details.");
+    }
+  };
+
 
   const eligibleProductionOrders = orders.filter((item) => {
     const normalizedStatus = String(item?.status || "")
@@ -1320,6 +1339,7 @@ export default function TasksPage() {
                     <tr
                       key={order.key}
                       id={`production-order-${order.orderId || order.key}`}
+                      onDoubleClick={() => setDetailsOrderKey(order.key)}
                       style={{
                         ...S.tr,
                         ...(focused
@@ -1331,11 +1351,30 @@ export default function TasksPage() {
                       }}
                     >
                       <td style={S.td}>
-                        <div style={S.primary}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            order.orderId && navigate(`/admin/orders/${order.orderId}`)
+                          }
+                          disabled={!order.orderId}
+                          style={{
+                            padding: 0,
+                            border: 0,
+                            background: "transparent",
+                            color: "#18181b",
+                            font: "inherit",
+                            fontWeight: 650,
+                            cursor: order.orderId ? "pointer" : "default",
+                            textAlign: "left",
+                            textDecoration: order.orderId ? "underline" : "none",
+                            textUnderlineOffset: 3,
+                          }}
+                          title={order.orderId ? "Open order details" : undefined}
+                        >
                           {order.orderNumber
                             ? `#${order.orderNumber}`
                             : `Order #${order.orderId}`}
-                        </div>
+                        </button>
                         <div style={S.secondary}>
                           Order ID: {order.orderId || "—"}
                         </div>
@@ -1573,22 +1612,25 @@ export default function TasksPage() {
                 flexWrap: "wrap",
               }}
             >
-              <div>
-                {canManageTasks &&
-                selectedProductionOrder.orderId &&
-                !selectedProductionOrder.complete ? (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {selectedProductionOrder.orderId ? (
                   <button
                     type="button"
                     style={{ ...S.btn, ...S.btnPrim }}
                     onClick={() =>
-                      navigate(
-                        `/admin/orders/${selectedProductionOrder.orderId}`,
-                      )
+                      navigate(`/admin/orders/${selectedProductionOrder.orderId}`)
                     }
                   >
-                    Reassign staff
+                    Open Order
                   </button>
                 ) : null}
+                <button
+                  type="button"
+                  style={{ ...S.btn, ...S.btnGray }}
+                  onClick={handleExportSelectedProductionOrderPdf}
+                >
+                  Export Order PDF
+                </button>
               </div>
               <button
                 type="button"

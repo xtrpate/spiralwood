@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import * as XLSX from "xlsx-js-style";
 import api from "../../services/api";
@@ -166,6 +167,7 @@ function SummaryCard({ label, value, note }) {
 }
 
 export default function DailyStockInReportPage() {
+  const navigate = useNavigate();
   const { user } = useAuthStore();
   const todayManila = useMemo(() => getManilaDateInput(), []);
 
@@ -183,6 +185,7 @@ export default function DailyStockInReportPage() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
+  const [selectedTransaction, setSelectedTransaction] = useState(null);
 
   const generatedBy =
     String(user?.name || user?.full_name || "").trim() || "Administrator";
@@ -561,7 +564,9 @@ export default function DailyStockInReportPage() {
   };
 
   return (
-    <div className="daily-stock-in-report">
+    <div
+      className={`daily-stock-in-report${selectedTransaction ? " dsir-record-open" : ""}`}
+    >
       <div className="dsir-page-header">
         <div>
           <h1>Stock In Report</h1>
@@ -600,7 +605,7 @@ export default function DailyStockInReportPage() {
         <span>Philippine calendar time (Asia/Manila)</span>
       </div>
 
-      <div className="dsir-meta">
+      <div className="dsir-meta dsir-print-only">
         <span>
           <strong>Generated:</strong> {formatDateTime(generatedAt)}
         </span>
@@ -708,29 +713,22 @@ export default function DailyStockInReportPage() {
         <>
           <div className="dsir-summary-grid">
             <SummaryCard
-              label="Stock-In Entries"
+              label="Stock-In Transactions"
               value={formatQuantity(summary.entries, 0)}
-              note="Transactions in the current filtered view"
+              note={`${formatQuantity(summary.rawEntries, 0)} raw • ${formatQuantity(
+                summary.readyEntries,
+                0,
+              )} ready-made`}
             />
             <SummaryCard
-              label="Raw Material Entries"
-              value={formatQuantity(summary.rawEntries, 0)}
-              note="Raw-material receiving records"
-            />
-            <SummaryCard
-              label="Ready-made Entries"
-              value={formatQuantity(summary.readyEntries, 0)}
-              note="Finished-product receiving records"
+              label="Distinct Items Received"
+              value={formatQuantity(summary.distinctItems, 0)}
+              note="Unique materials/products received in the current view"
             />
             <SummaryCard
               label="Ready-made Units Added"
               value={formatQuantity(summary.readyUnits, 0)}
-              note="Ready-made quantities can be summed as units"
-            />
-            <SummaryCard
-              label="Distinct Items"
-              value={formatQuantity(summary.distinctItems, 0)}
-              note="Unique materials/products received"
+              note="Finished-product units received in the current view"
             />
           </div>
 
@@ -753,60 +751,44 @@ export default function DailyStockInReportPage() {
                 <thead>
                   <tr>
                     <th>Date &amp; Time</th>
-                    <th>Type</th>
                     <th>Item</th>
+                    <th>Type</th>
                     <th className="dsir-align-right">Qty In</th>
-                    <th>Unit</th>
                     <th>Supplier</th>
                     <th>Reference</th>
-                    <th>Recorded By</th>
-                    <th>Notes</th>
+                    <th aria-label="Action" />
                   </tr>
                 </thead>
                 <tbody>
                   {filteredRows.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="dsir-empty-cell">
-                        No Stock In transactions match the selected period and
-                        filters.
+                      <td colSpan={7} className="dsir-empty-cell">
+                        No Stock In transactions match the selected period and filters.
                       </td>
                     </tr>
                   ) : (
                     filteredRows.map((row) => (
-                      <tr key={row.id}>
+                      <tr key={row.id} className="dsir-clickable-row" onDoubleClick={() => setSelectedTransaction(row)}>
                         <td>{formatDateTime(row.created_at)}</td>
+                        <td><div className="dsir-primary-text">{row.item_name || "Unknown item"}</div></td>
                         <td>
-                          <span
-                            className={`dsir-type dsir-type-${row.inventory_type}`}
-                          >
+                          <span className={`dsir-type dsir-type-${row.inventory_type}`}>
                             {inventoryTypeLabel(row.inventory_type)}
                           </span>
                         </td>
-                        <td>
-                          <div className="dsir-primary-text">
-                            {row.item_name || "Unknown item"}
-                          </div>
-                          {row.product_barcode ? (
-                            <div className="dsir-secondary-text">
-                              Barcode: {row.product_barcode}
-                            </div>
-                          ) : null}
-                        </td>
                         <td className="dsir-align-right dsir-key-number">
-                          {formatQuantity(row.quantity)}
+                          {formatQuantity(row.quantity)} {row.unit || ""}
                         </td>
-                        <td>{row.unit || "—"}</td>
                         <td>{row.supplier_name || "—"}</td>
                         <td>
                           <div>{row.reference || "—"}</div>
-                          {row.order_number ? (
-                            <div className="dsir-secondary-text">
-                              Order: {row.order_number}
-                            </div>
-                          ) : null}
+                          {row.order_number ? <div className="dsir-secondary-text">Order: {row.order_number}</div> : null}
                         </td>
-                        <td>{row.created_by_name || "System"}</td>
-                        <td className="dsir-notes-cell">{row.notes || "—"}</td>
+                        <td className="dsir-action-cell">
+                          <button type="button" className="dsir-row-action" onClick={() => setSelectedTransaction(row)}>
+                            View Details
+                          </button>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -816,6 +798,78 @@ export default function DailyStockInReportPage() {
           </section>
         </>
       ) : null}
+      {selectedTransaction ? (
+        <div
+          className="dsir-detail-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="dsir-detail-title"
+          onClick={() => setSelectedTransaction(null)}
+        >
+          <div className="dsir-detail-card" onClick={(event) => event.stopPropagation()}>
+            <div className="dsir-detail-head">
+              <div>
+                <span>Stock-In Transaction</span>
+                <h2 id="dsir-detail-title">{selectedTransaction.item_name || "Inventory Item"}</h2>
+              </div>
+              <span className={`dsir-type dsir-type-${selectedTransaction.inventory_type}`}>
+                {inventoryTypeLabel(selectedTransaction.inventory_type)}
+              </span>
+            </div>
+            <div className="dsir-detail-grid">
+              <div><span>Transaction ID</span><strong>#{selectedTransaction.id}</strong></div>
+              <div><span>Date &amp; Time</span><strong>{formatDateTime(selectedTransaction.created_at)}</strong></div>
+              <div><span>Quantity</span><strong>{formatQuantity(selectedTransaction.quantity)} {selectedTransaction.unit || ""}</strong></div>
+              {selectedTransaction.product_barcode ? (
+                <div><span>Barcode</span><strong>{selectedTransaction.product_barcode}</strong></div>
+              ) : null}
+              {selectedTransaction.supplier_name ? (
+                <div><span>Supplier</span><strong>{selectedTransaction.supplier_name}</strong></div>
+              ) : null}
+              {selectedTransaction.reference ? (
+                <div><span>Reference</span><strong>{selectedTransaction.reference}</strong></div>
+              ) : null}
+              {selectedTransaction.order_number || selectedTransaction.order_id ? (
+                <div>
+                  <span>Related Order</span>
+                  <strong>
+                    {selectedTransaction.order_number ||
+                      `Order #${selectedTransaction.order_id}`}
+                  </strong>
+                </div>
+              ) : null}
+              <div><span>Recorded By</span><strong>{selectedTransaction.created_by_name || "System"}</strong></div>
+            </div>
+            {String(selectedTransaction.notes || "").trim() ? (
+              <div className="dsir-detail-notes">
+                <span>Notes</span>
+                <p>{selectedTransaction.notes}</p>
+              </div>
+            ) : null}
+            <div className="dsir-detail-foot">
+              <span>Period: {activePeriodLabel}</span>
+              <div className="dsir-detail-actions">
+                <button type="button" className="dsir-button dsir-button-secondary" onClick={() => window.print()}>
+                  Print Record
+                </button>
+                {selectedTransaction.order_id ? (
+                  <button
+                    type="button"
+                    className="dsir-button dsir-button-secondary"
+                    onClick={() => navigate(`/admin/orders/${selectedTransaction.order_id}`)}
+                  >
+                    Open Order
+                  </button>
+                ) : null}
+                <button type="button" className="dsir-button dsir-button-primary" onClick={() => setSelectedTransaction(null)}>
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
     </div>
   );
 }

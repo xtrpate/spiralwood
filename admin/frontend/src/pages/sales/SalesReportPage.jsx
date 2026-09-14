@@ -196,6 +196,7 @@ export default function SalesReportPage() {
   const [exportOpen, setExportOpen] = useState(false);
   const [exportScope, setExportScope] = useState("filtered");
   const [exporting, setExporting] = useState(false);
+  const [detailSection, setDetailSection] = useState("orders");
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -742,7 +743,32 @@ export default function SalesReportPage() {
             />
           </div>
 
-          <section className="sales-card sales-table-card">
+          <div className="sales-detail-switch no-print" role="group" aria-label="Sales report detail view">
+            <button
+              type="button"
+              className={detailSection === "orders" ? "sales-detail-switch-active" : ""}
+              aria-pressed={detailSection === "orders"}
+              onClick={() => setDetailSection("orders")}
+            >
+              Order Financial Status
+              <span>{count(orders.length)} orders</span>
+            </button>
+            <button
+              type="button"
+              className={detailSection === "payments" ? "sales-detail-switch-active" : ""}
+              aria-pressed={detailSection === "payments"}
+              onClick={() => setDetailSection("payments")}
+            >
+              Verified Payments
+              <span>{count(collections.length)} payments</span>
+            </button>
+          </div>
+
+          <section
+            className={`sales-card sales-table-card sales-detail-panel ${
+              detailSection === "payments" ? "sales-detail-panel-active" : ""
+            }`}
+          >
             <SectionHeader
               title="Verified Payments"
               subtitle={`${count(collections.length)} verified payment${
@@ -799,7 +825,11 @@ export default function SalesReportPage() {
             </div>
           </section>
 
-          <section className="sales-card sales-table-card">
+          <section
+            className={`sales-card sales-table-card sales-detail-panel ${
+              detailSection === "orders" ? "sales-detail-panel-active" : ""
+            }`}
+          >
             <SectionHeader
               title="Order Financial Status"
               subtitle="Order value, total verified payments to date, current balance, and status"

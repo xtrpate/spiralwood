@@ -194,6 +194,7 @@ export default function StockMovementPage() {
   const [form, setForm] = useState({
     material_id: "",
     product_id: "",
+    supplier_id: "",
     type: "in",
     quantity: "",
     reference: "",
@@ -201,6 +202,7 @@ export default function StockMovementPage() {
   });
   const [rawMats, setRawMats] = useState([]);
   const [products, setProducts] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -236,6 +238,10 @@ export default function StockMovementPage() {
           ),
         ),
       );
+    api
+      .get("/suppliers")
+      .then((r) => setSuppliers(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setSuppliers([]));
   }, []);
 
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -261,6 +267,7 @@ export default function StockMovementPage() {
     setForm({
       material_id: "",
       product_id: "",
+      supplier_id: "",
       type: "in",
       quantity: "",
       reference: "",
@@ -285,10 +292,17 @@ export default function StockMovementPage() {
   };
 
   const handleMaterialChange = (value) => {
+    const material =
+      rawMats.find((row) => Number(row.id) === Number(value)) || null;
+
     setForm((current) => ({
       ...current,
       material_id: value,
       product_id: value ? "" : current.product_id,
+      supplier_id:
+        value && current.type === "in" && material?.supplier_id
+          ? String(material.supplier_id)
+          : "",
     }));
   };
 
@@ -297,7 +311,26 @@ export default function StockMovementPage() {
       ...current,
       product_id: value,
       material_id: value ? "" : current.material_id,
+      supplier_id: "",
     }));
+  };
+
+  const handleMovementTypeChange = (value) => {
+    setForm((current) => {
+      const material =
+        rawMats.find(
+          (row) => Number(row.id) === Number(current.material_id),
+        ) || null;
+
+      return {
+        ...current,
+        type: value,
+        supplier_id:
+          value === "in" && current.material_id && material?.supplier_id
+            ? String(material.supplier_id)
+            : "",
+      };
+    });
   };
 
   const handleExportReport = async () => {
@@ -388,6 +421,7 @@ export default function StockMovementPage() {
       ...current,
       material_id: "",
       product_id: "",
+      supplier_id: "",
     }));
   };
 
@@ -424,6 +458,30 @@ export default function StockMovementPage() {
   const selectedMaterialAllowsDecimal = unitAllowsDecimalQuantity(
     selectedMaterial?.unit,
   );
+  const showSupplierField =
+    Boolean(selectedMaterial) && itemKind === "material" && form.type === "in";
+  const assignedSupplierId = selectedMaterial?.supplier_id
+    ? String(selectedMaterial.supplier_id)
+    : "";
+  const assignedSupplierName = String(
+    selectedMaterial?.supplier_name || "",
+  ).trim();
+  const supplierOptions = useMemo(() => {
+    const rows = Array.isArray(suppliers) ? suppliers : [];
+    const hasAssignedSupplier = assignedSupplierId
+      ? rows.some((supplier) => String(supplier.id) === assignedSupplierId)
+      : true;
+
+    if (hasAssignedSupplier || !assignedSupplierId) return rows;
+
+    return [
+      {
+        id: assignedSupplierId,
+        name: assignedSupplierName || `Supplier #${assignedSupplierId}`,
+      },
+      ...rows,
+    ];
+  }, [assignedSupplierId, assignedSupplierName, suppliers]);
 
   const helperMessage =
     isProductTarget && form.type === "in"
@@ -496,6 +554,10 @@ export default function StockMovementPage() {
       const payload = {
         material_id: form.material_id || null,
         product_id: form.product_id || null,
+        supplier_id:
+          isMaterialTarget && form.type === "in" && form.supplier_id
+            ? Number(form.supplier_id)
+            : null,
         type: form.type,
         quantity: Number(form.quantity),
         reference: form.reference.trim() || null,
@@ -1031,10 +1093,7 @@ export default function StockMovementPage() {
                   required
                   value={form.type}
                   onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      type: event.target.value,
-                    }))
+                    handleMovementTypeChange(event.target.value)
                   }
                   style={inputFull}
                 >
@@ -1114,6 +1173,36 @@ export default function StockMovementPage() {
                       {formatQuantity(selectedAvailable)}{" "}
                       {selectedMaterial.unit}
                     </strong>
+                  </div>
+                </div>
+              )}
+
+              {showSupplierField && (
+                <div style={fieldGroup}>
+                  <label style={label}>
+                    Supplier <span style={optionalText}>Optional</span>
+                  </label>
+                  <select
+                    value={form.supplier_id}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        supplier_id: event.target.value,
+                      }))
+                    }
+                    style={inputFull}
+                  >
+                    <option value="">No supplier / not applicable</option>
+                    {supplierOptions.map((supplier) => (
+                      <option key={supplier.id} value={supplier.id}>
+                        {supplier.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div style={supplierHelperText}>
+                    {assignedSupplierId
+                      ? `Defaults to ${assignedSupplierName || "the material's assigned supplier"}. Change it only if this stock came from another supplier.`
+                      : "No default supplier is assigned to this material. Select one only if this stock came from a supplier."}
                   </div>
                 </div>
               )}
@@ -1709,6 +1798,12 @@ const optionalText = {
   fontSize: 10,
   fontWeight: 400,
   color: "#a1a1aa",
+};
+const supplierHelperText = {
+  marginTop: 5,
+  color: "#71717a",
+  fontSize: 10.5,
+  lineHeight: 1.4,
 };
 const availabilityBox = {
   display: "grid",
