@@ -4,9 +4,11 @@ import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
 import {
   ArrowLeftRight,
   BarChart3,
+  Box,
   Boxes,
   Building2,
   Calendar,
+  CalendarCheck2,
   ChartCandlestick,
   ClipboardList,
   Database,
@@ -21,6 +23,7 @@ import {
   RotateCcw,
   Ruler,
   Settings,
+  ShelvingUnit,
   Shield,
   ShoppingCart,
   Truck,
@@ -82,7 +85,7 @@ const NAV_ITEMS = [
     label: "Build Materials",
     path: "/admin/inventory/build",
     permission: "build_materials.view",
-    icon: Wrench,
+    icon: Box,
     roles: ["admin", "staff"],
   },
   {
@@ -182,7 +185,7 @@ const NAV_ITEMS = [
   {
     label: "Inventory Report",
     path: "/admin/reports/current-inventory",
-    icon: Boxes,
+    icon: ShelvingUnit,
     permission: "stock_movements.view",
     roles: ["admin", "staff"],
   },
@@ -208,7 +211,7 @@ const NAV_ITEMS = [
   {
     label: "Operations Report",
     path: "/admin/reports/operations",
-    icon: ClipboardList,
+    icon: CalendarCheck2,
     roles: ["admin", "staff"],
   },
   {
