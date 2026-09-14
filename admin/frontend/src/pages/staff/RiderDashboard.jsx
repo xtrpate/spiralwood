@@ -1,5 +1,5 @@
 // WISDOM RIDER DASHBOARD DELIVERIES FINAL V1
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   CheckCircle,
@@ -10,6 +10,7 @@ import {
   Truck,
 } from "lucide-react";
 import api from "../../services/api";
+import { getSocket, subscribeSocketReady } from "../../services/socket";
 import "./RiderScreen.css";
 
 const normalize = (value) => String(value || "").trim().toLowerCase();
@@ -138,18 +139,65 @@ export default function RiderDashboard() {
     year: "numeric",
   });
 
-  useEffect(() => {
-    api
-      .get("/pos/deliveries")
-      .then((res) => {
-        setDeliveries(Array.isArray(res.data) ? res.data : []);
-      })
-      .catch((err) => {
-        console.error("Failed to load rider dashboard data", err);
+  const loadDeliveries = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+    }
+
+    try {
+      const res = await api.get("/pos/deliveries");
+      setDeliveries(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.error("Failed to load rider dashboard data", err);
+      if (!silent) {
         setDeliveries([]);
-      })
-      .finally(() => setLoading(false));
+      }
+    } finally {
+      if (!silent) {
+        setLoading(false);
+      }
+    }
   }, []);
+
+  useEffect(() => {
+    loadDeliveries();
+  }, [loadDeliveries]);
+
+  useEffect(() => {
+    const handleAssignmentChanged = () => {
+      loadDeliveries({ silent: true });
+    };
+
+    const attachListener = (socket) => {
+      if (!socket) return;
+
+      socket.off("delivery:assigned", handleAssignmentChanged);
+      socket.on("delivery:assigned", handleAssignmentChanged);
+
+      socket.off("delivery:unassigned", handleAssignmentChanged);
+      socket.on("delivery:unassigned", handleAssignmentChanged);
+    };
+
+    const socket = getSocket();
+    if (socket) {
+      attachListener(socket);
+    }
+
+    const unsubscribeReady = subscribeSocketReady((readySocket) => {
+      attachListener(readySocket);
+    });
+
+    return () => {
+      const currentSocket = getSocket();
+
+      if (currentSocket) {
+        currentSocket.off("delivery:assigned", handleAssignmentChanged);
+        currentSocket.off("delivery:unassigned", handleAssignmentChanged);
+      }
+
+      unsubscribeReady();
+    };
+  }, [loadDeliveries]);
 
   const inTransitDeliveries = useMemo(
     () =>
