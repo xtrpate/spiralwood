@@ -59,7 +59,12 @@ const showRequestErrorIfNeeded = (error, fallback) => {
   toast.error(fallback);
 };
 
-const emptyLine = () => ({ product_id: "", quantity: "1" });
+// WISDOM STOCK TRANSFER PRODUCT SEARCH R8.2
+const emptyLine = () => ({
+  product_id: "",
+  quantity: "1",
+  product_search: "",
+});
 
 export default function StockTransferPage() {
   const { user } = useAuthStore();
@@ -326,23 +331,69 @@ export default function StockTransferPage() {
           <div style={{ display: "grid", gap: 8 }}>
             {items.map((line, index) => {
               const available = sourceAvailable(line);
+              const productNeedle = String(line.product_search || "")
+                .trim()
+                .toLowerCase();
+              const matchingInventory = productNeedle
+                ? inventory.filter((row) => {
+                    const searchableText = [row.name, row.barcode]
+                      .filter(Boolean)
+                      .join(" ")
+                      .toLowerCase();
+                    return searchableText.includes(productNeedle);
+                  })
+                : inventory;
+              const selectedRow = inventoryById.get(Number(line.product_id));
+              const pickerInventory =
+                selectedRow &&
+                !matchingInventory.some(
+                  (row) => Number(row.id) === Number(selectedRow.id),
+                )
+                  ? [selectedRow, ...matchingInventory]
+                  : matchingInventory;
+
               return (
                 <div key={index} style={lineRow}>
-                  <select
-                    value={line.product_id}
-                    onChange={(e) =>
-                      updateLine(index, "product_id", e.target.value)
-                    }
-                    style={inputStyle}
-                  >
-                    <option value="">Select product</option>
-                    {inventory.map((row) => (
-                      <option key={row.id} value={row.id}>
-                        {row.name} — Warehouse {row.warehouse_stock} • Display
-                        Area {row.display_stock}
+                  <div style={productSelectWrap}>
+                    <input
+                      value={line.product_search || ""}
+                      onChange={(e) =>
+                        updateLine(index, "product_search", e.target.value)
+                      }
+                      maxLength={120}
+                      autoComplete="off"
+                      style={inputStyle}
+                      placeholder="Search product name or barcode"
+                      aria-label={`Search product for transfer row ${index + 1}`}
+                    />
+
+                    <select
+                      value={line.product_id}
+                      onChange={(e) =>
+                        updateLine(index, "product_id", e.target.value)
+                      }
+                      style={inputStyle}
+                    >
+                      <option value="">
+                        {productNeedle && matchingInventory.length === 0
+                          ? "No matching products"
+                          : "Select product"}
                       </option>
-                    ))}
-                  </select>
+                      {pickerInventory.map((row) => (
+                        <option key={row.id} value={row.id}>
+                          {row.name} — Warehouse {row.warehouse_stock} • Display
+                          Area {row.display_stock}
+                        </option>
+                      ))}
+                    </select>
+
+                    {productNeedle && (
+                      <div style={helperStyle}>
+                        {matchingInventory.length.toLocaleString("en-PH")} of{" "}
+                        {inventory.length.toLocaleString("en-PH")} products match
+                      </div>
+                    )}
+                  </div>
 
                   <div>
                     <input
@@ -783,6 +834,11 @@ const inputStyle = {
   boxSizing: "border-box",
 };
 const helperStyle = { marginTop: 4, color: "#71717a", fontSize: 10.5 };
+const productSelectWrap = {
+  display: "grid",
+  gap: 6,
+  minWidth: 0,
+};
 const lineHeader = {
   display: "flex",
   justifyContent: "space-between",
