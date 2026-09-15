@@ -1,6 +1,9 @@
 // controllers/inventoryController.js – Raw Materials, Build Materials, Stock Movement
 const pool = require("../../config/db");
 const {
+  getPhilippineDateBoundsUtc,
+} = require("../../utils/philippineTime");
+const {
   retryPendingStockReservationsForMaterial,
 } = require("../../services/blueprintMaterialReservationService");
 const {
@@ -1559,12 +1562,14 @@ exports.getStockMovements = async (req, res) => {
       params.push(material_id);
     }
     if (from) {
-      where.push("DATE(sm.created_at) >= ?");
-      params.push(from);
+      const { startUtc } = getPhilippineDateBoundsUtc(from);
+      where.push("sm.created_at >= ?");
+      params.push(startUtc);
     }
     if (to) {
-      where.push("DATE(sm.created_at) <= ?");
-      params.push(to);
+      const { nextStartUtc } = getPhilippineDateBoundsUtc(to);
+      where.push("sm.created_at < ?");
+      params.push(nextStartUtc);
     }
     if (search && String(search).trim()) {
       const pattern = `%${String(search).trim()}%`;

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
+import { formatPHDateTime, PH_TIME_ZONE } from "../../utils/dateTime";
 import toast from "react-hot-toast";
 import * as XLSX from "xlsx-js-style";
 import { FileDown } from "lucide-react";
@@ -64,17 +65,37 @@ const normalizeQuantityUnit = (value) =>
 const unitAllowsDecimalQuantity = (unit) =>
   DECIMAL_QUANTITY_UNITS.has(normalizeQuantityUnit(unit));
 
-const formatDateTime = (value) => {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString("en-PH", {
-    year: "numeric",
-    month: "short",
+const formatDateTime = (value) =>
+  formatPHDateTime(value, {
     day: "2-digit",
     hour: "2-digit",
-    minute: "2-digit",
   });
+
+const getPhilippineDateKey = (value = new Date()) => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: PH_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(value);
+
+  const byType = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+
+  return [byType.year, byType.month, byType.day].join("-");
+};
+
+const shiftDateKey = (dateKey, days) => {
+  const [year, month, day] = String(dateKey)
+    .split("-")
+    .map(Number);
+
+  return new Date(Date.UTC(year, month - 1, day + days))
+    .toISOString()
+    .slice(0, 10);
 };
 
 const MATERIAL_FORM_LABELS = {
@@ -158,29 +179,22 @@ export default function StockMovementPage() {
   const [itemKind, setItemKind] = useState("material");
 
   const handleDatePreset = (preset) => {
-    const today = new Date();
-    today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+    const today = getPhilippineDateKey();
     let fromStr = "";
     let toStr = "";
 
     if (preset === "today") {
-      fromStr = today.toISOString().split("T")[0];
-      toStr = fromStr;
+      fromStr = today;
+      toStr = today;
     } else if (preset === "yesterday") {
-      const y = new Date(today);
-      y.setDate(y.getDate() - 1);
-      fromStr = y.toISOString().split("T")[0];
+      fromStr = shiftDateKey(today, -1);
       toStr = fromStr;
     } else if (preset === "last_7_days") {
-      const y = new Date(today);
-      y.setDate(y.getDate() - 7);
-      fromStr = y.toISOString().split("T")[0];
-      toStr = today.toISOString().split("T")[0];
+      fromStr = shiftDateKey(today, -6);
+      toStr = today;
     } else if (preset === "last_30_days") {
-      const y = new Date(today);
-      y.setDate(y.getDate() - 30);
-      fromStr = y.toISOString().split("T")[0];
-      toStr = today.toISOString().split("T")[0];
+      fromStr = shiftDateKey(today, -29);
+      toStr = today;
     }
 
     setFilters((current) => ({
@@ -376,7 +390,7 @@ export default function StockMovementPage() {
         const qtyLabel = getMovementQuantityLabel(row);
         const specification = formatMaterialSpecification(row);
         exportData.push([
-          new Date(row.created_at).toLocaleString("en-PH"),
+          formatDateTime(row.created_at),
           String(row.type || "").toUpperCase(),
           SOURCE_LABELS[row.movement_source] || "Manual entry",
           row.material_name || row.product_name || "—",
@@ -405,7 +419,7 @@ export default function StockMovementPage() {
       XLSX.utils.book_append_sheet(wb, ws, "Stock Movements");
       XLSX.writeFile(
         wb,
-        `Stock-Movements-Report-${new Date().toISOString().slice(0, 10)}.xlsx`,
+        `Stock-Movements-Report-${getPhilippineDateKey()}.xlsx`,
       );
       toast.success("Excel report exported successfully.");
     } catch (err) {
