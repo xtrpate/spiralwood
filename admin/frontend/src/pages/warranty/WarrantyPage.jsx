@@ -4,6 +4,11 @@ import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
 import "./WarrantyPage.css";
 import WarrantyResolutionModal from "./WarrantyResolutionModal";
+import {
+  formatPHDate,
+  formatPHDateTime,
+  parseSystemDateTime,
+} from "../../utils/dateTime";
 
 const STATUS_META = {
   pending: {
@@ -38,29 +43,9 @@ const STATUS_META = {
   },
 };
 
-const formatDateTime = (value) => {
-  if (!value) return "—";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "—";
-  return parsed.toLocaleString("en-PH", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-};
+const formatDateTime = (value) => formatPHDateTime(value);
 
-const formatDate = (value) => {
-  if (!value) return "—";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "—";
-  return parsed.toLocaleDateString("en-PH", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-};
+const formatDate = (value) => formatPHDate(value);
 
 const openAsset = (value, label = "file") => {
   if (!value) {
@@ -141,29 +126,12 @@ export default function WarrantyPage() {
     });
 
     return filtered.sort((a, b) => {
-      const getRank = (status) => {
-        switch (String(status || "").toLowerCase()) {
-          case "approved":
-            return 1;
-          case "pending":
-            return 2;
-          case "fulfilled":
-            return 3;
-          case "rejected":
-            return 4;
-          case "cancelled":
-            return 5;
-          default:
-            return 6;
-        }
-      };
+      const bCreatedAt = parseSystemDateTime(b.created_at)?.getTime() || 0;
+      const aCreatedAt = parseSystemDateTime(a.created_at)?.getTime() || 0;
 
-      const rankA = getRank(a.status);
-      const rankB = getRank(b.status);
+      if (bCreatedAt !== aCreatedAt) return bCreatedAt - aCreatedAt;
 
-      if (rankA !== rankB) return rankA - rankB;
-
-      return new Date(b.created_at) - new Date(a.created_at);
+      return Number(b.id || 0) - Number(a.id || 0);
     });
   }, [rows, search, statusFilter]);
 
