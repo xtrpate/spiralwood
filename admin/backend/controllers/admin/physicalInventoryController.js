@@ -2,6 +2,10 @@
 const crypto = require("crypto");
 const pool = require("../../config/db");
 const {
+  getPhilippineDateBoundsUtc,
+  getPhilippineDateKey,
+} = require("../../utils/philippineTime");
+const {
   retryPendingStockReservationsForMaterial,
 } = require("../../services/blueprintMaterialReservationService");
 
@@ -56,12 +60,9 @@ const cleanText = (value, maxLength) => {
 };
 
 const makeReferenceCode = () => {
-  const now = new Date();
-  const y = now.getUTCFullYear();
-  const m = String(now.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(now.getUTCDate()).padStart(2, "0");
+  const dateKey = getPhilippineDateKey().replace(/-/g, "");
   const token = crypto.randomBytes(3).toString("hex").toUpperCase();
-  return `PI-${y}${m}${d}-${token}`;
+  return `PI-${dateKey}-${token}`;
 };
 
 const sendError = (res, error) => {
@@ -269,12 +270,14 @@ const buildPhysicalInventorySessionFilters = (query = {}) => {
     throw error;
   }
   if (from) {
+    const { startUtc } = getPhilippineDateBoundsUtc(from);
     where.push("s.started_at >= ?");
-    whereParams.push(`${from} 00:00:00`);
+    whereParams.push(startUtc);
   }
   if (to) {
-    where.push("s.started_at < DATE_ADD(?, INTERVAL 1 DAY)");
-    whereParams.push(`${to} 00:00:00`);
+    const { nextStartUtc } = getPhilippineDateBoundsUtc(to);
+    where.push("s.started_at < ?");
+    whereParams.push(nextStartUtc);
   }
 
   return {

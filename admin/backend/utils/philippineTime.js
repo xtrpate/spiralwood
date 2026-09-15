@@ -34,6 +34,50 @@ const getPhilippineCalendarParts = (value = new Date()) => {
 const philippineMidnightAsUtc = (year, monthIndex, day) =>
   new Date(Date.UTC(year, monthIndex, day) - PH_UTC_OFFSET_MS);
 
+const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const parseDateKey = (dateKey) => {
+  const text = String(dateKey || "").trim();
+  if (!DATE_KEY_RE.test(text)) {
+    throw new TypeError("Philippine date must use YYYY-MM-DD format.");
+  }
+
+  const [year, month, day] = text.split("-").map(Number);
+  const validationDate = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    validationDate.getUTCFullYear() !== year ||
+    validationDate.getUTCMonth() + 1 !== month ||
+    validationDate.getUTCDate() !== day
+  ) {
+    throw new TypeError("Philippine date is invalid.");
+  }
+
+  return { year, monthIndex: month - 1, day };
+};
+
+const getPhilippineDateKey = (value = new Date()) => {
+  const { year, monthIndex, day } = getPhilippineCalendarParts(value);
+  return [
+    String(year).padStart(4, "0"),
+    String(monthIndex + 1).padStart(2, "0"),
+    String(day).padStart(2, "0"),
+  ].join("-");
+};
+
+const getPhilippineDateBoundsUtc = (dateKey) => {
+  const { year, monthIndex, day } = parseDateKey(dateKey);
+
+  return {
+    startUtc: formatMysqlUtcDateTime(
+      philippineMidnightAsUtc(year, monthIndex, day),
+    ),
+    nextStartUtc: formatMysqlUtcDateTime(
+      philippineMidnightAsUtc(year, monthIndex, day + 1),
+    ),
+  };
+};
+
 const getPhilippineBusinessPeriods = (value = new Date()) => {
   const { year, monthIndex, day, dayOfWeek } =
     getPhilippineCalendarParts(value);
@@ -71,4 +115,6 @@ module.exports = {
   PH_UTC_OFFSET_MS,
   formatMysqlUtcDateTime,
   getPhilippineBusinessPeriods,
+  getPhilippineDateBoundsUtc,
+  getPhilippineDateKey,
 };

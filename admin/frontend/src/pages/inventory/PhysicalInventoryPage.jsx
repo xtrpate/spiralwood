@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../../services/api";
+import { formatPHDateTime, PH_TIME_ZONE } from "../../utils/dateTime";
 import toast from "react-hot-toast";
 import * as XLSX from "xlsx-js-style";
 import {
@@ -32,17 +33,36 @@ const formatQuantity = (value) => {
   return number.toLocaleString("en-PH", { maximumFractionDigits: 2 });
 };
 
-const formatDateTime = (value) => {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString("en-PH", {
-    year: "numeric",
-    month: "short",
+const formatDateTime = (value) =>
+  formatPHDateTime(value, {
     day: "2-digit",
     hour: "2-digit",
-    minute: "2-digit",
   });
+
+const getPhilippineDateKey = (value = new Date()) => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: PH_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(value);
+
+  const byType = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+
+  return `${byType.year}-${byType.month}-${byType.day}`;
+};
+
+const shiftDateKey = (dateKey, days) => {
+  const [year, month, day] = String(dateKey)
+    .split("-")
+    .map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days))
+    .toISOString()
+    .slice(0, 10);
 };
 
 const formatDifference = (value, unit) => {
@@ -285,26 +305,19 @@ export default function PhysicalInventoryPage() {
   };
 
   const handleHistoryDatePreset = (preset) => {
-    const localToday = new Date();
-    localToday.setMinutes(
-      localToday.getMinutes() - localToday.getTimezoneOffset(),
-    );
+    const today = getPhilippineDateKey();
     let from = "";
     let to = "";
 
     if (preset === "today") {
-      from = localToday.toISOString().slice(0, 10);
-      to = from;
+      from = today;
+      to = today;
     } else if (preset === "last_7_days") {
-      const startDate = new Date(localToday);
-      startDate.setDate(startDate.getDate() - 6);
-      from = startDate.toISOString().slice(0, 10);
-      to = localToday.toISOString().slice(0, 10);
+      from = shiftDateKey(today, -6);
+      to = today;
     } else if (preset === "last_30_days") {
-      const startDate = new Date(localToday);
-      startDate.setDate(startDate.getDate() - 29);
-      from = startDate.toISOString().slice(0, 10);
-      to = localToday.toISOString().slice(0, 10);
+      from = shiftDateKey(today, -29);
+      to = today;
     }
 
     setHistoryFilters((current) => ({
@@ -659,12 +672,8 @@ export default function PhysicalInventoryPage() {
           Number(session.item_count || 0),
           Number(session.difference_count || 0),
           session.started_by_name || "—",
-          session.started_at
-            ? new Date(session.started_at).toLocaleString("en-PH")
-            : "—",
-          getFinishedAt(session)
-            ? new Date(getFinishedAt(session)).toLocaleString("en-PH")
-            : "—",
+          formatDateTime(session.started_at),
+          formatDateTime(getFinishedAt(session)),
           session.notes || "—",
           session.cancel_reason || "—",
         ]);
@@ -746,7 +755,7 @@ export default function PhysicalInventoryPage() {
 
       XLSX.writeFile(
         workbook,
-        `Physical-Inventory-Report-${new Date().toISOString().slice(0, 10)}.xlsx`,
+        `Physical-Inventory-Report-${getPhilippineDateKey()}.xlsx`,
       );
       toast.success("Physical Inventory Excel report exported.");
       setExportOpen(false);
