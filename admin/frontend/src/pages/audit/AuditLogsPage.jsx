@@ -323,6 +323,7 @@ const formatDateTime = (value) => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "—";
   return parsed.toLocaleString("en-PH", {
+    timeZone: "Asia/Manila",
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -1059,7 +1060,7 @@ export default function AuditLogsPage() {
           <table style={table}>
             <thead>
               <tr style={theadRow}>
-                <th style={{ ...th, width: 170 }}>Date and Time</th>
+                <th style={{ ...th, width: 170 }}>Date and Time (PH)</th>
                 <th style={{ ...th, width: 250 }}>Performed By</th>
                 <th style={{ ...th, width: 280 }}>Activity</th>
                 <th style={{ ...th, width: 180 }}>Area</th>
