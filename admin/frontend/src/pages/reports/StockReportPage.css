@@ -505,3 +505,233 @@
     white-space: normal;
   }
 }
+
+.stk-action-cell {
+  text-align: right;
+}
+.stk-button-text {
+  display: inline-flex;
+  alignitems: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid #e4e4e7;
+  border-radius: 4px;
+  color: #18181b;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.stk-button-text:hover {
+  background: #f4f4f5;
+}
+.stk-detail-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1700;
+  display: flex;
+  background: rgba(0, 0, 0, 0.48);
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.stk-detail-panel {
+  width: min(1040px, calc(100vw - 48px));
+  max-height: min(90vh, 900px);
+  overflow-y: auto;
+  padding: 22px;
+  background: #ffffff;
+  border: 1px solid #d4d4d8;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.stk-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.stk-detail-head > div > span {
+  display: block;
+  color: #71717a;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.stk-detail-head h2 {
+  margin: 0;
+  margin-top: 4px;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.stk-detail-head p {
+  margin: 5px 0 0;
+  color: #71717a;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.stk-detail-head button {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d4d4d8;
+  background: #ffffff;
+  color: #18181b;
+  border-radius: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.stk-detail-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 10px 0;
+  border-top: 1px solid #e4e4e7;
+  border-bottom: 1px solid #e4e4e7;
+  color: #71717a;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.stk-detail-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 23px;
+  padding: 3px 7px;
+  border: 1px solid #d4d4d8;
+  background: #fafafa;
+  color: #52525b;
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.stk-detail-status-in,
+.stk-detail-status-completed {
+  border-color: #18181b;
+  background: #18181b;
+  color: #ffffff;
+}
+
+.stk-detail-status-out,
+.stk-detail-status-undo,
+.stk-detail-status-undone {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.stk-detail-grid,
+.stk-detail-subgrid {
+  display: grid;
+  gap: 1px;
+  margin-top: 16px;
+  border: 1px solid #d4d4d8;
+  background: #d4d4d8;
+}
+
+.stk-detail-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.stk-detail-subgrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.stk-detail-grid > div,
+.stk-detail-subgrid > div {
+  min-height: 70px;
+  padding: 11px;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.stk-detail-grid span,
+.stk-detail-subgrid span {
+  display: block;
+  margin-bottom: 5px;
+  color: #71717a;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.stk-detail-grid strong,
+.stk-detail-subgrid strong {
+  color: #18181b;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.stk-detail-section {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #e4e4e7;
+}
+
+.stk-detail-section h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.stk-detail-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid #d4d4d8;
+}
+
+@media (max-width: 1180px) {
+  .stk-detail-grid,
+  .stk-detail-subgrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .stk-detail-grid,
+  .stk-detail-subgrid {
+    grid-template-columns: 1fr;
+  }
+
+  .stk-detail-overlay {
+    align-items: stretch;
+    padding: 0;
+  }
+
+  .stk-detail-panel {
+    width: 100%;
+    max-height: 100vh;
+    min-height: 100vh;
+    padding: 16px;
+    border: 0;
+  }
+
+  .stk-detail-footer {
+    flex-direction: column;
+  }
+
+  .stk-detail-footer .stk-button {
+    width: 100% !important;
+  }
+}

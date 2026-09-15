@@ -1,10 +1,349 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Eye, X, FileDown } from "lucide-react";
 import toast from "react-hot-toast";
 import * as XLSX from "xlsx-js-style";
+import jsPDF from "jspdf";
 import api from "../../services/api";
 import useAuthStore from "../../store/authStore";
 
 import "./TransactionReportPage.css";
+
+const normalize = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
+
+const pdfFormatDateTime = (value) => {
+  if (!value) return "—";
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "—";
+
+  return parsed.toLocaleString("en-PH", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const pdfFormatMoney = (value) => {
+  const amount = Number(value);
+
+  if (!Number.isFinite(amount)) {
+    return "PHP 0.00";
+  }
+
+  return `PHP ${amount.toLocaleString("en-PH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+};
+
+const pdfHumanize = (value) => {
+  if (value === null || value === undefined || value === "") {
+    return "—";
+  }
+
+  return String(value)
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const pdfSanitizeFilename = (value) =>
+  String(value || "record")
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, "_")
+    .replace(/\s+/g, "_")
+    .slice(0, 100);
+
+const createTransactionRecordPdf = (record = {}, reportType = "orders") => {
+  const doc = new jsPDF();
+
+  const isCancellation = reportType === "cancellations";
+
+  const title = isCancellation
+    ? "Cancellation Transaction Record"
+    : "Order Transaction Record";
+
+  let y = 18;
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  const leftMargin = 15;
+  const rightMargin = 15;
+  const valueX = 63;
+  const maxValueWidth = pageWidth - valueX - rightMargin;
+
+  const addHeader = () => {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(17);
+    doc.setTextColor(24, 24, 27);
+    doc.text("WISDOM", leftMargin, y);
+
+    y += 8;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    doc.setTextColor(82, 82, 91);
+    doc.text("Transaction Report", leftMargin, y);
+
+    y += 6;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(63, 63, 70);
+    doc.text(title, leftMargin, y);
+
+    y += 6;
+
+    doc.setDrawColor(212, 212, 216);
+    doc.line(leftMargin, y, pageWidth - rightMargin, y);
+
+    y += 10;
+  };
+
+  const addFooter = () => {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(113, 113, 122);
+
+    doc.text("WISDOM Transaction Report", leftMargin, pageHeight - 10);
+
+    doc.text(
+      `Generated ${pdfFormatDateTime(new Date())}`,
+      pageWidth - rightMargin,
+      pageHeight - 10,
+      { align: "right" },
+    );
+  };
+
+  const ensureSpace = (requiredHeight = 10) => {
+    if (y + requiredHeight <= pageHeight - 20) {
+      return;
+    }
+
+    addFooter();
+    doc.addPage();
+    y = 18;
+    addHeader();
+  };
+
+  const addField = (label, value) => {
+    const safeValue =
+      value === null || value === undefined || value === ""
+        ? "—"
+        : String(value);
+
+    const wrappedValue = doc.splitTextToSize(safeValue, maxValueWidth);
+
+    const rowHeight = Math.max(8, wrappedValue.length * 5 + 4);
+
+    ensureSpace(rowHeight);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9.5);
+    doc.setTextColor(39, 39, 42);
+    doc.text(`${label}:`, leftMargin, y);
+
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(63, 63, 70);
+    doc.text(wrappedValue, valueX, y);
+
+    y += rowHeight;
+  };
+
+  const addSection = (sectionTitle) => {
+    ensureSpace(14);
+
+    y += 3;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(24, 24, 27);
+    doc.text(sectionTitle, leftMargin, y);
+
+    y += 7;
+  };
+
+  addHeader();
+
+  /*
+   * ============================================================
+   * RECORD HEADER DETAILS
+   * Matches the View Details header/status area.
+   * ============================================================
+   */
+  addField("Record ID", record.id);
+
+  addField(
+    "Order Number",
+    record.order_number || `#${record.order_id || record.id || "—"}`,
+  );
+
+  if (record.customer_name || record.walkin_customer_name) {
+    addField(
+      "Customer",
+      record.customer_name || record.walkin_customer_name || "—",
+    );
+  }
+
+  addField("Status", pdfHumanize(record.status || "completed"));
+
+  /*
+   * ============================================================
+   * MAIN DETAILS
+   * Matches the exact fields shown in the current modal.
+   * ============================================================
+   */
+  addSection(isCancellation ? "Cancellation Details" : "Order Details");
+
+  if (!isCancellation) {
+    addField("Channel", pdfHumanize(record.channel || record.type));
+
+    addField("Amount", pdfFormatMoney(record.total_amount));
+
+    addField(
+      "Payment Status",
+      pdfHumanize(record.payment_status_display || record.payment_status),
+    );
+
+    addField("Date & Time", pdfFormatDateTime(record.created_at));
+  } else {
+    addField("Record Type", pdfHumanize(record.record_type));
+
+    addField("Reason", record.reason || "—");
+
+    addField("Admin Note", record.review_note || "—");
+
+    addField(
+      "Date Requested",
+      pdfFormatDateTime(record.requested_at || record.created_at),
+    );
+  }
+
+  /*
+   * ============================================================
+   * ADDITIONAL DETAILS
+   * Uses the same filtering logic as the View Details modal.
+   * ============================================================
+   */
+  const blueprintKeys = new Set([
+    "blueprint_data",
+    "blueprint_design",
+    "blueprint_design_data",
+    "blueprint_2d_data",
+    "blueprint_3d_data",
+    "blueprint_3d_view",
+    "blueprint_3d",
+    "blueprint",
+    "design_data",
+    "design_json",
+    "blueprint_json",
+    "three_d_data",
+    "three_d_view",
+    "three_d_model",
+    "3d_view",
+    "3d_data",
+  ]);
+
+  const skipKeys = isCancellation
+    ? [
+        "id",
+        "order_id",
+        "status",
+        "record_type",
+        "reason",
+        "review_note",
+        "requested_at",
+        "created_at",
+        "updated_at",
+        "customer_name",
+        "walkin_customer_name",
+        "order_number",
+      ]
+    : [
+        "id",
+        "order_id",
+        "status",
+        "channel",
+        "type",
+        "total_amount",
+        "payment_status_display",
+        "payment_status",
+        "created_at",
+        "updated_at",
+        "customer_name",
+        "walkin_customer_name",
+        "order_number",
+      ];
+
+  const extraKeys = Object.entries(record).filter(([key, value]) => {
+    const normalizedKey = String(key).toLowerCase();
+
+    const isBlueprintField =
+      blueprintKeys.has(normalizedKey) ||
+      normalizedKey.includes("blueprint") ||
+      normalizedKey.includes("3d") ||
+      normalizedKey.includes("three_d") ||
+      normalizedKey.includes("design_data");
+
+    return (
+      value !== null &&
+      value !== "" &&
+      typeof value !== "object" &&
+      !normalizedKey.includes("url") &&
+      !normalizedKey.includes("json") &&
+      !skipKeys.includes(key) &&
+      !isBlueprintField
+    );
+  });
+
+  if (extraKeys.length > 0) {
+    addSection("Additional Details");
+
+    extraKeys.forEach(([key, value]) => {
+      const isDate = key.includes("date") || key.includes("_at");
+
+      addField(pdfHumanize(key), isDate ? pdfFormatDateTime(value) : value);
+    });
+  }
+
+  addFooter();
+
+  return doc;
+};
+
+const exportTransactionRecordPdf = (record = {}, reportType = "orders") => {
+  if (!record || typeof record !== "object") {
+    throw new Error("No transaction record is available for export.");
+  }
+
+  const doc = createTransactionRecordPdf(record, reportType);
+
+  const identifier =
+    record.order_number || record.order_id || record.id || "record";
+
+  const fileName = `transaction_${reportType}_${pdfSanitizeFilename(
+    identifier,
+  )}.pdf`;
+
+  const blob = doc.output("blob");
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = fileName;
+
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  URL.revokeObjectURL(url);
+};
 
 const REPORT_TYPES = [
   { value: "orders", label: "Orders History" },
@@ -117,6 +456,7 @@ export default function TransactionReportPage() {
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
   const [page, setPage] = useState(1);
+  const [detail, setDetail] = useState({ open: false, data: null });
 
   // Data
   const [rows, setRows] = useState([]);
@@ -554,6 +894,7 @@ export default function TransactionReportPage() {
                         <th>Status</th>
                       </>
                     )}
+                    <th style={{ width: 110 }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -623,6 +964,15 @@ export default function TransactionReportPage() {
                             <td>{humanize(row.status)}</td>
                           </>
                         )}
+                        <td className="trx-action-cell">
+                          <button
+                            type="button"
+                            className="trx-button-text"
+                            onClick={() => setDetail({ open: true, data: row })}
+                          >
+                            <Eye size={14} /> View
+                          </button>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -680,6 +1030,228 @@ export default function TransactionReportPage() {
         </>
       ) : (
         <div className="trx-loading">Loading transaction data...</div>
+      )}
+
+      {detail.open && detail.data && (
+        <div
+          className="trx-detail-overlay"
+          onClick={() => setDetail({ open: false, data: null })}
+        >
+          <aside
+            className="trx-detail-panel"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="trx-detail-head">
+              <div>
+                <span>
+                  {reportType === "orders" ? "ORDER" : "CANCELLATION"} DETAILS
+                </span>
+                <h2>
+                  {detail.data.order_number ||
+                    `Order #${detail.data.id || detail.data.order_id}`}
+                </h2>
+                {detail.data.customer_name && (
+                  <p>{detail.data.customer_name}</p>
+                )}
+              </div>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => setDetail({ open: false, data: null })}
+              >
+                <X size={19} />
+              </button>
+            </div>
+
+            <div className="trx-detail-status-row">
+              <span
+                className={`trx-detail-status trx-detail-status-${normalize(detail.data.status || "completed")}`}
+              >
+                {humanize(detail.data.status || "Completed")}
+              </span>
+              <span>Record ID: {detail.data.id}</span>
+            </div>
+
+            <section className="trx-detail-grid">
+              {reportType === "orders" ? (
+                <>
+                  <div>
+                    <span>Channel</span>
+                    <strong>
+                      {humanize(detail.data.channel || detail.data.type)}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Amount</span>
+                    <strong>{formatMoney(detail.data.total_amount)}</strong>
+                  </div>
+                  <div>
+                    <span>Payment Status</span>
+                    <strong>
+                      {humanize(
+                        detail.data.payment_status_display ||
+                          detail.data.payment_status,
+                      )}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Date & Time</span>
+                    <strong>{formatDateTime(detail.data.created_at)}</strong>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <span>Record Type</span>
+                    <strong>{humanize(detail.data.record_type)}</strong>
+                  </div>
+                  <div>
+                    <span>Reason</span>
+                    <strong>{detail.data.reason || "—"}</strong>
+                  </div>
+                  <div>
+                    <span>Admin Note</span>
+                    <strong>{detail.data.review_note || "—"}</strong>
+                  </div>
+                  <div>
+                    <span>Date Requested</span>
+                    <strong>
+                      {formatDateTime(
+                        detail.data.requested_at || detail.data.created_at,
+                      )}
+                    </strong>
+                  </div>
+                </>
+              )}
+            </section>
+
+            {(() => {
+              const skipKeys = [
+                "id",
+                "order_id",
+                "status",
+                "channel",
+                "type",
+                "total_amount",
+                "payment_status_display",
+                "payment_status",
+                "created_at",
+                "updated_at",
+                "record_type",
+                "reason",
+                "review_note",
+                "requested_at",
+                "customer_name",
+                "order_number",
+
+                // Remove only the customer profile photo
+                "customer_profile_photo",
+
+                // Keep Blueprint Design / Blueprint 3D View excluded
+                "blueprint_data",
+                "blueprint_design",
+                "blueprint_design_data",
+                "blueprint_2d_data",
+                "blueprint_3d_data",
+                "blueprint_3d_view",
+                "blueprint_3d",
+                "blueprint",
+                "design_data",
+                "design_json",
+                "blueprint_json",
+                "three_d_data",
+                "three_d_view",
+                "three_d_model",
+                "3d_view",
+                "3d_data",
+              ];
+              const extraKeys = Object.entries(detail.data).filter(([k, v]) => {
+                const normalizedKey = String(k).toLowerCase();
+
+                const isBlueprintField =
+                  normalizedKey.includes("blueprint") ||
+                  normalizedKey.includes("3d") ||
+                  normalizedKey.includes("three_d") ||
+                  normalizedKey.includes("design_data");
+
+                return (
+                  v !== null &&
+                  v !== "" &&
+                  typeof v !== "object" &&
+                  !normalizedKey.includes("url") &&
+                  !normalizedKey.includes("json") &&
+                  !skipKeys.includes(k) &&
+                  !isBlueprintField
+                );
+              });
+
+              if (extraKeys.length > 0) {
+                return (
+                  <section className="trx-detail-section">
+                    <h3>Additional Details</h3>
+                    <div className="trx-detail-subgrid">
+                      {extraKeys.map(([k, v]) => {
+                        const isDate = k.includes("date") || k.includes("_at");
+                        const formattedDate = isDate ? formatDateTime(v) : "";
+                        const finalValue =
+                          isDate && formattedDate !== "—"
+                            ? formattedDate
+                            : String(v);
+                        return (
+                          <div key={k}>
+                            <span>{humanize(k)}</span>
+                            <strong>{finalValue}</strong>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                );
+              }
+              return null;
+            })()}
+
+            <div className="trx-detail-footer">
+              <button
+                type="button"
+                className="trx-button trx-button-secondary"
+                onClick={() => setDetail({ open: false, data: null })}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="trx-button trx-button-primary"
+                onClick={() => {
+                  if (!detail.data) return;
+
+                  try {
+                    exportTransactionRecordPdf(detail.data, reportType);
+
+                    toast.success(
+                      `${
+                        reportType === "orders"
+                          ? "Order transaction"
+                          : "Cancellation"
+                      } record downloaded.`,
+                    );
+                  } catch (exportError) {
+                    console.error("Transaction PDF Export Error:", exportError);
+
+                    toast.error(
+                      exportError?.message ||
+                        "Failed to export the selected transaction record.",
+                    );
+                  }
+                }}
+              >
+                <FileDown size={14} /> Export Record
+              </button>
+            </div>
+          </aside>
+        </div>
       )}
     </div>
   );

@@ -505,3 +505,570 @@
     white-space: normal;
   }
 }
+
+.opr-action-cell {
+  text-align: right;
+}
+.opr-button-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid #e4e4e7;
+  border-radius: 4px;
+  color: #18181b;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.opr-button-text:hover {
+  background: #f4f4f5;
+}
+.opr-detail-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.opr-detail-modal {
+  width: min(760px, 100vw);
+  max-height: 90vh;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  border-radius: 4px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.2);
+  animation: fadeInOprModal 0.2s ease-out;
+}
+@keyframes fadeInOprModal {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.opr-detail-head {
+  padding: 24px 24px 16px;
+  border-bottom: 1px solid #e4e4e7;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.opr-detail-head span {
+  font-size: 11px;
+  font-weight: 700;
+  color: #71717a;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: block;
+  margin-bottom: 4px;
+}
+.opr-detail-head h2 {
+  margin: 0;
+  font-size: 22px;
+  color: #18181b;
+  font-weight: 700;
+}
+.opr-detail-head p {
+  margin: 4px 0 0;
+  color: #52525b;
+  font-size: 13px;
+}
+.opr-detail-head button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #71717a;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.opr-detail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+.opr-detail-status-row {
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.opr-detail-status-badge {
+  background: #18181b;
+  color: #fff;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  border-radius: 2px;
+  letter-spacing: 0.05em;
+}
+.opr-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  padding: 20px;
+  border: 1px solid #e4e4e7;
+  border-radius: 4px;
+  background: #fafafa;
+  margin-bottom: 24px;
+}
+.opr-detail-grid-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.opr-detail-grid-item span {
+  font-size: 10px;
+  font-weight: 700;
+  color: #71717a;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.opr-detail-grid-item strong {
+  font-size: 13px;
+  color: #18181b;
+  font-weight: 600;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.opr-detail-footer {
+  padding: 16px 24px;
+  border-top: 1px solid #e4e4e7;
+  background: #fafafa;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  border-radius: 0 0 4px 4px;
+}
+
+/* ==========================================================================
+   Delivery Detail Modal Styles (Copied from DeliveryReportPage)
+   ========================================================================== */
+
+.delivery-report-detail-head h2,
+.delivery-report-detail-section h3 {
+  margin: 0;
+}
+
+.delivery-report-detail-head p {
+  margin: 5px 0 0;
+  color: #71717a;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.delivery-report-button,
+.delivery-report-detail-head button,
+.delivery-report-signature-head button {
+  border-radius: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.delivery-report-button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 13px;
+  border: 1px solid #18181b;
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
+.delivery-report-button-primary {
+  background: #18181b;
+  color: #ffffff;
+}
+
+.delivery-report-button-secondary {
+  background: #ffffff;
+  color: #18181b;
+  border-color: #a1a1aa;
+}
+
+.delivery-report-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.delivery-report-alert,
+.delivery-report-inline-error {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.delivery-report-inline-error {
+  margin: 9px 0 0;
+}
+
+.delivery-report-items-scroll {
+  overflow-x: auto;
+}
+
+.delivery-report-items-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.delivery-report-items-table th,
+.delivery-report-items-table td {
+  border-bottom: 1px solid #ececee;
+}
+
+.delivery-report-items-table th {
+  padding: 10px 14px;
+  color: #71717a;
+  background: #ffffff;
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.delivery-report-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 23px;
+  padding: 3px 7px;
+  border: 1px solid #d4d4d8;
+  background: #fafafa;
+  color: #52525b;
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.delivery-report-status-delivered {
+  border-color: #18181b;
+  background: #18181b;
+  color: #ffffff;
+}
+
+.delivery-report-status-failed {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.delivery-report-status-in_transit {
+  border-color: #d4d4d8;
+  background: #f4f4f5;
+  color: #18181b;
+}
+
+.delivery-report-detail-loading {
+  padding: 38px 20px;
+  color: #71717a;
+  font-size: 11px;
+  text-align: center;
+}
+
+.delivery-report-detail-overlay,
+.delivery-report-signature-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1700;
+  display: flex;
+  background: rgba(0, 0, 0, 0.48);
+}
+
+.delivery-report-detail-overlay {
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.delivery-report-detail-panel {
+  width: min(1040px, calc(100vw - 48px));
+  max-height: min(90vh, 900px);
+  overflow-y: auto;
+  padding: 22px;
+  background: #ffffff;
+  border: 1px solid #d4d4d8;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.delivery-report-detail-head,
+.delivery-report-signature-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.delivery-report-detail-head > div > span,
+.delivery-report-signature-head span {
+  display: block;
+  color: #71717a;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.delivery-report-detail-head h2 {
+  margin-top: 4px;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.delivery-report-detail-head button,
+.delivery-report-signature-head button {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d4d4d8;
+  background: #ffffff;
+  color: #18181b;
+}
+
+.delivery-report-detail-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 10px 0;
+  border-top: 1px solid #e4e4e7;
+  border-bottom: 1px solid #e4e4e7;
+  color: #71717a;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.delivery-report-detail-grid,
+.delivery-report-handoff-grid {
+  display: grid;
+  gap: 1px;
+  margin-top: 16px;
+  border: 1px solid #d4d4d8;
+  background: #d4d4d8;
+}
+
+.delivery-report-detail-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.delivery-report-handoff-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.delivery-report-detail-grid > div,
+.delivery-report-handoff-grid > div {
+  min-height: 70px;
+  padding: 11px;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.delivery-report-detail-grid span,
+.delivery-report-handoff-grid span {
+  display: block;
+  margin-bottom: 5px;
+  color: #71717a;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.delivery-report-detail-grid strong,
+.delivery-report-handoff-grid strong {
+  color: #18181b;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.delivery-report-detail-section {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #e4e4e7;
+}
+
+.delivery-report-detail-section h3 {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.delivery-report-detail-section > p {
+  margin: 7px 0 0;
+  color: #626269;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.delivery-report-notes {
+  white-space: pre-wrap;
+}
+
+.delivery-report-items-table {
+  margin-top: 9px;
+  border: 1px solid #d4d4d8;
+}
+
+.delivery-report-items-table th,
+.delivery-report-items-table td {
+  padding: 8px 9px;
+}
+
+.delivery-report-items-table td {
+  color: #3f3f46;
+  font-size: 10px;
+}
+
+.delivery-report-document-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.delivery-report-document-actions > span {
+  width: auto !important;
+}
+
+.delivery-report-document-actions p {
+  margin: 0;
+  color: #71717a;
+  font-size: 10px;
+}
+
+.delivery-report-detail-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid #d4d4d8;
+}
+
+.delivery-report-signature-overlay {
+  z-index: 1900;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  box-sizing: border-box;
+}
+
+.delivery-report-signature-card {
+  width: min(620px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 18px;
+  border: 1px solid #d4d4d8;
+  background: #ffffff;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.delivery-report-signature-head strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 15px;
+}
+
+.delivery-report-signature-body {
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin-top: 14px;
+  padding: 18px;
+  border: 1px solid #d4d4d8;
+  background: #fafafa;
+  box-sizing: border-box;
+}
+
+.delivery-report-signature-body img {
+  max-width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+}
+
+.delivery-report-signature-body p {
+  color: #71717a;
+  font-size: 11px;
+}
+
+.delivery-report-signature-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  margin-top: 12px;
+  color: #71717a;
+  font-size: 10px;
+}
+
+.delivery-report-signature-meta strong {
+  color: #18181b;
+  font-size: 11px;
+}
+
+@media (max-width: 1180px) {
+  .delivery-report-detail-grid,
+  .delivery-report-handoff-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .delivery-report-detail-grid,
+  .delivery-report-handoff-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .delivery-report-detail-overlay {
+    align-items: stretch;
+    padding: 0;
+  }
+
+  .delivery-report-detail-panel {
+    width: 100%;
+    max-height: 100vh;
+    min-height: 100vh;
+    padding: 16px;
+    border: 0;
+  }
+
+  .delivery-report-document-actions,
+  .delivery-report-detail-footer {
+    flex-direction: column;
+  }
+
+  .delivery-report-document-actions .delivery-report-button,
+  .delivery-report-document-actions > span,
+  .delivery-report-detail-footer .delivery-report-button {
+    width: 100% !important;
+  }
+}

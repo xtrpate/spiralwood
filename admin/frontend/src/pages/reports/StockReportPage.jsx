@@ -1,10 +1,333 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Eye, X, FileDown } from "lucide-react";
 import toast from "react-hot-toast";
 import * as XLSX from "xlsx-js-style";
+import jsPDF from "jspdf";
 import api from "../../services/api";
 import useAuthStore from "../../store/authStore";
 
 import "./StockReportPage.css";
+
+const normalize = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
+
+const humanize = (value) =>
+  String(value || "—")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const pdfFormatDateTime = (value) => {
+  if (!value) return "—";
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return "—";
+  }
+
+  return parsed.toLocaleString("en-PH", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const pdfFormatQuantity = (value) => {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return "0";
+  }
+
+  return number.toLocaleString("en-PH", {
+    maximumFractionDigits: 4,
+  });
+};
+
+const pdfSanitizeFilename = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "record";
+
+const pdfGetMovementQuantity = (record = {}) => {
+  const isPositive = record.type === "in" || record.type === "return";
+
+  const unit = record.material_unit ? ` ${record.material_unit}` : "";
+
+  if (record.type === "adjustment") {
+    return `Set to ${pdfFormatQuantity(record.quantity)}${unit}`;
+  }
+
+  return `${
+    isPositive ? "+" : "-"
+  }${pdfFormatQuantity(record.quantity)}${unit}`;
+};
+
+const createStockRecordPdf = ({
+  recordType,
+  record = {},
+  fields = [],
+  skipKeys = [],
+  filename,
+}) => {
+  const doc = new jsPDF();
+
+  let currentY = 18;
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  const leftMargin = 15;
+  const rightMargin = 15;
+  const valueX = 63;
+  const maxValueWidth = pageWidth - valueX - rightMargin;
+
+  const addHeader = () => {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(17);
+    doc.setTextColor(24, 24, 27);
+    doc.text("WISDOM", leftMargin, currentY);
+
+    currentY += 8;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    doc.setTextColor(82, 82, 91);
+    doc.text("Stock Report", leftMargin, currentY);
+
+    currentY += 6;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(63, 63, 70);
+    doc.text(`${recordType} Record`, leftMargin, currentY);
+
+    currentY += 6;
+
+    doc.setDrawColor(212, 212, 216);
+
+    doc.line(leftMargin, currentY, pageWidth - rightMargin, currentY);
+
+    currentY += 10;
+  };
+
+  const addFooter = () => {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(113, 113, 122);
+
+    doc.text("WISDOM Stock Report", leftMargin, pageHeight - 10);
+
+    doc.text(
+      `Generated ${pdfFormatDateTime(new Date())}`,
+      pageWidth - rightMargin,
+      pageHeight - 10,
+      { align: "right" },
+    );
+  };
+
+  const ensureSpace = (requiredHeight = 10) => {
+    if (currentY + requiredHeight <= pageHeight - 20) {
+      return;
+    }
+
+    addFooter();
+
+    doc.addPage();
+
+    currentY = 18;
+
+    addHeader();
+  };
+
+  const addField = (label, value) => {
+    const safeValue =
+      value === null || value === undefined || value === ""
+        ? "—"
+        : String(value);
+
+    const wrappedValue = doc.splitTextToSize(safeValue, maxValueWidth);
+
+    const rowHeight = Math.max(8, wrappedValue.length * 5 + 4);
+
+    ensureSpace(rowHeight);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9.5);
+    doc.setTextColor(39, 39, 42);
+
+    doc.text(`${label}:`, leftMargin, currentY);
+
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(63, 63, 70);
+
+    doc.text(wrappedValue, valueX, currentY);
+
+    currentY += rowHeight;
+  };
+
+  const addSection = (sectionTitle) => {
+    ensureSpace(14);
+
+    currentY += 3;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(24, 24, 27);
+
+    doc.text(sectionTitle, leftMargin, currentY);
+
+    currentY += 7;
+  };
+
+  addHeader();
+
+  /*
+   * Record header/status area.
+   */
+  addField("Record ID", record.id);
+
+  if (record.reference_code || record.reference) {
+    addField("Reference", record.reference_code || record.reference || "—");
+  }
+
+  addSection(`${recordType} Details`);
+
+  fields.forEach(([label, value]) => {
+    addField(label, value);
+  });
+
+  /*
+   * Same Additional Details behavior as View Details.
+   */
+  const extraKeys = Object.entries(record).filter(
+    ([key, value]) =>
+      value !== null &&
+      value !== "" &&
+      typeof value !== "object" &&
+      !key.includes("url") &&
+      !key.includes("json") &&
+      !skipKeys.includes(key),
+  );
+
+  if (extraKeys.length > 0) {
+    addSection("Additional Details");
+
+    extraKeys.forEach(([key, value]) => {
+      const isDate = key.includes("date") || key.includes("_at");
+
+      addField(humanize(key), isDate ? pdfFormatDateTime(value) : value);
+    });
+  }
+
+  addFooter();
+
+  const blob = doc.output("blob");
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+
+  document.body.appendChild(link);
+  link.click();
+
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
+const exportStockMovementRecordPdf = (record = {}) => {
+  const recordId =
+    record.id || record.reference_code || record.reference || "record";
+
+  createStockRecordPdf({
+    recordType: "Stock Movement",
+    record,
+    fields: [
+      ["Movement", MOVEMENT_LABELS[record.type] || humanize(record.type)],
+      ["Source", SOURCE_LABELS[record.movement_source] || "Manual entry"],
+      [
+        "Item",
+        record.material_name ||
+          record.product_name ||
+          record.item_summary ||
+          "—",
+      ],
+      ["Quantity", pdfGetMovementQuantity(record)],
+      ["Recorded By", record.created_by_name || "System"],
+      ["Date & Time", pdfFormatDateTime(record.created_at)],
+    ],
+    skipKeys: [
+      "id",
+      "reference_code",
+      "reference",
+      "type",
+      "movement_source",
+      "quantity",
+      "material_unit",
+      "material_name",
+      "product_name",
+      "item_summary",
+      "created_by_name",
+      "created_at",
+      "updated_at",
+    ],
+    filename: `stock_movement_${pdfSanitizeFilename(recordId)}.pdf`,
+  });
+};
+
+const exportStockTransferRecordPdf = (record = {}) => {
+  const recordId =
+    record.id || record.reference_code || record.reference || "record";
+
+  createStockRecordPdf({
+    recordType: "Stock Transfer",
+    record,
+    fields: [
+      ["From", DIRECTIONS[record.direction]?.from || "—"],
+      ["To", DIRECTIONS[record.direction]?.to || "—"],
+      ["Total Quantity", pdfFormatQuantity(record.total_quantity)],
+      ["Items", record.item_summary || `${record.item_count || 0} product(s)`],
+      ["Transferred By", record.transferred_by_name || "System"],
+      ["Date & Time", pdfFormatDateTime(record.created_at)],
+    ],
+    skipKeys: [
+      "id",
+      "reference_code",
+      "reference",
+      "direction",
+      "total_quantity",
+      "item_summary",
+      "item_count",
+      "transferred_by_name",
+      "created_by_name",
+      "created_at",
+      "updated_at",
+      "reversal_of_transfer_id",
+      "reversed_by_transfer_id",
+    ],
+    filename: `stock_transfer_${pdfSanitizeFilename(recordId)}.pdf`,
+  });
+};
+
+const exportStockRecordPdf = (record = {}, reportType) => {
+  if (!record || typeof record !== "object") {
+    throw new Error("No stock record is available for export.");
+  }
+
+  if (reportType === "transfers") {
+    return exportStockTransferRecordPdf(record);
+  }
+
+  return exportStockMovementRecordPdf(record);
+};
 
 const SOURCE_LABELS = {
   physical_inventory: "Physical inventory",
@@ -140,6 +463,7 @@ export default function StockReportPage() {
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
   const [page, setPage] = useState(1);
+  const [detail, setDetail] = useState({ open: false, data: null });
 
   // Data
   const [rows, setRows] = useState([]);
@@ -640,6 +964,7 @@ export default function StockReportPage() {
                         <th>User</th>
                       </>
                     )}
+                    <th style={{ width: 110 }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -707,6 +1032,15 @@ export default function StockReportPage() {
                             <td>{row.transferred_by_name || "System"}</td>
                           </>
                         )}
+                        <td className="stk-action-cell">
+                          <button
+                            type="button"
+                            className="stk-button-text"
+                            onClick={() => setDetail({ open: true, data: row })}
+                          >
+                            <Eye size={14} /> View
+                          </button>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -764,6 +1098,219 @@ export default function StockReportPage() {
         </>
       ) : (
         <div className="stk-loading">Loading stock data...</div>
+      )}
+
+      {detail.open && detail.data && (
+        <div
+          className="stk-detail-overlay"
+          onClick={() => setDetail({ open: false, data: null })}
+        >
+          <aside
+            className="stk-detail-panel"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="stk-detail-head">
+              <div>
+                <span>
+                  {reportType === "movements" ? "MOVEMENT" : "TRANSFER"} DETAILS
+                </span>
+                <h2>
+                  {detail.data.reference_code ||
+                    detail.data.reference ||
+                    `Record #${detail.data.id}`}
+                </h2>
+                <p>
+                  {detail.data.material_name ||
+                    detail.data.product_name ||
+                    detail.data.item_summary ||
+                    "Inventory Record"}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => setDetail({ open: false, data: null })}
+              >
+                <X size={19} />
+              </button>
+            </div>
+
+            <div className="stk-detail-status-row">
+              <span
+                className={`stk-detail-status stk-detail-status-${normalize(detail.data.type || (detail.data.reversal_of_transfer_id ? "undo" : detail.data.reversed_by_transfer_id ? "undone" : "completed"))}`}
+              >
+                {reportType === "movements"
+                  ? MOVEMENT_LABELS[detail.data.type] || "Movement"
+                  : detail.data.reversal_of_transfer_id
+                    ? "Undo"
+                    : detail.data.reversed_by_transfer_id
+                      ? "Undone"
+                      : "Completed"}
+              </span>
+              <span>Record ID: {detail.data.id}</span>
+            </div>
+
+            <section className="stk-detail-grid">
+              {reportType === "movements" ? (
+                <>
+                  <div>
+                    <span>Source</span>
+                    <strong>
+                      {SOURCE_LABELS[detail.data.movement_source] ||
+                        "Manual entry"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Quantity</span>
+                    <strong>{getMovementQuantityLabel(detail.data)}</strong>
+                  </div>
+                  <div>
+                    <span>Recorded By</span>
+                    <strong>{detail.data.created_by_name || "System"}</strong>
+                  </div>
+                  <div>
+                    <span>Date & Time</span>
+                    <strong>{formatDateTime(detail.data.created_at)}</strong>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <span>From</span>
+                    <strong>
+                      {DIRECTIONS[detail.data.direction]?.from || "—"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>To</span>
+                    <strong>
+                      {DIRECTIONS[detail.data.direction]?.to || "—"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Total Quantity</span>
+                    <strong>{Number(detail.data.total_quantity || 0)}</strong>
+                  </div>
+                  <div>
+                    <span>Items</span>
+                    <strong>
+                      {detail.data.item_summary ||
+                        `${detail.data.item_count || 0} product(s)`}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Transferred By</span>
+                    <strong>
+                      {detail.data.transferred_by_name || "System"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Date & Time</span>
+                    <strong>{formatDateTime(detail.data.created_at)}</strong>
+                  </div>
+                </>
+              )}
+            </section>
+
+            {(() => {
+              const skipKeys = [
+                "id",
+                "type",
+                "movement_source",
+                "quantity",
+                "material_unit",
+                "created_by_name",
+                "created_at",
+                "updated_at",
+                "direction",
+                "total_quantity",
+                "item_summary",
+                "item_count",
+                "transferred_by_name",
+                "reference_code",
+                "reference",
+                "material_name",
+                "product_name",
+                "reversal_of_transfer_id",
+                "reversed_by_transfer_id",
+              ];
+              const extraKeys = Object.entries(detail.data).filter(
+                ([k, v]) =>
+                  v !== null &&
+                  v !== "" &&
+                  typeof v !== "object" &&
+                  !k.includes("url") &&
+                  !k.includes("json") &&
+                  !skipKeys.includes(k),
+              );
+
+              if (extraKeys.length > 0) {
+                return (
+                  <section className="stk-detail-section">
+                    <h3>Additional Details</h3>
+                    <div className="stk-detail-subgrid">
+                      {extraKeys.map(([k, v]) => {
+                        const isDate = k.includes("date") || k.includes("_at");
+                        const formattedDate = isDate ? formatDateTime(v) : "";
+                        const finalValue =
+                          isDate && formattedDate !== "—"
+                            ? formattedDate
+                            : String(v);
+                        return (
+                          <div key={k}>
+                            <span>{humanize(k)}</span>
+                            <strong>{finalValue}</strong>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                );
+              }
+              return null;
+            })()}
+
+            <div className="stk-detail-footer">
+              <button
+                type="button"
+                className="stk-button stk-button-secondary"
+                onClick={() => setDetail({ open: false, data: null })}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="stk-button stk-button-primary"
+                onClick={() => {
+                  if (!detail.data) return;
+
+                  try {
+                    exportStockRecordPdf(detail.data, reportType);
+
+                    toast.success(
+                      `${
+                        reportType === "movements"
+                          ? "Stock movement"
+                          : "Stock transfer"
+                      } record downloaded.`,
+                    );
+                  } catch (exportError) {
+                    console.error("Stock PDF Export Error:", exportError);
+
+                    toast.error(
+                      exportError?.message ||
+                        "Failed to export the selected stock record.",
+                    );
+                  }
+                }}
+              >
+                <FileDown size={14} /> Export Record
+              </button>
+            </div>
+          </aside>
+        </div>
       )}
     </div>
   );
