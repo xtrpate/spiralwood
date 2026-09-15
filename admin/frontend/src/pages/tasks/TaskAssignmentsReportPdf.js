@@ -1,4 +1,8 @@
 import { jsPDF } from "jspdf";
+import {
+  formatPHDateTime,
+  formatPHWallClockDateTime,
+} from "../../utils/dateTime";
 
 const normalize = (value) =>
   String(value || "")
@@ -15,18 +19,13 @@ const cleanText = (value, maxLength = 240) => {
 };
 
 const formatDateTime = (value) => {
-  if (!value) return "-";
+  const formatted = formatPHDateTime(value);
+  return formatted === "—" ? "-" : formatted;
+};
 
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-
-  return date.toLocaleString("en-PH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+const formatDueDateTime = (value) => {
+  const formatted = formatPHWallClockDateTime(value);
+  return formatted === "—" ? "-" : formatted;
 };
 
 const formatFilterDate = (value) => {
@@ -280,7 +279,7 @@ export function exportTaskAssignmentsReportPdf({
       cleanText(order?.currentStaffLabel || "Not assigned", 110),
       formatDateTime(order?.assignedAt),
       order?.startedAt ? formatDateTime(order.startedAt) : "Not started",
-      formatDateTime(order?.dueDate),
+      formatDueDateTime(order?.dueDate),
       progress,
       statusLabel(order),
       order?.complete && order?.completedAt ? formatDateTime(order.completedAt) : "-",

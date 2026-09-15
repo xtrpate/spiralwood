@@ -3,6 +3,11 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import api from "../../services/api";
+import {
+  formatPHWallClockDate,
+  parsePHWallClockDateTime,
+  parseSystemDateTime,
+} from "../../utils/dateTime";
 import useAuthStore from "../../store/authStore";
 import { extractCustomerBlueprintScene } from "../customer/customerBlueprintAdapter";
 import StaffProductionBlueprintViewer from "./StaffProductionBlueprintViewer";
@@ -83,32 +88,25 @@ const normalize = (value) =>
     .toLowerCase()
     .replace(/\s+/g, "_");
 
-const formatDate = (value) => {
-  if (!value) return "—";
+const formatDueDate = (value) => formatPHWallClockDate(value);
 
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-
-  return date.toLocaleDateString("en-PH", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+const getEventTimestamp = (value) => {
+  const parsed = parseSystemDateTime(value);
+  return parsed ? parsed.getTime() : 0;
 };
 
-const getSortableTimestamp = (value) => {
-  if (!value) return 0;
-  const parsed = new Date(value).getTime();
-  return Number.isNaN(parsed) ? 0 : parsed;
+const getDueTimestamp = (value) => {
+  const parsed = parsePHWallClockDateTime(value);
+  return parsed ? parsed.getTime() : 0;
 };
 
 const getLatestTaskTimestamp = (taskList = []) =>
   taskList.reduce((latest, task) => {
     const candidate = Math.max(
-      getSortableTimestamp(task?.created_at),
-      getSortableTimestamp(task?.assigned_at),
-      getSortableTimestamp(task?.updated_at),
-      getSortableTimestamp(task?.due_date),
+      getEventTimestamp(task?.created_at),
+      getEventTimestamp(task?.assigned_at),
+      getEventTimestamp(task?.updated_at),
+      getDueTimestamp(task?.due_date),
     );
 
     return candidate > latest ? candidate : latest;
@@ -571,7 +569,7 @@ export default function MyTasks() {
                       <div style={metaGrid}>
                         <Info
                           label="Due Date"
-                          value={formatDate(order.dueDate)}
+                          value={formatDueDate(order.dueDate)}
                           important
                         />
                         <Info
