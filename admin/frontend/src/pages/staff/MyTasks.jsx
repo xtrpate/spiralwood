@@ -4,8 +4,8 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import api from "../../services/api";
 import {
+  formatPHDateTime,
   formatPHWallClockDate,
-  parsePHWallClockDateTime,
   parseSystemDateTime,
 } from "../../utils/dateTime";
 import useAuthStore from "../../store/authStore";
@@ -90,23 +90,36 @@ const normalize = (value) =>
 
 const formatDueDate = (value) => formatPHWallClockDate(value);
 
+const formatMaterialQuantity = (value) => {
+  const quantity = Number(value);
+  if (!Number.isFinite(quantity)) return "—";
+  return new Intl.NumberFormat("en-PH", {
+    maximumFractionDigits: 2,
+  }).format(quantity);
+};
+
+const extractAdminProductionNote = (description) => {
+  const text = String(description || "").trim();
+  if (!text) return "";
+
+  const marker = "Admin production note:";
+  const markerIndex = text.toLowerCase().indexOf(marker.toLowerCase());
+
+  if (markerIndex === -1) return "";
+
+  return text.slice(markerIndex + marker.length).trim();
+};
+
 const getEventTimestamp = (value) => {
   const parsed = parseSystemDateTime(value);
   return parsed ? parsed.getTime() : 0;
 };
 
-const getDueTimestamp = (value) => {
-  const parsed = parsePHWallClockDateTime(value);
-  return parsed ? parsed.getTime() : 0;
-};
-
-const getLatestTaskTimestamp = (taskList = []) =>
+const getLatestAssignmentTimestamp = (taskList = []) =>
   taskList.reduce((latest, task) => {
     const candidate = Math.max(
       getEventTimestamp(task?.created_at),
       getEventTimestamp(task?.assigned_at),
-      getEventTimestamp(task?.updated_at),
-      getDueTimestamp(task?.due_date),
     );
 
     return candidate > latest ? candidate : latest;
@@ -272,20 +285,29 @@ export default function MyTasks() {
           orderNumber: task.order_number || "—",
           assignedByName: task.assigned_by_name || "—",
           dueDate: task.due_date || null,
-          adminNote: task.description || "",
+          adminNote: extractAdminProductionNote(task.description),
           rawTasks: [],
+          productionMaterials: [],
         });
       }
 
       const bucket = map.get(key);
       bucket.rawTasks.push(task);
 
+      if (
+        Array.isArray(task.production_materials) &&
+        task.production_materials.length > 0
+      ) {
+        bucket.productionMaterials = task.production_materials;
+      }
+
       if (!bucket.dueDate && task.due_date) {
         bucket.dueDate = task.due_date;
       }
 
-      if (!bucket.adminNote && task.description) {
-        bucket.adminNote = task.description;
+      const taskAdminNote = extractAdminProductionNote(task.description);
+      if (!bucket.adminNote && taskAdminNote) {
+        bucket.adminNote = taskAdminNote;
       }
 
       if (
@@ -344,12 +366,14 @@ export default function MyTasks() {
           overallStatus,
           ready,
           currentStep: getCurrentStep(steps),
-          latestTaskTimestamp: getLatestTaskTimestamp(order.rawTasks),
+          latestAssignmentTimestamp: getLatestAssignmentTimestamp(
+            order.rawTasks,
+          ),
         };
       })
       .sort((a, b) => {
-        if (b.latestTaskTimestamp !== a.latestTaskTimestamp) {
-          return b.latestTaskTimestamp - a.latestTaskTimestamp;
+        if (b.latestAssignmentTimestamp !== a.latestAssignmentTimestamp) {
+          return b.latestAssignmentTimestamp - a.latestAssignmentTimestamp;
         }
 
         const aOrderId = Number(a.orderId || 0);
@@ -619,6 +643,10 @@ export default function MyTasks() {
                         orderNumber={order.orderNumber}
                       />
 
+                      <ProductionMaterialsPanel
+                        materials={order.productionMaterials}
+                      />
+
                       {order.adminNote ? (
                         <div style={noteBox}>
                           <div style={noteLabel}>Admin Note</div>
@@ -711,6 +739,14 @@ export default function MyTasks() {
                                     }}
                                   >
                                     Hold reason: {step.task.hold_reason}
+                                  </div>
+                                ) : null}
+
+                                {step.status === "completed" &&
+                                step.task?.completed_at ? (
+                                  <div style={stepCompletedTime}>
+                                    Completed:{" "}
+                                    {formatPHDateTime(step.task.completed_at)}
                                   </div>
                                 ) : null}
                               </div>
@@ -958,6 +994,57 @@ export default function MyTasks() {
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function ProductionMaterialsPanel({ materials = [] }) {
+  const rows = Array.isArray(materials) ? materials : [];
+
+  return (
+    <div style={materialsPanel}>
+      <div style={materialsHeader}>
+        <div>
+          <div style={materialsTitle}>Required Materials</div>
+          <div style={materialsSubtitle}>
+            Materials recorded for this production order.
+          </div>
+        </div>
+        <span style={productionReadOnlyBadge}>Read Only</span>
+      </div>
+
+      {rows.length === 0 ? (
+        <div style={materialsEmpty}>
+          No recorded required inventory materials for this order.
+        </div>
+      ) : (
+        <div style={materialsTableWrap}>
+          <div style={materialsTable}>
+            <div style={{ ...materialsRow, ...materialsTableHeader }}>
+              <div>Material</div>
+              <div>Required Qty</div>
+              <div>Unit</div>
+            </div>
+
+            {rows.map((material, index) => (
+              <div
+                key={
+                  material?.material_id != null
+                    ? `material-${material.material_id}`
+                    : `material-row-${index}`
+                }
+                style={materialsRow}
+              >
+                <div style={materialsName}>
+                  {material?.material_name || "Material"}
+                </div>
+                <div>{formatMaterialQuantity(material?.quantity)}</div>
+                <div>{material?.unit || "unit"}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1424,6 +1511,90 @@ const viewButton = {
 const expandedArea = {
   padding: "0 16px 16px",
   borderTop: "1px solid #ededf0",
+};
+
+const materialsPanel = {
+  marginTop: 14,
+  border: "1px solid #dfdfe3",
+  background: "#ffffff",
+};
+
+const materialsHeader = {
+  minHeight: 52,
+  padding: "11px 12px",
+  boxSizing: "border-box",
+  borderBottom: "1px solid #ececef",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+};
+
+const materialsTitle = {
+  color: "#18181b",
+  fontSize: 13,
+  fontWeight: 700,
+  lineHeight: 1.3,
+};
+
+const materialsSubtitle = {
+  marginTop: 3,
+  color: "#77787e",
+  fontSize: 10.5,
+  fontWeight: 400,
+  lineHeight: 1.4,
+};
+
+const materialsTableWrap = {
+  overflowX: "auto",
+};
+
+const materialsTable = {
+  minWidth: 520,
+};
+
+const materialsRow = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) 120px 100px",
+  gap: 12,
+  minHeight: 38,
+  padding: "9px 12px",
+  boxSizing: "border-box",
+  alignItems: "center",
+  borderBottom: "1px solid #f0f0f2",
+  color: "#3f3f46",
+  fontSize: 11,
+  lineHeight: 1.35,
+};
+
+const materialsTableHeader = {
+  minHeight: 34,
+  background: "#fafafa",
+  color: "#71717a",
+  fontSize: 9.5,
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: "0.045em",
+};
+
+const materialsName = {
+  color: "#18181b",
+  fontWeight: 600,
+};
+
+const materialsEmpty = {
+  padding: "12px",
+  color: "#71717a",
+  fontSize: 11,
+  lineHeight: 1.45,
+};
+
+const stepCompletedTime = {
+  marginTop: 4,
+  color: "#52525b",
+  fontSize: 10.5,
+  fontWeight: 500,
+  lineHeight: 1.4,
 };
 
 const noteBox = {

@@ -148,11 +148,20 @@ const buildProductionOrderGroups = (taskList = []) => {
         orderNumber: task.order_number || "",
         customerName: task.customer_name || "Walk-in Customer",
         rawTasks: [],
+        productionMaterials: [],
       });
     }
 
     const bucket = buckets.get(key);
     bucket.rawTasks.push(task);
+
+    if (
+      Array.isArray(task.production_materials) &&
+      task.production_materials.length > 0
+    ) {
+      bucket.productionMaterials = task.production_materials;
+    }
+
     if (!bucket.orderId && task.order_id) bucket.orderId = task.order_id;
     if (!bucket.orderNumber && task.order_number)
       bucket.orderNumber = task.order_number;

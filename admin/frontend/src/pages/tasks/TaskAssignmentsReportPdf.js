@@ -28,6 +28,31 @@ const formatDueDateTime = (value) => {
   return formatted === "—" ? "-" : formatted;
 };
 
+const formatMaterialQuantity = (value) => {
+  const quantity = Number(value);
+  if (!Number.isFinite(quantity)) return "-";
+  return new Intl.NumberFormat("en-PH", {
+    maximumFractionDigits: 2,
+  }).format(quantity);
+};
+
+const stepStatusLabel = (step = {}) => {
+  if (!step?.task) return "Not assigned";
+
+  switch (normalize(step?.status)) {
+    case "pending":
+      return "Not Started";
+    case "in_progress":
+      return "In Progress";
+    case "blocked":
+      return "On Hold";
+    case "completed":
+      return "Done";
+    default:
+      return cleanText(step?.status || "Unknown", 30);
+  }
+};
+
 const formatFilterDate = (value) => {
   if (!value) return "All";
 
@@ -314,6 +339,246 @@ export function exportTaskAssignmentsReportPdf({
     });
 
     y += rowHeight;
+  });
+
+  // WISDOM DETAILED PRODUCTION EXPORT V1
+  // Preserve the compact filtered summary above, then provide the operational
+  // details needed by production: required materials and every production step.
+  const addDetailsPage = () => {
+    doc.addPage();
+    y = 12;
+
+    doc.setTextColor(25, 25, 25);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text("PRODUCTION ORDER DETAILS", margin, y);
+    y += 7;
+  };
+
+  const ensureDetailsSpace = (requiredHeight) => {
+    if (y + requiredHeight > pageHeight - footerReserve) {
+      addDetailsPage();
+      return true;
+    }
+    return false;
+  };
+
+  addDetailsPage();
+
+  records.forEach((order, orderIndex) => {
+    const orderLabel = order?.orderNumber
+      ? `#${order.orderNumber}`
+      : order?.orderId
+        ? `Order #${order.orderId}`
+        : "-";
+    const materials = Array.isArray(order?.productionMaterials)
+      ? order.productionMaterials
+      : [];
+    const steps = Array.isArray(order?.steps) ? order.steps : [];
+    const progress = `${Number(order?.completedCount || 0)}/${Number(
+      requiredStepCount || 5,
+    )}`;
+
+    const estimatedOrderHeight =
+      42 + Math.max(materials.length, 1) * 6.5 + Math.max(steps.length, 1) * 6.3;
+
+    ensureDetailsSpace(Math.min(estimatedOrderHeight, 95));
+
+    doc.setFillColor(35, 35, 35);
+    doc.setDrawColor(35, 35, 35);
+    doc.rect(margin, y, contentWidth, 8, "F");
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.6);
+    doc.text(orderLabel, margin + 2, y + 5.2);
+    doc.text(statusLabel(order), pageWidth - margin - 2, y + 5.2, {
+      align: "right",
+    });
+    y += 10;
+
+    doc.setTextColor(35, 35, 35);
+    doc.setFontSize(6.8);
+
+    const detailInfo = [
+      ["Customer", cleanText(order?.customerName || "Walk-in Customer", 75)],
+      ["Current Staff", cleanText(order?.currentStaffLabel || "Not assigned", 75)],
+      ["Progress", progress],
+      ["Due", formatDueDateTime(order?.dueDate)],
+      [
+        "Completed",
+        order?.complete && order?.completedAt
+          ? formatDateTime(order.completedAt)
+          : "-",
+      ],
+    ];
+
+    const infoWidth = contentWidth / detailInfo.length;
+    detailInfo.forEach(([label, value], index) => {
+      const x = margin + index * infoWidth;
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(95, 95, 95);
+      doc.text(label, x, y + 2.5);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(30, 30, 30);
+      const lines = doc.splitTextToSize(String(value), Math.max(12, infoWidth - 2));
+      doc.text(lines.slice(0, 2), x, y + 6.2);
+    });
+    y += 13;
+
+    ensureDetailsSpace(13);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.4);
+    doc.setTextColor(25, 25, 25);
+    doc.text("REQUIRED MATERIALS", margin, y);
+    y += 3.5;
+
+    const materialWidths = [contentWidth - 95, 45, 50];
+    const materialHeaders = ["Material", "Required Qty", "Unit"];
+
+    doc.setFillColor(247, 247, 247);
+    doc.setDrawColor(220, 220, 220);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.3);
+    doc.setTextColor(80, 80, 80);
+
+    let materialX = margin;
+    materialHeaders.forEach((header, index) => {
+      doc.rect(materialX, y, materialWidths[index], 6, "FD");
+      doc.text(header, materialX + 1.2, y + 4, {
+        baseline: "alphabetic",
+      });
+      materialX += materialWidths[index];
+    });
+    y += 6;
+
+    if (materials.length === 0) {
+      ensureDetailsSpace(7);
+      doc.setDrawColor(225, 225, 225);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6.4);
+      doc.setTextColor(95, 95, 95);
+      doc.rect(margin, y, contentWidth, 7);
+      doc.text(
+        "No recorded required inventory materials for this order.",
+        margin + 1.2,
+        y + 4.5,
+      );
+      y += 7;
+    } else {
+      materials.forEach((material) => {
+        const nameLines = doc.splitTextToSize(
+          cleanText(material?.material_name || "Material", 120),
+          materialWidths[0] - 2.4,
+        );
+        const rowHeight = Math.max(6.5, nameLines.length * 3 + 2.2);
+
+        const movedToNewPage = ensureDetailsSpace(rowHeight + 8);
+        if (movedToNewPage) {
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(7);
+          doc.setTextColor(35, 35, 35);
+          doc.text(`${orderLabel} — Materials continued`, margin, y);
+          y += 4;
+        }
+
+        const materialCells = [
+          nameLines,
+          [formatMaterialQuantity(material?.quantity)],
+          [cleanText(material?.unit || "unit", 30)],
+        ];
+
+        doc.setDrawColor(225, 225, 225);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(6.4);
+        doc.setTextColor(35, 35, 35);
+
+        let x = margin;
+        materialCells.forEach((lines, index) => {
+          doc.rect(x, y, materialWidths[index], rowHeight);
+          doc.text(lines, x + 1.2, y + 4);
+          x += materialWidths[index];
+        });
+        y += rowHeight;
+      });
+    }
+
+    y += 4;
+    ensureDetailsSpace(42);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.4);
+    doc.setTextColor(25, 25, 25);
+    doc.text("PRODUCTION STEPS", margin, y);
+    y += 3.5;
+
+    const stepWidths = [12, 92, 48, contentWidth - 152];
+    const stepHeaders = ["#", "Step", "Status", "Completed"];
+
+    doc.setFillColor(247, 247, 247);
+    doc.setDrawColor(220, 220, 220);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.3);
+    doc.setTextColor(80, 80, 80);
+
+    let stepX = margin;
+    stepHeaders.forEach((header, index) => {
+      doc.rect(stepX, y, stepWidths[index], 6, "FD");
+      doc.text(header, stepX + 1.2, y + 4);
+      stepX += stepWidths[index];
+    });
+    y += 6;
+
+    const stepRows = steps.length
+      ? steps
+      : Array.from({ length: Number(requiredStepCount || 5) }, (_, index) => ({
+          stepLabel: `Step ${index + 1}`,
+          task: null,
+          status: "pending",
+        }));
+
+    stepRows.forEach((step, index) => {
+      const completedText =
+        normalize(step?.status) === "completed" && step?.task?.completed_at
+          ? formatDateTime(step.task.completed_at)
+          : "-";
+
+      const cells = [
+        String(index + 1),
+        cleanText(step?.stepLabel || `Step ${index + 1}`, 70),
+        stepStatusLabel(step),
+        completedText,
+      ];
+
+      const lineSets = cells.map((cell, cellIndex) =>
+        doc.splitTextToSize(
+          String(cell),
+          Math.max(5, stepWidths[cellIndex] - 2.4),
+        ),
+      );
+      const maxLines = Math.max(...lineSets.map((lines) => lines.length), 1);
+      const rowHeight = Math.max(6.3, maxLines * 3 + 2.1);
+
+      ensureDetailsSpace(rowHeight + 2);
+
+      doc.setDrawColor(225, 225, 225);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6.4);
+      doc.setTextColor(35, 35, 35);
+
+      let x = margin;
+      lineSets.forEach((lines, cellIndex) => {
+        doc.rect(x, y, stepWidths[cellIndex], rowHeight);
+        doc.text(lines, x + 1.2, y + 4);
+        x += stepWidths[cellIndex];
+      });
+
+      y += rowHeight;
+    });
+
+    if (orderIndex < records.length - 1) {
+      y += 7;
+    }
   });
 
   const totalPages = doc.getNumberOfPages();
