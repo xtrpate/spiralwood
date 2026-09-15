@@ -1,6 +1,9 @@
 // controllers/orderController.js – Order Management (Admin) [SCHEMA-CORRECTED]
 // controllers/orderController.js – Order Management (Admin) [SCHEMA-CORRECTED]
 const pool = require("../../config/db");
+const {
+  getPhilippineDateBoundsUtc,
+} = require("../../utils/philippineTime");
 const { signUploadPath } = require("../../utils/signedUrl");
 const {
   storeUploadBuffer,
@@ -634,8 +637,10 @@ exports.getAll = async (req, res) => {
       params.push(channel.toLowerCase());
     }
     if (from && to) {
-      where.push("DATE(o.created_at) BETWEEN ? AND ?");
-      params.push(from, to);
+      const { startUtc } = getPhilippineDateBoundsUtc(from);
+      const { nextStartUtc } = getPhilippineDateBoundsUtc(to);
+      where.push("o.created_at >= ? AND o.created_at < ?");
+      params.push(startUtc, nextStartUtc);
     }
     if (search && String(search).trim()) {
       const term = String(search).trim();

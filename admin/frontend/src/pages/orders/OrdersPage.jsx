@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
+import { formatPHDate } from "../../utils/dateTime";
 import { getSocket, subscribeSocketReady } from "../../services/socket";
 import toast from "react-hot-toast";
 import { Package2, Search } from "lucide-react";
@@ -150,16 +151,7 @@ const formatMoney = (value) =>
     maximumFractionDigits: 2,
   })}`;
 
-const formatDate = (value) => {
-  if (!value) return "—";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "—";
-  return parsed.toLocaleDateString("en-PH", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-};
+const formatDate = (value) => formatPHDate(value);
 
 const getChannelMeta = (value) => {
   const key = normalize(value);
