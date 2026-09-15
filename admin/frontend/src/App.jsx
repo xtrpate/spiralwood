@@ -44,6 +44,7 @@ import DailyStockInReportPage from "./pages/reports/DailyStockInReportPage";
 import DeliveryReportPage from "./pages/reports/DeliveryReportPage";
 import OperationsReportPage from "./pages/reports/OperationsReportPage";
 import StockReportPage from "./pages/reports/StockReportPage";
+import TransactionReportPage from "./pages/reports/TransactionReportPage";
 import WarrantyPage from "./pages/warranty/WarrantyPage";
 import CustomersPage from "./pages/customers/CustomersPage";
 import UsersPage from "./pages/users/UsersPage";
@@ -715,6 +716,10 @@ export default function App() {
                   element={<OperationsReportPage />}
                 />
                 <Route path="reports/stock" element={<StockReportPage />} />
+                <Route
+                  path="reports/transactions"
+                  element={<TransactionReportPage />}
+                />
                 <Route path="sales" element={<SalesReportPage />} />
                 <Route path="pos-qr-recovery" element={<PosQrRecoveryPage />} />
                 <Route path="warranty" element={<WarrantyPage />} />

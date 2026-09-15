@@ -215,6 +215,12 @@ const NAV_ITEMS = [
     roles: ["admin", "staff"],
   },
   {
+    label: "Transaction Report",
+    path: "/admin/reports/transactions",
+    icon: ArrowLeftRight,
+    roles: ["admin", "staff"],
+  },
+  {
     label: "Sales Report",
     path: "/admin/sales",
     permission: "sales_report.view",
