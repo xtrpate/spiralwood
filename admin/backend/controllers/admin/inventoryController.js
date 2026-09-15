@@ -533,12 +533,14 @@ exports.getRawMaterials = async (req, res) => {
       params.push(category_id);
     }
     if (from) {
-      where.push("DATE(rm.created_at) >= ?");
-      params.push(from);
+      const { startUtc } = getPhilippineDateBoundsUtc(from);
+      where.push("rm.created_at >= ?");
+      params.push(startUtc);
     }
     if (to) {
-      where.push("DATE(rm.created_at) <= ?");
-      params.push(to);
+      const { nextStartUtc } = getPhilippineDateBoundsUtc(to);
+      where.push("rm.created_at < ?");
+      params.push(nextStartUtc);
     }
 
     const archiveFilter = String(archive_status || "active").toLowerCase();

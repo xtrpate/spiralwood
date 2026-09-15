@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
+import { formatPHDateTime, PH_TIME_ZONE } from "../../utils/dateTime";
 import toast from "react-hot-toast";
 import { RefreshCw } from "lucide-react";
 
@@ -54,17 +55,36 @@ const sanitizeQuantityInput = (value, allowDecimal) => {
   return `${whole}.${fraction}`;
 };
 
-const formatDateTime = (value) => {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString("en-PH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
+const formatDateTime = (value) =>
+  formatPHDateTime(value, {
     hour: "2-digit",
-    minute: "2-digit",
   });
+
+const getPhilippineDateKey = (value = new Date()) => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: PH_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(value);
+
+  const byType = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+
+  return [byType.year, byType.month, byType.day].join("-");
+};
+
+const shiftDateKey = (dateKey, days) => {
+  const [year, month, day] = String(dateKey)
+    .split("-")
+    .map(Number);
+
+  return new Date(Date.UTC(year, month - 1, day + days))
+    .toISOString()
+    .slice(0, 10);
 };
 
 const formatStatus = (value) => {
@@ -214,29 +234,22 @@ export default function RawMaterialsPage() {
   const [refreshing, setRefreshing] = useState(false);
 
   const handleDatePreset = (preset) => {
-    const today = new Date();
-    today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+    const today = getPhilippineDateKey();
     let fromStr = "";
     let toStr = "";
 
     if (preset === "today") {
-      fromStr = today.toISOString().split("T")[0];
-      toStr = fromStr;
+      fromStr = today;
+      toStr = today;
     } else if (preset === "yesterday") {
-      const y = new Date(today);
-      y.setDate(y.getDate() - 1);
-      fromStr = y.toISOString().split("T")[0];
+      fromStr = shiftDateKey(today, -1);
       toStr = fromStr;
     } else if (preset === "last_7_days") {
-      const y = new Date(today);
-      y.setDate(y.getDate() - 7);
-      fromStr = y.toISOString().split("T")[0];
-      toStr = today.toISOString().split("T")[0];
+      fromStr = shiftDateKey(today, -6);
+      toStr = today;
     } else if (preset === "last_30_days") {
-      const y = new Date(today);
-      y.setDate(y.getDate() - 30);
-      fromStr = y.toISOString().split("T")[0];
-      toStr = today.toISOString().split("T")[0];
+      fromStr = shiftDateKey(today, -29);
+      toStr = today;
     }
 
     setFilters((current) => ({
