@@ -25,13 +25,16 @@ export function moveCameraFromKeyboard({
   const up = new THREE.Vector3(0, 1, 0);
 
   camera.getWorldDirection(forward);
-  forward.y = 0;
 
   if (forward.lengthSq() > 0) {
     forward.normalize();
   }
 
-  right.crossVectors(forward, up).normalize();
+  right.crossVectors(forward, up);
+
+  if (right.lengthSq() > 0) {
+    right.normalize();
+  }
 
   if (keys["KeyW"]) moveDir.add(forward);
   if (keys["KeyS"]) moveDir.sub(forward);

@@ -511,7 +511,7 @@
 }
 .stk-button-text {
   display: inline-flex;
-  alignitems: center;
+  align-items: center;
   gap: 6px;
   padding: 6px 10px;
   background: transparent;

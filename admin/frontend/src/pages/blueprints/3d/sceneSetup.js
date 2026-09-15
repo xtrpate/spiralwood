@@ -187,13 +187,13 @@ export function createBlueprintSceneFoundation({
   // 1. LIMIT HOW FAR THEY CAN ZOOM OUT (World Width 6400 + 100 buffer)
   orbit.maxDistance = 4500;
 
-  orbit.maxPolarAngle = Math.PI / 2.02;
+  orbit.maxPolarAngle = Math.PI / 0.05;
   orbit.target.set(0, 160, 0);
   orbit.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
   orbit.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
   orbit.mouseButtons.RIGHT = THREE.MOUSE.PAN;
 
-  // 2. LIMIT CAMERA PANNING BOUNDARY (Half of 6400/5200 + 100 buffer)
+  // 2. LIMIT CAMERA PANNING BOUNDARY (X and Z only)
   const limitX = 3200;
   const limitZ = 3200;
 
@@ -204,8 +204,8 @@ export function createBlueprintSceneFoundation({
     if (orbit.target.z > limitZ) orbit.target.z = limitZ;
     else if (orbit.target.z < -limitZ) orbit.target.z = -limitZ;
 
-    // Prevents the camera from panning underneath the floor
-    if (orbit.target.y < 0) orbit.target.y = 0;
+    // Y-axis is intentionally unrestricted.
+    // The camera may move below the blueprint floor.
   });
 
   orbit.update();
