@@ -3,10 +3,16 @@ import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import { formatPHDateTime, PH_TIME_ZONE } from "../../utils/dateTime";
 import toast from "react-hot-toast";
-import * as XLSX from "xlsx-js-style";
 import { FileDown } from "lucide-react";
+import {
+  exportStockMovementReport,
+  STOCK_MOVEMENT_EXPORT_FORMATS,
+} from "../../utils/stockMovementExport";
 
 const PAGE_SIZE = 30;
+const EXPORT_PAGE_SIZE = 200;
+const MAX_EXPORT_ROWS = 25000;
+const MAX_DOCUMENT_EXPORT_ROWS = 5000;
 
 // WISDOM STOCK MOVEMENTS UI POLISH V1
 const SOURCE_LABELS = {
@@ -176,6 +182,7 @@ export default function StockMovementPage() {
   const [exporting, setExporting] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportScope, setExportScope] = useState("filtered");
+  const [exportFormat, setExportFormat] = useState("xlsx");
   const [itemKind, setItemKind] = useState("material");
 
   const handleDatePreset = (preset) => {
@@ -347,83 +354,172 @@ export default function StockMovementPage() {
     });
   };
 
-  const handleExportReport = async () => {
-    setExporting(true);
-    try {
-      const params =
-        exportScope === "filtered"
-          ? { ...filters, limit: 5000 }
-          : { limit: 5000 };
+  // WISDOM STOCK MOVEMENT EXPORT E1 V1
+  const buildExportQuery = () => {
+    if (exportScope === "all") return {};
 
-      const { data } = await api.get("/inventory/movements", { params });
-      const exportRows = data.rows || [];
+    return {
+      search: filters.search.trim() || undefined,
+      type: filters.type || undefined,
+      source: filters.source || undefined,
+      from: filters.from || undefined,
+      to: filters.to || undefined,
+    };
+  };
+
+  const fetchAllStockMovementExportRows = async () => {
+    const baseParams = buildExportQuery();
+    let exportPage = 1;
+    let expectedTotal = null;
+    let collected = [];
+
+    while (true) {
+      const { data } = await api.get("/inventory/movements", {
+        params: {
+          ...baseParams,
+          page: exportPage,
+          limit: EXPORT_PAGE_SIZE,
+        },
+      });
+
+      const pageRows = Array.isArray(data?.rows) ? data.rows : [];
+      const serverTotal = Number(data?.total || 0);
+
+      if (expectedTotal === null) {
+        expectedTotal = serverTotal;
+
+        if (expectedTotal > MAX_EXPORT_ROWS) {
+          throw new Error(
+            `This export contains ${expectedTotal.toLocaleString(
+              "en-PH",
+            )} records. Narrow the filters to ${MAX_EXPORT_ROWS.toLocaleString(
+              "en-PH",
+            )} records or fewer before exporting.`,
+          );
+        }
+      } else if (serverTotal !== expectedTotal) {
+        throw new Error(
+          "Stock movement records changed while the export was being prepared. Please try again.",
+        );
+      }
+
+      collected = [...collected, ...pageRows];
+
+      if (collected.length >= expectedTotal) break;
+      if (pageRows.length === 0) break;
+
+      exportPage += 1;
+
+      if (exportPage > Math.ceil(MAX_EXPORT_ROWS / EXPORT_PAGE_SIZE) + 1) {
+        throw new Error("Export paging exceeded the safe page limit.");
+      }
+    }
+
+    const uniqueRows = [];
+    const seen = new Set();
+
+    collected.forEach((row, index) => {
+      const key =
+        row?.id !== undefined && row?.id !== null
+          ? `id:${row.id}`
+          : `fallback:${index}:${row?.created_at || ""}:${row?.reference || ""}`;
+
+      if (seen.has(key)) return;
+      seen.add(key);
+      uniqueRows.push(row);
+    });
+
+    if (uniqueRows.length !== Number(expectedTotal || 0)) {
+      throw new Error(
+        "The movement history changed during export, so a complete snapshot could not be built. Please export again.",
+      );
+    }
+
+    return uniqueRows;
+  };
+
+  const handleExportReport = async () => {
+    if (exporting) return;
+
+    setExporting(true);
+
+    try {
+      const exportRows = await fetchAllStockMovementExportRows();
+
       if (!exportRows.length) {
         toast.error("No movements found to export.");
         return;
       }
 
-      const wb = XLSX.utils.book_new();
-      const exportData = [
-        [{ v: "STOCK MOVEMENT HISTORY REPORT", s: { font: { bold: true } } }],
-        [],
-        [
-          "Date",
-          "Movement",
-          "Source",
-          "Item",
-          "Specification",
-          "Quantity",
-          "Order",
-          "Reference",
-          "Notes",
-          "Recorded By",
-        ].map((t) => ({
-          v: t,
-          s: {
-            font: { bold: true, color: { rgb: "FFFFFF" } },
-            fill: { fgColor: { rgb: "000000" } },
-          },
-        })),
-      ];
+      if (
+        ["pdf", "docx"].includes(exportFormat) &&
+        exportRows.length > MAX_DOCUMENT_EXPORT_ROWS
+      ) {
+        throw new Error(
+          `${STOCK_MOVEMENT_EXPORT_FORMATS[exportFormat].label} export supports up to ${MAX_DOCUMENT_EXPORT_ROWS.toLocaleString(
+            "en-PH",
+          )} records at a time. Narrow the filters or use Excel/CSV for larger datasets.`,
+        );
+      }
 
-      exportRows.forEach((row) => {
-        const qtyLabel = getMovementQuantityLabel(row);
-        const specification = formatMaterialSpecification(row);
-        exportData.push([
-          formatDateTime(row.created_at),
-          String(row.type || "").toUpperCase(),
-          SOURCE_LABELS[row.movement_source] || "Manual entry",
-          row.material_name || row.product_name || "—",
-          specification || "—",
-          qtyLabel,
-          row.order_number || row.order_id || "—",
-          row.reference || "—",
-          row.notes || "—",
-          row.created_by_name || "—",
-        ]);
+      const reportRows = exportRows.map((row) => ({
+        date: formatDateTime(row.created_at),
+        movement: MOVEMENT_LABELS[row.type] || "Movement",
+        source: SOURCE_LABELS[row.movement_source] || "Manual entry",
+        item: row.material_name || row.product_name || "—",
+        specification: formatMaterialSpecification(row) || "—",
+        quantity: getMovementQuantityLabel(row),
+        order: row.order_number || row.order_id || "—",
+        reference: row.reference || "—",
+        notes: row.notes || "—",
+        recordedBy: row.created_by_name || "—",
+      }));
+
+      const dateRange =
+        filters.from || filters.to
+          ? `${filters.from || "Beginning"} to ${filters.to || "Today"}`
+          : "All time";
+
+      const exportFilters =
+        exportScope === "filtered"
+          ? [
+              ["Search", filters.search.trim() || "All"],
+              [
+                "Movement",
+                filters.type
+                  ? MOVEMENT_LABELS[filters.type] || filters.type
+                  : "All movements",
+              ],
+              [
+                "Source",
+                filters.source
+                  ? SOURCE_LABELS[filters.source] || filters.source
+                  : "All sources",
+              ],
+              ["Date Range", dateRange],
+            ]
+          : [];
+
+      await exportStockMovementReport({
+        format: exportFormat,
+        rows: reportRows,
+        meta: {
+          scopeLabel:
+            exportScope === "filtered" ? "Current filters" : "All records",
+          generatedAt: formatDateTime(new Date().toISOString()),
+          dateKey: getPhilippineDateKey(),
+          filters: exportFilters,
+        },
       });
 
-      const ws = XLSX.utils.aoa_to_sheet(exportData);
-      ws["!cols"] = [
-        { wch: 25 },
-        { wch: 15 },
-        { wch: 20 },
-        { wch: 35 },
-        { wch: 32 },
-        { wch: 15 },
-        { wch: 20 },
-        { wch: 20 },
-        { wch: 30 },
-        { wch: 20 },
-      ];
-      XLSX.utils.book_append_sheet(wb, ws, "Stock Movements");
-      XLSX.writeFile(
-        wb,
-        `Stock-Movements-Report-${getPhilippineDateKey()}.xlsx`,
+      toast.success(
+        `${STOCK_MOVEMENT_EXPORT_FORMATS[exportFormat].label} report exported successfully.`,
       );
-      toast.success("Excel report exported successfully.");
+      setExportOpen(false);
     } catch (err) {
-      toast.error("Failed to export report.");
+      if (err?.name !== "AbortError") {
+        toast.error(err?.message || "Failed to export report.");
+      }
     } finally {
       setExporting(false);
     }
@@ -1333,8 +1429,8 @@ export default function StockMovementPage() {
             </h2>
 
             <p style={{ ...dialogText, marginBottom: 16 }}>
-              Create an Excel report mapping the exact physical stock
-              adjustments within the warehouse.
+              Choose the scope and file format. Every format uses the same
+              stock movement dataset and Philippine-time filters.
             </p>
 
             <div style={exportScopeList}>
@@ -1374,12 +1470,61 @@ export default function StockMovementPage() {
               </button>
             </div>
 
+            <div style={{ marginTop: 14 }}>
+              <div style={exportContentsLabel}>File format</div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 8,
+                  marginTop: 8,
+                }}
+              >
+                {Object.entries(STOCK_MOVEMENT_EXPORT_FORMATS).map(
+                  ([value, option]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setExportFormat(value)}
+                      style={{
+                        ...exportScopeOption,
+                        ...(exportFormat === value
+                          ? exportScopeOptionSelected
+                          : {}),
+                        padding: "10px 12px",
+                        minHeight: 66,
+                      }}
+                      disabled={exporting}
+                    >
+                      <span style={exportScopeTitle}>
+                        {option.label}{" "}
+                        <span
+                          style={{
+                            fontWeight: 500,
+                            color: "#71717a",
+                            textTransform: "lowercase",
+                          }}
+                        >
+                          ({option.extension})
+                        </span>
+                      </span>
+                      <span style={exportScopeMeta}>{option.description}</span>
+                    </button>
+                  ),
+                )}
+              </div>
+            </div>
+
             <div style={exportContents}>
-              <div style={exportContentsLabel}>Included in Excel</div>
+              <div style={exportContentsLabel}>
+                Included in{" "}
+                {STOCK_MOVEMENT_EXPORT_FORMATS[exportFormat]?.label || "export"}
+              </div>
 
               <div style={exportContentsText}>
-                Date, movement type, source context, item specification,
-                adjusted quantity, related order, and auditing notes.
+                {exportFormat === "csv"
+                  ? "Raw detailed rows using the same selected scope, filters, order, quantities, references, and Philippine-time dates."
+                  : "Date, movement type, source context, item specification, adjusted quantity, related order, references, and auditing notes."}
               </div>
             </div>
 
@@ -1408,7 +1553,9 @@ export default function StockMovementPage() {
               >
                 <FileDown size={14} strokeWidth={1.8} aria-hidden="true" />
 
-                {exporting ? "Preparing..." : "Export Excel"}
+                {exporting
+                  ? "Preparing..."
+                  : `Export ${STOCK_MOVEMENT_EXPORT_FORMATS[exportFormat]?.label || "Report"}`}
               </button>
             </div>
           </div>
