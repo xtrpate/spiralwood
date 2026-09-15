@@ -26,9 +26,46 @@ function getBackupDirectory() {
   return path.resolve(backendRoot, configured);
 }
 
+// WISDOM BACKUP SERIALIZATION SAFETY V1.0.4
+// Keep SQL literals round-trip safe for JSON, generated columns, binary data,
+// exact DECIMAL/BIGINT values, control characters, and UTC TIMESTAMP restores.
+function quoteSqlIdentifier(value) {
+  return `\`${String(value).replace(/\`/g, "\`\`")}\``;
+}
+
+function serializeSqlString(value) {
+  return String(value)
+    .replace(/\\/g, "\\\\")
+    .replace(/\u0000/g, "\\0")
+    .replace(/\u0008/g, "\\b")
+    .replace(/\t/g, "\\t")
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\u001a/g, "\\Z")
+    .replace(/'/g, "\\'");
+}
+
 function serializeSqlValue(value) {
   if (value === null || value === undefined) return "NULL";
-  if (typeof value === "number") return String(value);
+
+  if (Buffer.isBuffer(value)) {
+    return `X'${value.toString("hex")}'`;
+  }
+
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new Error("Cannot serialize a non-finite numeric backup value.");
+    }
+    return String(value);
+  }
+
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "1" : "0";
+  }
 
   if (value instanceof Date) {
     return `'${value
@@ -37,9 +74,54 @@ function serializeSqlValue(value) {
       .replace("T", " ")}'`;
   }
 
-  return `'${String(value)
-    .replace(/\\/g, "\\\\")
-    .replace(/'/g, "\\'")}'`;
+  if (typeof value === "object") {
+    const json = JSON.stringify(value);
+    if (json === undefined) {
+      throw new Error("Cannot serialize an unsupported structured backup value.");
+    }
+    return `'${serializeSqlString(json)}'`;
+  }
+
+  return `'${serializeSqlString(value)}'`;
+}
+
+function getBaseMysqlType(typeValue) {
+  return String(typeValue || "")
+    .trim()
+    .toLowerCase()
+    .split("(")[0]
+    .trim();
+}
+
+// WISDOM BACKUP GENERATED COLUMN CLASSIFICATION V1.0.5
+// DEFAULT_GENERATED is an ordinary default expression. Only actual
+// VIRTUAL/STORED GENERATED columns must be excluded from INSERT statements.
+function isGeneratedColumn(column) {
+  const extra = String(column?.Extra || "").toLowerCase();
+
+  return (
+    extra.includes("virtual generated") ||
+    extra.includes("stored generated")
+  );
+}
+
+function buildBackupSelectExpression(column) {
+  const identifier = quoteSqlIdentifier(column.Field);
+  const baseType = getBaseMysqlType(column.Type);
+
+  if (baseType === "json") {
+    return `CAST(${identifier} AS CHAR CHARACTER SET utf8mb4) AS ${identifier}`;
+  }
+
+  if (
+    baseType === "decimal" ||
+    baseType === "numeric" ||
+    baseType === "bigint"
+  ) {
+    return `CAST(${identifier} AS CHAR) AS ${identifier}`;
+  }
+
+  return identifier;
 }
 
 async function generateSQLDump(conn, filePath) {
@@ -49,51 +131,127 @@ async function generateSQLDump(conn, filePath) {
   lines.push(`-- Generated: ${new Date().toISOString()}`);
   lines.push(`-- Database: ${process.env.DB_NAME || "wisdom_db"}`);
   lines.push("");
+
+  lines.push(
+    "SET @WISDOM_OLD_FOREIGN_KEY_CHECKS=@@SESSION.foreign_key_checks;",
+  );
+  lines.push("SET @WISDOM_OLD_SQL_MODE=@@SESSION.sql_mode;");
+  lines.push("SET @WISDOM_OLD_TIME_ZONE=@@SESSION.time_zone;");
   lines.push("SET FOREIGN_KEY_CHECKS=0;");
-  lines.push('SET SQL_MODE="NO_AUTO_VALUE_ON_ZERO";');
+  lines.push(
+    "SET SESSION sql_mode='NO_AUTO_VALUE_ON_ZERO,ANSI_QUOTES';",
+  );
+  lines.push("SET SESSION time_zone='+00:00';");
   lines.push("");
 
   const [tables] = await conn.query("SHOW TABLES");
   const tableNames = tables.map((row) => Object.values(row)[0]);
 
   for (const table of tableNames) {
+    const tableIdentifier = quoteSqlIdentifier(table);
+
     const [[createRow]] = await conn.query(
-      `SHOW CREATE TABLE \`${table}\``,
+      `SHOW CREATE TABLE ${tableIdentifier}`,
     );
 
     lines.push(`-- Table: ${table}`);
-    lines.push(`DROP TABLE IF EXISTS \`${table}\`;`);
+    lines.push(`DROP TABLE IF EXISTS ${tableIdentifier};`);
     lines.push(createRow["Create Table"] + ";");
     lines.push("");
 
-    const [rows] = await conn.query(`SELECT * FROM \`${table}\``);
-    if (rows.length === 0) continue;
+    const [columnRows] = await conn.query(
+      `SHOW FULL COLUMNS FROM ${tableIdentifier}`,
+    );
 
-    const columns = Object.keys(rows[0])
-      .map((column) => `\`${column}\``)
+    const insertableColumns = columnRows.filter(
+      (column) => !isGeneratedColumn(column),
+    );
+
+    if (insertableColumns.length === 0) {
+      lines.push("");
+      continue;
+    }
+
+    const selectList = insertableColumns
+      .map(buildBackupSelectExpression)
+      .join(", ");
+
+    const [rows] = await conn.query(
+      `SELECT ${selectList} FROM ${tableIdentifier}`,
+    );
+
+    if (rows.length === 0) {
+      lines.push("");
+      continue;
+    }
+
+    const columns = insertableColumns
+      .map((column) => quoteSqlIdentifier(column.Field))
       .join(", ");
 
     const chunkSize = 100;
     for (let index = 0; index < rows.length; index += chunkSize) {
       const chunk = rows.slice(index, index + chunkSize);
+
       const values = chunk
         .map(
           (row) =>
             "(" +
-            Object.values(row).map(serializeSqlValue).join(", ") +
+            insertableColumns
+              .map((column) => serializeSqlValue(row[column.Field]))
+              .join(", ") +
             ")",
         )
         .join(",\n");
 
-      lines.push(`INSERT INTO \`${table}\` (${columns}) VALUES`);
+      lines.push(`INSERT INTO ${tableIdentifier} (${columns}) VALUES`);
       lines.push(values + ";");
     }
 
     lines.push("");
   }
 
-  lines.push("SET FOREIGN_KEY_CHECKS=1;");
+  lines.push(
+    "SET FOREIGN_KEY_CHECKS=@WISDOM_OLD_FOREIGN_KEY_CHECKS;",
+  );
+  lines.push("SET SESSION time_zone=@WISDOM_OLD_TIME_ZONE;");
+  lines.push("SET SESSION sql_mode=@WISDOM_OLD_SQL_MODE;");
+
   fs.writeFileSync(filePath, lines.join("\n"), "utf8");
+}
+
+// WISDOM BACKUP CONSISTENT SNAPSHOT V1.0.6
+// Read the live InnoDB data through one REPEATABLE READ consistent snapshot.
+async function generateConsistentSQLDump(conn, filePath) {
+  let snapshotStarted = false;
+
+  try {
+    await conn.query(
+      "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ",
+    );
+    await conn.query(
+      "START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY",
+    );
+    snapshotStarted = true;
+
+    await generateSQLDump(conn, filePath);
+
+    await conn.commit();
+    snapshotStarted = false;
+  } catch (error) {
+    if (snapshotStarted) {
+      try {
+        await conn.rollback();
+      } catch (rollbackError) {
+        console.error(
+          "[BACKUP] Failed to roll back consistent snapshot:",
+          rollbackError.message,
+        );
+      }
+    }
+
+    throw error;
+  }
 }
 
 async function hasRecentAutomaticBackup(conn) {
@@ -134,9 +292,6 @@ async function runDatabaseBackup({
 
     lockAcquired = true;
 
-    // Every running backend instance may start the same cron schedule.
-    // After the DB-level lock is acquired, suppress another automatic backup
-    // from the same five-minute schedule window.
     if (type === "auto") {
       const recent = await hasRecentAutomaticBackup(conn);
       if (recent) {
@@ -161,7 +316,7 @@ async function runDatabaseBackup({
     let sizeKb = 0;
 
     try {
-      await generateSQLDump(conn, filePath);
+      await generateConsistentSQLDump(conn, filePath);
       sizeKb = fs.existsSync(filePath)
         ? Math.round(fs.statSync(filePath).size / 1024)
         : 0;

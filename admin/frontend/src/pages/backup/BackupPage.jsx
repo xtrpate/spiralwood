@@ -1291,6 +1291,17 @@ export default function BackupPage() {
                               <Download size={13} />
                               Download
                             </button>
+                          ) : isSuccess ? (
+                            <span
+                              style={{
+                                color: "#8a93a1",
+                                fontSize: 11,
+                                fontWeight: 600,
+                              }}
+                              title="The backup record remains, but the stored local file is unavailable."
+                            >
+                              Unavailable
+                            </span>
                           ) : (
                             <span style={{ color: "#a0a7b1" }}>—</span>
                           )}
