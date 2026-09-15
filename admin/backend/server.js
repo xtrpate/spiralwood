@@ -312,7 +312,7 @@ cron.schedule("0 * * * *", () => {
     "Running scheduled task: Checking for expired PayMongo orders...",
   );
   autoCancelExpiredOrders();
-});
+}, { timezone: "Asia/Manila" });
 
 app.use(errorHandler);
 
