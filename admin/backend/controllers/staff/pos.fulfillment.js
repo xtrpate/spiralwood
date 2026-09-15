@@ -1,6 +1,9 @@
 // controllers/staff/pos.deliveries.js
 const fs = require("fs");
 const db = require("../../config/db");
+const {
+  getPhilippineDateBoundsUtc,
+} = require("../../utils/philippineTime");
 const { signUploadPath } = require("../../utils/signedUrl");
 const {
   storeUploadBuffer,
@@ -3386,13 +3389,15 @@ exports.getRiderHistory = async (req, res) => {
     }
 
     if (fromDate) {
-      where.push(`DATE(${historyDateExpression}) >= ?`);
-      params.push(fromDate);
+      const { startUtc } = getPhilippineDateBoundsUtc(fromDate);
+      where.push(`${historyDateExpression} >= ?`);
+      params.push(startUtc);
     }
 
     if (toDate) {
-      where.push(`DATE(${historyDateExpression}) <= ?`);
-      params.push(toDate);
+      const { nextStartUtc } = getPhilippineDateBoundsUtc(toDate);
+      where.push(`${historyDateExpression} < ?`);
+      params.push(nextStartUtc);
     }
 
     const whereSql = where.join(" AND ");
@@ -3604,13 +3609,35 @@ const buildDeliveryReportFilterState = (req) => {
   }
 
   if (fromDate) {
-    where.push(`DATE(${DELIVERY_REPORT_ACTIVITY_DATE_SQL}) >= ?`);
-    params.push(fromDate);
+    const { startUtc } = getPhilippineDateBoundsUtc(fromDate);
+    where.push(`(
+      (
+        ((${DELIVERY_REPORT_STATUS_SQL}) IN ('delivered', 'failed') OR d.scheduled_date IS NULL)
+        AND ${DELIVERY_REPORT_ACTIVITY_DATE_SQL} >= ?
+      )
+      OR
+      (
+        ((${DELIVERY_REPORT_STATUS_SQL}) NOT IN ('delivered', 'failed') AND d.scheduled_date IS NOT NULL)
+        AND d.scheduled_date >= ?
+      )
+    )`);
+    params.push(startUtc, fromDate);
   }
 
   if (toDate) {
-    where.push(`DATE(${DELIVERY_REPORT_ACTIVITY_DATE_SQL}) <= ?`);
-    params.push(toDate);
+    const { nextStartUtc } = getPhilippineDateBoundsUtc(toDate);
+    where.push(`(
+      (
+        ((${DELIVERY_REPORT_STATUS_SQL}) IN ('delivered', 'failed') OR d.scheduled_date IS NULL)
+        AND ${DELIVERY_REPORT_ACTIVITY_DATE_SQL} < ?
+      )
+      OR
+      (
+        ((${DELIVERY_REPORT_STATUS_SQL}) NOT IN ('delivered', 'failed') AND d.scheduled_date IS NOT NULL)
+        AND d.scheduled_date <= ?
+      )
+    )`);
+    params.push(nextStartUtc, toDate);
   }
 
   return {

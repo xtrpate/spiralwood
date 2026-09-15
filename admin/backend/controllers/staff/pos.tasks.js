@@ -350,6 +350,70 @@ exports.getTasks = async (req, res) => {
 
     const [tasks] = await db.query(query, queryParams);
 
+    // WISDOM PRODUCTION MATERIAL VISIBILITY V1
+    // Use the order reservation snapshots as the canonical production
+    // materials. These rows preserve the material name/unit/quantity that
+    // belonged to the order even after live inventory changes.
+    const orderIds = [
+      ...new Set(
+        tasks
+          .map((task) => Number(task.order_id))
+          .filter((id) => Number.isSafeInteger(id) && id > 0),
+      ),
+    ];
+
+    const materialsByOrderId = new Map();
+
+    if (orderIds.length > 0) {
+      const placeholders = orderIds.map(() => "?").join(", ");
+      const [materialRows] = await db.query(
+        `SELECT
+           bmr.order_id,
+           bmr.material_id,
+           COALESCE(
+             NULLIF(TRIM(bmr.material_name_snapshot), ''),
+             rm.name
+           ) AS material_name,
+           COALESCE(
+             NULLIF(TRIM(bmr.unit_snapshot), ''),
+             rm.unit,
+             'unit'
+           ) AS unit,
+           bmr.quantity,
+           bmr.status
+         FROM blueprint_material_reservations bmr
+         LEFT JOIN raw_materials rm ON rm.id = bmr.material_id
+         WHERE bmr.order_id IN (${placeholders})
+         ORDER BY bmr.order_id ASC, bmr.material_id ASC, bmr.id ASC`,
+        orderIds,
+      );
+
+      for (const row of materialRows) {
+        const orderId = Number(row.order_id);
+        if (!materialsByOrderId.has(orderId)) {
+          materialsByOrderId.set(orderId, []);
+        }
+
+        materialsByOrderId.get(orderId).push({
+          material_id: Number(row.material_id) || null,
+          material_name:
+            String(row.material_name || "").trim() ||
+            `Material #${row.material_id}`,
+          quantity: Number(row.quantity) || 0,
+          unit: String(row.unit || "unit").trim() || "unit",
+          status: normalize(row.status),
+        });
+      }
+    }
+
+    for (const task of tasks) {
+      const orderId = Number(task.order_id);
+      task.production_materials =
+        Number.isSafeInteger(orderId) && orderId > 0
+          ? materialsByOrderId.get(orderId) || []
+          : [];
+    }
+
     // Hold reasons are intentionally stored in audit_logs instead of adding
     // another project_tasks column. Only the latest reason for a task that is
     // currently blocked/on hold is exposed to the UI.

@@ -50,12 +50,12 @@ function startCronJobs() {
   cron.schedule("0 0 * * *", () => {
     console.log("[CRON] Running midnight auto-backup...");
     void runScheduledAutoBackup("Midnight");
-  });
+  }, { timezone: "Asia/Manila" });
 
   cron.schedule("0 12 * * *", () => {
     console.log("[CRON] Running noon auto-backup...");
     void runScheduledAutoBackup("Noon");
-  });
+  }, { timezone: "Asia/Manila" });
 
   cron.schedule("*/5 * * * *", async () => {
     try {
@@ -63,7 +63,7 @@ function startCronJobs() {
     } catch (err) {
       console.error("[CRON] POS QR cleanup failed:", err.message);
     }
-  });
+  }, { timezone: "Asia/Manila" });
 
   // Abandoned customer registration cleanup — once daily at 2:30 AM.
   cron.schedule("30 2 * * *", async () => {
@@ -75,7 +75,7 @@ function startCronJobs() {
     } catch (err) {
       console.error("[CRON] Unverified registration cleanup failed:", err.message);
     }
-  });
+  }, { timezone: "Asia/Manila" });
 
   // New: Support ticket auto-close (Runs at midnight)
   cron.schedule("0 0 * * *", async () => {
@@ -105,7 +105,7 @@ function startCronJobs() {
     } catch (err) {
       console.error("[CRON] Error running auto-close tickets job:", err);
     }
-  });
+  }, { timezone: "Asia/Manila" });
 
   console.log(
     "✅  Cron jobs started: auto-backup at 12:00 AM and 12:00 PM daily; POS QR cleanup every 5 minutes; unverified registration cleanup at 2:30 AM; ticket auto-close at 12:00 AM.",

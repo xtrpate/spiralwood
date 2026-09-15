@@ -13,6 +13,11 @@ import {
 } from "lucide-react";
 import api from "../../services/api";
 import toast from "react-hot-toast";
+import {
+  formatPHDate,
+  formatPHDateTime,
+  parseSystemDateTime,
+} from "../../utils/dateTime";
 
 export default function BackupPage() {
   useEffect(() => {
@@ -82,11 +87,14 @@ export default function BackupPage() {
 
   const sortedLogs = useMemo(
     () =>
-      [...logs].sort(
-        (a, b) =>
-          new Date(b?.created_at || 0).getTime() -
-          new Date(a?.created_at || 0).getTime(),
-      ),
+      [...logs].sort((a, b) => {
+        const bTimestamp =
+          parseSystemDateTime(b?.created_at)?.getTime() || 0;
+        const aTimestamp =
+          parseSystemDateTime(a?.created_at)?.getTime() || 0;
+
+        return bTimestamp - aTimestamp;
+      }),
     [logs],
   );
 
@@ -115,10 +123,10 @@ export default function BackupPage() {
   const filteredLogs = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     const fromBoundary = dateFrom
-      ? new Date(`${dateFrom}T00:00:00`)
+      ? new Date(`${dateFrom}T00:00:00+08:00`)
       : null;
     const toBoundary = dateTo
-      ? new Date(`${dateTo}T23:59:59.999`)
+      ? new Date(`${dateTo}T23:59:59.999+08:00`)
       : null;
 
     return sortedLogs.filter((log) => {
@@ -130,8 +138,8 @@ export default function BackupPage() {
         statusFilter === "all" ||
         String(log.status || "").toLowerCase() === statusFilter;
 
-      const createdAt = new Date(log.created_at || 0);
-      const createdMs = createdAt.getTime();
+      const createdAt = parseSystemDateTime(log.created_at);
+      const createdMs = createdAt?.getTime();
       const matchesFrom =
         !fromBoundary ||
         (Number.isFinite(createdMs) && createdMs >= fromBoundary.getTime());
@@ -191,28 +199,8 @@ export default function BackupPage() {
     setCurrentPage(1);
   }, [searchQuery, typeFilter, statusFilter, dateFrom, dateTo]);
 
-  const formatDate = (value, includeTime = true) => {
-    if (!value) return "—";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "—";
-
-    return date.toLocaleString(
-      "en-PH",
-      includeTime
-        ? {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-            hour: "numeric",
-            minute: "2-digit",
-          }
-        : {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          },
-    );
-  };
+  const formatDate = (value, includeTime = true) =>
+    includeTime ? formatPHDateTime(value) : formatPHDate(value);
 
   const formatBackupSize = (fileSize) => {
     if (!fileSize && fileSize !== 0) return "—";
@@ -1092,7 +1080,7 @@ export default function BackupPage() {
           </div>
           <p className="backup-schedule-copy">
             Automatic backups run daily at <strong>12:00 AM</strong> and{" "}
-            <strong>12:00 PM</strong>.
+            <strong>12:00 PM</strong> Philippine Time.
           </p>
         </div>
 
@@ -1188,7 +1176,7 @@ export default function BackupPage() {
                 <th>Size</th>
                 <th>Status</th>
                 <th>Created By</th>
-                <th>Created</th>
+                <th>Created (PH)</th>
                 <th>Action</th>
               </tr>
             </thead>

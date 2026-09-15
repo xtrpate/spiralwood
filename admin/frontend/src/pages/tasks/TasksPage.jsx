@@ -2,6 +2,14 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../services/api";
+import {
+  formatPHDateTime,
+  formatPHDateTimeLocalInput,
+  formatPHWallClockDateTime,
+  parsePHWallClockDateTime,
+  parseSystemDateTime,
+  toPHWallClockDateTimeLocal,
+} from "../../utils/dateTime";
 import toast from "react-hot-toast";
 import { exportTaskAssignmentsReportPdf } from "./TaskAssignmentsReportPdf";
 import useAuthStore from "../../store/authStore";
@@ -109,10 +117,14 @@ const normalizeProductionKey = (value) =>
     .toLowerCase()
     .replace(/\s+/g, "_");
 
-const productionTime = (value) => {
-  if (!value) return 0;
-  const parsed = new Date(value).getTime();
-  return Number.isNaN(parsed) ? 0 : parsed;
+const productionEventTime = (value) => {
+  const parsed = parseSystemDateTime(value);
+  return parsed ? parsed.getTime() : 0;
+};
+
+const productionDueTime = (value) => {
+  const parsed = parsePHWallClockDateTime(value);
+  return parsed ? parsed.getTime() : 0;
 };
 
 const buildProductionOrderGroups = (taskList = []) => {
@@ -136,11 +148,20 @@ const buildProductionOrderGroups = (taskList = []) => {
         orderNumber: task.order_number || "",
         customerName: task.customer_name || "Walk-in Customer",
         rawTasks: [],
+        productionMaterials: [],
       });
     }
 
     const bucket = buckets.get(key);
     bucket.rawTasks.push(task);
+
+    if (
+      Array.isArray(task.production_materials) &&
+      task.production_materials.length > 0
+    ) {
+      bucket.productionMaterials = task.production_materials;
+    }
+
     if (!bucket.orderId && task.order_id) bucket.orderId = task.order_id;
     if (!bucket.orderNumber && task.order_number)
       bucket.orderNumber = task.order_number;
@@ -202,24 +223,24 @@ const buildProductionOrderGroups = (taskList = []) => {
       );
 
       const assignedTimes = order.rawTasks
-        .map((task) => productionTime(task.created_at))
+        .map((task) => productionEventTime(task.created_at))
         .filter(Boolean);
       const startedTimes = order.rawTasks
-        .map((task) => productionTime(task.accepted_at))
+        .map((task) => productionEventTime(task.accepted_at))
         .filter(Boolean);
       const dueTimes = unfinishedTasks
-        .map((task) => productionTime(task.due_date))
+        .map((task) => productionDueTime(task.due_date))
         .filter(Boolean);
       const fallbackDueTimes = order.rawTasks
-        .map((task) => productionTime(task.due_date))
+        .map((task) => productionDueTime(task.due_date))
         .filter(Boolean);
       const completedTimes = order.rawTasks
-        .map((task) => productionTime(task.completed_at))
+        .map((task) => productionEventTime(task.completed_at))
         .filter(Boolean);
       const latestTimes = order.rawTasks
         .flatMap((task) => [
-          productionTime(task.updated_at),
-          productionTime(task.created_at),
+          productionEventTime(task.updated_at),
+          productionEventTime(task.created_at),
         ])
         .filter(Boolean);
 
@@ -249,7 +270,7 @@ const buildProductionOrderGroups = (taskList = []) => {
           "Not assigned",
         assignedAt: assignedAt ? new Date(assignedAt).toISOString() : null,
         startedAt: startedAt ? new Date(startedAt).toISOString() : null,
-        dueDate: dueAt ? new Date(dueAt).toISOString() : null,
+        dueDate: dueAt ? formatPHDateTimeLocalInput(new Date(dueAt)) : null,
         completedAt: completedAt ? new Date(completedAt).toISOString() : null,
         latestAt,
       };
@@ -331,25 +352,13 @@ export default function TasksPage() {
     setTarget(null);
     setModal("create");
   };
-  const toPhilippineDateTimeLocal = (isoString) => {
-    if (!isoString) return "";
-    const date = new Date(isoString);
-    if (Number.isNaN(date.getTime())) return "";
-    const ph = new Date(date.getTime() + 8 * 60 * 60 * 1000);
-    const yyyy = ph.getUTCFullYear();
-    const mm = String(ph.getUTCMonth() + 1).padStart(2, "0");
-    const dd = String(ph.getUTCDate()).padStart(2, "0");
-    const hh = String(ph.getUTCHours()).padStart(2, "0");
-    const mi = String(ph.getUTCMinutes()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
-  };
   const openEdit = (t) => {
     setForm({
       title: t.title,
       description: t.description || "",
       assigned_to: String(t.assigned_to || ""),
       task_role: t.task_role,
-      due_date: toPhilippineDateTimeLocal(t.due_date),
+      due_date: toPHWallClockDateTimeLocal(t.due_date),
       order_id: t.order_id ? String(t.order_id) : "",
       blueprint_id: t.blueprint_id ? String(t.blueprint_id) : "",
       status: t.status,
@@ -473,7 +482,9 @@ export default function TasksPage() {
       return;
     }
 
-    const parsedDueDate = new Date(productionAssignForm.due_date);
+    const parsedDueDate = parsePHWallClockDateTime(
+      productionAssignForm.due_date,
+    );
     if (Number.isNaN(parsedDueDate.getTime())) {
       toast.error("Due date is invalid.");
       return;
@@ -635,8 +646,12 @@ export default function TasksPage() {
 
   const filteredOrders = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const fromTime = dueFrom ? new Date(`${dueFrom}T00:00:00`).getTime() : null;
-    const toTime = dueTo ? new Date(`${dueTo}T23:59:59.999`).getTime() : null;
+    const fromTime = dueFrom
+      ? productionDueTime(`${dueFrom}T00:00:00`)
+      : null;
+    const toTime = dueTo
+      ? productionDueTime(`${dueTo}T23:59:59`) + 999
+      : null;
 
     return productionOrderGroups.filter((order) => {
       const statusMatches =
@@ -649,7 +664,7 @@ export default function TasksPage() {
         filterStaff === "all" ||
         order.currentStaff.some((person) => person.id === filterStaff);
 
-      const dueTime = productionTime(order.dueDate);
+      const dueTime = productionDueTime(order.dueDate);
       const dueMatches =
         (!fromTime || (dueTime && dueTime >= fromTime)) &&
         (!toTime || (dueTime && dueTime <= toTime));
@@ -763,18 +778,8 @@ export default function TasksPage() {
       ? `#${String(productionOrderId).padStart(5, "0")}`
       : "—";
 
-  const formatTaskDateTime = (value) => {
-    if (!value) return "—";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "—";
-    return date.toLocaleString("en-PH", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  };
+  const formatTaskEventDateTime = (value) => formatPHDateTime(value);
+  const formatTaskDueDateTime = (value) => formatPHWallClockDateTime(value);
 
   const isRepeatedProductionDescription = (task) => {
     const description = String(task?.description || "")
@@ -1402,7 +1407,7 @@ export default function TasksPage() {
                               Started:
                             </strong>{" "}
                             {order.startedAt
-                              ? formatTaskDateTime(order.startedAt)
+                              ? formatTaskEventDateTime(order.startedAt)
                               : "Not started"}
                           </div>
                           <div
@@ -1411,7 +1416,7 @@ export default function TasksPage() {
                             }}
                           >
                             <strong style={{ fontWeight: 600 }}>Due:</strong>{" "}
-                            {formatTaskDateTime(order.dueDate)}
+                            {formatTaskDueDateTime(order.dueDate)}
                           </div>
                           {order.overdue ? (
                             <div
@@ -1504,14 +1509,14 @@ export default function TasksPage() {
               <div>
                 <div style={S.label}>Assigned</div>
                 <div style={S.primary}>
-                  {formatTaskDateTime(selectedProductionOrder.assignedAt)}
+                  {formatTaskEventDateTime(selectedProductionOrder.assignedAt)}
                 </div>
               </div>
               <div>
                 <div style={S.label}>Started</div>
                 <div style={S.primary}>
                   {selectedProductionOrder.startedAt
-                    ? formatTaskDateTime(selectedProductionOrder.startedAt)
+                    ? formatTaskEventDateTime(selectedProductionOrder.startedAt)
                     : "Not started"}
                 </div>
               </div>
@@ -1525,7 +1530,7 @@ export default function TasksPage() {
                       : "#18181b",
                   }}
                 >
-                  {formatTaskDateTime(selectedProductionOrder.dueDate)}
+                  {formatTaskDueDateTime(selectedProductionOrder.dueDate)}
                   {selectedProductionOrder.overdue ? " · Overdue" : ""}
                 </div>
               </div>
@@ -1574,21 +1579,21 @@ export default function TasksPage() {
                           {task ? (
                             <div style={{ fontSize: 11, lineHeight: 1.55 }}>
                               <div>
-                                Assigned: {formatTaskDateTime(task.created_at)}
+                                Assigned: {formatTaskEventDateTime(task.created_at)}
                               </div>
                               <div>
                                 Started:{" "}
                                 {task.accepted_at
-                                  ? formatTaskDateTime(task.accepted_at)
+                                  ? formatTaskEventDateTime(task.accepted_at)
                                   : "Not started"}
                               </div>
                               <div>
-                                Due: {formatTaskDateTime(task.due_date)}
+                                Due: {formatTaskDueDateTime(task.due_date)}
                               </div>
                               <div>
                                 Completed:{" "}
                                 {task.completed_at
-                                  ? formatTaskDateTime(task.completed_at)
+                                  ? formatTaskEventDateTime(task.completed_at)
                                   : "—"}
                               </div>
                             </div>
@@ -1796,24 +1801,7 @@ export default function TasksPage() {
                       style={S.mInput}
                       value={productionAssignForm.due_date}
                       required
-                      min={(() => {
-                        const now = new Date();
-                        now.setSeconds(0, 0);
-
-                        const year = now.getFullYear();
-                        const month = String(now.getMonth() + 1).padStart(
-                          2,
-                          "0",
-                        );
-                        const day = String(now.getDate()).padStart(2, "0");
-                        const hours = String(now.getHours()).padStart(2, "0");
-                        const minutes = String(now.getMinutes()).padStart(
-                          2,
-                          "0",
-                        );
-
-                        return `${year}-${month}-${day}T${hours}:${minutes}`;
-                      })()}
+                      min={formatPHDateTimeLocalInput(new Date())}
                       onChange={(e) =>
                         setProductionAssignForm((current) => ({
                           ...current,
@@ -2133,24 +2121,24 @@ export default function TasksPage() {
                   [
                     "Due date",
                     target.due_date
-                      ? new Date(target.due_date).toLocaleString("en-PH")
+                      ? formatTaskDueDateTime(target.due_date)
                       : "—",
                   ],
                   [
                     "Accepted",
                     target.accepted_at
-                      ? new Date(target.accepted_at).toLocaleString("en-PH")
+                      ? formatTaskEventDateTime(target.accepted_at)
                       : "—",
                   ],
                   [
                     "Completed",
                     target.completed_at
-                      ? new Date(target.completed_at).toLocaleString("en-PH")
+                      ? formatTaskEventDateTime(target.completed_at)
                       : "—",
                   ],
                   [
                     "Created",
-                    new Date(target.created_at).toLocaleString("en-PH"),
+                    formatTaskEventDateTime(target.created_at),
                   ],
                 ].map(([k, v]) => (
                   <div

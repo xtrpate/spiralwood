@@ -26,6 +26,18 @@ const taskManageAccess = [
   requirePermission("task_assignments.manage"),
 ];
 
+const taskStatusAccess = [
+  ...indoorOnlyOrAdmin,
+  (req, res, next) => {
+    const permissionKey =
+      String(req.user?.role || "").trim().toLowerCase() === "admin"
+        ? "task_assignments.manage"
+        : "task_assignments.view";
+
+    return requirePermission(permissionKey)(req, res, next);
+  },
+];
+
 /* ══════════════════════════════════════════════════════════════
    NOTIFICATIONS
 ══════════════════════════════════════════════════════════════ */
@@ -96,7 +108,7 @@ router.put("/:id/accept", indoorOnlyOrAdmin, (req, res) => {
 });
 router.put(
   "/:id/status",
-  taskManageAccess,
+  taskStatusAccess,
   logAction("update_project_task_status", "project_tasks"),
   posTasksController.updateTaskStatus,
 );

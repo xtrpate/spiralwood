@@ -15,6 +15,9 @@ const {
   getPhoneLookupVariants,
   phoneDigitsSql,
 } = require("../../utils/phone");
+const {
+  getPhilippineDateBoundsUtc,
+} = require("../../utils/philippineTime");
 
 // ══ WARRANTY ══════════════════════════════════════════════════════════════════
 exports.getAll = async (req, res) => {
@@ -1626,12 +1629,14 @@ exports.getAuditLogs = async (req, res) => {
       params.push(userIdFilter);
     }
     if (rawDateFrom) {
+      const { startUtc } = getPhilippineDateBoundsUtc(rawDateFrom);
       where.push("al.created_at >= ?");
-      params.push(`${rawDateFrom} 00:00:00`);
+      params.push(startUtc);
     }
     if (rawDateTo) {
-      where.push("al.created_at <= ?");
-      params.push(`${rawDateTo} 23:59:59`);
+      const { nextStartUtc } = getPhilippineDateBoundsUtc(rawDateTo);
+      where.push("al.created_at < ?");
+      params.push(nextStartUtc);
     }
 
     const whereSql = where.join(" AND ");
@@ -1778,8 +1783,9 @@ exports.exportAuditLogs = async (req, res) => {
         });
       }
 
+      const { startUtc } = getPhilippineDateBoundsUtc(rawDateFrom);
       where.push("al.created_at >= ?");
-      params.push(`${rawDateFrom} 00:00:00`);
+      params.push(startUtc);
     }
 
     if (rawDateTo) {
@@ -1789,8 +1795,9 @@ exports.exportAuditLogs = async (req, res) => {
         });
       }
 
-      where.push("al.created_at <= ?");
-      params.push(`${rawDateTo} 23:59:59`);
+      const { nextStartUtc } = getPhilippineDateBoundsUtc(rawDateTo);
+      where.push("al.created_at < ?");
+      params.push(nextStartUtc);
     }
 
     if (rawDateFrom && rawDateTo && rawDateFrom > rawDateTo) {
@@ -1803,7 +1810,10 @@ exports.exportAuditLogs = async (req, res) => {
       `
         SELECT
           al.id,
-          al.created_at,
+          DATE_FORMAT(
+            DATE_ADD(al.created_at, INTERVAL 8 HOUR),
+            '%Y-%m-%d %H:%i:%s'
+          ) AS created_at,
           al.user_id,
           u.name AS user_name,
           u.email AS user_email,
@@ -1835,7 +1845,7 @@ exports.exportAuditLogs = async (req, res) => {
 
     const header = [
       "ID",
-      "Date",
+      "Date (PH)",
       "User ID",
       "User Name",
       "User Email",
