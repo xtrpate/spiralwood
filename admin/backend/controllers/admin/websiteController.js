@@ -951,6 +951,19 @@ exports.updatePage = async (req, res) => {
 };
 
 // ── BACKUP ───────────────────────────────────────────────────────────────────
+// WISDOM BACKUP LOCAL DOWNLOAD AVAILABILITY
+const localBackupExists = (filename) => {
+  if (!filename) return false;
+
+  const backupDir = path.resolve(getBackupDirectory());
+  const filePath = path.resolve(backupDir, filename);
+
+  return (
+    path.dirname(filePath) === backupDir &&
+    fs.existsSync(filePath)
+  );
+};
+
 exports.getBackupLogs = async (req, res) => {
   try {
     const [rows] = await pool.query(
@@ -969,20 +982,26 @@ exports.getBackupLogs = async (req, res) => {
     );
 
     res.json(
-      rows.map((row) => ({
-        id: row.id,
-        type: row.type,
-        filename: row.file_name,
-        file_size: row.file_size_kb,
-        status: row.status,
-        created_at: row.created_at,
-        triggered_by: row.triggered_by_name || "System",
-        error_message: row.status === "failed" ? row.notes || null : null,
-        file_url:
-          row.status === "success"
+      rows.map((row) => {
+        const downloadAvailable =
+          String(row.status || "").toLowerCase() === "success" &&
+          localBackupExists(row.file_name);
+
+        return {
+          id: row.id,
+          type: row.type,
+          filename: row.file_name,
+          file_size: row.file_size_kb,
+          status: row.status,
+          created_at: row.created_at,
+          triggered_by: row.triggered_by_name || "System",
+          error_message: row.status === "failed" ? row.notes || null : null,
+          download_available: downloadAvailable,
+          file_url: downloadAvailable
             ? `/backup/download/${row.file_name}`
             : null,
-      })),
+        };
+      }),
     );
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -1064,34 +1083,56 @@ exports.downloadBackup = async (req, res) => {
       return res.status(400).json({ message: "Invalid backup filename." });
     }
 
-    const absDir = getBackupDirectory();
-    const filePath = path.join(absDir, filename);
+    const [[backupRow]] = await pool.query(
+      `SELECT id, file_name, status
+       FROM backup_logs
+       WHERE file_name = ?
+       ORDER BY id DESC
+       LIMIT 1`,
+      [filename],
+    );
 
-    // Defense in depth: resolved file must still live directly inside absDir.
-    if (path.dirname(filePath) !== absDir) {
+    if (
+      !backupRow ||
+      String(backupRow.status || "").toLowerCase() !== "success"
+    ) {
+      return res.status(404).json({
+        message: "Successful backup record not found.",
+      });
+    }
+
+    const backupDir = path.resolve(getBackupDirectory());
+    const filePath = path.resolve(backupDir, filename);
+
+    if (path.dirname(filePath) !== backupDir) {
       return res.status(400).json({ message: "Invalid backup filename." });
     }
 
     if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ message: "Backup file not found." });
+      return res.status(404).json({
+        message:
+          "This backup record exists, but its local file is no longer available.",
+      });
     }
-
-    const [[backupRow]] = await pool.query(
-      `SELECT id FROM backup_logs WHERE file_name = ? ORDER BY id DESC LIMIT 1`,
-      [filename],
-    );
 
     await writeAuditLogSafe({
       userId: req.user.id,
       action: "backup_downloaded",
       tableName: "backup_logs",
-      recordId: backupRow?.id || null,
-      newValues: { file_name: filename, result: "download_started" },
+      recordId: backupRow.id,
+      newValues: {
+        file_name: filename,
+        storage: "local",
+        result: "download_started",
+      },
       ipAddress: req.ip || null,
     });
 
-    res.download(filePath, filename);
+    return res.download(filePath, filename);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("[backup download]", err);
+    return res.status(500).json({
+      message: "Backup download failed. Please try again.",
+    });
   }
 };
