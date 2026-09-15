@@ -8,6 +8,7 @@ import {
   X,
 } from "lucide-react";
 import api, { buildAssetUrl } from "../../services/api";
+import { formatPHDateTime } from "../../utils/dateTime";
 import DeliveryReceiptModal from "../../components/delivery/DeliveryReceiptModal";
 import DownloadFileButton from "../../components/delivery/DownloadFileButton";
 import "./RiderScreen.css";
@@ -46,17 +47,8 @@ const getPinnedMapHref = (record = {}) => {
 };
 
 const formatDateTime = (value) => {
-  if (!value) return "Not available";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Not available";
-
-  return date.toLocaleString("en-PH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  const formatted = formatPHDateTime(value);
+  return formatted === "—" ? "Not available" : formatted;
 };
 
 const formatRecipientType = (value) => {
