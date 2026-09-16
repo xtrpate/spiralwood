@@ -478,7 +478,9 @@ const normalizeCustomOrderItem = (row = {}) => {
     door_style: toTrimmedStringOrNull(custom.door_style),
     hardware: toTrimmedStringOrNull(custom.hardware),
     assembly_choice: ["included", "none"].includes(
-      String(custom.assembly_choice || "").trim().toLowerCase(),
+      String(custom.assembly_choice || "")
+        .trim()
+        .toLowerCase(),
     )
       ? String(custom.assembly_choice).trim().toLowerCase()
       : null,
@@ -540,20 +542,25 @@ exports.createCustomOrder = async (req, res) => {
     });
   }
 
+  const cleanFulfillmentMethod = String(fulfillment_method || "delivery")
+    .trim()
+    .toLowerCase();
+
   const cleanAssemblyChoice = String(assembly_choice || "")
     .trim()
     .toLowerCase();
 
-  if (!["included", "none"].includes(cleanAssemblyChoice)) {
+  if (
+    cleanFulfillmentMethod === "delivery" &&
+    !["included", "none"].includes(cleanAssemblyChoice)
+  ) {
     return res.status(400).json({
       message:
         "Please choose whether you want the free assembly service before submitting the request.",
     });
   }
 
-  const submittedBlueprintQuantity = parseStrictPositiveInt(
-    items[0]?.quantity,
-  );
+  const submittedBlueprintQuantity = parseStrictPositiveInt(items[0]?.quantity);
 
   if (!submittedBlueprintQuantity) {
     return res.status(400).json({
@@ -569,10 +576,6 @@ exports.createCustomOrder = async (req, res) => {
   if (!String(phone || "").trim()) {
     return res.status(400).json({ message: "Phone is required." });
   }
-
-  const cleanFulfillmentMethod = String(fulfillment_method || "delivery")
-    .trim()
-    .toLowerCase();
 
   if (!["delivery", "pickup"].includes(cleanFulfillmentMethod)) {
     return res.status(400).json({ message: "Choose Delivery or Pickup." });
@@ -674,7 +677,8 @@ exports.createCustomOrder = async (req, res) => {
 
   if (blueprintIds.length !== 1) {
     return res.status(400).json({
-      message: "The custom request must be linked to exactly one Blueprint design.",
+      message:
+        "The custom request must be linked to exactly one Blueprint design.",
     });
   }
 
@@ -1113,29 +1117,32 @@ exports.getCustomOrderById = async (req, res) => {
     );
     const deliveryRow = deliveryRows[0] || null;
     const deliveryStatus = deliveryRow ? normalize(deliveryRow.status) : null;
-    const customerDeliveryDetails = !isPickupOrder && deliveryRow
-      ? {
-          id: deliveryRow.id,
-          status: deliveryStatus,
-          assigned_at: deliveryRow.assigned_at || null,
-          scheduled_date: deliveryRow.scheduled_date || null,
-          delivered_date: deliveryRow.delivered_date || null,
-          updated_at: deliveryRow.updated_at || null,
-          address:
-            toTrimmedStringOrNull(deliveryRow.address) ||
-            toTrimmedStringOrNull(order.delivery_address),
-          latitude: parseStrictCoordinate(order.delivery_lat),
-          longitude: parseStrictCoordinate(order.delivery_lng),
-          driver_name: toTrimmedStringOrNull(deliveryRow.driver_name),
-          receipt_number:
-            toTrimmedStringOrNull(deliveryRow.delivery_receipt_number),
-          acknowledged_at: deliveryRow.delivery_acknowledged_at || null,
-          has_signature: Number(deliveryRow.delivery_has_signature || 0) === 1,
-          proof_url: signUploadPath(
-            toTrimmedStringOrNull(deliveryRow.signed_receipt),
-          ),
-        }
-      : null;
+    const customerDeliveryDetails =
+      !isPickupOrder && deliveryRow
+        ? {
+            id: deliveryRow.id,
+            status: deliveryStatus,
+            assigned_at: deliveryRow.assigned_at || null,
+            scheduled_date: deliveryRow.scheduled_date || null,
+            delivered_date: deliveryRow.delivered_date || null,
+            updated_at: deliveryRow.updated_at || null,
+            address:
+              toTrimmedStringOrNull(deliveryRow.address) ||
+              toTrimmedStringOrNull(order.delivery_address),
+            latitude: parseStrictCoordinate(order.delivery_lat),
+            longitude: parseStrictCoordinate(order.delivery_lng),
+            driver_name: toTrimmedStringOrNull(deliveryRow.driver_name),
+            receipt_number: toTrimmedStringOrNull(
+              deliveryRow.delivery_receipt_number,
+            ),
+            acknowledged_at: deliveryRow.delivery_acknowledged_at || null,
+            has_signature:
+              Number(deliveryRow.delivery_has_signature || 0) === 1,
+            proof_url: signUploadPath(
+              toTrimmedStringOrNull(deliveryRow.signed_receipt),
+            ),
+          }
+        : null;
 
     let customerPickupAcknowledgement = null;
     if (isPickupOrder) {
@@ -1267,7 +1274,9 @@ exports.getCustomOrderById = async (req, res) => {
           customer_name: lifecycle.contract.customer_name || null,
           terms: lifecycle.contract.materials_used || "",
           warranty_terms: lifecycle.contract.warranty_terms || "",
-          down_payment: Number(lifecycle.contract.down_payment || downPaymentDue || 0),
+          down_payment: Number(
+            lifecycle.contract.down_payment || downPaymentDue || 0,
+          ),
           signed_at: lifecycle.contract.signed_at || null,
           created_at: lifecycle.contract.created_at || null,
           updated_at: lifecycle.contract.updated_at || null,
@@ -1300,7 +1309,8 @@ exports.getCustomOrderById = async (req, res) => {
       balanceDue > 0 &&
       (isPickupOrder
         ? canonicalOrderStatus === "ready_for_pickup"
-        : Boolean(deliveryRow) && ["scheduled", "in_transit"].includes(deliveryStatus)) &&
+        : Boolean(deliveryRow) &&
+          ["scheduled", "in_transit"].includes(deliveryStatus)) &&
       !hasPendingPayment &&
       !paymentMethodChangeLocked;
 
@@ -1385,7 +1395,11 @@ exports.getCustomOrderById = async (req, res) => {
           "Your Project Agreement is accepted and the required payment is verified. We're preparing your project for production.";
       }
     } else if (REMAINING_BALANCE_STAGES.has(canonicalOrderStatus)) {
-      if (!hasRealContract || !projectAgreementAccepted || !hasVerifiedDownPayment) {
+      if (
+        !hasRealContract ||
+        !projectAgreementAccepted ||
+        !hasVerifiedDownPayment
+      ) {
         paymentStage = "unavailable";
         paymentActionMessage =
           "Please contact support if you need assistance with payment.";
@@ -1414,7 +1428,9 @@ exports.getCustomOrderById = async (req, res) => {
     const customerVisibleEstimationV141 = latestEstimation
       ? {
           ...latestEstimation,
-          overhead_cost: isPickupOrder ? 0 : Number(latestEstimation.overhead_cost || 0),
+          overhead_cost: isPickupOrder
+            ? 0
+            : Number(latestEstimation.overhead_cost || 0),
           additional_delivery_fee: isPickupOrder
             ? 0
             : Number(latestEstimation.additional_delivery_fee || 0),
@@ -1743,7 +1759,8 @@ exports.cancelUnpaidProject = async (req, res) => {
       await conn.rollback();
       transactionActive = false;
       return res.status(400).json({
-        message: "This project can no longer be cancelled directly from the customer page.",
+        message:
+          "This project can no longer be cancelled directly from the customer page.",
       });
     }
 
@@ -1751,7 +1768,8 @@ exports.cancelUnpaidProject = async (req, res) => {
       await conn.rollback();
       transactionActive = false;
       return res.status(400).json({
-        message: "Only a project with an approved quotation can use this cancellation flow.",
+        message:
+          "Only a project with an approved quotation can use this cancellation flow.",
       });
     }
 
@@ -1759,7 +1777,8 @@ exports.cancelUnpaidProject = async (req, res) => {
       await conn.rollback();
       transactionActive = false;
       return res.status(400).json({
-        message: "The Project Agreement must be accepted before using this cancellation flow.",
+        message:
+          "The Project Agreement must be accepted before using this cancellation flow.",
       });
     }
 
@@ -1790,15 +1809,14 @@ exports.cancelUnpaidProject = async (req, res) => {
       });
     }
 
-    const materialReleaseResult = await releaseBlueprintMaterialsForCancellation(
-      conn,
-      {
+    const materialReleaseResult =
+      await releaseBlueprintMaterialsForCancellation(conn, {
         orderId: order.id,
         actorUserId: req.user.id,
         releaseReason:
-          reason || "Customer cancelled the project before any verified payment.",
-      },
-    );
+          reason ||
+          "Customer cancelled the project before any verified payment.",
+      });
 
     const cancellationReason =
       reason || "Cancelled by customer before any verified payment.";
@@ -1976,7 +1994,8 @@ exports.acceptProjectAgreement = async (req, res) => {
       await conn.rollback();
       transactionActive = false;
       return res.status(400).json({
-        message: "The quotation must be approved before accepting the Project Agreement.",
+        message:
+          "The quotation must be approved before accepting the Project Agreement.",
       });
     }
 
@@ -1987,7 +2006,8 @@ exports.acceptProjectAgreement = async (req, res) => {
       await conn.rollback();
       transactionActive = false;
       return res.status(400).json({
-        message: "This Project Agreement can no longer be accepted from the current order stage.",
+        message:
+          "This Project Agreement can no longer be accepted from the current order stage.",
       });
     }
 
@@ -2007,7 +2027,8 @@ exports.acceptProjectAgreement = async (req, res) => {
         await conn.rollback();
         transactionActive = false;
         return res.status(409).json({
-          message: "This Project Agreement was already updated. Please refresh and try again.",
+          message:
+            "This Project Agreement was already updated. Please refresh and try again.",
         });
       }
     }
@@ -2091,7 +2112,9 @@ exports.acceptProjectAgreement = async (req, res) => {
       }
     }
     console.error("[customer.customorders ACCEPT PROJECT AGREEMENT]", err);
-    return res.status(500).json({ message: "Failed to accept Project Agreement." });
+    return res
+      .status(500)
+      .json({ message: "Failed to accept Project Agreement." });
   } finally {
     if (conn) {
       if (connectionReusable) conn.release();
@@ -3733,7 +3756,8 @@ exports.verifyPayment = async (req, res) => {
       await conn.rollback();
       transactionActive = false;
       return res.status(409).json({
-        message: "This order's payment state changed. Please refresh and try again.",
+        message:
+          "This order's payment state changed. Please refresh and try again.",
       });
     }
 
@@ -3954,7 +3978,8 @@ exports.createPayMongoCheckout = async (req, res) => {
         await conn.rollback();
         transactionActive = false;
         return res.status(409).json({
-          message: "This order's payment state changed. Please refresh and try again.",
+          message:
+            "This order's payment state changed. Please refresh and try again.",
         });
       }
     }
@@ -4236,7 +4261,8 @@ exports.selectPaymentMethod = async (req, res) => {
         await conn.rollback();
         transactionActive = false;
         return res.status(409).json({
-          message: "This order's payment state changed. Please refresh and try again.",
+          message:
+            "This order's payment state changed. Please refresh and try again.",
         });
       }
     }
@@ -4290,7 +4316,12 @@ exports.selectPaymentMethod = async (req, res) => {
   }
 };
 
-const selectPickupRemainingPaymentMethod = async ({ req, res, orderId, normalizedMethod }) => {
+const selectPickupRemainingPaymentMethod = async ({
+  req,
+  res,
+  orderId,
+  normalizedMethod,
+}) => {
   let conn = null;
   let transactionActive = false;
   try {
@@ -4314,20 +4345,32 @@ const selectPickupRemainingPaymentMethod = async ({ req, res, orderId, normalize
       transactionActive = false;
       return res.status(404).json({ message: "Custom request not found." });
     }
-    if (normalize(order.order_type) !== "blueprint" || normalize(order.fulfillment_method) !== "pickup") {
+    if (
+      normalize(order.order_type) !== "blueprint" ||
+      normalize(order.fulfillment_method) !== "pickup"
+    ) {
       await conn.rollback();
       transactionActive = false;
-      return res.status(409).json({ message: "This order is not available for pickup payment." });
+      return res
+        .status(409)
+        .json({ message: "This order is not available for pickup payment." });
     }
     if (normalize(order.status) !== "ready_for_pickup") {
       await conn.rollback();
       transactionActive = false;
-      return res.status(400).json({ message: "The remaining payment method can be chosen when the furniture is ready for pickup." });
+      return res
+        .status(400)
+        .json({
+          message:
+            "The remaining payment method can be chosen when the furniture is ready for pickup.",
+        });
     }
     if (normalize(order.payment_status) === "paid") {
       await conn.rollback();
       transactionActive = false;
-      return res.status(400).json({ message: "This order has already been fully paid." });
+      return res
+        .status(400)
+        .json({ message: "This order has already been fully paid." });
     }
 
     const [paymentRows] = await conn.query(
@@ -4345,7 +4388,12 @@ const selectPickupRemainingPaymentMethod = async ({ req, res, orderId, normalize
       if (cents === null) {
         await conn.rollback();
         transactionActive = false;
-        return res.status(409).json({ message: "This order's payment records are inconsistent. Please contact support." });
+        return res
+          .status(409)
+          .json({
+            message:
+              "This order's payment records are inconsistent. Please contact support.",
+          });
       }
       const status = normalize(row.status);
       if (status === "verified") verifiedCents += cents;
@@ -4354,23 +4402,38 @@ const selectPickupRemainingPaymentMethod = async ({ req, res, orderId, normalize
     if (verifiedCents <= 0) {
       await conn.rollback();
       transactionActive = false;
-      return res.status(400).json({ message: "A verified down payment is required first." });
+      return res
+        .status(400)
+        .json({ message: "A verified down payment is required first." });
     }
     if (hasPendingPayment) {
       await conn.rollback();
       transactionActive = false;
-      return res.status(400).json({ message: "A payment is already awaiting review for this order." });
+      return res
+        .status(400)
+        .json({
+          message: "A payment is already awaiting review for this order.",
+        });
     }
     const totalCents = parseDecimalToCentsStrict(order.total);
     if (totalCents === null || totalCents <= verifiedCents) {
       await conn.rollback();
       transactionActive = false;
-      return res.status(400).json({ message: totalCents === null ? "This order's total is invalid. Please contact support." : "This order has already been fully paid." });
+      return res
+        .status(400)
+        .json({
+          message:
+            totalCents === null
+              ? "This order's total is invalid. Please contact support."
+              : "This order has already been fully paid.",
+        });
     }
     if (order.paymongo_session_id || order.payment_url) {
       await conn.rollback();
       transactionActive = false;
-      return res.status(409).json({ message: "An online payment session is already in progress." });
+      return res
+        .status(409)
+        .json({ message: "An online payment session is already in progress." });
     }
 
     const previousMethod = order.remaining_payment_method || null;
@@ -4386,7 +4449,12 @@ const selectPickupRemainingPaymentMethod = async ({ req, res, orderId, normalize
       if (updateResult.affectedRows !== 1) {
         await conn.rollback();
         transactionActive = false;
-        return res.status(409).json({ message: "This order's state changed. Please refresh and try again." });
+        return res
+          .status(409)
+          .json({
+            message:
+              "This order's state changed. Please refresh and try again.",
+          });
       }
     }
 
@@ -4395,20 +4463,36 @@ const selectPickupRemainingPaymentMethod = async ({ req, res, orderId, normalize
     req.auditRecord = {
       id: orderId,
       old: { remaining_payment_method: previousMethod },
-      new: { remaining_payment_method: normalizedMethod, fulfillment_method: "pickup" },
+      new: {
+        remaining_payment_method: normalizedMethod,
+        fulfillment_method: "pickup",
+      },
     };
-    return res.json({ success: true, remaining_payment_method: normalizedMethod });
+    return res.json({
+      success: true,
+      remaining_payment_method: normalizedMethod,
+    });
   } catch (err) {
     req.auditRecord = null;
-    if (conn && transactionActive) { try { await conn.rollback(); } catch {} }
+    if (conn && transactionActive) {
+      try {
+        await conn.rollback();
+      } catch {}
+    }
     console.error("[customer.customorders pickup remaining method]", err);
-    return res.status(500).json({ message: "Failed to update the remaining payment method." });
+    return res
+      .status(500)
+      .json({ message: "Failed to update the remaining payment method." });
   } finally {
     if (conn) conn.release();
   }
 };
 
-const createPickupRemainingBalancePayMongoCheckout = async ({ req, res, orderId }) => {
+const createPickupRemainingBalancePayMongoCheckout = async ({
+  req,
+  res,
+  orderId,
+}) => {
   let conn = null;
   let transactionActive = false;
   try {
@@ -4427,24 +4511,45 @@ const createPickupRemainingBalancePayMongoCheckout = async ({ req, res, orderId 
       [orderId],
     );
     if (!order || Number(order.customer_id) !== Number(req.user.id)) {
-      await conn.rollback(); transactionActive = false;
+      await conn.rollback();
+      transactionActive = false;
       return res.status(404).json({ message: "Custom order not found." });
     }
-    if (normalize(order.order_type) !== "blueprint" || normalize(order.fulfillment_method) !== "pickup") {
-      await conn.rollback(); transactionActive = false;
-      return res.status(409).json({ message: "This order is not available for pickup payment." });
+    if (
+      normalize(order.order_type) !== "blueprint" ||
+      normalize(order.fulfillment_method) !== "pickup"
+    ) {
+      await conn.rollback();
+      transactionActive = false;
+      return res
+        .status(409)
+        .json({ message: "This order is not available for pickup payment." });
     }
     if (normalize(order.status) !== "ready_for_pickup") {
-      await conn.rollback(); transactionActive = false;
-      return res.status(400).json({ message: "Online remaining-balance payment is available when the furniture is ready for pickup." });
+      await conn.rollback();
+      transactionActive = false;
+      return res
+        .status(400)
+        .json({
+          message:
+            "Online remaining-balance payment is available when the furniture is ready for pickup.",
+        });
     }
     if (normalize(order.remaining_payment_method) !== "paymongo") {
-      await conn.rollback(); transactionActive = false;
-      return res.status(400).json({ message: "Select Online Payment for the remaining balance first." });
+      await conn.rollback();
+      transactionActive = false;
+      return res
+        .status(400)
+        .json({
+          message: "Select Online Payment for the remaining balance first.",
+        });
     }
     if (normalize(order.payment_status) === "paid") {
-      await conn.rollback(); transactionActive = false;
-      return res.status(400).json({ message: "This order has already been fully paid." });
+      await conn.rollback();
+      transactionActive = false;
+      return res
+        .status(400)
+        .json({ message: "This order has already been fully paid." });
     }
 
     const [paymentRows] = await conn.query(
@@ -4455,45 +4560,79 @@ const createPickupRemainingBalancePayMongoCheckout = async ({ req, res, orderId 
     for (const row of paymentRows) {
       const cents = parseDecimalToCentsStrict(row.amount);
       if (cents === null) {
-        await conn.rollback(); transactionActive = false;
-        return res.status(409).json({ message: "This order's payment records are inconsistent. Please contact support." });
+        await conn.rollback();
+        transactionActive = false;
+        return res
+          .status(409)
+          .json({
+            message:
+              "This order's payment records are inconsistent. Please contact support.",
+          });
       }
       if (normalize(row.status) === "pending") {
-        await conn.rollback(); transactionActive = false;
-        return res.status(400).json({ message: "A payment is already awaiting review for this order." });
+        await conn.rollback();
+        transactionActive = false;
+        return res
+          .status(400)
+          .json({
+            message: "A payment is already awaiting review for this order.",
+          });
       }
       if (normalize(row.status) === "verified") verifiedCents += cents;
     }
     const totalCents = parseDecimalToCentsStrict(order.total);
     if (totalCents === null) {
-      await conn.rollback(); transactionActive = false;
-      return res.status(409).json({ message: "This order's total is invalid. Please contact support." });
+      await conn.rollback();
+      transactionActive = false;
+      return res
+        .status(409)
+        .json({
+          message: "This order's total is invalid. Please contact support.",
+        });
     }
     const remainingCents = Math.max(0, totalCents - verifiedCents);
     if (remainingCents <= 0) {
-      await conn.rollback(); transactionActive = false;
-      return res.status(400).json({ message: "This order has already been fully paid." });
+      await conn.rollback();
+      transactionActive = false;
+      return res
+        .status(400)
+        .json({ message: "This order has already been fully paid." });
     }
 
     const hasSessionId = Boolean(order.paymongo_session_id);
     const hasPaymentUrl = Boolean(order.payment_url);
     if (hasSessionId !== hasPaymentUrl) {
-      await conn.rollback(); transactionActive = false;
-      return res.status(409).json({ message: "This order's payment state is inconsistent. Please contact support." });
+      await conn.rollback();
+      transactionActive = false;
+      return res
+        .status(409)
+        .json({
+          message:
+            "This order's payment state is inconsistent. Please contact support.",
+        });
     }
     if (hasSessionId && hasPaymentUrl) {
       let session;
-      try { session = await retrieveCheckoutSession(order.paymongo_session_id); }
-      catch (pmErr) {
-        await conn.rollback(); transactionActive = false;
-        return res.status(502).json({ message: "Unable to reach the payment provider. Please try again." });
+      try {
+        session = await retrieveCheckoutSession(order.paymongo_session_id);
+      } catch (pmErr) {
+        await conn.rollback();
+        transactionActive = false;
+        return res
+          .status(502)
+          .json({
+            message: "Unable to reach the payment provider. Please try again.",
+          });
       }
       const payments = session.attributes?.payments || [];
       const intent = session.attributes?.payment_intent;
-      const paid = payments.some((p) => p.attributes?.status === "paid") || intent?.attributes?.status === "succeeded";
+      const paid =
+        payments.some((p) => p.attributes?.status === "paid") ||
+        intent?.attributes?.status === "succeeded";
       const active = normalize(session.attributes?.status) === "active";
       if (paid || active) {
-        await conn.commit(); transactionActive = false;
+        await conn.commit();
+        transactionActive = false;
         return res.json({ payment_url: order.payment_url, reused: true });
       }
       await conn.execute(
@@ -4515,7 +4654,12 @@ const createPickupRemainingBalancePayMongoCheckout = async ({ req, res, orderId 
       description: `Remaining Balance for ${order.order_number}`,
       successUrl: `${frontendUrl}/custom-requests/${order.id}?verify_remaining_success=true`,
       cancelUrl: `${frontendUrl}/custom-requests/${order.id}`,
-      metadata: { order_id: order.id, order_type: "blueprint", payment_purpose: "remaining_balance", fulfillment_method: "pickup" },
+      metadata: {
+        order_id: order.id,
+        order_type: "blueprint",
+        payment_purpose: "remaining_balance",
+        fulfillment_method: "pickup",
+      },
     });
     const [updateResult] = await conn.execute(
       `UPDATE orders SET payment_url = ?, paymongo_session_id = ?, updated_at = NOW()
@@ -4526,15 +4670,30 @@ const createPickupRemainingBalancePayMongoCheckout = async ({ req, res, orderId 
       [checkout.checkoutUrl, checkout.sessionId, order.id, req.user.id],
     );
     if (updateResult.affectedRows !== 1) {
-      await conn.rollback(); transactionActive = false;
-      return res.status(409).json({ message: "This order's state changed. Please refresh and try again." });
+      await conn.rollback();
+      transactionActive = false;
+      return res
+        .status(409)
+        .json({
+          message: "This order's state changed. Please refresh and try again.",
+        });
     }
-    await conn.commit(); transactionActive = false;
+    await conn.commit();
+    transactionActive = false;
     return res.json({ payment_url: checkout.checkoutUrl });
   } catch (err) {
-    if (conn && transactionActive) { try { await conn.rollback(); } catch {} }
-    console.error("[customer.customorders pickup remaining checkout]", err.response?.data || err);
-    return res.status(500).json({ message: "Failed to create the online payment session." });
+    if (conn && transactionActive) {
+      try {
+        await conn.rollback();
+      } catch {}
+    }
+    console.error(
+      "[customer.customorders pickup remaining checkout]",
+      err.response?.data || err,
+    );
+    return res
+      .status(500)
+      .json({ message: "Failed to create the online payment session." });
   } finally {
     if (conn) conn.release();
   }
@@ -4581,7 +4740,12 @@ exports.selectRemainingPaymentMethod = async (req, res) => {
       [orderId, req.user.id],
     );
     if (normalize(fulfillmentProbe?.fulfillment_method) === "pickup") {
-      return selectPickupRemainingPaymentMethod({ req, res, orderId, normalizedMethod });
+      return selectPickupRemainingPaymentMethod({
+        req,
+        res,
+        orderId,
+        normalizedMethod,
+      });
     }
 
     conn = await db.getConnection();
@@ -4866,7 +5030,11 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
       [orderId, req.user.id],
     );
     if (normalize(fulfillmentProbe?.fulfillment_method) === "pickup") {
-      return createPickupRemainingBalancePayMongoCheckout({ req, res, orderId });
+      return createPickupRemainingBalancePayMongoCheckout({
+        req,
+        res,
+        orderId,
+      });
     }
 
     conn = await db.getConnection();
