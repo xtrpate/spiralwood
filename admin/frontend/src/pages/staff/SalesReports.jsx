@@ -11,7 +11,6 @@ import {
 } from "recharts";
 import { Printer } from "lucide-react";
 
-
 const money = (value) =>
   `₱${Number(value || 0).toLocaleString("en-PH", {
     minimumFractionDigits: 2,
@@ -49,7 +48,9 @@ const paymentMethodLabel = (value) => {
 };
 
 const orderTypeLabel = (row = {}) => {
-  const type = String(row.order_type || "").trim().toLowerCase();
+  const type = String(row.order_type || "")
+    .trim()
+    .toLowerCase();
   if (type === "blueprint") return "Blueprint";
   if (type === "standard") return "Standard";
   return humanize(type);
@@ -59,7 +60,9 @@ const formatDateTime = (value) => {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
+
   return date.toLocaleString("en-PH", {
+    timeZone: "Asia/Manila",
     year: "numeric",
     month: "short",
     day: "2-digit",
@@ -70,23 +73,35 @@ const formatDateTime = (value) => {
 
 const formatPeriodLabel = (value, period) => {
   if (!value) return "—";
+
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
 
-  if (period === "yearly") return String(date.getFullYear());
+  if (period === "yearly") {
+    return date.toLocaleDateString("en-PH", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+    });
+  }
+
   if (period === "monthly") {
     return date.toLocaleDateString("en-PH", {
+      timeZone: "Asia/Manila",
       year: "numeric",
       month: "short",
     });
   }
+
   if (period === "weekly") {
     return `Week of ${date.toLocaleDateString("en-PH", {
+      timeZone: "Asia/Manila",
       month: "short",
       day: "numeric",
     })}`;
   }
+
   return date.toLocaleDateString("en-PH", {
+    timeZone: "Asia/Manila",
     month: "short",
     day: "numeric",
   });
@@ -127,7 +142,9 @@ export default function SalesReports() {
       setData(response.data);
     } catch (err) {
       setData(null);
-      setError(err.response?.data?.message || "Failed to load POS sales report.");
+      setError(
+        err.response?.data?.message || "Failed to load POS sales report.",
+      );
     } finally {
       setLoading(false);
     }
@@ -174,12 +191,13 @@ export default function SalesReports() {
               : "Review verified payments, balances, and sales activity."}
           </p>
         </div>
-
       </div>
 
       <div style={noticeBox}>
         <strong>
-          {isCashierReport ? "Your cashier transactions only." : "Verified payments only."}
+          {isCashierReport
+            ? "Your cashier transactions only."
+            : "Verified payments only."}
         </strong>{" "}
         {isCashierReport
           ? "Only verified payments processed under your account are included. Blueprint down payments and remaining balances stay as separate transactions."
@@ -271,7 +289,10 @@ export default function SalesReports() {
           <button
             style={buttonPrimary}
             onClick={fetchReport}
-            disabled={loading || Boolean(filters.from && filters.to && filters.from > filters.to)}
+            disabled={
+              loading ||
+              Boolean(filters.from && filters.to && filters.from > filters.to)
+            }
           >
             {loading ? "Loading..." : "Generate Report"}
           </button>
@@ -326,19 +347,45 @@ export default function SalesReports() {
               />
               <div style={{ padding: 18 }}>
                 {chartData.length === 0 ? (
-                  <div style={emptyChart}>No verified payments for this period.</div>
+                  <div style={emptyChart}>
+                    No verified payments for this period.
+                  </div>
                 ) : (
                   <ResponsiveContainer width="100%" height={260}>
-                    <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" vertical={false} />
-                      <XAxis dataKey="formatted_period" tick={{ fontSize: 11, fill: "#71717a" }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 11, fill: "#71717a" }} axisLine={false} tickLine={false} />
+                    <BarChart
+                      data={chartData}
+                      margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="#e4e4e7"
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="formatted_period"
+                        tick={{ fontSize: 11, fill: "#71717a" }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 11, fill: "#71717a" }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
                       <Tooltip
-                        formatter={(value) => [money(value), "Collected Payments"]}
+                        formatter={(value) => [
+                          money(value),
+                          "Collected Payments",
+                        ]}
                         contentStyle={tooltipStyle}
                         itemStyle={{ color: "#fff" }}
                       />
-                      <Bar dataKey="total_sales" fill="#18181b" radius={[0, 0, 0, 0]} barSize={42} />
+                      <Bar
+                        dataKey="total_sales"
+                        fill="#18181b"
+                        radius={[0, 0, 0, 0]}
+                        barSize={42}
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -369,7 +416,8 @@ export default function SalesReports() {
                               {paymentMethodLabel(row.payment_method)}
                             </strong>
                             <div style={methodMeta}>
-                              {row.count} verified payment{Number(row.count || 0) === 1 ? "" : "s"}
+                              {row.count} verified payment
+                              {Number(row.count || 0) === 1 ? "" : "s"}
                             </div>
                           </div>
                           <strong style={methodAmount}>
@@ -408,27 +456,55 @@ export default function SalesReports() {
               <table style={table}>
                 <thead>
                   <tr>
-                    {["Date", "Receipt", "Order", "Customer", "Order Type", "Payment Method", "Amount Paid", "Order Total", "Total Paid", "Balance", "Status", "Processed By"].map((label) => (
-                      <th key={label} style={th}>{label}</th>
+                    {[
+                      "Date",
+                      "Receipt",
+                      "Order",
+                      "Customer",
+                      "Order Type",
+                      "Payment Method",
+                      "Amount Paid",
+                      "Order Total",
+                      "Total Paid",
+                      "Balance",
+                      "Status",
+                      "Processed By",
+                    ].map((label) => (
+                      <th key={label} style={th}>
+                        {label}
+                      </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {transactions.length === 0 ? (
-                    <EmptyRow colSpan={12} text="No verified payment transactions for this period." />
+                    <EmptyRow
+                      colSpan={12}
+                      text="No verified payment transactions for this period."
+                    />
                   ) : (
                     transactions.map((row) => (
                       <tr key={row.payment_transaction_id} style={tr}>
                         <td style={td}>{formatDateTime(row.payment_date)}</td>
                         <td style={td}>{row.receipt_number || "—"}</td>
-                        <td style={{ ...td, fontWeight: 800 }}>{row.order_number || `#${row.order_id}`}</td>
+                        <td style={{ ...td, fontWeight: 800 }}>
+                          {row.order_number || `#${row.order_id}`}
+                        </td>
                         <td style={td}>
-                          <div style={{ fontWeight: 700 }}>{row.customer_name || "—"}</div>
-                          <div style={mutedText}>{row.customer_phone || ""}</div>
+                          <div style={{ fontWeight: 700 }}>
+                            {row.customer_name || "—"}
+                          </div>
+                          <div style={mutedText}>
+                            {row.customer_phone || ""}
+                          </div>
                         </td>
                         <td style={td}>{orderTypeLabel(row)}</td>
-                        <td style={td}>{paymentMethodLabel(row.payment_method)}</td>
-                        <td style={{ ...td, fontWeight: 900 }}>{money(row.amount)}</td>
+                        <td style={td}>
+                          {paymentMethodLabel(row.payment_method)}
+                        </td>
+                        <td style={{ ...td, fontWeight: 900 }}>
+                          {money(row.amount)}
+                        </td>
                         <td style={td}>{money(row.order_total)}</td>
                         <td style={td}>{money(row.lifetime_collected)}</td>
                         <td style={td}>{money(row.remaining_balance)}</td>
@@ -452,13 +528,18 @@ export default function SalesReports() {
                 <thead>
                   <tr>
                     {["Product", "Units", "Order Value"].map((label) => (
-                      <th key={label} style={th}>{label}</th>
+                      <th key={label} style={th}>
+                        {label}
+                      </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {products.length === 0 ? (
-                    <EmptyRow colSpan={3} text="No product sales data for this period." />
+                    <EmptyRow
+                      colSpan={3}
+                      text="No product sales data for this period."
+                    />
                   ) : (
                     products.map((row, index) => {
                       const hasOrderValue =
@@ -516,51 +597,260 @@ function SectionHeader({ title, subtitle }) {
 function EmptyRow({ colSpan, text }) {
   return (
     <tr>
-      <td colSpan={colSpan} style={emptyCell}>{text}</td>
+      <td colSpan={colSpan} style={emptyCell}>
+        {text}
+      </td>
     </tr>
   );
 }
 
-const pageTitle = { margin: 0, fontSize: 26, fontWeight: 900, color: "#0a0a0a", letterSpacing: "-0.02em" };
-const pageSubtitle = { margin: "6px 0 0", fontSize: 12.5, color: "#6f6f75", lineHeight: 1.45 };
-const headerRow = { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap", marginBottom: 16 };
-const buttonGhost = { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, border: "1px solid #bfc1c5", background: "#fff", color: "#18181b", padding: "9px 13px", borderRadius: 0, fontWeight: 800, fontSize: 12, cursor: "pointer", minHeight: 38 };
-const noticeBox = { padding: "11px 13px", marginBottom: 16, border: "1px solid #d8d8dc", borderLeft: "3px solid #18181b", background: "#fafafa", color: "#4d4d53", borderRadius: 0, fontSize: 11.5, lineHeight: 1.55 };
-const filterCard = { background: "#fff", border: "1px solid #dcdde0", borderRadius: 0, padding: 16, marginBottom: 16 };
-const filterGrid = { display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" };
-const fieldWrap = { display: "flex", flexDirection: "column", gap: 6, minWidth: 145 };
-const fieldLabel = { fontSize: 10.5, color: "#55565b", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".045em" };
-const input = { border: "1px solid #cfd0d4", background: "#fff", borderRadius: 0, padding: "9px 10px", fontSize: 12, minHeight: 38, color: "#18181b" };
-const buttonPrimary = { border: "1px solid #18181b", background: "#18181b", color: "#fff", padding: "10px 15px", borderRadius: 0, fontWeight: 800, fontSize: 12, cursor: "pointer", minHeight: 38 };
-const errorBox = { padding: 13, borderRadius: 0, color: "#991b1b", background: "#fff5f5", border: "1px solid #efb7b7", marginBottom: 16, fontSize: 12 };
-const loadingBox = { padding: 38, textAlign: "center", color: "#71717a", border: "1px solid #dcdde0", borderRadius: 0, background: "#fff" };
-const metricGrid = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10, marginBottom: 16 };
-const metricCard = { background: "#fff", border: "1px solid #dcdde0", borderRadius: 0, padding: "15px 16px", minHeight: 110 };
-const metricLabel = { fontSize: 10, fontWeight: 800, color: "#6f7076", textTransform: "uppercase", letterSpacing: ".05em" };
-const metricValue = { fontSize: 23, fontWeight: 900, color: "#0a0a0a", marginTop: 8, letterSpacing: "-0.02em" };
-const metricNote = { fontSize: 10.5, color: "#77787e", lineHeight: 1.45, marginTop: 7 };
-const chartGrid = { display: "grid", gridTemplateColumns: "minmax(420px, 1.35fr) minmax(320px, .85fr)", gap: 14, marginBottom: 14 };
-const card = { background: "#fff", border: "1px solid #dcdde0", borderRadius: 0, overflow: "hidden", marginBottom: 14 };
-const sectionHeader = { padding: "14px 16px", borderBottom: "1px solid #dcdde0", background: "#fafafa" };
-const sectionTitle = { margin: 0, fontSize: 14.5, fontWeight: 900, color: "#18181b" };
-const sectionSubtitle = { margin: "4px 0 0", fontSize: 10.5, color: "#77787e", lineHeight: 1.4 };
-const emptyChart = { height: 250, display: "flex", alignItems: "center", justifyContent: "center", color: "#77787e", fontSize: 11.5 };
-const tooltipStyle = { background: "#18181b", border: "1px solid #18181b", borderRadius: 0, color: "#fff", fontSize: 11.5 };
+const pageTitle = {
+  margin: 0,
+  fontSize: 26,
+  fontWeight: 900,
+  color: "#0a0a0a",
+  letterSpacing: "-0.02em",
+};
+const pageSubtitle = {
+  margin: "6px 0 0",
+  fontSize: 12.5,
+  color: "#6f6f75",
+  lineHeight: 1.45,
+};
+const headerRow = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 16,
+  flexWrap: "wrap",
+  marginBottom: 16,
+};
+const buttonGhost = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 7,
+  border: "1px solid #bfc1c5",
+  background: "#fff",
+  color: "#18181b",
+  padding: "9px 13px",
+  borderRadius: 0,
+  fontWeight: 800,
+  fontSize: 12,
+  cursor: "pointer",
+  minHeight: 38,
+};
+const noticeBox = {
+  padding: "11px 13px",
+  marginBottom: 16,
+  border: "1px solid #d8d8dc",
+  borderLeft: "3px solid #18181b",
+  background: "#fafafa",
+  color: "#4d4d53",
+  borderRadius: 0,
+  fontSize: 11.5,
+  lineHeight: 1.55,
+};
+const filterCard = {
+  background: "#fff",
+  border: "1px solid #dcdde0",
+  borderRadius: 0,
+  padding: 16,
+  marginBottom: 16,
+};
+const filterGrid = {
+  display: "flex",
+  gap: 10,
+  alignItems: "flex-end",
+  flexWrap: "wrap",
+};
+const fieldWrap = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  minWidth: 145,
+};
+const fieldLabel = {
+  fontSize: 10.5,
+  color: "#55565b",
+  fontWeight: 800,
+  textTransform: "uppercase",
+  letterSpacing: ".045em",
+};
+const input = {
+  border: "1px solid #cfd0d4",
+  background: "#fff",
+  borderRadius: 0,
+  padding: "9px 10px",
+  fontSize: 12,
+  minHeight: 38,
+  color: "#18181b",
+};
+const buttonPrimary = {
+  border: "1px solid #18181b",
+  background: "#18181b",
+  color: "#fff",
+  padding: "10px 15px",
+  borderRadius: 0,
+  fontWeight: 800,
+  fontSize: 12,
+  cursor: "pointer",
+  minHeight: 38,
+};
+const errorBox = {
+  padding: 13,
+  borderRadius: 0,
+  color: "#991b1b",
+  background: "#fff5f5",
+  border: "1px solid #efb7b7",
+  marginBottom: 16,
+  fontSize: 12,
+};
+const loadingBox = {
+  padding: 38,
+  textAlign: "center",
+  color: "#71717a",
+  border: "1px solid #dcdde0",
+  borderRadius: 0,
+  background: "#fff",
+};
+const metricGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+  gap: 10,
+  marginBottom: 16,
+};
+const metricCard = {
+  background: "#fff",
+  border: "1px solid #dcdde0",
+  borderRadius: 0,
+  padding: "15px 16px",
+  minHeight: 110,
+};
+const metricLabel = {
+  fontSize: 10,
+  fontWeight: 800,
+  color: "#6f7076",
+  textTransform: "uppercase",
+  letterSpacing: ".05em",
+};
+const metricValue = {
+  fontSize: 23,
+  fontWeight: 900,
+  color: "#0a0a0a",
+  marginTop: 8,
+  letterSpacing: "-0.02em",
+};
+const metricNote = {
+  fontSize: 10.5,
+  color: "#77787e",
+  lineHeight: 1.45,
+  marginTop: 7,
+};
+const chartGrid = {
+  display: "grid",
+  gridTemplateColumns: "minmax(420px, 1.35fr) minmax(320px, .85fr)",
+  gap: 14,
+  marginBottom: 14,
+};
+const card = {
+  background: "#fff",
+  border: "1px solid #dcdde0",
+  borderRadius: 0,
+  overflow: "hidden",
+  marginBottom: 14,
+};
+const sectionHeader = {
+  padding: "14px 16px",
+  borderBottom: "1px solid #dcdde0",
+  background: "#fafafa",
+};
+const sectionTitle = {
+  margin: 0,
+  fontSize: 14.5,
+  fontWeight: 900,
+  color: "#18181b",
+};
+const sectionSubtitle = {
+  margin: "4px 0 0",
+  fontSize: 10.5,
+  color: "#77787e",
+  lineHeight: 1.4,
+};
+const emptyChart = {
+  height: 250,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: "#77787e",
+  fontSize: 11.5,
+};
+const tooltipStyle = {
+  background: "#18181b",
+  border: "1px solid #18181b",
+  borderRadius: 0,
+  color: "#fff",
+  fontSize: 11.5,
+};
 const methodPanel = { padding: "16px" };
 const methodBlock = { padding: "13px 0", borderBottom: "1px solid #ececee" };
-const methodRow = { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 14 };
+const methodRow = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 14,
+};
 const methodName = { fontSize: 12.5, color: "#18181b", fontWeight: 800 };
-const methodAmount = { fontSize: 13.5, color: "#18181b", fontWeight: 900, whiteSpace: "nowrap" };
+const methodAmount = {
+  fontSize: 13.5,
+  color: "#18181b",
+  fontWeight: 900,
+  whiteSpace: "nowrap",
+};
 const methodMeta = { marginTop: 3, fontSize: 10, color: "#77787e" };
-const methodTrack = { width: "100%", height: 7, marginTop: 10, background: "#ececee", overflow: "hidden" };
+const methodTrack = {
+  width: "100%",
+  height: 7,
+  marginTop: 10,
+  background: "#ececee",
+  overflow: "hidden",
+};
 const methodFill = { height: "100%", background: "#18181b", borderRadius: 0 };
 const methodShare = { marginTop: 5, fontSize: 9.5, color: "#8b8c91" };
-const methodEmpty = { minHeight: 250, display: "flex", alignItems: "center", justifyContent: "center", color: "#77787e", fontSize: 11.5 };
+const methodEmpty = {
+  minHeight: 250,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: "#77787e",
+  fontSize: 11.5,
+};
 const tableScroll = { overflowX: "auto" };
 const table = { width: "100%", borderCollapse: "collapse", fontSize: 11.5 };
-const th = { textAlign: "left", padding: "10px 11px", background: "#fafafa", borderBottom: "1px solid #dcdde0", color: "#55565b", fontSize: 9.5, textTransform: "uppercase", letterSpacing: ".04em", whiteSpace: "nowrap", fontWeight: 800 };
+const th = {
+  textAlign: "left",
+  padding: "10px 11px",
+  background: "#fafafa",
+  borderBottom: "1px solid #dcdde0",
+  color: "#55565b",
+  fontSize: 9.5,
+  textTransform: "uppercase",
+  letterSpacing: ".04em",
+  whiteSpace: "nowrap",
+  fontWeight: 800,
+};
 const tr = { borderBottom: "1px solid #ececee" };
-const td = { padding: "11px", verticalAlign: "top", color: "#3f3f46", whiteSpace: "nowrap" };
+const td = {
+  padding: "11px",
+  verticalAlign: "top",
+  color: "#3f3f46",
+  whiteSpace: "nowrap",
+};
 const mutedText = { marginTop: 3, fontSize: 9.5, color: "#77787e" };
-const pendingAllocation = { color: "#77787e", fontSize: 10.5, fontStyle: "italic", whiteSpace: "nowrap" };
+const pendingAllocation = {
+  color: "#77787e",
+  fontSize: 10.5,
+  fontStyle: "italic",
+  whiteSpace: "nowrap",
+};
 const emptyCell = { padding: 30, textAlign: "center", color: "#77787e" };

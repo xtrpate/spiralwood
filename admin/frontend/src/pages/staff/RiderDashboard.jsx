@@ -13,7 +13,10 @@ import api from "../../services/api";
 import { getSocket, subscribeSocketReady } from "../../services/socket";
 import "./RiderScreen.css";
 
-const normalize = (value) => String(value || "").trim().toLowerCase();
+const normalize = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
 
 const toDateKey = (value) => {
   const raw = String(value || "").trim();
@@ -55,8 +58,7 @@ const parseCoordinate = (value) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const isBlueprintOrder = (orderType) =>
-  normalize(orderType) === "blueprint";
+const isBlueprintOrder = (orderType) => normalize(orderType) === "blueprint";
 
 const getMapHref = (delivery = {}) => {
   const lat = parseCoordinate(delivery.delivery_lat);
@@ -133,6 +135,7 @@ export default function RiderDashboard() {
 
   const todayKey = getTodayKey();
   const todayLabel = new Date().toLocaleDateString("en-PH", {
+    timeZone: "Asia/Manila",
     weekday: "long",
     month: "long",
     day: "numeric",
@@ -225,13 +228,11 @@ export default function RiderDashboard() {
   const upNext = scheduledDeliveries
     .filter(
       (delivery) =>
-        !currentDelivery ||
-        Number(delivery.id) !== Number(currentDelivery.id),
+        !currentDelivery || Number(delivery.id) !== Number(currentDelivery.id),
     )
     .slice(0, 4);
 
-  const activeCount =
-    inTransitDeliveries.length + scheduledDeliveries.length;
+  const activeCount = inTransitDeliveries.length + scheduledDeliveries.length;
 
   const dueToday = [...inTransitDeliveries, ...scheduledDeliveries].filter(
     (delivery) => toDateKey(delivery.scheduled_date) === todayKey,
@@ -251,9 +252,7 @@ export default function RiderDashboard() {
     );
   }
 
-  const currentMapHref = currentDelivery
-    ? getMapHref(currentDelivery)
-    : null;
+  const currentMapHref = currentDelivery ? getMapHref(currentDelivery) : null;
 
   return (
     <div className="rider-page-shell rider-dashboard-v2">

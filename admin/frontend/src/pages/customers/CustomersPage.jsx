@@ -1,5 +1,11 @@
 // src/pages/customers/CustomersPage.jsx – Customer Account Management (Admin)
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
 import {
@@ -66,6 +72,7 @@ const formatDate = (value, includeTime = false) => {
 
   return includeTime
     ? date.toLocaleString("en-PH", {
+        timeZone: "Asia/Manila",
         month: "short",
         day: "numeric",
         year: "numeric",
@@ -73,6 +80,7 @@ const formatDate = (value, includeTime = false) => {
         minute: "2-digit",
       })
     : date.toLocaleDateString("en-PH", {
+        timeZone: "Asia/Manila",
         month: "short",
         day: "numeric",
         year: "numeric",
@@ -154,7 +162,9 @@ export default function CustomersPage() {
         inactive_accounts: Number(data?.summary?.inactive_accounts || 0),
       });
     } catch (err) {
-      toast.error(err?.response?.data?.message || "Unable to load customer accounts.");
+      toast.error(
+        err?.response?.data?.message || "Unable to load customer accounts.",
+      );
       setRows([]);
       setTotal(0);
     } finally {
@@ -230,12 +240,16 @@ export default function CustomersPage() {
         <div>
           <h1 className="cm-page-title">Customer Account Management</h1>
           <p className="cm-page-subtitle">
-            Review customer accounts, verification, sign-in activity, and access.
+            Review customer accounts, verification, sign-in activity, and
+            access.
           </p>
         </div>
       </header>
 
-      <section className="cm-summary-grid" aria-label="Customer account summary">
+      <section
+        className="cm-summary-grid"
+        aria-label="Customer account summary"
+      >
         <SummaryCard
           label="Total Customers"
           value={summary.total_customers}
@@ -263,7 +277,8 @@ export default function CustomersPage() {
           <div>
             <h2>Customer Accounts</h2>
             <p>
-              Find customers and review their contact, verification, and account status.
+              Find customers and review their contact, verification, and account
+              status.
             </p>
           </div>
 
@@ -291,7 +306,9 @@ export default function CustomersPage() {
             <span>Email Status</span>
             <select
               value={filters.email_status}
-              onChange={(event) => setFilter("email_status", event.target.value)}
+              onChange={(event) =>
+                setFilter("email_status", event.target.value)
+              }
             >
               <option value="">All Email Statuses</option>
               <option value="verified">Verified</option>
@@ -303,7 +320,9 @@ export default function CustomersPage() {
             <span>Phone Status</span>
             <select
               value={filters.phone_status}
-              onChange={(event) => setFilter("phone_status", event.target.value)}
+              onChange={(event) =>
+                setFilter("phone_status", event.target.value)
+              }
             >
               <option value="">All Phone Statuses</option>
               <option value="verified">Verified</option>
@@ -362,7 +381,9 @@ export default function CustomersPage() {
                 <tr>
                   <td colSpan={8} className="cm-empty">
                     <strong>No matching customers</strong>
-                    <span>Adjust the search or filters to view more accounts.</span>
+                    <span>
+                      Adjust the search or filters to view more accounts.
+                    </span>
                   </td>
                 </tr>
               ) : (
@@ -467,7 +488,9 @@ function CustomerRow({
         <div className="cm-account-cell">
           <CustomerAvatar src={row.profile_photo} name={row.name} />
           <div className="cm-account-copy">
-            <span className="cm-user-name">{row.name || "Unnamed Customer"}</span>
+            <span className="cm-user-name">
+              {row.name || "Unnamed Customer"}
+            </span>
             <small>Customer account</small>
           </div>
         </div>
@@ -568,11 +591,7 @@ function CustomerRow({
   );
 }
 
-function StatusText({
-  positive,
-  positiveLabel,
-  negativeLabel,
-}) {
+function StatusText({ positive, positiveLabel, negativeLabel }) {
   return (
     <span className={`cm-status${positive ? " is-positive" : " is-negative"}`}>
       <i aria-hidden="true" />
@@ -633,7 +652,10 @@ function CustomerDetailModal({ row, onClose, onAction }) {
             <div className="cm-section-title">Contact Information</div>
             <div className="cm-detail-grid">
               <DetailItem label="Email" value={row.email || "Not provided"} />
-              <DetailItem label="Phone" value={formatPhoneForDisplay(row.phone)} />
+              <DetailItem
+                label="Phone"
+                value={formatPhoneForDisplay(row.phone)}
+              />
               <DetailItem
                 label="Address"
                 value={row.address || "Not provided"}

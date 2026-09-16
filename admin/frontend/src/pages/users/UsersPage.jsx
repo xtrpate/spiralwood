@@ -163,6 +163,7 @@ const formatLastLogin = (value) => {
   if (Number.isNaN(date.getTime())) return "Never";
 
   return date.toLocaleDateString("en-PH", {
+    timeZone: "Asia/Manila",
     month: "short",
     day: "numeric",
     year: "numeric",

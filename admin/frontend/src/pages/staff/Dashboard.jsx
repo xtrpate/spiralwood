@@ -45,6 +45,7 @@ const formatDate = (value) => {
   if (Number.isNaN(parsed.getTime())) return "—";
 
   return parsed.toLocaleDateString("en-PH", {
+    timeZone: "Asia/Manila",
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -57,6 +58,7 @@ const formatTime = (value) => {
   if (Number.isNaN(parsed.getTime())) return "—";
 
   return parsed.toLocaleTimeString("en-PH", {
+    timeZone: "Asia/Manila",
     hour: "numeric",
     minute: "2-digit",
   });
@@ -113,10 +115,7 @@ const getWorkStatus = (taskList = []) => {
 
   if (statuses.includes("blocked")) return "blocked";
 
-  if (
-    statuses.includes("in_progress") ||
-    statuses.includes("completed")
-  ) {
+  if (statuses.includes("in_progress") || statuses.includes("completed")) {
     return "in_progress";
   }
 
@@ -147,9 +146,7 @@ const getCurrentStep = (taskList = []) => {
   );
   if (active) return active;
 
-  const next = sorted.find(
-    (task) => normalize(task.status) !== "completed",
-  );
+  const next = sorted.find((task) => normalize(task.status) !== "completed");
   if (next) return next;
 
   return sorted[sorted.length - 1] || null;
@@ -434,8 +431,7 @@ export default function Dashboard() {
             getAssignedStaffId(appointment) === Number(user?.id || 0),
         )
         .sort(
-          (a, b) =>
-            safeTime(a.scheduled_date) - safeTime(b.scheduled_date),
+          (a, b) => safeTime(a.scheduled_date) - safeTime(b.scheduled_date),
         ),
     [appointments, user?.id],
   );
@@ -461,6 +457,7 @@ export default function Dashboard() {
   const visibleInventoryAlerts = inventoryAlerts.slice(0, 5);
 
   const todayLabel = new Date().toLocaleDateString("en-PH", {
+    timeZone: "Asia/Manila",
     weekday: "long",
     month: "long",
     day: "numeric",

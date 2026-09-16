@@ -126,7 +126,9 @@ function fmt(n) {
 
 function fmtDate(d) {
   if (!d) return "—";
+
   return new Date(d).toLocaleDateString("en-PH", {
+    timeZone: "Asia/Manila",
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -137,7 +139,9 @@ function fmtDate(d) {
 
 function fmtDateShort(d) {
   if (!d) return "—";
+
   return new Date(d).toLocaleDateString("en-PH", {
+    timeZone: "Asia/Manila",
     month: "short",
     day: "numeric",
     year: "numeric",

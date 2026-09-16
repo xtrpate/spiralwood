@@ -306,7 +306,9 @@ export default function BlueprintView() {
                 }}
               >
                 By {bp.creator_name} •{" "}
-                {new Date(bp.created_at).toLocaleDateString("en-PH")}
+                {new Date(bp.created_at).toLocaleDateString("en-PH", {
+                  timeZone: "Asia/Manila",
+                })}
               </div>
               <button
                 style={{
@@ -482,11 +484,15 @@ export default function BlueprintView() {
                 ["Source", selected.source],
                 [
                   "Created",
-                  new Date(selected.created_at).toLocaleDateString("en-PH"),
+                  new Date(selected.created_at).toLocaleDateString("en-PH", {
+                    timeZone: "Asia/Manila",
+                  }),
                 ],
                 [
                   "Updated",
-                  new Date(selected.updated_at).toLocaleDateString("en-PH"),
+                  new Date(selected.updated_at).toLocaleDateString("en-PH", {
+                    timeZone: "Asia/Manila",
+                  }),
                 ],
               ].map(([label, val]) => (
                 <div key={label}>

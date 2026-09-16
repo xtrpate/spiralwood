@@ -1,6 +1,9 @@
 import jsPDF from "jspdf";
 
-const normalize = (value) => String(value || "").trim().toLowerCase();
+const normalize = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
 
 const formatMoney = (value) =>
   `PHP ${Number(value || 0).toLocaleString("en-PH", {
@@ -10,10 +13,13 @@ const formatMoney = (value) =>
 
 const formatDate = (value, withTime = false) => {
   if (!value) return "Not yet recorded";
+
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Not yet recorded";
+
   return withTime
     ? date.toLocaleString("en-PH", {
+        timeZone: "Asia/Manila",
         year: "numeric",
         month: "long",
         day: "numeric",
@@ -21,6 +27,7 @@ const formatDate = (value, withTime = false) => {
         minute: "2-digit",
       })
     : date.toLocaleDateString("en-PH", {
+        timeZone: "Asia/Manila",
         year: "numeric",
         month: "long",
         day: "numeric",
@@ -28,7 +35,9 @@ const formatDate = (value, withTime = false) => {
 };
 
 const titleCase = (value, fallback = "Not specified") => {
-  const text = String(value || "").replace(/[_-]+/g, " ").trim();
+  const text = String(value || "")
+    .replace(/[_-]+/g, " ")
+    .trim();
   if (!text) return fallback;
   return text.replace(/\b\w/g, (char) => char.toUpperCase());
 };
@@ -47,14 +56,22 @@ const getProjectItem = (order, explicitItem) => {
     : [];
   if (customItems.length) return customItems[0];
   const items = Array.isArray(order?.items) ? order.items : [];
-  return items.find((item) => item?.customization || item?.base_blueprint_title) || items[0] || null;
+  return (
+    items.find((item) => item?.customization || item?.base_blueprint_title) ||
+    items[0] ||
+    null
+  );
 };
 
 const getItemField = (item, customerKey, adminKey) =>
   item?.[customerKey] ?? item?.[adminKey] ?? null;
 
 const getProjectName = (item, order, agreement) =>
-  getItemField(item, "base_blueprint_title", "requested_base_blueprint_title") ||
+  getItemField(
+    item,
+    "base_blueprint_title",
+    "requested_base_blueprint_title",
+  ) ||
   item?.display_name ||
   item?.product_name ||
   agreement?.blueprint_title ||
@@ -78,7 +95,9 @@ const splitParagraphs = (text = "") =>
     .filter(Boolean);
 
 const parseNumberedSections = (text = "") => {
-  const normalizedText = String(text || "").replace(/\r/g, "").trim();
+  const normalizedText = String(text || "")
+    .replace(/\r/g, "")
+    .trim();
   if (!normalizedText) return [];
   const regex =
     /(^|\n)(\d+)\.\s*([A-Z][A-Z0-9 &/(),.-]+)\n([\s\S]*?)(?=\n\d+\.\s*[A-Z][A-Z0-9 &/(),.-]+\n|$)/g;
@@ -121,9 +140,15 @@ export function downloadProjectAgreementPdf({
       ? `#${String(agreement?.order_id || order?.id).padStart(5, "0")}`
       : "Not available");
   const resolvedCustomerName =
-    customerName || agreement?.customer_name || order?.customer_name || "Customer";
+    customerName ||
+    agreement?.customer_name ||
+    order?.customer_name ||
+    "Customer";
   const resolvedCustomerEmail =
-    customerEmail || agreement?.customer_email || order?.customer_email || "Authenticated WISDOM account";
+    customerEmail ||
+    agreement?.customer_email ||
+    order?.customer_email ||
+    "Authenticated WISDOM account";
   const item = getProjectItem(order, projectItem);
   const projectName = getProjectName(item, order, agreement);
   const dimensions = getDimensions(item);
@@ -134,7 +159,11 @@ export function downloadProjectAgreementPdf({
     getItemField(item, "color", "requested_finish_color") ||
     "Not specified";
   const quantity = Number(item?.quantity || 1) || 1;
-  const assemblyRaw = getItemField(item, "assembly_choice", "requested_assembly_choice");
+  const assemblyRaw = getItemField(
+    item,
+    "assembly_choice",
+    "requested_assembly_choice",
+  );
   const assembly =
     normalize(assemblyRaw) === "included"
       ? "Included"
@@ -143,10 +172,15 @@ export function downloadProjectAgreementPdf({
         : "Not specified";
 
   const approvedTotal = Number(
-    estimation?.grand_total ?? agreement?.total_amount ?? order?.total_amount ?? order?.total ?? 0,
+    estimation?.grand_total ??
+      agreement?.total_amount ??
+      order?.total_amount ??
+      order?.total ??
+      0,
   );
   const requiredDownPayment = Number(
-    agreement?.down_payment || (approvedTotal > 0 ? (approvedTotal * 0.3).toFixed(2) : 0),
+    agreement?.down_payment ||
+      (approvedTotal > 0 ? (approvedTotal * 0.3).toFixed(2) : 0),
   );
   const remainingBalance = Math.max(0, approvedTotal - requiredDownPayment);
   const isPickup = normalize(order?.fulfillment_method) === "pickup";
@@ -171,7 +205,12 @@ export function downloadProjectAgreementPdf({
     if (y + needed > bottomLimit) addPage();
   };
 
-  const text = (value, x, width, { size = 9, bold = false, color = [45, 45, 45], lineHeight = 4.1 } = {}) => {
+  const text = (
+    value,
+    x,
+    width,
+    { size = 9, bold = false, color = [45, 45, 45], lineHeight = 4.1 } = {},
+  ) => {
     const lines = doc.splitTextToSize(String(value || "—"), width);
     ensureSpace(Math.max(lines.length, 1) * lineHeight + 1);
     doc.setFont("helvetica", bold ? "bold" : "normal");
@@ -249,7 +288,12 @@ export function downloadProjectAgreementPdf({
   sectionTitle("Contract Details");
   keyValueGrid([
     ["Contract Number", agreementNumber, "Order", orderRef],
-    ["Customer", resolvedCustomerName, "Issued", formatDate(agreement?.created_at)],
+    [
+      "Customer",
+      resolvedCustomerName,
+      "Issued",
+      formatDate(agreement?.created_at),
+    ],
   ]);
 
   sectionTitle("Furniture Details");
@@ -266,7 +310,9 @@ export function downloadProjectAgreementPdf({
       ensureSpace(9);
       const description = row?.description || row?.name || `Item ${index + 1}`;
       const qty = Number(row?.quantity || 0);
-      const subtotal = Number(row?.subtotal || qty * Number(row?.unit_cost || 0));
+      const subtotal = Number(
+        row?.subtotal || qty * Number(row?.unit_cost || 0),
+      );
       doc.setFont("helvetica", "bold");
       doc.setFontSize(8.5);
       doc.setTextColor(35, 35, 35);
@@ -274,7 +320,9 @@ export function downloadProjectAgreementPdf({
       doc.text(lines, margin, y);
       doc.setFont("helvetica", "normal");
       doc.text(`Qty ${qty || "—"}`, 142, y);
-      doc.text(formatMoney(subtotal), pageWidth - margin, y, { align: "right" });
+      doc.text(formatMoney(subtotal), pageWidth - margin, y, {
+        align: "right",
+      });
       y += Math.max(lines.length, 1) * 4 + 2;
     });
   }
@@ -288,7 +336,9 @@ export function downloadProjectAgreementPdf({
       moneyRow("Delivery Fee", estimation.additional_delivery_fee);
     }
   }
-  const discount = Number(estimation?.discount_amount ?? estimation?.discount ?? 0);
+  const discount = Number(
+    estimation?.discount_amount ?? estimation?.discount ?? 0,
+  );
   if (discount > 0) moneyRow("Discount", -discount);
   moneyRow("VAT", estimation?.tax_amount ?? estimation?.tax ?? 0);
   doc.setDrawColor(225, 225, 225);
@@ -337,27 +387,30 @@ export function downloadProjectAgreementPdf({
   }
 
   sectionTitle("Warranty");
-  splitParagraphs(agreement?.warranty_terms || "Warranty terms are not available.").forEach(
-    (paragraph) => {
-      text(paragraph, margin, contentWidth, { size: 8.7 });
-      y += 1.2;
-    },
-  );
+  splitParagraphs(
+    agreement?.warranty_terms || "Warranty terms are not available.",
+  ).forEach((paragraph) => {
+    text(paragraph, margin, contentWidth, { size: 8.7 });
+    y += 1.2;
+  });
 
   const accepted = Boolean(agreement?.signed_at);
   sectionTitle(accepted ? "Acceptance Record" : "Acceptance");
   if (accepted) {
     keyValueGrid([
-      ["Customer", resolvedCustomerName, "Accepted On", formatDate(agreement.signed_at, true)],
+      [
+        "Customer",
+        resolvedCustomerName,
+        "Accepted On",
+        formatDate(agreement.signed_at, true),
+      ],
       ["Account", resolvedCustomerEmail, "Method", "WISDOM Customer Account"],
     ]);
   } else {
-    text(
-      "Waiting for customer acceptance.",
-      margin,
-      contentWidth,
-      { size: 8.7, color: [75, 75, 75] },
-    );
+    text("Waiting for customer acceptance.", margin, contentWidth, {
+      size: 8.7,
+      color: [75, 75, 75],
+    });
   }
 
   const pageCount = doc.getNumberOfPages();
@@ -368,10 +421,19 @@ export function downloadProjectAgreementPdf({
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
     doc.setTextColor(115, 115, 115);
-    doc.text(`Spiral Wood Services | ${agreementNumber}`, margin, pageHeight - 9);
-    doc.text(`Page ${page} of ${pageCount}`, pageWidth - margin, pageHeight - 9, {
-      align: "right",
-    });
+    doc.text(
+      `Spiral Wood Services | ${agreementNumber}`,
+      margin,
+      pageHeight - 9,
+    );
+    doc.text(
+      `Page ${page} of ${pageCount}`,
+      pageWidth - margin,
+      pageHeight - 9,
+      {
+        align: "right",
+      },
+    );
   }
 
   doc.save(`contract_${agreementNumber}.pdf`);
