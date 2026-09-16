@@ -98,7 +98,7 @@ export default function POSLayout() {
       to: "/staff/admin/orders/cancellations",
       icon: FileText,
       label: "Cancellations",
-      permission: "cancellations_refunds.view",
+      permission: "cancellations.view",
     },
     {
       to: "/staff/admin/tasks",

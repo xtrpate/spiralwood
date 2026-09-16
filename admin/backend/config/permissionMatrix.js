@@ -4,10 +4,9 @@
  * PART A — Permission Policy / Specification
  *
  * IMPORTANT:
- * - This file is currently a definition of the permission policy.
- * - It is NOT authorization middleware.
- * - Do NOT use this file to grant/deny API access yet.
- * - Backend enforcement will be implemented in Part C.
+ * - This file defines the canonical permission policy used to seed/review RBAC.
+ * - Runtime enforcement is performed by middleware/permission.js using DB grants.
+ * - NEVER_GRANT remains a live hard safety boundary in both policy and middleware.
  *
  * Concepts:
  * role            = account/job type
@@ -51,7 +50,7 @@ const MODULE_ACTIONS = Object.freeze({
 
   orders: ["view", "create", "edit", "manage", "export"],
 
-  cancellations_refunds: ["view", "manage", "export"],
+  cancellations: ["view", "manage"],
 
   pos_qr_recovery: ["view", "manage"],
 
@@ -112,7 +111,7 @@ const AUTHORITY_DEFAULTS = Object.freeze({
     stock_movements: ["view"],
     orders: ["view"],
 
-    cancellations_refunds: [],
+    cancellations: [],
     pos_qr_recovery: [],
 
     task_assignments: ["view"],
@@ -148,7 +147,7 @@ const AUTHORITY_DEFAULTS = Object.freeze({
 
     orders: ["view", "create", "edit", "manage", "export"],
 
-    cancellations_refunds: ["view", "manage", "export"],
+    cancellations: ["view"],
 
     pos_qr_recovery: ["view", "manage"],
 
@@ -176,7 +175,7 @@ const AUTHORITY_DEFAULTS = Object.freeze({
     // Confirmed by your decision:
     customers: ["view", "create", "edit", "manage", "delete", "export"],
 
-    users: ["view", "create", "edit", "delete", "manage", "authority"],
+    users: ["view", "create", "edit", "delete"],
 
     audit_logs: ["view", "export"],
 
@@ -198,7 +197,7 @@ const AUTHORITY_DEFAULTS = Object.freeze({
 
     orders: ["view", "create", "edit", "manage", "export"],
 
-    cancellations_refunds: ["view", "manage", "export"],
+    cancellations: ["view", "manage"],
 
     pos_qr_recovery: ["view", "manage"],
 
@@ -249,7 +248,7 @@ const AUTHORITY_DEFAULTS = Object.freeze({
  * converted into explicit role_permissions during Part B.
  *
  * NOTE:
- * This is a policy definition only. It is not being enforced yet.
+ * Runtime enforcement is DB-backed; this object documents the intended defaults.
  */
 const ROLE_DEFAULTS = Object.freeze({
   customer: {
@@ -337,7 +336,11 @@ const NEVER_GRANT = Object.freeze([
 const POLICY_NOTES = Object.freeze({
   authorityHierarchy: ["user < manager < admin"],
 
-  roleAndAuthorityAreIndependent: true,
+  roleAndAuthorityAreIndependent: false,
+
+  managerUsesAdminRole: true,
+
+  staffAuthorityIsUserOnly: true,
 
   auditLogsAreImmutable: true,
 
@@ -347,11 +350,13 @@ const POLICY_NOTES = Object.freeze({
 
   adminIsHighestAuthority: true,
 
-  superAdminExcluded: true,
+  superAdminExcluded: false,
 
   customersAreManagedByManagers: true,
 
-  cancellationsAndRefundsAreAvailableToManagers: true,
+  managersCanViewCancellations: true,
+
+  cancellationDecisionsRequireSuperAdmin: true,
 
   posQrRecoveryIsAvailableToManagers: true,
 

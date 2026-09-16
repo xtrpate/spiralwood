@@ -20,7 +20,7 @@ const upload = require("../config/upload");
 
 const accountAuthority = [
   authenticate,
-  authorize("admin", "staff"),
+  authorize("admin"),
   verifyAuthority(["manager", "admin"]),
 ];
 
@@ -171,7 +171,12 @@ router.put("/auth/change-password", authenticate, auth.changePassword);
 // ══════════════════════════════════════════════════════════════════════════════
 // DASHBOARD
 // ══════════════════════════════════════════════════════════════════════════════
-router.get("/dashboard", adminStaff, dashboard.getDashboard);
+router.get(
+  "/dashboard",
+  adminStaff,
+  requirePermission("dashboard.view"),
+  dashboard.getDashboard,
+);
 
 // ══════════════════════════════════════════════════════════════════════════════
 // PRODUCTS
@@ -772,7 +777,7 @@ router.put(
 );
 router.post(
   "/users",
-  adminOnly,
+  accountAuthority,
   requirePermission("users.create"),
   upload.uploadUserProfilePhoto,
   logAction("create_user", "users"),
@@ -780,14 +785,14 @@ router.post(
 );
 router.put(
   "/users/:id/authority",
-  accountAuthority,
+  adminOnly,
   requirePermission("users.authority"),
   logAction("update_user_authority", "users"),
   mgmt.updateAuthority,
 );
 router.put(
   "/users/:id",
-  adminOnly,
+  accountAuthority,
   requirePermission("users.edit"),
   upload.uploadUserProfilePhoto,
   logAction("update_user", "users"),
@@ -796,7 +801,7 @@ router.put(
 
 router.patch(
   "/users/:id/password",
-  adminOnly,
+  accountAuthority,
   requirePermission("users.edit"),
   logAction("reset_user_password", "users"),
   mgmt.resetUserPassword,
@@ -804,7 +809,7 @@ router.patch(
 
 router.delete(
   "/users/:id",
-  adminOnly,
+  accountAuthority,
   requirePermission("users.delete"),
   logAction("deactivate_user", "users"),
   mgmt.deleteUser,

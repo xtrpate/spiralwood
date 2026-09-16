@@ -21,16 +21,16 @@ import {
 
 const AUTHORITY_LEVELS = {
   user: {
-    label: "User",
-    desc: "Basic account authority",
+    label: "Standard",
+    desc: "Standard staff access",
   },
   manager: {
     label: "Manager",
-    desc: "Can manage user-level accounts",
+    desc: "Business management access",
   },
   admin: {
-    label: "Administrator",
-    desc: "Full authority management access",
+    label: "Super Admin",
+    desc: "Full system administration",
   },
 };
 
@@ -49,11 +49,42 @@ const STAFF_TYPES = {
   },
 };
 
+const isSuperAdminAccount = (account) =>
+  account?.role === "admin" &&
+  String(account?.authority_level || "").toLowerCase() === "admin";
+
+const isManagerAccount = (account) =>
+  account?.role === "admin" &&
+  String(account?.authority_level || "").toLowerCase() === "manager";
+
+const isStandardStaffAccount = (account) =>
+  account?.role === "staff" &&
+  String(account?.authority_level || "user").toLowerCase() === "user";
+
+const canManageInternalTarget = (actor, target) =>
+  isSuperAdminAccount(actor) ||
+  (isManagerAccount(actor) && isStandardStaffAccount(target));
+
+const humanizePermissionModule = (value) =>
+  String(value || "Other")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const getPermissionDisplayName = (permission) => {
+  if (permission?.description) return permission.description;
+  const [moduleName, action] = String(permission?.permission_key || "").split(".");
+  const actionLabel =
+    { view: "View", create: "Add", edit: "Edit", delete: "Delete", manage: "Manage", export: "Export", authority: "Change Access" }[action] ||
+    humanizePermissionModule(action);
+  return `${actionLabel} ${humanizePermissionModule(moduleName)}`.trim();
+};
+
 const BLANK_FORM = {
   name: "",
   email: "",
   password: "",
   role: "staff",
+  authority_level: "user",
   staff_type: "cashier",
   phone: "",
   address: "",
@@ -102,12 +133,17 @@ function UserAvatar({ src, name, isAdmin = false }) {
 }
 
 const getRoleLabel = (user) => {
-  if (user?.role === "admin") return "Administrator";
+  if (isSuperAdminAccount(user)) return "Super Admin";
+  if (isManagerAccount(user)) return "Manager";
   return STAFF_TYPES[user?.staff_type]?.label || "Staff";
 };
 
-const getRoleDescription = (role, staffType) => {
-  if (role === "admin") return "Full administrative access";
+const getRoleDescription = (role, staffType, authorityLevel = "user") => {
+  if (role === "admin") {
+    return authorityLevel === "admin"
+      ? "Full system administration"
+      : "Business management access";
+  }
   return STAFF_TYPES[staffType]?.desc || "Assigned staff access";
 };
 
@@ -143,7 +179,10 @@ export default function UsersPage() {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
 
-  const { user: me } = useAuthStore();
+  const { user: me, hasPermission } = useAuthStore();
+  const canCreateAccounts =
+    hasPermission("users.create") &&
+    (isSuperAdminAccount(me) || isManagerAccount(me));
 
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -164,8 +203,6 @@ export default function UsersPage() {
   const [permissionLoading, setPermissionLoading] = useState(false);
   const [permissionSaving, setPermissionSaving] = useState(false);
   const [authChangeTarget, setAuthChangeTarget] = useState(null);
-  const [pendingAuthorityForPerms, setPendingAuthorityForPerms] =
-    useState(null);
 
   const menuRef = useRef(null);
 
@@ -201,31 +238,47 @@ export default function UsersPage() {
     setOpenMenuId(null);
   };
 
-  // Step 2 - Opens permissions with linked authority data
-  const openPermissions = async (targetUser, nextAuthority = null) => {
+  const openPermissions = async (targetUser) => {
     if (!targetUser) return;
 
     setPermissionTarget(targetUser);
-    setPendingAuthorityForPerms(nextAuthority);
     setPermissionData(null);
     setPermissionLoading(true);
     setOpenMenuId(null);
 
     try {
-      const endpoint = nextAuthority
-        ? `/users/${targetUser.id}/permissions?preview_authority=${nextAuthority}`
-        : `/users/${targetUser.id}/permissions`;
-
-      const { data } = await api.get(endpoint);
+      const { data } = await api.get(`/users/${targetUser.id}/permissions`);
       setPermissionData(data);
     } catch (err) {
       toast.error(
-        err?.response?.data?.message || "Unable to load user permissions.",
+        err?.response?.data?.message || "Unable to load account access.",
       );
       setPermissionTarget(null);
-      setPendingAuthorityForPerms(null);
     } finally {
       setPermissionLoading(false);
+    }
+  };
+
+  const saveConfirmedAuthorityChange = async () => {
+    if (!authChangeTarget || saving) return;
+
+    const { user, nextAuthority } = authChangeTarget;
+    setSaving(true);
+    try {
+      await api.put(`/users/${user.id}/authority`, {
+        authority_level: nextAuthority,
+      });
+      toast.success(
+        `Access level changed to ${AUTHORITY_LEVELS[nextAuthority]?.label || nextAuthority}.`,
+      );
+      setAuthChangeTarget(null);
+      await load();
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message || "Unable to update access level.",
+      );
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -271,6 +324,7 @@ export default function UsersPage() {
       name: user.name || "",
       email: user.email || "",
       role: user.role || "staff",
+      authority_level: user.authority_level || "user",
       staff_type: user.staff_type || "cashier",
       phone: formatPhoneForInput(user.phone),
       address: user.address || "",
@@ -374,6 +428,7 @@ export default function UsersPage() {
       payload.append("phone", form.phone.trim());
       payload.append("address", form.address.trim());
       payload.append("role", form.role);
+      payload.append("authority_level", form.authority_level || "user");
       payload.append(
         "staff_type",
         form.role === "staff" ? form.staff_type : "",
@@ -524,19 +579,20 @@ export default function UsersPage() {
         <div>
           <h1 className="um-page-title">User Management</h1>
           <p className="um-page-subtitle">
-            Manage administrator and staff accounts, roles, and access.
+            Manage management and staff accounts, roles, and access.
           </p>
         </div>
 
-        <button
-          type="button"
-          className="um-btn um-btn-primary um-add-account-btn"
-          onClick={openAdd}
-        >
-          {/* WISDOM ADD ACCOUNT BUTTON POLISH V1 */}
-          <Plus size={14} strokeWidth={2.1} />
-          <span>Add Account</span>
-        </button>
+        {canCreateAccounts && (
+          <button
+            type="button"
+            className="um-btn um-btn-primary um-add-account-btn"
+            onClick={openAdd}
+          >
+            <Plus size={14} strokeWidth={2.1} />
+            <span>Add Account</span>
+          </button>
+        )}
       </header>
 
       <section className="um-summary-grid" aria-label="Account summary">
@@ -546,7 +602,7 @@ export default function UsersPage() {
           icon={<Users size={18} strokeWidth={1.9} />}
         />
         <SummaryCard
-          label="Administrators"
+          label="Management Accounts"
           value={admins.length}
           icon={<ShieldCheck size={18} strokeWidth={1.9} />}
         />
@@ -608,7 +664,7 @@ export default function UsersPage() {
               }
             >
               <option value="">All Types</option>
-              <option value="admin">Administrator</option>
+              <option value="admin">Management</option>
               <option value="staff">Staff</option>
             </select>
           </label>
@@ -650,7 +706,7 @@ export default function UsersPage() {
                 <th>Role</th>
                 <th>Status</th>
                 <th>Last Login</th>
-                <th className="um-actions-heading">Role / Authority</th>
+                <th className="um-actions-heading">Role & Access</th>
               </tr>
             </thead>
 
@@ -684,6 +740,7 @@ export default function UsersPage() {
                     onDelete={openDelete}
                     onAuthorityChange={onInitiateAuthorityChange}
                     onPermissions={openPermissions}
+                    hasPermission={hasPermission}
                     saving={saving}
                   />
                 ))
@@ -732,8 +789,8 @@ export default function UsersPage() {
         <ModalShell onClose={() => setAuthChangeTarget(null)} compact>
           <div className="um-modal-header">
             <div>
-              <div className="um-modal-eyebrow">Authority Level</div>
-              <h3>Change Authority</h3>
+              <div className="um-modal-eyebrow">Access Level</div>
+              <h3>Change Access Level</h3>
             </div>
             <button
               type="button"
@@ -752,7 +809,7 @@ export default function UsersPage() {
                 margin: 0,
               }}
             >
-              Are you sure you want to change the authority of{" "}
+              Are you sure you want to change the access level of{" "}
               <strong>{authChangeTarget.user.name}</strong> to{" "}
               <strong>
                 {AUTHORITY_LEVELS[authChangeTarget.nextAuthority]?.label}
@@ -770,9 +827,7 @@ export default function UsersPage() {
             <button
               className="um-btn um-btn-primary"
               onClick={() => {
-                const { user, nextAuthority } = authChangeTarget;
-                setAuthChangeTarget(null);
-                openPermissions(user, nextAuthority);
+                saveConfirmedAuthorityChange();
               }}
             >
               Yes
@@ -786,12 +841,12 @@ export default function UsersPage() {
           target={permissionTarget}
           data={permissionData}
           loading={permissionLoading}
-          pendingAuthority={pendingAuthorityForPerms}
-          canEdit={String(me?.authority_level || "").toLowerCase() === "admin"}
+          canEdit={
+            isSuperAdminAccount(me) && permissionTarget?.id !== me?.id
+          }
           onClose={() => {
             setPermissionTarget(null);
             setPermissionData(null);
-            setPendingAuthorityForPerms(null);
           }}
           onSaved={(updated, appliedAuthority) => {
             if (updated) {
@@ -846,10 +901,25 @@ function UserRow({
   onDelete,
   onAuthorityChange,
   onPermissions,
+  hasPermission,
   saving,
 }) {
   const isMe = user.id === me?.id;
   const roleLabel = getRoleLabel(user);
+  const actorCanManageTarget = canManageInternalTarget(me, user);
+  const canEdit = hasPermission("users.edit") && actorCanManageTarget;
+  const canResetPassword = canEdit && !isMe;
+  const canDeactivate =
+    hasPermission("users.delete") && actorCanManageTarget && !isMe;
+  const canViewCustomAccess =
+    isSuperAdminAccount(me) && hasPermission("users.manage");
+  const canChangeAccess =
+    isSuperAdminAccount(me) &&
+    hasPermission("users.authority") &&
+    user.role === "admin" &&
+    !isMe;
+  const hasMenuActions =
+    canResetPassword || canViewCustomAccess || canDeactivate;
 
   return (
     <tr>
@@ -867,9 +937,7 @@ function UserRow({
               {isMe && <span className="um-you-label">You</span>}
             </div>
             <span className="um-account-type">
-              {user.role === "admin"
-                ? "Administrator account"
-                : "Staff account"}
+              {user.role === "admin" ? "Management account" : "Staff account"}
             </span>
           </div>
         </div>
@@ -891,39 +959,29 @@ function UserRow({
           >
             {roleLabel}
           </span>
-
-          {user.role === "staff" && (
-            <small>
-              {STAFF_TYPES[user.staff_type]?.desc || "Assigned staff access"}
-            </small>
-          )}
+          <small>
+            {getRoleDescription(
+              user.role,
+              user.staff_type,
+              user.authority_level,
+            )}
+          </small>
 
           <select
             className="um-authority-select"
             value={user.authority_level || "user"}
             onChange={(event) => onAuthorityChange(user, event.target.value)}
-            disabled={
-              saving ||
-              isMe ||
-              (String(me?.authority_level || "user").toLowerCase() ===
-                "manager" &&
-                String(user.authority_level || "user").toLowerCase() ===
-                  "admin")
-            }
-            aria-label={`Authority level for ${user.name}`}
+            disabled={saving || !canChangeAccess}
+            aria-label={`Access level for ${user.name}`}
           >
-            {Object.entries(AUTHORITY_LEVELS).map(([value, meta]) => (
-              <option
-                key={value}
-                value={value}
-                disabled={
-                  String(me?.authority_level || "user").toLowerCase() ===
-                    "manager" && value === "admin"
-                }
-              >
-                {meta.label}
-              </option>
-            ))}
+            {user.role === "admin" ? (
+              <>
+                <option value="manager">Manager</option>
+                <option value="admin">Super Admin</option>
+              </>
+            ) : (
+              <option value="user">Standard</option>
+            )}
           </select>
         </div>
       </td>
@@ -945,64 +1003,69 @@ function UserRow({
 
       <td>
         <div className="um-row-actions">
-          <button
-            type="button"
-            className="um-btn um-btn-secondary um-edit-btn"
-            onClick={() => onEdit(user)}
-          >
-            <Pencil size={13} strokeWidth={1.9} />
-            Edit
-          </button>
-
-          <div
-            className="um-more-wrap"
-            ref={openMenuId === user.id ? menuRef : null}
-          >
+          {canEdit && (
             <button
               type="button"
-              className="um-icon-btn"
-              aria-label={`More actions for ${user.name}`}
-              aria-expanded={openMenuId === user.id}
-              onClick={() =>
-                setOpenMenuId((current) =>
-                  current === user.id ? null : user.id,
-                )
-              }
+              className="um-btn um-btn-secondary um-edit-btn"
+              onClick={() => onEdit(user)}
             >
-              <MoreHorizontal size={17} strokeWidth={2} />
+              <Pencil size={13} strokeWidth={1.9} />
+              Edit
             </button>
+          )}
 
-            {openMenuId === user.id && (
-              <div className="um-action-menu">
-                <button type="button" onClick={() => onPassword(user)}>
-                  <KeyRound size={14} strokeWidth={1.9} />
-                  Reset Password
-                </button>
+          {hasMenuActions && (
+            <div
+              className="um-more-wrap"
+              ref={openMenuId === user.id ? menuRef : null}
+            >
+              <button
+                type="button"
+                className="um-icon-btn"
+                aria-label={`More actions for ${user.name}`}
+                aria-expanded={openMenuId === user.id}
+                onClick={() =>
+                  setOpenMenuId((current) =>
+                    current === user.id ? null : user.id,
+                  )
+                }
+              >
+                <MoreHorizontal size={17} strokeWidth={2} />
+              </button>
 
-                {String(me?.authority_level || "").toLowerCase() ===
-                  "admin" && (
-                  <button type="button" onClick={() => onPermissions(user)}>
-                    <Shield size={14} strokeWidth={1.9} />
-                    Permissions
-                  </button>
-                )}
-
-                {!isMe && (
-                  <>
-                    <div className="um-menu-divider" />
-                    <button
-                      type="button"
-                      className="um-menu-danger"
-                      onClick={() => onDelete(user)}
-                    >
-                      <Trash2 size={14} strokeWidth={1.9} />
-                      Deactivate Account
+              {openMenuId === user.id && (
+                <div className="um-action-menu">
+                  {canResetPassword && (
+                    <button type="button" onClick={() => onPassword(user)}>
+                      <KeyRound size={14} strokeWidth={1.9} />
+                      Reset Password
                     </button>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+                  )}
+
+                  {canViewCustomAccess && (
+                    <button type="button" onClick={() => onPermissions(user)}>
+                      <Shield size={14} strokeWidth={1.9} />
+                      {isMe ? "View Access" : "Custom Access"}
+                    </button>
+                  )}
+
+                  {canDeactivate && (
+                    <>
+                      <div className="um-menu-divider" />
+                      <button
+                        type="button"
+                        className="um-menu-danger"
+                        onClick={() => onDelete(user)}
+                      >
+                        <Trash2 size={14} strokeWidth={1.9} />
+                        Deactivate Account
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </td>
     </tr>
@@ -1023,6 +1086,7 @@ function AccountModal({
 }) {
   const isEdit = mode === "edit";
   const isSelf = isEdit && target?.id === me?.id;
+  const canManageManagementAccounts = isSuperAdminAccount(me);
 
   return (
     <ModalShell onClose={onClose}>
@@ -1035,7 +1099,7 @@ function AccountModal({
           <p>
             {isEdit
               ? `Update account information and access for ${target?.name || "this user"}.`
-              : "Create an administrator or staff account."}
+              : "Create a manager or staff account."}
           </p>
         </div>
 
@@ -1134,11 +1198,15 @@ function AccountModal({
 
             <div className="um-choice-grid">
               {[
-                {
-                  value: "admin",
-                  label: "Administrator",
-                  desc: "Full administrative access",
-                },
+                ...(canManageManagementAccounts
+                  ? [
+                      {
+                        value: "admin",
+                        label: "Manager",
+                        desc: "Admin portal access for business management",
+                      },
+                    ]
+                  : []),
                 {
                   value: "staff",
                   label: "Staff",
@@ -1157,6 +1225,10 @@ function AccountModal({
                     disabled={isSelf && option.value !== "admin"}
                     onChange={() => {
                       setF("role", option.value);
+                      setF(
+                        "authority_level",
+                        option.value === "admin" ? "manager" : "user",
+                      );
 
                       if (option.value === "staff" && !form.staff_type) {
                         setF("staff_type", "cashier");
@@ -1385,14 +1457,12 @@ function PermissionModal({
   target,
   data,
   loading,
-  pendingAuthority,
   canEdit,
   onClose,
   onSaved,
 }) {
   const [draftOverrides, setDraftOverrides] = useState({});
   const [localSaving, setLocalSaving] = useState(false);
-  const [confirmMode, setConfirmMode] = useState(null); // 'cancel' | 'save'
 
   useEffect(() => {
     if (!data?.permissions) return;
@@ -1428,16 +1498,8 @@ function PermissionModal({
     }));
   };
 
-  // 👉 Intercepts clicks and routes to the confirm modals
-  const handleCloseAttempt = () => {
-    if (pendingAuthority) setConfirmMode("cancel");
-    else onClose();
-  };
-
-  const handleSaveAttempt = () => {
-    if (pendingAuthority) setConfirmMode("save");
-    else handleSave();
-  };
+  const handleCloseAttempt = () => onClose();
+  const handleSaveAttempt = () => handleSave();
 
   const handleSave = async () => {
     if (!canEdit || localSaving || !data?.permissions) return;
@@ -1463,29 +1525,16 @@ function PermissionModal({
 
     setLocalSaving(true);
     try {
-      // Processes the Authority change first, then the Permissions
-      if (pendingAuthority) {
-        await api.put(`/users/${target.id}/authority`, {
-          authority_level: pendingAuthority,
-        });
-      }
-
       const { data: updated } = await api.put(
         `/users/${target.id}/permissions`,
         { overrides },
       );
-      toast.success(
-        pendingAuthority
-          ? "Authority and permissions updated."
-          : "User permissions updated.",
-      );
+      toast.success("Custom Access updated.");
 
       const { data: refreshed } = await api.get(
         `/users/${target.id}/permissions`,
       );
-      onSaved(refreshed || updated, pendingAuthority);
-
-      if (pendingAuthority) onClose();
+      onSaved(refreshed || updated, null);
     } catch (err) {
       toast.error(
         err?.response?.data?.message || "Unable to update user permissions.",
@@ -1505,14 +1554,14 @@ function PermissionModal({
       >
         <div className="um-modal-header">
           <div>
-            <div className="um-modal-eyebrow">Account Permissions</div>
+            <div className="um-modal-eyebrow">Custom Access</div>
             <h3 id="permission-modal-title">
-              Permissions: {target?.name || "User"}
+              Access: {target?.name || "User"}
             </h3>
             <p>
-              {pendingAuthority || target?.authority_level || "user"} authority
+              {AUTHORITY_LEVELS[target?.authority_level || "user"]?.label || "Standard"}
               {" · "}
-              {target?.role || "staff"}
+              {getRoleLabel(target)}
             </p>
           </div>
 
@@ -1539,15 +1588,15 @@ function PermissionModal({
             <div className="um-modal-body um-permission-body">
               {!canEdit && (
                 <div className="um-permission-readonly-note">
-                  You can view this account's effective permissions, but only an
-                  Administrator can modify them.
+                  You can view this account's current access, but only a Super
+                  Admin can change Custom Access.
                 </div>
               )}
 
               {groupedPermissions.map(([moduleName, permissions]) => (
                 <section key={moduleName} className="um-permission-group">
                   <div className="um-permission-group-header">
-                    <h4>{moduleName}</h4>
+                    <h4>{humanizePermissionModule(moduleName)}</h4>
                   </div>
 
                   <div className="um-permission-list">
@@ -1558,16 +1607,17 @@ function PermissionModal({
                       return (
                         <div key={permission.id} className="um-permission-row">
                           <div className="um-permission-copy">
-                            <strong>{permission.permission_key}</strong>
+                            <strong>{getPermissionDisplayName(permission)}</strong>
                             <small>
-                              {permission.description ||
-                                "No description provided."}
+                              {permission.effective
+                                ? "This action is currently allowed."
+                                : "This action is currently blocked."}
                             </small>
                             <span
                               className={`um-effective-badge ${permission.effective ? "is-allowed" : "is-denied"}`}
                             >
-                              Effective:{" "}
-                              {permission.effective ? "Allowed" : "Denied"}
+                              Current Access:{" "}
+                              {permission.effective ? "Allowed" : "Blocked"}
                             </span>
                           </div>
 
@@ -1583,9 +1633,9 @@ function PermissionModal({
                             disabled={!canEdit || localSaving}
                             aria-label={`Override for ${permission.permission_key}`}
                           >
-                            <option value="default">Inherit Default</option>
-                            <option value="grant">Force Allow</option>
-                            <option value="deny">Force Deny</option>
+                            <option value="default">Use Default</option>
+                            <option value="grant">Allow</option>
+                            <option value="deny">Block</option>
                           </select>
                         </div>
                       );
@@ -1612,11 +1662,7 @@ function PermissionModal({
                   onClick={handleSaveAttempt}
                   disabled={localSaving}
                 >
-                  {localSaving
-                    ? "Saving..."
-                    : pendingAuthority
-                      ? "Save Authority & Permissions"
-                      : "Save Permissions"}
+                  {localSaving ? "Saving..." : "Save Access"}
                 </button>
               )}
             </div>
@@ -1624,73 +1670,6 @@ function PermissionModal({
         )}
       </div>
 
-      {/* 👉 Inner Confirm Overlay for Step 4 & 5 */}
-      {confirmMode && (
-        <div className="um-modal-backdrop" style={{ zIndex: 1100 }}>
-          <div className="um-modal um-modal-compact">
-            <div className="um-modal-header">
-              <div>
-                <div className="um-modal-eyebrow">
-                  {confirmMode === "cancel" ? "Cancel Changes" : "Save Changes"}
-                </div>
-                <h3
-                  style={{
-                    margin: 0,
-                    color: "#18181b",
-                    fontSize: "18px",
-                    fontWeight: 700,
-                  }}
-                >
-                  {confirmMode === "cancel"
-                    ? "Are you sure?"
-                    : "Confirm Authority & Permissions"}
-                </h3>
-              </div>
-            </div>
-            <div className="um-modal-body">
-              <p
-                style={{
-                  fontSize: 13,
-                  color: "#52525b",
-                  lineHeight: 1.5,
-                  margin: 0,
-                }}
-              >
-                {confirmMode === "cancel"
-                  ? "Are you sure you want to cancel? Your current modifications will not be saved and the authority change will be cancelled."
-                  : `Are you sure you want to change this user's authority to ${AUTHORITY_LEVELS[pendingAuthority]?.label} and apply these permissions?`}
-              </p>
-            </div>
-            <div className="um-modal-footer">
-              <button
-                className="um-btn um-btn-secondary"
-                onClick={() => setConfirmMode(null)}
-              >
-                {confirmMode === "cancel"
-                  ? "No, continue editing"
-                  : "No, review again"}
-              </button>
-              <button
-                className={`um-btn ${confirmMode === "cancel" ? "um-btn-danger" : "um-btn-primary"}`}
-                onClick={() => {
-                  const mode = confirmMode;
-                  setConfirmMode(null);
-                  if (mode === "cancel") {
-                    onSaved(null, null);
-                    onClose();
-                  } else {
-                    handleSave();
-                  }
-                }}
-              >
-                {confirmMode === "cancel"
-                  ? "Yes, cancel changes"
-                  : "Yes, save changes"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

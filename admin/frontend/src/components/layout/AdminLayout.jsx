@@ -128,7 +128,7 @@ const NAV_ITEMS = [
   {
     label: "Cancellations",
     path: "/admin/orders/cancellations",
-    permission: "cancellations_refunds.view",
+    permission: "cancellations.view",
     icon: RotateCcw,
     roles: ["admin", "staff"],
   },
@@ -193,6 +193,7 @@ const NAV_ITEMS = [
     label: "Stock Report",
     path: "/admin/reports/stock",
     icon: ChartCandlestick,
+    permission: "stock_movements.view",
     roles: ["admin", "staff"],
   },
   {
@@ -206,18 +207,21 @@ const NAV_ITEMS = [
     label: "Delivery Report",
     path: "/admin/reports/deliveries",
     icon: Truck,
+    permission: "delivery_scheduling.view",
     roles: ["admin"],
   },
   {
     label: "Operations Report",
     path: "/admin/reports/operations",
     icon: CalendarCheck2,
+    permission: "task_assignments.view",
     roles: ["admin", "staff"],
   },
   {
     label: "Transaction Report",
     path: "/admin/reports/transactions",
     icon: ArrowLeftRight,
+    permission: "orders.view",
     roles: ["admin", "staff"],
   },
   {
@@ -382,11 +386,8 @@ export default function AdminLayout() {
 
     const roleAllowed = !item.roles || item.roles.includes(user?.role);
 
-    // 👉 FIX: Automatically allow viewing for Administrators, otherwise check specific permissions
     const permissionAllowed =
-      user?.role === "admin" ||
-      !item.permission ||
-      hasPermission(item.permission);
+      !item.permission || hasPermission(item.permission);
 
     return roleAllowed && permissionAllowed;
   });

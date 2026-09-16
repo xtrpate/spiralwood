@@ -657,7 +657,7 @@ export default function App() {
                 <Route
                   path="orders/cancellations"
                   element={
-                    <RequirePermission permission="cancellations_refunds.view">
+                    <RequirePermission permission="cancellations.view">
                       <CancellationsPage />
                     </RequirePermission>
                   }
@@ -709,20 +709,36 @@ export default function App() {
 
                 <Route
                   path="reports/deliveries"
-                  element={<DeliveryReportPage />}
+                  element={
+                    <RequirePermission permission="delivery_scheduling.view">
+                      <DeliveryReportPage />
+                    </RequirePermission>
+                  }
                 />
                 <Route
                   path="reports/operations"
-                  element={<OperationsReportPage />}
+                  element={
+                    <RequirePermission permission="task_assignments.view">
+                      <OperationsReportPage />
+                    </RequirePermission>
+                  }
                 />
-                <Route path="reports/stock" element={<StockReportPage />} />
+                <Route
+                  path="reports/stock"
+                  element={
+                    <RequirePermission permission="stock_movements.view">
+                      <StockReportPage />
+                    </RequirePermission>
+                  }
+                />
                 <Route
                   path="reports/transactions"
-                  element={<TransactionReportPage />}
+                  element={
+                    <RequirePermission permission="orders.view">
+                      <TransactionReportPage />
+                    </RequirePermission>
+                  }
                 />
-                <Route path="sales" element={<SalesReportPage />} />
-                <Route path="pos-qr-recovery" element={<PosQrRecoveryPage />} />
-                <Route path="warranty" element={<WarrantyPage />} />
 
                 <Route
                   path="customers"
@@ -1045,7 +1061,7 @@ export default function App() {
                 <Route
                   path="/staff/admin/orders/cancellations"
                   element={
-                    <RequirePermission permission="cancellations_refunds.view">
+                    <RequirePermission permission="cancellations.view">
                       <CancellationsPage />
                     </RequirePermission>
                   }
