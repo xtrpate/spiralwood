@@ -1878,6 +1878,7 @@ export default function EstimationPage() {
   const [approving, setApproving] = useState(false);
   const [savedDraftSignature, setSavedDraftSignature] = useState(null);
   const [activeEstimateTab, setActiveEstimateTab] = useState("request");
+  const [showQuoteConfirmModal, setShowQuoteConfirmModal] = useState(false);
   const [deliveryGate, setDeliveryGate] = useState({
     active: true,
     readyForQuote: false,
@@ -2521,7 +2522,7 @@ export default function EstimationPage() {
     }
   };
 
-  const handleSendQuote = async () => {
+  const handleSendQuoteClick = async () => {
     if (!estimation?.id) {
       toast.error("Save the estimate first before sending the quotation.");
       return;
@@ -2550,11 +2551,12 @@ export default function EstimationPage() {
       return;
     }
 
-    // New confirmation prompt
-    if (!window.confirm("Would you like to send the quotation now?")) {
-      return;
-    }
+    // Open the custom modal instead of the browser popup!
+    setShowQuoteConfirmModal(true);
+  };
 
+  const confirmSendQuote = async () => {
+    setShowQuoteConfirmModal(false);
     setApproving(true);
     try {
       const response = await api.patch(`/blueprints/${id}/estimation/approve`);
@@ -2772,7 +2774,7 @@ export default function EstimationPage() {
           ) : (
             <button
               type="button"
-              onClick={handleSendQuote}
+              onClick={handleSendQuoteClick}
               disabled={approving || isSendQuotationBlocked || isSent}
               title={
                 isSendQuotationBlocked
@@ -3270,6 +3272,41 @@ export default function EstimationPage() {
             </div>
           </div>
         </>
+      )}
+      {showQuoteConfirmModal && (
+        <div style={overlay} onClick={() => setShowQuoteConfirmModal(false)}>
+          <div
+            style={{ ...modalBox, width: 420, padding: 24, paddingBottom: 20 }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div style={modalHeader}>
+              <div>
+                <h3 style={modalTitle}>Send Quotation</h3>
+                <p style={modalSubtitle}>
+                  Are you sure you want to send the quotation to the customer
+                  now?
+                </p>
+              </div>
+            </div>
+
+            <div style={modalActions}>
+              <button
+                type="button"
+                onClick={() => setShowQuoteConfirmModal(false)}
+                style={btnGhost}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmSendQuote}
+                style={btnPrimary}
+              >
+                Send Quotation
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -4037,4 +4074,51 @@ const btnRemove = {
 const btnDisabled = {
   opacity: 0.5,
   cursor: "not-allowed",
+};
+
+const overlay = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(0, 0, 0, 0.6)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 1000,
+  padding: 20,
+};
+
+const modalBox = {
+  background: "#fff",
+  borderRadius: 4,
+  padding: 24,
+  width: 480,
+  maxWidth: "100%",
+  border: "1px solid #dfe2e5",
+};
+
+const modalHeader = {
+  marginBottom: 16,
+};
+
+const modalTitle = {
+  margin: 0,
+  fontSize: 18,
+  fontWeight: 700,
+  color: "#1e2023",
+  letterSpacing: "-0.01em",
+};
+
+const modalSubtitle = {
+  margin: "6px 0 0",
+  fontSize: 12.5,
+  color: "#777c82",
+  lineHeight: 1.5,
+};
+
+const modalActions = {
+  display: "flex",
+  gap: 12,
+  justifyContent: "flex-end",
+  marginTop: 24,
+  flexWrap: "wrap",
 };
