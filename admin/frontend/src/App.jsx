@@ -45,6 +45,7 @@ import DeliveryReportPage from "./pages/reports/DeliveryReportPage";
 import OperationsReportPage from "./pages/reports/OperationsReportPage";
 import StockReportPage from "./pages/reports/StockReportPage";
 import TransactionReportPage from "./pages/reports/TransactionReportPage";
+import SalesProfitabilityReportPage from "./pages/reports/SalesProfitabilityReportPage";
 import WarrantyPage from "./pages/warranty/WarrantyPage";
 import CustomersPage from "./pages/customers/CustomersPage";
 import UsersPage from "./pages/users/UsersPage";
@@ -719,6 +720,14 @@ export default function App() {
                 <Route
                   path="reports/transactions"
                   element={<TransactionReportPage />}
+                />
+                <Route
+                  path="reports/sales-profitability"
+                  element={
+                    <RequirePermission permission="sales_report.view">
+                      <SalesProfitabilityReportPage />
+                    </RequirePermission>
+                  }
                 />
                 <Route path="sales" element={<SalesReportPage />} />
                 <Route path="pos-qr-recovery" element={<PosQrRecoveryPage />} />

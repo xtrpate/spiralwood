@@ -30,6 +30,7 @@ import {
   UserCog,
   Users,
   Wrench,
+  TrendingUp,
 } from "lucide-react";
 import api, { buildAssetUrl } from "../../services/api";
 import useAuthStore from "../../store/authStore";
@@ -225,6 +226,13 @@ const NAV_ITEMS = [
     path: "/admin/sales",
     permission: "sales_report.view",
     icon: BarChart3,
+    roles: ["admin", "staff"],
+  },
+  {
+    label: "Sales & Profitability",
+    path: "/admin/reports/sales-profitability",
+    permission: "sales_report.view",
+    icon: TrendingUp,
     roles: ["admin", "staff"],
   },
 

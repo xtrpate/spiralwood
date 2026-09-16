@@ -1583,7 +1583,7 @@ function PermissionModal({
                             disabled={!canEdit || localSaving}
                             aria-label={`Override for ${permission.permission_key}`}
                           >
-                            <option value="default">Inherit Default</option>
+                            <option value="default">Default</option>
                             <option value="grant">Force Allow</option>
                             <option value="deny">Force Deny</option>
                           </select>

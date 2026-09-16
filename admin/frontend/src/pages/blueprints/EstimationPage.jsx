@@ -2217,8 +2217,7 @@ export default function EstimationPage() {
   const isSent = String(estimation?.status || "").toLowerCase() === "sent";
   const isReadOnly = isApproved || isSent;
 
-  // Removed the "unsaved changes" lock so you can force a save/overwrite anytime
-  const saveDisabled = saving || isReadOnly;
+  const saveDisabled = saving || isReadOnly || !hasUnsavedChanges;
 
   const saveButtonLabel = saving
     ? "Saving..."

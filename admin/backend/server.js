@@ -267,6 +267,8 @@ app.use(
   require("./routes/customer.notifications"),
 );
 
+app.use("/api/reports", require("./routes/admin.reports"));
+
 app.use("/api/pos/reports", require("./routes/pos.reports"));
 app.use("/api/pos/dashboard", require("./routes/pos.dashboard"));
 app.use("/api/pos/products", require("./routes/pos.products"));
@@ -307,12 +309,16 @@ const {
   autoCancelExpiredOrders,
 } = require("./controllers/customer/customer.orders");
 
-cron.schedule("0 * * * *", () => {
-  console.log(
-    "Running scheduled task: Checking for expired PayMongo orders...",
-  );
-  autoCancelExpiredOrders();
-}, { timezone: "Asia/Manila" });
+cron.schedule(
+  "0 * * * *",
+  () => {
+    console.log(
+      "Running scheduled task: Checking for expired PayMongo orders...",
+    );
+    autoCancelExpiredOrders();
+  },
+  { timezone: "Asia/Manila" },
+);
 
 app.use(errorHandler);
 
