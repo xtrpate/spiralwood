@@ -781,7 +781,11 @@ export default function AdminLayout() {
                   fontWeight: 400,
                 }}
               >
-                {user?.role === "admin" ? "Admin" : "Staff"}
+                {user?.role === "admin"
+                  ? String(user?.authority_level || "").toLowerCase() === "admin"
+                    ? "Super Admin"
+                    : "Manager"
+                  : "Staff"}
               </span>
             </div>
           </div>

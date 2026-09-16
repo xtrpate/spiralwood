@@ -748,9 +748,6 @@ export default function App() {
                     </RequirePermission>
                   }
                 />
-                <Route path="sales" element={<SalesReportPage />} />
-                <Route path="pos-qr-recovery" element={<PosQrRecoveryPage />} />
-                <Route path="warranty" element={<WarrantyPage />} />
 
                 <Route
                   path="customers"
