@@ -18,6 +18,14 @@ const {
 const {
   getPhilippineDateBoundsUtc,
 } = require("../../utils/philippineTime");
+const {
+  normalizeInternalAccess,
+  isSuperAdminAccount,
+  isManagerAccount,
+  isStandardStaffAccount,
+  canManageInternalAccount,
+  canCreateInternalAccount,
+} = require("../../utils/internalAccessPolicy");
 
 // ══ WARRANTY ══════════════════════════════════════════════════════════════════
 exports.getAll = async (req, res) => {
@@ -631,8 +639,6 @@ exports.updateCustomerStatus = async (req, res) => {
   }
 };
 
-const INTERNAL_ROLES = new Set(["admin", "staff"]);
-const INTERNAL_STAFF_TYPES = new Set(["cashier", "indoor", "delivery_rider"]);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const parseRequestedActive = (value, defaultValue = true) => {
@@ -645,36 +651,48 @@ const parseRequestedActive = (value, defaultValue = true) => {
   return defaultValue;
 };
 
+const hasAnotherActiveSuperAdmin = async (excludeId, db = pool) => {
+  const [rows] = await db.query(
+    `SELECT id
+       FROM users
+      WHERE role = 'admin'
+        AND authority_level = 'admin'
+        AND is_active = 1
+        AND id <> ?
+      LIMIT 1`,
+    [excludeId],
+  );
+
+  return rows.length > 0;
+};
+
 const normalizeInternalUserPayload = (
   body,
-  { requirePassword = false } = {},
+  { requirePassword = false, defaultAuthority = null } = {},
 ) => {
   const name = String(body?.name || "").trim();
   const email = String(body?.email || "")
     .trim()
     .toLowerCase();
   const address = String(body?.address || "").trim();
-  const role = String(body?.role || "")
-    .trim()
-    .toLowerCase();
-  const staffType = String(body?.staff_type || "")
-    .trim()
-    .toLowerCase();
   const password = String(body?.password || body?.new_password || "");
 
   if (!name || !email || !address || !body?.phone) {
     return { error: "Full name, email, phone, and address are required." };
   }
   if (!EMAIL_RE.test(email)) return { error: "Enter a valid email address." };
-  if (!INTERNAL_ROLES.has(role)) {
-    return { error: "Account type must be Administrator or Staff." };
-  }
-  if (role === "staff" && !INTERNAL_STAFF_TYPES.has(staffType)) {
-    return { error: "Choose a valid staff role." };
-  }
   if (requirePassword && password.length < 8) {
     return { error: "Temporary password must be at least 8 characters." };
   }
+
+  const access = normalizeInternalAccess({
+    role: body?.role,
+    staffType: body?.staff_type,
+    authorityLevel: body?.authority_level,
+    defaultAuthority,
+  });
+
+  if (access.error) return { error: access.error };
 
   let phone;
   try {
@@ -689,8 +707,7 @@ const normalizeInternalUserPayload = (
       email,
       address,
       phone,
-      role,
-      staff_type: role === "staff" ? staffType : null,
+      ...access.value,
       is_active: parseRequestedActive(body?.is_active, true),
       password,
     },
@@ -762,6 +779,15 @@ exports.createUser = async (req, res) => {
     if (parsed.error) return res.status(400).json({ message: parsed.error });
 
     const user = parsed.value;
+
+    if (!canCreateInternalAccount(req.user, user)) {
+      return res.status(403).json({
+        message: isManagerAccount(req.user)
+          ? "Managers can create Staff accounts only."
+          : "You do not have access to create this account type.",
+      });
+    }
+
     const duplicate = await findInternalDuplicate(user);
     if (duplicate) {
       return res.status(409).json({
@@ -788,12 +814,13 @@ exports.createUser = async (req, res) => {
       approval_status,
       is_active
     )
-   VALUES (?, ?, ?, 1, ?, 'user', ?, ?, ?, ?, 'approved', ?)`,
+   VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, 'approved', ?)`,
       [
         user.name,
         user.email,
         hashed,
         user.role,
+        user.authority_level,
         user.staff_type,
         user.phone,
         user.address,
@@ -808,6 +835,7 @@ exports.createUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        authority_level: user.authority_level,
         staff_type: user.staff_type,
         phone: user.phone,
         address_configured: true,
@@ -845,22 +873,45 @@ exports.updateUser = async (req, res) => {
     }
 
     const [[before]] = await pool.query(
-      `SELECT id, name, email, role, staff_type, phone, address, is_active
-         FROM users
-        WHERE id = ? AND role IN ('admin','staff')
-        LIMIT 1`,
+      `SELECT
+         id, name, email, role, authority_level, staff_type, phone, address,
+         is_active
+       FROM users
+       WHERE id = ? AND role IN ('admin','staff')
+       LIMIT 1`,
       [targetId],
     );
     if (!before) return res.status(404).json({ message: "Account not found." });
 
-    const parsed = normalizeInternalUserPayload(req.body);
+    if (!canManageInternalAccount(req.user, before)) {
+      return res.status(403).json({
+        message: isManagerAccount(req.user)
+          ? "Managers can update ordinary Staff accounts only."
+          : "You do not have access to update this account.",
+      });
+    }
+
+    const parsed = normalizeInternalUserPayload(req.body, {
+      defaultAuthority: before.authority_level,
+    });
     if (parsed.error) return res.status(400).json({ message: parsed.error });
     const user = parsed.value;
 
-    if (targetId === Number.parseInt(req.user.id, 10)) {
-      if (user.role !== "admin") {
+    if (isManagerAccount(req.user) && !isStandardStaffAccount(user)) {
+      return res.status(403).json({
+        message: "Managers cannot change Staff accounts into management accounts.",
+      });
+    }
+
+    const isSelf = targetId === Number.parseInt(req.user.id, 10);
+    if (isSelf) {
+      if (
+        user.role !== before.role ||
+        user.authority_level !== before.authority_level ||
+        user.staff_type !== before.staff_type
+      ) {
         return res.status(400).json({
-          message: "You cannot demote your own administrator account.",
+          message: "You cannot change your own role or access level here.",
         });
       }
       if (!user.is_active) {
@@ -868,6 +919,20 @@ exports.updateUser = async (req, res) => {
           .status(400)
           .json({ message: "You cannot deactivate your own account." });
       }
+    }
+
+    const removesActiveSuperAdmin =
+      isSuperAdminAccount(before) &&
+      Number(before.is_active) === 1 &&
+      (!isSuperAdminAccount(user) || !user.is_active);
+
+    if (
+      removesActiveSuperAdmin &&
+      !(await hasAnotherActiveSuperAdmin(targetId))
+    ) {
+      return res.status(409).json({
+        message: "At least one active Super Admin must remain.",
+      });
     }
 
     const duplicate = await findInternalDuplicate({
@@ -884,10 +949,17 @@ exports.updateUser = async (req, res) => {
     const uploadedProfile = await persistUserProfilePhoto(req.file);
     const profilePhoto = uploadedProfile?.url || null;
 
+    const securityChanged =
+      before.role !== user.role ||
+      String(before.authority_level || "user") !== user.authority_level ||
+      (before.staff_type || null) !== (user.staff_type || null) ||
+      Number(before.is_active) !== (user.is_active ? 1 : 0);
+
     const updateFields = [
       "name = ?",
       "email = ?",
       "role = ?",
+      "authority_level = ?",
       "staff_type = ?",
       "phone = ?",
       "address = ?",
@@ -897,6 +969,7 @@ exports.updateUser = async (req, res) => {
       user.name,
       user.email,
       user.role,
+      user.authority_level,
       user.staff_type,
       user.phone,
       user.address,
@@ -906,6 +979,10 @@ exports.updateUser = async (req, res) => {
     if (profilePhoto) {
       updateFields.push("profile_photo = ?");
       updateValues.push(profilePhoto);
+    }
+
+    if (securityChanged) {
+      updateFields.push("token_version = token_version + 1");
     }
 
     updateValues.push(targetId);
@@ -923,12 +1000,14 @@ exports.updateUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        authority_level: user.authority_level,
         staff_type: user.staff_type,
         phone: user.phone,
         address: user.address,
         profile_photo_changed: Boolean(profilePhoto),
         contact_otp_verification: "unchanged",
         is_active: user.is_active ? 1 : 0,
+        session_revoked: securityChanged,
       },
     };
     return res.json({ message: "Account updated." });
@@ -966,20 +1045,39 @@ exports.resetUserPassword = async (req, res) => {
     }
 
     const [[target]] = await pool.query(
-      "SELECT id FROM users WHERE id = ? AND role IN ('admin','staff') LIMIT 1",
+      `SELECT id, role, authority_level, staff_type, is_active
+         FROM users
+        WHERE id = ? AND role IN ('admin','staff')
+        LIMIT 1`,
       [targetId],
     );
     if (!target) return res.status(404).json({ message: "Account not found." });
 
+    if (!canManageInternalAccount(req.user, target)) {
+      return res.status(403).json({
+        message: isManagerAccount(req.user)
+          ? "Managers can reset passwords for ordinary Staff accounts only."
+          : "You do not have access to reset this password.",
+      });
+    }
+
     const hashed = await bcrypt.hash(newPassword, 12);
     await pool.query(
-      "UPDATE users SET password = ?, must_change_password = 1 WHERE id = ? AND role IN ('admin','staff')",
+      `UPDATE users
+          SET password = ?,
+              must_change_password = 1,
+              token_version = token_version + 1
+        WHERE id = ? AND role IN ('admin','staff')`,
       [hashed, targetId],
     );
 
     req.auditRecord = {
       id: targetId,
-      new: { password_reset: true, must_change_password: 1 },
+      new: {
+        password_reset: true,
+        must_change_password: 1,
+        session_revoked: true,
+      },
     };
     return res.json({
       message:
@@ -1004,20 +1102,44 @@ exports.deleteUser = async (req, res) => {
     }
 
     const [[before]] = await pool.query(
-      "SELECT name, email, role, is_active FROM users WHERE id = ? AND role IN ('admin','staff') LIMIT 1",
+      `SELECT id, name, email, role, authority_level, staff_type, is_active
+         FROM users
+        WHERE id = ? AND role IN ('admin','staff')
+        LIMIT 1`,
       [targetId],
     );
     if (!before) return res.status(404).json({ message: "Account not found." });
 
+    if (!canManageInternalAccount(req.user, before)) {
+      return res.status(403).json({
+        message: isManagerAccount(req.user)
+          ? "Managers can deactivate ordinary Staff accounts only."
+          : "You do not have access to deactivate this account.",
+      });
+    }
+
+    if (
+      isSuperAdminAccount(before) &&
+      Number(before.is_active) === 1 &&
+      !(await hasAnotherActiveSuperAdmin(targetId))
+    ) {
+      return res.status(409).json({
+        message: "At least one active Super Admin must remain.",
+      });
+    }
+
     await pool.query(
-      "UPDATE users SET is_active = 0 WHERE id = ? AND role IN ('admin','staff')",
+      `UPDATE users
+          SET is_active = 0,
+              token_version = token_version + 1
+        WHERE id = ? AND role IN ('admin','staff')`,
       [targetId],
     );
 
     req.auditRecord = {
       id: targetId,
       old: before,
-      new: { is_active: 0, deactivated: true },
+      new: { is_active: 0, deactivated: true, session_revoked: true },
     };
     return res.json({ message: "Account deactivated." });
   } catch (err) {
@@ -1031,8 +1153,12 @@ exports.updateAuthority = async (req, res) => {
     const targetId = Number.parseInt(req.params.id, 10);
 
     if (!Number.isInteger(targetId) || targetId <= 0) {
-      return res.status(400).json({
-        message: "Invalid account ID.",
+      return res.status(400).json({ message: "Invalid account ID." });
+    }
+
+    if (!isSuperAdminAccount(req.user)) {
+      return res.status(403).json({
+        message: "Super Admin access is required to change access levels.",
       });
     }
 
@@ -1040,95 +1166,76 @@ exports.updateAuthority = async (req, res) => {
       .trim()
       .toLowerCase();
 
-    const allowedAuthorityLevels = new Set(["user", "manager", "admin"]);
-
-    if (!allowedAuthorityLevels.has(authority)) {
+    if (!new Set(["manager", "admin"]).has(authority)) {
       return res.status(400).json({
-        message: "Authority level must be user, manager, or admin.",
+        message: "Access level must be Manager or Super Admin.",
       });
     }
 
     if (targetId === Number(req.user.id)) {
       return res.status(400).json({
-        message: "You cannot change your own authority level.",
+        message: "You cannot change your own access level.",
       });
     }
 
     const [[target]] = await pool.query(
       `SELECT
-         id,
-         name,
-         email,
-         role,
-         staff_type,
-         authority_level,
-         is_active
+         id, name, email, role, authority_level, staff_type, is_active
        FROM users
        WHERE id = ?
-         AND role IN ('admin','staff')
+         AND role = 'admin'
        LIMIT 1`,
       [targetId],
     );
 
     if (!target) {
       return res.status(404).json({
-        message: "Account not found.",
+        message: "Management account not found.",
       });
     }
 
-    const actorAuthority = String(req.user.authority_level || "user")
-      .trim()
-      .toLowerCase();
-
-    if (actorAuthority === "manager") {
-      if (target.authority_level === "admin" || authority === "admin") {
-        return res.status(403).json({
-          message: "Managers cannot assign administrator authority.",
-        });
-      }
-    }
-
-    if (actorAuthority !== "admin" && actorAuthority !== "manager") {
-      return res.status(403).json({
-        message: "Admin or manager authority is required.",
+    if (
+      isSuperAdminAccount(target) &&
+      authority !== "admin" &&
+      Number(target.is_active) === 1 &&
+      !(await hasAnotherActiveSuperAdmin(targetId))
+    ) {
+      return res.status(409).json({
+        message: "At least one active Super Admin must remain.",
       });
     }
 
     await pool.query(
       `UPDATE users
           SET authority_level = ?,
-          token_version = token_version + 1
-        WHERE id = ?`,
+              staff_type = NULL,
+              token_version = token_version + 1
+        WHERE id = ? AND role = 'admin'`,
       [authority, targetId],
     );
 
     req.auditRecord = {
       id: targetId,
-      old: {
-        authority_level: target.authority_level || "user",
-      },
-      new: {
-        authority_level: authority,
-      },
+      old: { authority_level: target.authority_level },
+      new: { authority_level: authority, session_revoked: true },
     };
 
     return res.json({
-      message: "Authority level updated.",
+      message: "Access level updated.",
       user: {
         id: target.id,
         name: target.name,
         email: target.email,
         role: target.role,
-        staff_type: target.staff_type || null,
+        staff_type: null,
         authority_level: authority,
         is_active: Number(target.is_active) === 1 ? 1 : 0,
       },
     });
   } catch (err) {
     console.error("[updateAuthority]", err);
-
     return res.status(500).json({
-      message: "Unable to update authority level.",
+      message: "Unable to update access level.",
     });
   }
 };
@@ -1147,90 +1254,56 @@ const normalizePermissionKey = (value) =>
 exports.getUserPermissions = async (req, res) => {
   try {
     const targetId = Number.parseInt(req.params.id, 10);
-    const previewAuthority = req.query.preview_authority;
 
     if (!Number.isInteger(targetId) || targetId <= 0) {
-      return res.status(400).json({
-        message: "Invalid account ID.",
-      });
+      return res.status(400).json({ message: "Invalid account ID." });
     }
 
     const [[user]] = await pool.query(
-      `
-        SELECT
-          id,
-          name,
-          email,
-          role,
-          staff_type,
-          authority_level
-        FROM users
+      `SELECT id, name, email, role, staff_type, authority_level
+         FROM users
         WHERE id = ?
           AND role IN ('admin', 'staff')
-        LIMIT 1
-      `,
+        LIMIT 1`,
       [targetId],
     );
 
     if (!user) {
-      return res.status(404).json({
-        message: "Account not found.",
-      });
+      return res.status(404).json({ message: "Account not found." });
     }
 
-    const userToEvaluate = {
-      ...user,
-      authority_level: previewAuthority
-        ? previewAuthority
-        : user.authority_level,
-    };
-
     const [permissionRows] = await pool.query(
-      `
-        SELECT
-          id,
-          permission_key,
-          description,
-          module
-        FROM permissions
-        ORDER BY module, permission_key
-      `,
+      `SELECT id, permission_key, description, module
+         FROM permissions
+        ORDER BY module, permission_key`,
     );
 
-    const details = await getPermissionDetailsForUser(userToEvaluate);
-
+    const details = await getPermissionDetailsForUser(user);
     const overrideMap = new Map(
-      details.overrides.map((item) => [
-        Number(item.permission_id),
-        item.granted,
-      ]),
+      details.overrides.map((item) => [Number(item.permission_id), item.granted]),
     );
-
     const effectiveSet = new Set(details.permissions);
 
     const permissions = permissionRows
       .map((permission) => {
         const permissionId = Number(permission.id);
         const permissionKey = normalizePermissionKey(permission.permission_key);
-
-        let override = null;
-
-        if (overrideMap.has(permissionId)) {
-          override = overrideMap.get(permissionId);
-        }
-
         return {
           id: permissionId,
           permission_key: permissionKey,
           description: permission.description || "",
           module: permission.module || "other",
-
           effective: effectiveSet.has(permissionKey),
-
-          override,
+          override: overrideMap.has(permissionId)
+            ? overrideMap.get(permissionId)
+            : null,
         };
       })
-      .filter((permission) => permission.permission_key);
+      .filter(
+        (permission) =>
+          permission.permission_key &&
+          !permission.permission_key.startsWith("cancellations_refunds."),
+      );
 
     return res.json({
       user: {
@@ -1239,23 +1312,17 @@ exports.getUserPermissions = async (req, res) => {
         email: user.email,
         role: user.role,
         staff_type: user.staff_type || null,
-        authority_level: userToEvaluate.authority_level || "user",
+        authority_level: user.authority_level || "user",
       },
-
       permissions,
-
       effective_permissions: details.permissions,
-
       can_edit:
-        String(req.user?.authority_level || "")
-          .trim()
-          .toLowerCase() === "admin",
+        isSuperAdminAccount(req.user) && targetId !== Number(req.user.id),
     });
   } catch (err) {
     console.error("[getUserPermissions]", err);
-
     return res.status(500).json({
-      message: "Unable to load user permissions.",
+      message: "Unable to load user access.",
     });
   }
 };
@@ -1264,14 +1331,18 @@ exports.updateUserPermissions = async (req, res) => {
   const targetId = Number.parseInt(req.params.id, 10);
 
   if (!Number.isInteger(targetId) || targetId <= 0) {
-    return res.status(400).json({
-      message: "Invalid account ID.",
+    return res.status(400).json({ message: "Invalid account ID." });
+  }
+
+  if (!isSuperAdminAccount(req.user)) {
+    return res.status(403).json({
+      message: "Super Admin access is required to change Custom Access.",
     });
   }
 
   if (targetId === Number(req.user.id)) {
     return res.status(403).json({
-      message: "You cannot modify your own permission overrides.",
+      message: "You cannot modify your own Custom Access.",
     });
   }
 
@@ -1280,81 +1351,56 @@ exports.updateUserPermissions = async (req, res) => {
     : null;
 
   if (!updates) {
-    return res.status(400).json({
-      message: "overrides must be an array.",
-    });
+    return res.status(400).json({ message: "overrides must be an array." });
   }
 
   try {
     const [[target]] = await pool.query(
-      `
-        SELECT
-          id,
-          name,
-          email,
-          role,
-          staff_type,
-          authority_level
-        FROM users
+      `SELECT id, name, email, role, staff_type, authority_level
+         FROM users
         WHERE id = ?
           AND role IN ('admin', 'staff')
-        LIMIT 1
-      `,
+        LIMIT 1`,
       [targetId],
     );
 
     if (!target) {
-      return res.status(404).json({
-        message: "Account not found.",
-      });
+      return res.status(404).json({ message: "Account not found." });
     }
 
     const uniquePermissionIds = new Set();
-
     for (const item of updates) {
       const permissionId = Number.parseInt(item?.permission_id, 10);
-
       if (!Number.isInteger(permissionId) || permissionId <= 0) {
         return res.status(400).json({
           message: "Every permission_id must be a positive integer.",
         });
       }
-
       if (uniquePermissionIds.has(permissionId)) {
         return res.status(400).json({
           message: "Duplicate permission_id in request.",
         });
       }
-
       uniquePermissionIds.add(permissionId);
-
       if (
         item?.granted !== true &&
         item?.granted !== false &&
         item?.granted !== null
       ) {
         return res.status(400).json({
-          message:
-            "Each permission override must use granted=true, false, or null.",
+          message: "Each access override must use true, false, or null.",
         });
       }
     }
 
     const permissionIds = [...uniquePermissionIds];
-
     const permissionRows =
       permissionIds.length > 0
         ? (
             await pool.query(
-              `
-                SELECT
-                  id,
-                  permission_key,
-                  description,
-                  module
-                FROM permissions
-                WHERE id IN (${permissionIds.map(() => "?").join(",")})
-              `,
+              `SELECT id, permission_key, description, module
+                 FROM permissions
+                WHERE id IN (${permissionIds.map(() => "?").join(",")})`,
               permissionIds,
             )
           )[0]
@@ -1363,97 +1409,76 @@ exports.updateUserPermissions = async (req, res) => {
     const permissionById = new Map(
       permissionRows.map((row) => [Number(row.id), row]),
     );
-
     const { NEVER_GRANT } = require("../../config/permissionMatrix");
-
     const blocked = new Set(NEVER_GRANT.map(normalizePermissionKey));
 
     for (const item of updates) {
       const permissionId = Number(item.permission_id);
       const permission = permissionById.get(permissionId);
-
       if (!permission) {
         return res.status(400).json({
           message: `Permission ID ${permissionId} does not exist.`,
         });
       }
-
       const key = normalizePermissionKey(permission.permission_key);
-
-      if (blocked.has(key)) {
+      if (blocked.has(key) && item.granted === true) {
         return res.status(403).json({
-          message: `Permission '${key}' is permanently restricted and cannot be assigned.`,
+          message: `Permission '${key}' is protected and cannot be allowed.`,
         });
       }
     }
 
     const connection = await pool.getConnection();
-
     try {
       await connection.beginTransaction();
 
       const [beforeRows] = await connection.query(
-        `
-          SELECT
-            upo.permission_id,
-            p.permission_key,
-            upo.granted
-          FROM user_permission_overrides upo
-          INNER JOIN permissions p
-            ON p.id = upo.permission_id
+        `SELECT upo.permission_id, p.permission_key, upo.granted
+           FROM user_permission_overrides upo
+           INNER JOIN permissions p ON p.id = upo.permission_id
           WHERE upo.user_id = ?
-          ORDER BY p.permission_key
-        `,
+          ORDER BY p.permission_key`,
         [targetId],
       );
 
       for (const item of updates) {
         const permissionId = Number(item.permission_id);
-
         if (item.granted === null) {
           await connection.query(
-            `
-              DELETE FROM user_permission_overrides
-              WHERE user_id = ?
-                AND permission_id = ?
-            `,
+            `DELETE FROM user_permission_overrides
+              WHERE user_id = ? AND permission_id = ?`,
             [targetId, permissionId],
           );
-
           continue;
         }
 
         await connection.query(
-          `
-            INSERT INTO user_permission_overrides
-              (
-                user_id,
-                permission_id,
-                granted,
-                updated_by
-              )
+          `INSERT INTO user_permission_overrides
+              (user_id, permission_id, granted, updated_by)
             VALUES (?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
               granted = VALUES(granted),
               updated_by = VALUES(updated_by),
-              updated_at = CURRENT_TIMESTAMP
-          `,
+              updated_at = CURRENT_TIMESTAMP`,
           [targetId, permissionId, item.granted ? 1 : 0, req.user.id],
         );
       }
 
+      if (updates.length > 0) {
+        await connection.query(
+          `UPDATE users
+              SET token_version = token_version + 1
+            WHERE id = ?`,
+          [targetId],
+        );
+      }
+
       const [afterRows] = await connection.query(
-        `
-          SELECT
-            upo.permission_id,
-            p.permission_key,
-            upo.granted
-          FROM user_permission_overrides upo
-          INNER JOIN permissions p
-            ON p.id = upo.permission_id
+        `SELECT upo.permission_id, p.permission_key, upo.granted
+           FROM user_permission_overrides upo
+           INNER JOIN permissions p ON p.id = upo.permission_id
           WHERE upo.user_id = ?
-          ORDER BY p.permission_key
-        `,
+          ORDER BY p.permission_key`,
         [targetId],
       );
 
@@ -1461,18 +1486,16 @@ exports.updateUserPermissions = async (req, res) => {
 
       req.auditRecord = {
         id: targetId,
-        old: {
-          permission_overrides: beforeRows,
-        },
+        old: { permission_overrides: beforeRows },
         new: {
           permission_overrides: afterRows,
+          session_revoked: updates.length > 0,
         },
       };
 
       const details = await getPermissionDetailsForUser(target);
-
       return res.json({
-        message: "User permissions updated.",
+        message: "Custom Access updated.",
         user_id: targetId,
         effective_permissions: details.permissions,
         overrides: details.overrides,
@@ -1485,9 +1508,8 @@ exports.updateUserPermissions = async (req, res) => {
     }
   } catch (err) {
     console.error("[updateUserPermissions]", err);
-
     return res.status(500).json({
-      message: "Unable to update user permissions.",
+      message: "Unable to update Custom Access.",
     });
   }
 };

@@ -2,6 +2,7 @@
 const pool = require("../../config/db");
 const path = require("path");
 const fs = require("fs");
+const { pipeline } = require("stream/promises");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const {
   persistSiteLogo,
@@ -10,6 +11,8 @@ const {
 const {
   getBackupDirectory,
   runDatabaseBackup,
+  isR2StoragePath,
+  getR2BackupObject,
 } = require("../../services/databaseBackupService");
 
 // Setting-key categorization for audit metadata only — does not affect
@@ -951,17 +954,16 @@ exports.updatePage = async (req, res) => {
 };
 
 // ── BACKUP ───────────────────────────────────────────────────────────────────
-// WISDOM BACKUP LOCAL DOWNLOAD AVAILABILITY
+// WISDOM BACKUP R2 + LOCAL DOWNLOAD AVAILABILITY
+// Local backups remain supported for development/legacy records. New backups
+// use private Cloudflare R2 when BACKUP_STORAGE_MODE=r2.
 const localBackupExists = (filename) => {
   if (!filename) return false;
 
   const backupDir = path.resolve(getBackupDirectory());
   const filePath = path.resolve(backupDir, filename);
 
-  return (
-    path.dirname(filePath) === backupDir &&
-    fs.existsSync(filePath)
-  );
+  return path.dirname(filePath) === backupDir && fs.existsSync(filePath);
 };
 
 exports.getBackupLogs = async (req, res) => {
@@ -972,6 +974,7 @@ exports.getBackupLogs = async (req, res) => {
          bl.type,
          bl.file_name,
          bl.file_size_kb,
+         bl.storage_path,
          bl.status,
          bl.notes,
          bl.created_at,
@@ -983,9 +986,11 @@ exports.getBackupLogs = async (req, res) => {
 
     res.json(
       rows.map((row) => {
+        const successful =
+          String(row.status || "").toLowerCase() === "success";
+        const storedInR2 = isR2StoragePath(row.storage_path);
         const downloadAvailable =
-          String(row.status || "").toLowerCase() === "success" &&
-          localBackupExists(row.file_name);
+          successful && (storedInR2 || localBackupExists(row.file_name));
 
         return {
           id: row.id,
@@ -996,6 +1001,7 @@ exports.getBackupLogs = async (req, res) => {
           created_at: row.created_at,
           triggered_by: row.triggered_by_name || "System",
           error_message: row.status === "failed" ? row.notes || null : null,
+          storage: storedInR2 ? "r2" : "local",
           download_available: downloadAvailable,
           file_url: downloadAvailable
             ? `/backup/download/${row.file_name}`
@@ -1036,6 +1042,7 @@ exports.triggerManualBackup = async (req, res) => {
         newValues: {
           file_name: result.fileName,
           file_size_kb: result.sizeKb,
+          storage: result.storage,
           result: "failed",
         },
         ipAddress: req.ip || null,
@@ -1054,6 +1061,8 @@ exports.triggerManualBackup = async (req, res) => {
       newValues: {
         file_name: result.fileName,
         file_size_kb: result.sizeKb,
+        storage: result.storage,
+        compressed: result.compressed,
         result: "success",
       },
       ipAddress: req.ip || null,
@@ -1063,6 +1072,8 @@ exports.triggerManualBackup = async (req, res) => {
       message: "Backup completed successfully.",
       file: result.fileName,
       size_kb: result.sizeKb,
+      storage: result.storage,
+      compressed: result.compressed,
       file_url: `/backup/download/${result.fileName}`,
     });
   } catch (err) {
@@ -1072,8 +1083,8 @@ exports.triggerManualBackup = async (req, res) => {
   }
 };
 
-// ── DOWNLOAD a specific backup file (admin-only, filename strictly validated) ─
-const BACKUP_FILENAME_RE = /^[A-Za-z0-9_-]+\.sql$/;
+// DOWNLOAD a specific backup file (admin-only, filename strictly validated)
+const BACKUP_FILENAME_RE = /^[A-Za-z0-9_-]+\.sql(?:\.gz)?$/;
 
 exports.downloadBackup = async (req, res) => {
   try {
@@ -1084,7 +1095,7 @@ exports.downloadBackup = async (req, res) => {
     }
 
     const [[backupRow]] = await pool.query(
-      `SELECT id, file_name, status
+      `SELECT id, file_name, storage_path, status
        FROM backup_logs
        WHERE file_name = ?
        ORDER BY id DESC
@@ -1099,6 +1110,61 @@ exports.downloadBackup = async (req, res) => {
       return res.status(404).json({
         message: "Successful backup record not found.",
       });
+    }
+
+    if (isR2StoragePath(backupRow.storage_path)) {
+      let object;
+
+      try {
+        object = await getR2BackupObject(backupRow.storage_path);
+      } catch (error) {
+        const statusCode = Number(error?.$metadata?.httpStatusCode);
+        if (
+          statusCode === 404 ||
+          error?.name === "NoSuchKey" ||
+          error?.name === "NotFound"
+        ) {
+          return res.status(404).json({
+            message:
+              "This backup record exists, but its R2 file is no longer available.",
+          });
+        }
+        throw error;
+      }
+
+      if (!object?.Body) {
+        return res.status(502).json({
+          message: "R2 returned an empty backup response.",
+        });
+      }
+
+      await writeAuditLogSafe({
+        userId: req.user.id,
+        action: "backup_downloaded",
+        tableName: "backup_logs",
+        recordId: backupRow.id,
+        newValues: {
+          file_name: filename,
+          storage: "r2",
+          result: "download_started",
+        },
+        ipAddress: req.ip || null,
+      });
+
+      res.setHeader("Content-Type", object.ContentType || "application/gzip");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${filename}"`,
+      );
+      res.setHeader("Cache-Control", "no-store");
+
+      const contentLength = Number(object.ContentLength);
+      if (Number.isFinite(contentLength) && contentLength >= 0) {
+        res.setHeader("Content-Length", String(contentLength));
+      }
+
+      await pipeline(object.Body, res);
+      return;
     }
 
     const backupDir = path.resolve(getBackupDirectory());
@@ -1131,6 +1197,12 @@ exports.downloadBackup = async (req, res) => {
     return res.download(filePath, filename);
   } catch (err) {
     console.error("[backup download]", err);
+
+    if (res.headersSent) {
+      res.destroy(err);
+      return;
+    }
+
     return res.status(500).json({
       message: "Backup download failed. Please try again.",
     });
