@@ -101,27 +101,29 @@ const MODULE_ACTIONS = Object.freeze({
  * Role-specific restrictions are applied separately below.
  */
 const AUTHORITY_DEFAULTS = Object.freeze({
+  // Standard is intentionally permission-neutral.
+  // Operational access for Staff/Customers comes from ROLE_DEFAULTS.
   user: {
-    dashboard: ["view"],
+    dashboard: [],
 
-    products: ["view"],
-    raw_materials: ["view"],
-    build_materials: ["view"],
-    suppliers: ["view"],
-    stock_movements: ["view"],
-    orders: ["view"],
+    products: [],
+    raw_materials: [],
+    build_materials: [],
+    suppliers: [],
+    stock_movements: [],
+    orders: [],
 
     cancellations: [],
     pos_qr_recovery: [],
 
-    task_assignments: ["view"],
-    appointments: ["view"],
-    delivery_scheduling: ["view"],
+    task_assignments: [],
+    appointments: [],
+    delivery_scheduling: [],
 
-    blueprint_management: ["view"],
+    blueprint_management: [],
 
     contracts: [],
-    warranty: ["view"],
+    warranty: [],
 
     sales_report: [],
     customers: [],
@@ -272,11 +274,7 @@ const ROLE_DEFAULTS = Object.freeze({
 
     orders: ["view", "manage"],
 
-    customers: ["view"],
-
     sales_report: ["view", "export"],
-
-    stock_movements: ["view"],
   },
 
   indoor: {
@@ -284,29 +282,15 @@ const ROLE_DEFAULTS = Object.freeze({
 
     products: ["view"],
 
-    orders: ["view", "manage"],
-
-    task_assignments: ["view", "manage"],
+    task_assignments: ["view"],
 
     appointments: ["view", "manage"],
-
-    blueprint_management: ["view", "create", "edit", "manage"],
-
-    contracts: ["view"],
-
-    warranty: ["view"],
   },
 
   delivery_rider: {
     dashboard: ["view"],
 
-    orders: ["view"],
-
-    task_assignments: ["view", "manage"],
-
-    delivery_scheduling: ["view", "manage"],
-
-    customers: ["view"],
+    delivery_scheduling: ["view", "edit"],
   },
 });
 
@@ -359,6 +343,8 @@ const POLICY_NOTES = Object.freeze({
   cancellationDecisionsRequireSuperAdmin: true,
 
   posQrRecoveryIsAvailableToManagers: true,
+
+  standardAuthorityUsesJobRoleDefaults: true,
 
   staffSubtypePermissionsFollowExistingWISDOMFunctions: true,
 });

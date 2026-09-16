@@ -12,6 +12,7 @@ const {
 const {
   MODULE_ACTIONS,
   AUTHORITY_DEFAULTS,
+  ROLE_DEFAULTS,
   POLICY_NOTES,
 } = require("../config/permissionMatrix");
 
@@ -70,8 +71,37 @@ function run() {
     "delete",
   ]);
   assert.deepEqual(AUTHORITY_DEFAULTS.manager.cancellations, ["view"]);
+
+  for (const [moduleName, actions] of Object.entries(AUTHORITY_DEFAULTS.user)) {
+    assert.deepEqual(
+      actions,
+      [],
+      `Standard authority must be permission-neutral for ${moduleName}`,
+    );
+  }
+
+  assert.deepEqual(ROLE_DEFAULTS.cashier, {
+    dashboard: ["view"],
+    products: ["view"],
+    orders: ["view", "manage"],
+    sales_report: ["view", "export"],
+  });
+
+  assert.deepEqual(ROLE_DEFAULTS.indoor, {
+    dashboard: ["view"],
+    products: ["view"],
+    task_assignments: ["view"],
+    appointments: ["view", "manage"],
+  });
+
+  assert.deepEqual(ROLE_DEFAULTS.delivery_rider, {
+    dashboard: ["view"],
+    delivery_scheduling: ["view", "edit"],
+  });
+
   assert.equal(POLICY_NOTES.managerUsesAdminRole, true);
   assert.equal(POLICY_NOTES.staffAuthorityIsUserOnly, true);
+  assert.equal(POLICY_NOTES.standardAuthorityUsesJobRoleDefaults, true);
 
   console.log("✅ RBAC access model tests passed.");
 }
