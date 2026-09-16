@@ -176,7 +176,6 @@ const getItemDisplayDims = (item = {}) => {
   return { width, height, depth };
 };
 
-
 /* WISDOM CUSTOM CHECKOUT REVIEW BATCH 3 V1.0.5
    Customer checkout uses the same finish/color resolution pattern as the
    admin submitted-design Parts & Measurements table. */
@@ -210,9 +209,7 @@ const findCheckoutFinish = (finishId) => {
   const id = String(finishId || "").trim();
   if (!id || !Array.isArray(WOOD_FINISHES)) return null;
 
-  return (
-    WOOD_FINISHES.find((item) => String(item?.id || "") === id) || null
-  );
+  return WOOD_FINISHES.find((item) => String(item?.id || "") === id) || null;
 };
 
 const resolveCheckoutPartFinish = (part = {}) => {
@@ -270,10 +267,7 @@ const resolveCheckoutPartFinish = (part = {}) => {
 };
 
 const formatCheckoutPartName = (component = {}, index = 0) =>
-  component?.label ||
-  component?.name ||
-  component?.type ||
-  `Part ${index + 1}`;
+  component?.label || component?.name || component?.type || `Part ${index + 1}`;
 
 const formatCheckoutPartMm = (value) => {
   const number = Number(value);
@@ -495,7 +489,7 @@ export default function CustomCheckoutPage() {
       return;
     }
 
-    if (!assemblyChoice) {
+    if (fulfillmentMethod === "delivery" && !assemblyChoice) {
       setError("Please choose an assembly option before submitting.");
       return;
     }
@@ -524,10 +518,7 @@ export default function CustomCheckoutPage() {
         return;
       }
 
-      validDeliveryPin = getValidCoordPair(
-        deliveryPin?.lat,
-        deliveryPin?.lng,
-      );
+      validDeliveryPin = getValidCoordPair(deliveryPin?.lat, deliveryPin?.lng);
 
       if (!validDeliveryPin) {
         setError(
@@ -615,7 +606,8 @@ export default function CustomCheckoutPage() {
           delivery_lng:
             fulfillmentMethod === "delivery" ? validDeliveryPin.lng : null,
           notes: form.notes,
-          assembly_choice: assemblyChoice,
+          assembly_choice:
+            fulfillmentMethod === "delivery" ? assemblyChoice : "",
           design_review_confirmed: true,
         }),
       );
@@ -906,15 +898,37 @@ export default function CustomCheckoutPage() {
                 </div>
 
                 <div className="form-field full">
-                  <label style={{ display: "block", marginBottom: 8, fontWeight: 600 }}>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: 8,
+                      fontWeight: 600,
+                    }}
+                  >
                     How will you receive your furniture?
                   </label>
                   <div
                     role="group"
                     aria-label="Fulfillment method"
-                    style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 10,
+                    }}
                   >
-                    {[{ key: "delivery", label: "Delivery", detail: "We deliver to your selected address." }, { key: "pickup", label: "Pickup", detail: "Collect your furniture at Spiral Wood Services." }].map((option) => {
+                    {[
+                      {
+                        key: "delivery",
+                        label: "Delivery",
+                        detail: "We deliver to your selected address.",
+                      },
+                      {
+                        key: "pickup",
+                        label: "Pickup",
+                        detail:
+                          "Collect your furniture at Spiral Wood Services.",
+                      },
+                    ].map((option) => {
                       const selected = fulfillmentMethod === option.key;
                       return (
                         <button
@@ -928,22 +942,41 @@ export default function CustomCheckoutPage() {
                           style={{
                             textAlign: "left",
                             padding: "14px 16px",
-                            border: selected ? "2px solid #111111" : "1px solid #d7d0c9",
+                            border: selected
+                              ? "2px solid #111111"
+                              : "1px solid #d7d0c9",
                             background: selected ? "#111111" : "#fff",
                             color: selected ? "#ffffff" : "#111111",
                             borderRadius: 8,
                             cursor: "pointer",
                           }}
                         >
-                          <div style={{ fontWeight: 700, marginBottom: 4 }}>{option.label}</div>
-                          <div style={{ fontSize: 13, color: selected ? "#ffffff" : "#6b625c", lineHeight: 1.4 }}>{option.detail}</div>
+                          <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                            {option.label}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 13,
+                              color: selected ? "#ffffff" : "#6b625c",
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            {option.detail}
+                          </div>
                         </button>
                       );
                     })}
                   </div>
                   {fulfillmentMethod === "pickup" ? (
-                    <p style={{ margin: "10px 0 0", fontSize: 13, color: "#6b625c" }}>
-                      No delivery address, delivery scheduling, logistics fee, or delivery fee is required for pickup.
+                    <p
+                      style={{
+                        margin: "10px 0 0",
+                        fontSize: 13,
+                        color: "#6b625c",
+                      }}
+                    >
+                      No delivery address, delivery scheduling, logistics fee,
+                      or delivery fee is required for pickup.
                     </p>
                   ) : null}
                 </div>
@@ -1054,7 +1087,11 @@ export default function CustomCheckoutPage() {
                   <div className="form-field full">
                     <LocationPicker
                       key={`custom-checkout-location-${locationPickerKey}`}
-                      label={useDefaultAddress ? "Default Delivery Location" : "Delivery Address"}
+                      label={
+                        useDefaultAddress
+                          ? "Default Delivery Location"
+                          : "Delivery Address"
+                      }
                       addressValue={form.delivery_address}
                       onAddressChange={handleAddressInputChange}
                       value={deliveryPin}
@@ -1131,122 +1168,124 @@ export default function CustomCheckoutPage() {
                 </span>
               </div>
 
-              <div
-                style={{
-                  marginTop: 14,
-                  paddingTop: 14,
-                  borderTop: "1px solid #e5e5e5",
-                }}
-              >
+              {fulfillmentMethod === "delivery" && (
                 <div
-                  className="summary-row"
-                  style={{ alignItems: "center", marginBottom: 10 }}
+                  style={{
+                    marginTop: 14,
+                    paddingTop: 14,
+                    borderTop: "1px solid #e5e5e5",
+                  }}
                 >
-                  <span>Assembly</span>
-                  <strong style={{ fontSize: 12 }}>
-                    {assemblyChoice
-                      ? assemblyChoice === "included"
-                        ? "Included (Free)"
-                        : "Not Requested"
-                      : "Select one"}
-                  </strong>
-                </div>
-
-                <div
-                  role="radiogroup"
-                  aria-label="Assembly preference"
-                  style={{ display: "grid", gap: 8 }}
-                >
-                  <label
-                    style={{
-                      display: "flex",
-                      gap: 10,
-                      alignItems: "flex-start",
-                      padding: "11px 12px",
-                      border:
-                        assemblyChoice === "included"
-                          ? "1px solid #111"
-                          : "1px solid #d9d9d9",
-                      background:
-                        assemblyChoice === "included" ? "#fafafa" : "#fff",
-                      cursor: "pointer",
-                    }}
+                  <div
+                    className="summary-row"
+                    style={{ alignItems: "center", marginBottom: 10 }}
                   >
-                    <input
-                      type="radio"
-                      name="assembly_choice"
-                      value="included"
-                      checked={assemblyChoice === "included"}
-                      onChange={() => {
-                        setAssemblyChoice("included");
-                        setError("");
-                      }}
-                      style={{ marginTop: 3 }}
-                    />
-                    <span>
-                      <strong style={{ display: "block", fontSize: 12.5 }}>
-                        Include free assembly
-                      </strong>
-                      <span
-                        style={{
-                          display: "block",
-                          marginTop: 2,
-                          fontSize: 11,
-                          color: "#666",
-                          lineHeight: 1.35,
-                        }}
-                      >
-                        Our team will assemble your furniture at no additional
-                        cost.
-                      </span>
-                    </span>
-                  </label>
+                    <span>Assembly</span>
+                    <strong style={{ fontSize: 12 }}>
+                      {assemblyChoice
+                        ? assemblyChoice === "included"
+                          ? "Included (Free)"
+                          : "Not Requested"
+                        : "Select one"}
+                    </strong>
+                  </div>
 
-                  <label
-                    style={{
-                      display: "flex",
-                      gap: 10,
-                      alignItems: "flex-start",
-                      padding: "11px 12px",
-                      border:
-                        assemblyChoice === "none"
-                          ? "1px solid #111"
-                          : "1px solid #d9d9d9",
-                      background:
-                        assemblyChoice === "none" ? "#fafafa" : "#fff",
-                      cursor: "pointer",
-                    }}
+                  <div
+                    role="radiogroup"
+                    aria-label="Assembly preference"
+                    style={{ display: "grid", gap: 8 }}
                   >
-                    <input
-                      type="radio"
-                      name="assembly_choice"
-                      value="none"
-                      checked={assemblyChoice === "none"}
-                      onChange={() => {
-                        setAssemblyChoice("none");
-                        setError("");
+                    <label
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        alignItems: "flex-start",
+                        padding: "11px 12px",
+                        border:
+                          assemblyChoice === "included"
+                            ? "1px solid #111"
+                            : "1px solid #d9d9d9",
+                        background:
+                          assemblyChoice === "included" ? "#fafafa" : "#fff",
+                        cursor: "pointer",
                       }}
-                      style={{ marginTop: 3 }}
-                    />
-                    <span>
-                      <strong style={{ display: "block", fontSize: 12.5 }}>
-                        No assembly needed
-                      </strong>
-                      <span
-                        style={{
-                          display: "block",
-                          marginTop: 2,
-                          fontSize: 11,
-                          color: "#666",
-                          lineHeight: 1.35,
+                    >
+                      <input
+                        type="radio"
+                        name="assembly_choice"
+                        value="included"
+                        checked={assemblyChoice === "included"}
+                        onChange={() => {
+                          setAssemblyChoice("included");
+                          setError("");
                         }}
-                      >
-                        I do not need assembly service for this request.
+                        style={{ marginTop: 3 }}
+                      />
+                      <span>
+                        <strong style={{ display: "block", fontSize: 12.5 }}>
+                          Include free assembly
+                        </strong>
+                        <span
+                          style={{
+                            display: "block",
+                            marginTop: 2,
+                            fontSize: 11,
+                            color: "#666",
+                            lineHeight: 1.35,
+                          }}
+                        >
+                          Our team will assemble your furniture at no additional
+                          cost.
+                        </span>
                       </span>
-                    </span>
-                  </label>
+                    </label>
+
+                    <label
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        alignItems: "flex-start",
+                        padding: "11px 12px",
+                        border:
+                          assemblyChoice === "none"
+                            ? "1px solid #111"
+                            : "1px solid #d9d9d9",
+                        background:
+                          assemblyChoice === "none" ? "#fafafa" : "#fff",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="assembly_choice"
+                        value="none"
+                        checked={assemblyChoice === "none"}
+                        onChange={() => {
+                          setAssemblyChoice("none");
+                          setError("");
+                        }}
+                        style={{ marginTop: 3 }}
+                      />
+                      <span>
+                        <strong style={{ display: "block", fontSize: 12.5 }}>
+                          No assembly needed
+                        </strong>
+                        <span
+                          style={{
+                            display: "block",
+                            marginTop: 2,
+                            fontSize: 11,
+                            color: "#666",
+                            lineHeight: 1.35,
+                          }}
+                        >
+                          I do not need assembly service for this request.
+                        </span>
+                      </span>
+                    </label>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <p className="summary-note" style={{ marginTop: 12 }}>
                 Your design will be reviewed before the quotation and payment
@@ -1305,7 +1344,7 @@ export default function CustomCheckoutPage() {
               disabled={
                 loading ||
                 !checkoutItems.length ||
-                !assemblyChoice ||
+                (fulfillmentMethod === "delivery" && !assemblyChoice) ||
                 !reviewConfirmed
               }
             >

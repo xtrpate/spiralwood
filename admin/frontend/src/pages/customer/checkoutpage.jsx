@@ -382,7 +382,9 @@ export default function CheckoutPage() {
     }
 
     if (form.payment_method !== "cop" && !assemblyChoice) {
-      toast.error("Please choose an assembly option before placing your order.");
+      toast.error(
+        "Please choose an assembly option before placing your order.",
+      );
       return;
     }
 
@@ -1081,116 +1083,118 @@ export default function CheckoutPage() {
                 <span style={{ color: "#111111", fontWeight: 700 }}>Free</span>
               </div>
 
-              <div
-                style={{
-                  margin: "14px 0",
-                  paddingTop: 14,
-                  borderTop: "1px solid #e5e5e5",
-                }}
-              >
+              {showAddressSection && (
                 <div
-                  className="summary-row"
-                  style={{ alignItems: "center", marginBottom: 10 }}
+                  style={{
+                    margin: "14px 0",
+                    paddingTop: 14,
+                    borderTop: "1px solid #e5e5e5",
+                  }}
                 >
-                  <span>Assembly</span>
-                  <strong style={{ fontSize: 12 }}>
-                    {assemblyChoice
-                      ? assemblyChoice === "included"
-                        ? "Included (Free)"
-                        : "Not Requested"
-                      : "Select one"}
-                  </strong>
-                </div>
-
-                <div
-                  role="radiogroup"
-                  aria-label="Assembly preference"
-                  style={{ display: "grid", gap: 8 }}
-                >
-                  <label
-                    style={{
-                      display: "flex",
-                      gap: 10,
-                      alignItems: "flex-start",
-                      padding: "11px 12px",
-                      border:
-                        assemblyChoice === "included"
-                          ? "1px solid #111"
-                          : "1px solid #d9d9d9",
-                      background:
-                        assemblyChoice === "included" ? "#fafafa" : "#fff",
-                      cursor: "pointer",
-                    }}
+                  <div
+                    className="summary-row"
+                    style={{ alignItems: "center", marginBottom: 10 }}
                   >
-                    <input
-                      type="radio"
-                      name="ready_made_assembly_choice"
-                      value="included"
-                      checked={assemblyChoice === "included"}
-                      onChange={() => setAssemblyChoice("included")}
-                      style={{ marginTop: 3 }}
-                    />
-                    <span>
-                      <strong style={{ display: "block", fontSize: 12.5 }}>
-                        Include free assembly
-                      </strong>
-                      <span
-                        style={{
-                          display: "block",
-                          marginTop: 2,
-                          fontSize: 11,
-                          color: "#666",
-                          lineHeight: 1.35,
-                        }}
-                      >
-                        Our delivery team will assemble your ready-made furniture
-                        at no additional cost.
-                      </span>
-                    </span>
-                  </label>
+                    <span>Assembly</span>
+                    <strong style={{ fontSize: 12 }}>
+                      {assemblyChoice
+                        ? assemblyChoice === "included"
+                          ? "Included (Free)"
+                          : "Not Requested"
+                        : "Select one"}
+                    </strong>
+                  </div>
 
-                  <label
-                    style={{
-                      display: "flex",
-                      gap: 10,
-                      alignItems: "flex-start",
-                      padding: "11px 12px",
-                      border:
-                        assemblyChoice === "none"
-                          ? "1px solid #111"
-                          : "1px solid #d9d9d9",
-                      background:
-                        assemblyChoice === "none" ? "#fafafa" : "#fff",
-                      cursor: "pointer",
-                    }}
+                  <div
+                    role="radiogroup"
+                    aria-label="Assembly preference"
+                    style={{ display: "grid", gap: 8 }}
                   >
-                    <input
-                      type="radio"
-                      name="ready_made_assembly_choice"
-                      value="none"
-                      checked={assemblyChoice === "none"}
-                      onChange={() => setAssemblyChoice("none")}
-                      style={{ marginTop: 3 }}
-                    />
-                    <span>
-                      <strong style={{ display: "block", fontSize: 12.5 }}>
-                        No assembly needed
-                      </strong>
-                      <span
-                        style={{
-                          display: "block",
-                          marginTop: 2,
-                          fontSize: 11,
-                          color: "#666",
-                          lineHeight: 1.35,
-                        }}
-                      >
-                        I do not need assembly service for this order.
+                    <label
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        alignItems: "flex-start",
+                        padding: "11px 12px",
+                        border:
+                          assemblyChoice === "included"
+                            ? "1px solid #111"
+                            : "1px solid #d9d9d9",
+                        background:
+                          assemblyChoice === "included" ? "#fafafa" : "#fff",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="ready_made_assembly_choice"
+                        value="included"
+                        checked={assemblyChoice === "included"}
+                        onChange={() => setAssemblyChoice("included")}
+                        style={{ marginTop: 3 }}
+                      />
+                      <span>
+                        <strong style={{ display: "block", fontSize: 12.5 }}>
+                          Include free assembly
+                        </strong>
+                        <span
+                          style={{
+                            display: "block",
+                            marginTop: 2,
+                            fontSize: 11,
+                            color: "#666",
+                            lineHeight: 1.35,
+                          }}
+                        >
+                          Our delivery team will assemble your ready-made
+                          furniture at no additional cost.
+                        </span>
                       </span>
-                    </span>
-                  </label>
+                    </label>
+
+                    <label
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        alignItems: "flex-start",
+                        padding: "11px 12px",
+                        border:
+                          assemblyChoice === "none"
+                            ? "1px solid #111"
+                            : "1px solid #d9d9d9",
+                        background:
+                          assemblyChoice === "none" ? "#fafafa" : "#fff",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="ready_made_assembly_choice"
+                        value="none"
+                        checked={assemblyChoice === "none"}
+                        onChange={() => setAssemblyChoice("none")}
+                        style={{ marginTop: 3 }}
+                      />
+                      <span>
+                        <strong style={{ display: "block", fontSize: 12.5 }}>
+                          No assembly needed
+                        </strong>
+                        <span
+                          style={{
+                            display: "block",
+                            marginTop: 2,
+                            fontSize: 11,
+                            color: "#666",
+                            lineHeight: 1.35,
+                          }}
+                        >
+                          I do not need assembly service for this order.
+                        </span>
+                      </span>
+                    </label>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="summary-row">
                 <span>Total</span>
