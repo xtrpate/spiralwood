@@ -615,8 +615,7 @@ const getValidationErrors = ({ items = [], costs = {} } = {}) => {
       errors.push(`${label}: Description must not exceed 255 characters.`);
     }
     const numericQuantity = Number(item.quantity);
-    const requiresWholeQuantity =
-      isInventoryItem(item) || isOtherItem(item);
+    const requiresWholeQuantity = isInventoryItem(item) || isOtherItem(item);
 
     if (
       requiresWholeQuantity &&
@@ -631,7 +630,8 @@ const getValidationErrors = ({ items = [], costs = {} } = {}) => {
     }
     if (
       !isInventoryItem(item) &&
-      (!Number.isFinite(Number(item.unit_cost)) || Number(item.unit_cost) < 0.01)
+      (!Number.isFinite(Number(item.unit_cost)) ||
+        Number(item.unit_cost) < 0.01)
     ) {
       errors.push(`${label}: Rate must be at least 0.01.`);
     }
@@ -791,10 +791,7 @@ const collectCustomizationReferenceFiles = (orderContext = {}) => {
       file_url: fileUrl,
       file_name: entry.name || entry.file_name || "Customer reference",
       mime_type:
-        entry.mime_type ||
-        entry.type ||
-        getImageMimeType(fileUrl) ||
-        "image/*",
+        entry.mime_type || entry.type || getImageMimeType(fileUrl) || "image/*",
     });
   };
 
@@ -824,7 +821,9 @@ const collectCustomizationReferenceFiles = (orderContext = {}) => {
       });
 
       Object.entries(customization).forEach(([key, value], fieldIndex) => {
-        const normalizedKey = String(key || "").trim().toLowerCase();
+        const normalizedKey = String(key || "")
+          .trim()
+          .toLowerCase();
         if (SYSTEM_PREVIEW_IMAGE_KEYS.has(normalizedKey)) return;
         if (!/(reference|attachment|photo)/i.test(normalizedKey)) return;
         if (typeof value !== "string" || !isCustomizationImageValue(key, value))
@@ -889,7 +888,9 @@ const getCustomizationEntries = (orderContext = {}) => {
     (item) => {
       const customization = item?.customization || {};
       Object.entries(customization).forEach(([key, value]) => {
-        const normalizedKey = String(key || "").trim().toLowerCase();
+        const normalizedKey = String(key || "")
+          .trim()
+          .toLowerCase();
         if (hiddenFields.has(normalizedKey)) return;
         if (value === null || value === undefined || typeof value === "object")
           return;
@@ -942,8 +943,7 @@ const getInventoryPhysicalSpec = (material = null) => {
   const form = String(material.material_form || "other")
     .trim()
     .toLowerCase();
-  const formLabel =
-    INVENTORY_MATERIAL_FORM_LABELS[form] || "Other Material";
+  const formLabel = INVENTORY_MATERIAL_FORM_LABELS[form] || "Other Material";
   const length = formatPhysicalDimension(material.length_mm);
   const width = formatPhysicalDimension(material.width_mm);
   const thickness = formatPhysicalDimension(material.thickness_mm);
@@ -1041,7 +1041,10 @@ const getInventoryAvailability = (item = {}, material = null) => {
   };
 };
 
-const getQuotationInventoryIssues = (inventoryItems = [], rawMaterials = []) => {
+const getQuotationInventoryIssues = (
+  inventoryItems = [],
+  rawMaterials = [],
+) => {
   if (!inventoryItems.length) {
     return [
       {
@@ -1217,9 +1220,7 @@ function EstimateTable({
               <th style={{ ...th, width: "10%" }}>
                 {isInventory ? "Required" : "Quantity"}
               </th>
-              {isInventory && (
-                <th style={{ ...th, width: "18%" }}>Stock</th>
-              )}
+              {isInventory && <th style={{ ...th, width: "18%" }}>Stock</th>}
               {(!isInventory || showInventoryPricing) && (
                 <th style={{ ...th, width: "12%" }}>Rate</th>
               )}
@@ -1455,11 +1456,7 @@ function EstimateTable({
                             }
                           }
 
-                          onUpdate(
-                            item._row_key,
-                            "quantity",
-                            nextValue,
-                          );
+                          onUpdate(item._row_key, "quantity", nextValue);
                         }}
                         style={{
                           ...cellInput,
@@ -1636,7 +1633,8 @@ function EstimateTable({
                         fontWeight: 700,
                       }}
                     >
-                      Add at least one required material before sending the quotation.
+                      Add at least one required material before sending the
+                      quotation.
                     </div>
                   ) : (
                     <div style={{ color: "#52525b", fontWeight: 700 }}>
@@ -1736,7 +1734,9 @@ function ProductionSnapshotPanel({ snapshot }) {
 
           <div style={productionGuide}>
             <strong>Select inventory manually.</strong>
-            <span>Choose the actual stock items and required quantities below.</span>
+            <span>
+              Choose the actual stock items and required quantities below.
+            </span>
           </div>
 
           <div style={{ overflowX: "auto" }}>
@@ -2092,27 +2092,18 @@ export default function EstimationPage() {
   );
 
   useEffect(() => {
-    if (
-      loading ||
-      !estimation?.id ||
-      savedDraftSignature !== null
-    ) {
+    if (loading || !estimation?.id || savedDraftSignature !== null) {
       return;
     }
 
     setSavedDraftSignature(currentDraftSignature);
-  }, [
-    currentDraftSignature,
-    estimation?.id,
-    loading,
-    savedDraftSignature,
-  ]);
+  }, [currentDraftSignature, estimation?.id, loading, savedDraftSignature]);
 
   const hasUnsavedChanges =
     Boolean(
       estimation?.id &&
-        savedDraftSignature !== null &&
-        currentDraftSignature !== savedDraftSignature,
+      savedDraftSignature !== null &&
+      currentDraftSignature !== savedDraftSignature,
     ) || Boolean(deliveryGate.dirty);
 
   const quotationGateReasons = useMemo(() => {
@@ -2202,14 +2193,14 @@ export default function EstimationPage() {
     ? 0
     : Math.max(
         0,
-    Number(
-      oversizedDeliveryDraft?.assessment_status === "oversized"
-        ? draftDeliveryDecision === "fee_required"
-          ? oversizedDeliveryDraft?.additional_delivery_fee || 0
-          : 0
-        : estimation?.additional_delivery_fee || 0,
-    ),
-  );
+        Number(
+          oversizedDeliveryDraft?.assessment_status === "oversized"
+            ? draftDeliveryDecision === "fee_required"
+              ? oversizedDeliveryDraft?.additional_delivery_fee || 0
+              : 0
+            : estimation?.additional_delivery_fee || 0,
+        ),
+      );
   const subtotal =
     quoteItemsSubtotal + laborCost + logisticsCost + additionalDeliveryFee;
   const discountRate = Math.max(0, Math.min(100, Number(costs.discount || 0)));
@@ -2224,16 +2215,14 @@ export default function EstimationPage() {
     String(estimation?.status || "").toLowerCase() === "approved";
   const isSent = String(estimation?.status || "").toLowerCase() === "sent";
   const isReadOnly = isApproved || isSent;
-  const saveDisabled =
-    saving ||
-    isReadOnly ||
-    (Boolean(estimation?.id) && !hasUnsavedChanges);
+
+  // Removed the "unsaved changes" lock so you can force a save/overwrite anytime
+  const saveDisabled = saving || isReadOnly;
+
   const saveButtonLabel = saving
     ? "Saving..."
     : estimation?.id
-      ? hasUnsavedChanges
-        ? "Save Changes"
-        : "Saved"
+      ? "Save Changes"
       : "Save Estimate";
   const validUntil = new Date(
     estimation?.updated_at || estimation?.created_at || Date.now(),
@@ -2561,6 +2550,11 @@ export default function EstimationPage() {
       return;
     }
 
+    // New confirmation prompt
+    if (!window.confirm("Would you like to send the quotation now?")) {
+      return;
+    }
+
     setApproving(true);
     try {
       const response = await api.patch(`/blueprints/${id}/estimation/approve`);
@@ -2739,7 +2733,8 @@ export default function EstimationPage() {
               Estimate — {getBlueprintDisplayTitle(blueprint)}
             </h1>
             <p style={pageSubTitle}>
-              Blueprint #{String(id).padStart(5, "0")} · {getCustomerDisplayName(blueprint)}
+              Blueprint #{String(id).padStart(5, "0")} ·{" "}
+              {getCustomerDisplayName(blueprint)}
               {blueprint.order_number ? ` · ${blueprint.order_number}` : ""}
             </p>
           </div>
@@ -2778,12 +2773,12 @@ export default function EstimationPage() {
             <button
               type="button"
               onClick={handleSendQuote}
-              disabled={
-                approving || isSendQuotationBlocked || isSent
-              }
+              disabled={approving || isSendQuotationBlocked || isSent}
               title={
                 isSendQuotationBlocked
-                  ? quotationGateReasons.map((reason) => reason.message).join(" ")
+                  ? quotationGateReasons
+                      .map((reason) => reason.message)
+                      .join(" ")
                   : "Send quotation to customer"
               }
               style={
@@ -2804,9 +2799,7 @@ export default function EstimationPage() {
             onClick={handleSave}
             disabled={saveDisabled}
             style={
-              saveDisabled
-                ? { ...btnPrimary, ...btnDisabled }
-                : btnPrimary
+              saveDisabled ? { ...btnPrimary, ...btnDisabled } : btnPrimary
             }
           >
             {saveButtonLabel}
@@ -2900,117 +2893,121 @@ export default function EstimationPage() {
       </div>
 
       {activeEstimateTab === "request" && (
-      <div style={{ ...card, marginBottom: 20 }}>
-        <div style={sectionHeaderSmall}>
-          <h3 style={sectionTitle}>Customer Request</h3>
-          <p style={helperText}>
-            Review the request details before preparing the quotation.
-          </p>
-        </div>
-        <div style={{ padding: 20 }}>
-          <div style={requestGrid}>
-            <div style={requestInfoCard}>
-              <span style={metaLabel}>Order</span>
-              <strong>{blueprint.order_number || "No linked order"}</strong>
-              {blueprint.order_context?.order_notes && (
-                <p style={requestText}>{blueprint.order_context.order_notes}</p>
-              )}
-              {blueprint.order_context?.delivery_request_notes && (
-                <p style={requestText}>
-                  Delivery note:{" "}
-                  {blueprint.order_context.delivery_request_notes}
-                </p>
-              )}
-              {!blueprint.order_context?.order_notes &&
-                !blueprint.order_context?.delivery_request_notes && (
-                  <p style={mutedText}>No order notes recorded.</p>
+        <div style={{ ...card, marginBottom: 20 }}>
+          <div style={sectionHeaderSmall}>
+            <h3 style={sectionTitle}>Customer Request</h3>
+            <p style={helperText}>
+              Review the request details before preparing the quotation.
+            </p>
+          </div>
+          <div style={{ padding: 20 }}>
+            <div style={requestGrid}>
+              <div style={requestInfoCard}>
+                <span style={metaLabel}>Order</span>
+                <strong>{blueprint.order_number || "No linked order"}</strong>
+                {blueprint.order_context?.order_notes && (
+                  <p style={requestText}>
+                    {blueprint.order_context.order_notes}
+                  </p>
                 )}
+                {blueprint.order_context?.delivery_request_notes && (
+                  <p style={requestText}>
+                    Delivery note:{" "}
+                    {blueprint.order_context.delivery_request_notes}
+                  </p>
+                )}
+                {!blueprint.order_context?.order_notes &&
+                  !blueprint.order_context?.delivery_request_notes && (
+                    <p style={mutedText}>No order notes recorded.</p>
+                  )}
+              </div>
+              <div style={requestInfoCard}>
+                <span style={metaLabel}>Design Details</span>
+                {customizationEntries.length ? (
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {customizationEntries.map((entry, index) => (
+                      <div key={`${entry.label}-${index}`} style={detailRow}>
+                        <span>{entry.label}</span>
+                        <span style={{ fontWeight: 500, color: "#27272a" }}>
+                          {entry.value}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={mutedText}>
+                    No structured customization details recorded.
+                  </p>
+                )}
+              </div>
             </div>
-            <div style={requestInfoCard}>
-              <span style={metaLabel}>Design Details</span>
-              {customizationEntries.length ? (
-                <div style={{ display: "grid", gap: 6 }}>
-                  {customizationEntries.map((entry, index) => (
-                    <div key={`${entry.label}-${index}`} style={detailRow}>
-                      <span>{entry.label}</span>
-                      <span style={{ fontWeight: 500, color: "#27272a" }}>
-                        {entry.value}
-                      </span>
+
+            <div style={{ marginTop: 18 }}>
+              <div style={{ ...metaLabel, marginBottom: 8 }}>Messages</div>
+              {discussionLoading ? (
+                <p style={mutedText}>Loading customer discussion...</p>
+              ) : customerMessages.length ? (
+                <div style={messageList}>
+                  {customerMessages.map((entry) => (
+                    <div key={entry.id} style={messageCard}>
+                      <div style={{ fontWeight: 700 }}>
+                        {entry.message || "Attachment uploaded."}
+                      </div>
+                      <div
+                        style={{ fontSize: 12, color: "#71717a", marginTop: 5 }}
+                      >
+                        {formatDateTime(entry.created_at)}
+                      </div>
                     </div>
                   ))}
                 </div>
               ) : (
                 <p style={mutedText}>
-                  No structured customization details recorded.
+                  No customer discussion messages recorded.
                 </p>
               )}
             </div>
-          </div>
 
-          <div style={{ marginTop: 18 }}>
-            <div style={{ ...metaLabel, marginBottom: 8 }}>
-              Messages
-            </div>
-            {discussionLoading ? (
-              <p style={mutedText}>Loading customer discussion...</p>
-            ) : customerMessages.length ? (
-              <div style={messageList}>
-                {customerMessages.map((entry) => (
-                  <div key={entry.id} style={messageCard}>
-                    <div style={{ fontWeight: 700 }}>
-                      {entry.message || "Attachment uploaded."}
-                    </div>
-                    <div
-                      style={{ fontSize: 12, color: "#71717a", marginTop: 5 }}
-                    >
-                      {formatDateTime(entry.created_at)}
-                    </div>
-                  </div>
-                ))}
+            <div style={{ marginTop: 18 }}>
+              <div style={{ ...metaLabel, marginBottom: 8 }}>
+                Reference Files
               </div>
-            ) : (
-              <p style={mutedText}>No customer discussion messages recorded.</p>
-            )}
-          </div>
-
-          <div style={{ marginTop: 18 }}>
-            <div style={{ ...metaLabel, marginBottom: 8 }}>
-              Reference Files
+              {referenceFiles.length ? (
+                <div style={attachmentGrid}>
+                  {referenceFiles.map((file) => {
+                    const href = resolveAttachmentUrl(
+                      file.file_url || file.url,
+                    );
+                    return (
+                      <a
+                        key={file.id || href}
+                        href={href}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={attachmentCard}
+                      >
+                        {isImageAttachment(file) ? (
+                          <img
+                            src={href}
+                            alt={file.file_name || "Reference"}
+                            style={attachmentImage}
+                          />
+                        ) : (
+                          <div style={filePlaceholder}>FILE</div>
+                        )}
+                        <div style={attachmentLabel}>
+                          {file.file_name || "Reference file"}
+                        </div>
+                      </a>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p style={mutedText}>No reference files available.</p>
+              )}
             </div>
-            {referenceFiles.length ? (
-              <div style={attachmentGrid}>
-                {referenceFiles.map((file) => {
-                  const href = resolveAttachmentUrl(file.file_url || file.url);
-                  return (
-                    <a
-                      key={file.id || href}
-                      href={href}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={attachmentCard}
-                    >
-                      {isImageAttachment(file) ? (
-                        <img
-                          src={href}
-                          alt={file.file_name || "Reference"}
-                          style={attachmentImage}
-                        />
-                      ) : (
-                        <div style={filePlaceholder}>FILE</div>
-                      )}
-                      <div style={attachmentLabel}>
-                        {file.file_name || "Reference file"}
-                      </div>
-                    </a>
-                  );
-                })}
-              </div>
-            ) : (
-              <p style={mutedText}>No reference files available.</p>
-            )}
           </div>
         </div>
-      </div>
       )}
 
       {!isPickup && (
@@ -3031,236 +3028,247 @@ export default function EstimationPage() {
 
       {activeEstimateTab === "components" && (
         <>
-      <ProductionSnapshotPanel snapshot={productionSnapshot} />
+          <ProductionSnapshotPanel snapshot={productionSnapshot} />
 
-      <EstimateTable
-        title="Furniture Parts"
-        helper="Review the generated components, quantities, and rates."
-        section="blueprint"
-        rows={blueprintItems}
-        rawMaterials={rawMaterials}
-        readOnly={isReadOnly}
-        onRemove={removeItem}
-        onUpdate={updateItem}
-        subtotal={blueprintSubtotal}
-      />
+          <EstimateTable
+            title="Furniture Parts"
+            helper="Review the generated components, quantities, and rates."
+            section="blueprint"
+            rows={blueprintItems}
+            rawMaterials={rawMaterials}
+            readOnly={isReadOnly}
+            onRemove={removeItem}
+            onUpdate={updateItem}
+            subtotal={blueprintSubtotal}
+          />
         </>
       )}
 
       {activeEstimateTab === "materials" && (
-      <EstimateTable
-        title="Required Materials"
-        helper="Select the materials and quantities required for production."
-        section="inventory"
-        rows={inventoryItems}
-        rawMaterials={rawMaterials}
-        readOnly={isReadOnly}
-        onAdd={addInventoryItem}
-        onRemove={removeItem}
-        onUpdate={updateItem}
-        subtotal={inventorySubtotal}
-        inventoryTrackingOnly={inventoryTrackingOnly}
-      />
+        <EstimateTable
+          title="Required Materials"
+          helper="Select the materials and quantities required for production."
+          section="inventory"
+          rows={inventoryItems}
+          rawMaterials={rawMaterials}
+          readOnly={isReadOnly}
+          onAdd={addInventoryItem}
+          onRemove={removeItem}
+          onUpdate={updateItem}
+          subtotal={inventorySubtotal}
+          inventoryTrackingOnly={inventoryTrackingOnly}
+        />
       )}
 
       {activeEstimateTab === "quotation" && (
         <>
-      <EstimateTable
-        title="Additional Items"
-        helper="Add billable work or materials not included in the blueprint."
-        section="other"
-        rows={otherItems}
-        rawMaterials={rawMaterials}
-        readOnly={isReadOnly}
-        onAdd={addOtherItem}
-        onRemove={removeItem}
-        onUpdate={updateItem}
-        subtotal={otherSubtotal}
-      />
+          <EstimateTable
+            title="Additional Items"
+            helper="Add billable work or materials not included in the blueprint."
+            section="other"
+            rows={otherItems}
+            rawMaterials={rawMaterials}
+            readOnly={isReadOnly}
+            onAdd={addOtherItem}
+            onRemove={removeItem}
+            onUpdate={updateItem}
+            subtotal={otherSubtotal}
+          />
 
-      <div style={chargesGrid}>
-        <div style={card}>
-          <div style={sectionHeaderSmall}>
-            <h3 style={sectionTitle}>Quotation Details</h3>
-            <p style={helperText}>
-              {isPickup
-                ? "Enter labor, adjustments, and notes."
-                : "Enter labor, logistics, adjustments, and notes."}
-            </p>
-          </div>
-          <div style={{ padding: "20px 24px" }}>
-            <div style={{ marginBottom: 16 }}>
-              <label style={labelSm}>Labor (₱)</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={costs.labor_cost}
-                onChange={(event) =>
-                  !isReadOnly &&
-                  setCosts((current) => ({
-                    ...current,
-                    labor_cost: event.target.value,
-                  }))
-                }
-                style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly) }}
-                disabled={isReadOnly}
-              />
-            </div>
-            {!isPickup && (
-              <div style={{ marginBottom: 16 }}>
-                <label style={labelSm}>Logistics (₱)</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={costs.overhead_cost}
-                  onChange={(event) =>
-                    !isReadOnly &&
-                    setCosts((current) => ({
-                      ...current,
-                      overhead_cost: event.target.value,
-                    }))
-                  }
-                  style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly) }}
-                  disabled={isReadOnly}
-                />
+          <div style={chargesGrid}>
+            <div style={card}>
+              <div style={sectionHeaderSmall}>
+                <h3 style={sectionTitle}>Quotation Details</h3>
+                <p style={helperText}>
+                  {isPickup
+                    ? "Enter labor, adjustments, and notes."
+                    : "Enter labor, logistics, adjustments, and notes."}
+                </p>
               </div>
-            )}
-            <div style={dualFieldGrid}>
-              <div>
-                <label style={labelSm}>Discount (%)</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  value={costs.discount}
-                  onChange={(event) =>
-                    !isReadOnly &&
-                    setCosts((current) => ({
-                      ...current,
-                      discount: event.target.value,
-                    }))
-                  }
-                  style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly) }}
-                  disabled={isReadOnly}
-                />
-              </div>
-              <div>
-                <label style={labelSm}>VAT (%)</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  value={costs.tax_rate}
-                  onChange={(event) =>
-                    !isReadOnly &&
-                    setCosts((current) => ({
-                      ...current,
-                      tax_rate: event.target.value,
-                    }))
-                  }
-                  style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly) }}
-                  disabled={isReadOnly}
-                />
+              <div style={{ padding: "20px 24px" }}>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={labelSm}>Labor (₱)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={costs.labor_cost}
+                    onChange={(event) =>
+                      !isReadOnly &&
+                      setCosts((current) => ({
+                        ...current,
+                        labor_cost: event.target.value,
+                      }))
+                    }
+                    style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly) }}
+                    disabled={isReadOnly}
+                  />
+                </div>
+                {!isPickup && (
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={labelSm}>Logistics (₱)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={costs.overhead_cost}
+                      onChange={(event) =>
+                        !isReadOnly &&
+                        setCosts((current) => ({
+                          ...current,
+                          overhead_cost: event.target.value,
+                        }))
+                      }
+                      style={{
+                        ...inputFull,
+                        ...readOnlyFieldStyle(isReadOnly),
+                      }}
+                      disabled={isReadOnly}
+                    />
+                  </div>
+                )}
+                <div style={dualFieldGrid}>
+                  <div>
+                    <label style={labelSm}>Discount (%)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      value={costs.discount}
+                      onChange={(event) =>
+                        !isReadOnly &&
+                        setCosts((current) => ({
+                          ...current,
+                          discount: event.target.value,
+                        }))
+                      }
+                      style={{
+                        ...inputFull,
+                        ...readOnlyFieldStyle(isReadOnly),
+                      }}
+                      disabled={isReadOnly}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelSm}>VAT (%)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      value={costs.tax_rate}
+                      onChange={(event) =>
+                        !isReadOnly &&
+                        setCosts((current) => ({
+                          ...current,
+                          tax_rate: event.target.value,
+                        }))
+                      }
+                      style={{
+                        ...inputFull,
+                        ...readOnlyFieldStyle(isReadOnly),
+                      }}
+                      disabled={isReadOnly}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label style={labelSm}>Quotation Notes</label>
+                  <textarea
+                    value={costs.notes}
+                    onChange={(event) =>
+                      !isReadOnly &&
+                      setCosts((current) => ({
+                        ...current,
+                        notes: event.target.value.slice(0, 500),
+                      }))
+                    }
+                    rows={5}
+                    style={{
+                      ...inputFull,
+                      ...readOnlyFieldStyle(isReadOnly),
+                      resize: "vertical",
+                    }}
+                    maxLength={500}
+                    disabled={isReadOnly}
+                    placeholder="Add terms, inclusions, exclusions, or project notes..."
+                  />
+                </div>
               </div>
             </div>
-            <div>
-              <label style={labelSm}>Quotation Notes</label>
-              <textarea
-                value={costs.notes}
-                onChange={(event) =>
-                  !isReadOnly &&
-                  setCosts((current) => ({
-                    ...current,
-                    notes: event.target.value.slice(0, 500),
-                  }))
-                }
-                rows={5}
-                style={{
-                  ...inputFull,
-                  ...readOnlyFieldStyle(isReadOnly),
-                  resize: "vertical",
-                }}
-                maxLength={500}
-                disabled={isReadOnly}
-                placeholder="Add terms, inclusions, exclusions, or project notes..."
-              />
-            </div>
-          </div>
-        </div>
 
-        <div style={{ ...card, alignSelf: "start" }}>
-          <div style={sectionHeaderSmall}>
-            <h3 style={sectionTitle}>Quotation Summary</h3>
-            <p style={helperText}>
-              Review the final breakdown before saving or sending.
-            </p>
-          </div>
-          <div style={{ padding: 24 }}>
-            {[
-              ["Furniture Parts", blueprintSubtotal],
-              ...(!inventoryTrackingOnly
-                ? [["Required Materials", inventorySubtotal]]
-                : []),
-              ["Additional Items", otherSubtotal],
-              ["Labor", laborCost],
-              ...(!isPickup ? [["Logistics", logisticsCost]] : []),
-              ...(additionalDeliveryFee > 0
-                ? [["Additional Delivery Fee", additionalDeliveryFee]]
-                : []),
-            ].map(([label, value]) => (
-              <div key={label} style={summaryRow}>
-                <span style={summaryLabel}>{label}</span>
-                <strong>{formatMoney(value)}</strong>
+            <div style={{ ...card, alignSelf: "start" }}>
+              <div style={sectionHeaderSmall}>
+                <h3 style={sectionTitle}>Quotation Summary</h3>
+                <p style={helperText}>
+                  Review the final breakdown before saving or sending.
+                </p>
               </div>
-            ))}
-            {inventoryTrackingOnly && (
-              <div style={{ ...summaryRow, alignItems: "flex-start" }}>
-                <span style={summaryLabel}>Required Inventory</span>
-                <strong style={{ textAlign: "right", maxWidth: 190 }}>
-                  {inventoryItems.length
-                    ? `${inventoryItems.length} tracked material${inventoryItems.length === 1 ? "" : "s"} — not charged again`
-                    : "None added"}
-                </strong>
-              </div>
-            )}
-            <div style={{ borderTop: "1px solid #e4e4e7", margin: "16px 0" }} />
-            <div style={summaryRow}>
-              <strong>Subtotal</strong>
-              <strong>{formatMoney(subtotal)}</strong>
-            </div>
-            {discountRate > 0 && (
-              <div style={summaryRow}>
-                <span style={{ ...summaryLabel, color: "#dc2626" }}>
-                  Discount ({discountRate}%)
-                </span>
-                <strong style={{ color: "#dc2626" }}>
-                  ({formatMoney(discountAmount)})
-                </strong>
-              </div>
-            )}
-            <div style={summaryRow}>
-              <span style={summaryLabel}>VAT ({costs.tax_rate}%)</span>
-              <strong>{formatMoney(taxAmount)}</strong>
-            </div>
-            <div style={grandTotalBox}>
-              <span>Total Quotation</span>
-              <strong>{formatMoney(grandTotal)}</strong>
-            </div>
-            {estimation && (
-              <div style={savedInfo}>
-                Last saved{" "}
-                {formatDateDisplay(
-                  estimation.updated_at || estimation.created_at,
+              <div style={{ padding: 24 }}>
+                {[
+                  ["Furniture Parts", blueprintSubtotal],
+                  ...(!inventoryTrackingOnly
+                    ? [["Required Materials", inventorySubtotal]]
+                    : []),
+                  ["Additional Items", otherSubtotal],
+                  ["Labor", laborCost],
+                  ...(!isPickup ? [["Logistics", logisticsCost]] : []),
+                  ...(additionalDeliveryFee > 0
+                    ? [["Additional Delivery Fee", additionalDeliveryFee]]
+                    : []),
+                ].map(([label, value]) => (
+                  <div key={label} style={summaryRow}>
+                    <span style={summaryLabel}>{label}</span>
+                    <strong>{formatMoney(value)}</strong>
+                  </div>
+                ))}
+                {inventoryTrackingOnly && (
+                  <div style={{ ...summaryRow, alignItems: "flex-start" }}>
+                    <span style={summaryLabel}>Required Inventory</span>
+                    <strong style={{ textAlign: "right", maxWidth: 190 }}>
+                      {inventoryItems.length
+                        ? `${inventoryItems.length} tracked material${inventoryItems.length === 1 ? "" : "s"} — not charged again`
+                        : "None added"}
+                    </strong>
+                  </div>
+                )}
+                <div
+                  style={{ borderTop: "1px solid #e4e4e7", margin: "16px 0" }}
+                />
+                <div style={summaryRow}>
+                  <strong>Subtotal</strong>
+                  <strong>{formatMoney(subtotal)}</strong>
+                </div>
+                {discountRate > 0 && (
+                  <div style={summaryRow}>
+                    <span style={{ ...summaryLabel, color: "#dc2626" }}>
+                      Discount ({discountRate}%)
+                    </span>
+                    <strong style={{ color: "#dc2626" }}>
+                      ({formatMoney(discountAmount)})
+                    </strong>
+                  </div>
+                )}
+                <div style={summaryRow}>
+                  <span style={summaryLabel}>VAT ({costs.tax_rate}%)</span>
+                  <strong>{formatMoney(taxAmount)}</strong>
+                </div>
+                <div style={grandTotalBox}>
+                  <span>Total Quotation</span>
+                  <strong>{formatMoney(grandTotal)}</strong>
+                </div>
+                {estimation && (
+                  <div style={savedInfo}>
+                    Last saved{" "}
+                    {formatDateDisplay(
+                      estimation.updated_at || estimation.created_at,
+                    )}
+                  </div>
                 )}
               </div>
-            )}
+            </div>
           </div>
-        </div>
-      </div>
         </>
       )}
     </div>
@@ -3299,7 +3307,7 @@ const estimateTabButtonActive = {
 const pageShell = {
   lineHeight: 1.45,
   fontSize: 13,
-  fontFamily: "\"Segoe UI\", Inter, Arial, sans-serif",
+  fontFamily: '"Segoe UI", Inter, Arial, sans-serif',
   maxWidth: 1400,
   margin: "0 auto",
   padding: "0 0 36px",
