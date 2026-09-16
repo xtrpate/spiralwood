@@ -103,6 +103,15 @@ const WALKIN_BLUEPRINT_TIMELINE = [
   "completed",
 ];
 
+const BLUEPRINT_PICKUP_TIMELINE = [
+  "pending",
+  "confirmed",
+  "contract_released",
+  "production",
+  "ready_for_pickup",
+  "completed",
+];
+
 const DETAIL_TABS = [
   { key: "overview", label: "Overview" },
   { key: "payment", label: "Payment" },
@@ -269,6 +278,9 @@ const getTimelineNote = (
         } completed`;
       }
       return "Ready for production";
+
+    case "ready_for_pickup":
+      return "Waiting for customer to pick up";
 
     case "shipping":
       if (order?.delivery?.scheduled_date) {
@@ -1384,8 +1396,8 @@ export default function OrderDetailPage() {
         : isOnlineStandardDeliveryOrder
           ? ONLINE_STANDARD_DELIVERY_TIMELINE
           : isBlueprintOrder || hasBlueprintFlow
-            ? isWalkInOrder && !hasDeliveryRequirement
-              ? WALKIN_BLUEPRINT_TIMELINE
+            ? !hasDeliveryRequirement
+              ? BLUEPRINT_PICKUP_TIMELINE
               : BLUEPRINT_TIMELINE
             : ONLINE_STANDARD_DELIVERY_TIMELINE;
 
