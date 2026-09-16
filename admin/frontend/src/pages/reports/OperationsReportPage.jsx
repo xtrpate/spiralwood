@@ -9,7 +9,6 @@ import useAuthStore from "../../store/authStore";
 
 import DeliveryReceiptModal from "../../components/delivery/DeliveryReceiptModal";
 import DownloadFileButton from "../../components/delivery/DownloadFileButton";
-import { exportDeliveryRecordPdf } from "../staff/DeliveryReportPdf";
 
 import "./OperationsReportPage.css";
 
@@ -176,73 +175,107 @@ const createOperationsRecordPdf = ({
   skipKeys = [],
   filename,
 }) => {
-  const doc = new jsPDF();
-
-  let currentY = 18;
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a4",
+    compress: true,
+  });
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
 
   const leftMargin = 15;
   const rightMargin = 15;
-  const valueX = 63;
-  const maxValueWidth = pageWidth - valueX - rightMargin;
+  const contentWidth = pageWidth - leftMargin - rightMargin;
+
+  let currentY = 15;
+
+  const generatedAt = pdfFormatDateTime(new Date());
+  const title = `${String(recordType).toUpperCase()} RECORD`;
 
   const addHeader = () => {
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(17);
-    doc.setTextColor(24, 24, 27);
-    doc.text("WISDOM", leftMargin, currentY);
+    doc.setFontSize(15);
+    doc.setTextColor(25, 25, 25);
+    doc.text("SPIRAL WOOD SERVICES", leftMargin, currentY);
 
-    currentY += 8;
+    currentY += 7;
+
+    doc.setFontSize(10.5);
+    doc.text(title, leftMargin, currentY);
 
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(11);
-    doc.setTextColor(82, 82, 91);
-    doc.text("Operations Report", leftMargin, currentY);
+    doc.setFontSize(7.5);
+    doc.setTextColor(95, 95, 95);
+    doc.text(`Generated: ${generatedAt}`, pageWidth - rightMargin, 15, {
+      align: "right",
+    });
 
     currentY += 6;
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.setTextColor(63, 63, 70);
-    doc.text(`${recordType} Record`, leftMargin, currentY);
-
-    currentY += 6;
-
-    doc.setDrawColor(212, 212, 216);
+    doc.setDrawColor(210, 210, 210);
+    doc.setLineWidth(0.3);
     doc.line(leftMargin, currentY, pageWidth - rightMargin, currentY);
 
-    currentY += 10;
+    currentY += 8;
   };
 
   const addFooter = () => {
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(113, 113, 122);
+    const totalPages = doc.getNumberOfPages();
 
-    doc.text("WISDOM Operations Report", leftMargin, pageHeight - 10);
+    for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
+      doc.setPage(pageNumber);
 
-    doc.text(
-      `Generated ${pdfFormatDateTime(new Date())}`,
-      pageWidth - rightMargin,
-      pageHeight - 10,
-      { align: "right" },
-    );
+      doc.setDrawColor(215, 215, 215);
+      doc.setLineWidth(0.25);
+      doc.line(
+        leftMargin,
+        pageHeight - 12,
+        pageWidth - rightMargin,
+        pageHeight - 12,
+      );
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(100, 100, 100);
+
+      doc.text(`Report generated: ${generatedAt}`, leftMargin, pageHeight - 6);
+
+      doc.text(
+        `${recordType} Record | Page ${pageNumber} of ${totalPages}`,
+        pageWidth - rightMargin,
+        pageHeight - 6,
+        { align: "right" },
+      );
+    }
   };
 
   const ensureSpace = (requiredHeight = 10) => {
-    if (currentY + requiredHeight <= pageHeight - 20) {
+    if (currentY + requiredHeight <= pageHeight - 18) {
       return;
     }
 
-    addFooter();
-
     doc.addPage();
-
-    currentY = 18;
-
+    currentY = 15;
     addHeader();
+  };
+
+  const addSection = (sectionTitle) => {
+    ensureSpace(13);
+
+    doc.setFillColor(245, 245, 245);
+    doc.setDrawColor(220, 220, 220);
+    doc.setLineWidth(0.25);
+
+    doc.rect(leftMargin, currentY, contentWidth, 8, "FD");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(40, 40, 40);
+    doc.text(sectionTitle.toUpperCase(), leftMargin + 3, currentY + 5.2);
+
+    currentY += 11;
   };
 
   const addField = (label, value) => {
@@ -251,38 +284,119 @@ const createOperationsRecordPdf = ({
         ? "—"
         : String(value);
 
-    const wrappedValue = doc.splitTextToSize(safeValue, maxValueWidth);
+    const labelWidth = 48;
+    const valueX = leftMargin + labelWidth + 3;
+    const valueWidth = contentWidth - labelWidth - 6;
 
-    const rowHeight = Math.max(8, wrappedValue.length * 5 + 4);
+    const wrappedValue = doc.splitTextToSize(safeValue, valueWidth);
+
+    const rowHeight = Math.max(9, wrappedValue.length * 4.5 + 4);
 
     ensureSpace(rowHeight);
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9.5);
-    doc.setTextColor(39, 39, 42);
+    doc.setDrawColor(220, 220, 220);
+    doc.setLineWidth(0.25);
 
-    doc.text(`${label}:`, leftMargin, currentY);
+    doc.rect(leftMargin, currentY, contentWidth, rowHeight);
+
+    doc.line(
+      leftMargin + labelWidth,
+      currentY,
+      leftMargin + labelWidth,
+      currentY + rowHeight,
+    );
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(55, 55, 55);
+    doc.text(label, leftMargin + 3, currentY + 5.5);
 
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(63, 63, 70);
-
-    doc.text(wrappedValue, valueX, currentY);
+    doc.setFontSize(8);
+    doc.setTextColor(45, 45, 45);
+    doc.text(wrappedValue, valueX, currentY + 5.5);
 
     currentY += rowHeight;
   };
 
-  const addSection = (sectionTitle) => {
-    ensureSpace(14);
+  const addTable = (headers, rows, widths) => {
+    const headerHeight = 8;
 
-    currentY += 3;
+    ensureSpace(headerHeight + 8);
+
+    doc.setFillColor(38, 38, 38);
+    doc.setDrawColor(38, 38, 38);
+    doc.rect(leftMargin, currentY, contentWidth, headerHeight, "F");
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.setTextColor(24, 24, 27);
+    doc.setFontSize(7);
+    doc.setTextColor(255, 255, 255);
 
-    doc.text(sectionTitle, leftMargin, currentY);
+    let headerX = leftMargin;
 
-    currentY += 7;
+    headers.forEach((header, index) => {
+      doc.text(String(header), headerX + 2, currentY + 5.2);
+      headerX += widths[index];
+    });
+
+    currentY += headerHeight;
+
+    rows.forEach((row) => {
+      const lineSets = row.map((cell, index) =>
+        doc.splitTextToSize(
+          String(cell ?? "—"),
+          Math.max(8, widths[index] - 4),
+        ),
+      );
+
+      const maxLines = Math.max(1, ...lineSets.map((lines) => lines.length));
+
+      const rowHeight = Math.max(8, maxLines * 4 + 4);
+
+      if (currentY + rowHeight > pageHeight - 18) {
+        doc.addPage();
+        currentY = 15;
+        addHeader();
+
+        doc.setFillColor(38, 38, 38);
+        doc.rect(leftMargin, currentY, contentWidth, headerHeight, "F");
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(7);
+        doc.setTextColor(255, 255, 255);
+
+        let repeatedHeaderX = leftMargin;
+
+        headers.forEach((header, index) => {
+          doc.text(String(header), repeatedHeaderX + 2, currentY + 5.2);
+          repeatedHeaderX += widths[index];
+        });
+
+        currentY += headerHeight;
+      }
+
+      let x = leftMargin;
+
+      row.forEach((_, index) => {
+        doc.setDrawColor(220, 220, 220);
+        doc.setLineWidth(0.25);
+        doc.rect(x, currentY, widths[index], rowHeight);
+        x += widths[index];
+      });
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(45, 45, 45);
+
+      x = leftMargin;
+
+      lineSets.forEach((lines, index) => {
+        doc.text(lines, x + 2, currentY + 4.7);
+        x += widths[index];
+      });
+
+      currentY += rowHeight;
+    });
   };
 
   addHeader();
@@ -290,6 +404,8 @@ const createOperationsRecordPdf = ({
   /*
    * Record identity/status shown at the top of View Details.
    */
+  addSection("Record Information");
+
   addField(
     recordType === "Task Assignment"
       ? "Task ID"
@@ -297,11 +413,14 @@ const createOperationsRecordPdf = ({
         ? "Appointment ID"
         : recordType === "Warranty Claim"
           ? "Claim ID"
-          : "Record ID",
+          : recordType === "Delivery"
+            ? "Delivery ID"
+            : "Record ID",
     record.id ||
       record.task_id ||
       record.appointment_id ||
       record.claim_id ||
+      record.delivery_id ||
       "—",
   );
 
@@ -350,6 +469,20 @@ const createOperationsRecordPdf = ({
     });
   }
 
+  if (Array.isArray(record.items) && record.items.length > 0) {
+    addSection("Items");
+
+    addTable(
+      ["Item", "Quantity", "Details"],
+      record.items.map((item) => [
+        item.product_name || item.name || item.item_name || "—",
+        item.quantity ?? "—",
+        item.description || item.details || "—",
+      ]),
+      [75, 30, contentWidth - 105],
+    );
+  }
+
   addFooter();
 
   const blob = doc.output("blob");
@@ -365,6 +498,62 @@ const createOperationsRecordPdf = ({
 
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+};
+
+const exportDeliveryRecordPdf = (record = {}) => {
+  const recordId =
+    record.id || record.delivery_id || record.order_id || "record";
+
+  createOperationsRecordPdf({
+    recordType: "Delivery",
+    record,
+    fields: [
+      [
+        "Scheduled Date",
+        formatDateOnly(record.scheduled_date || record.delivery_date),
+      ],
+      ["Outcome Date", pdfFormatDateTime(getOutcomeDate(record))],
+      [
+        "Order Number",
+        record.order_number || (record.order_id ? `#${record.order_id}` : "—"),
+      ],
+      ["Customer", record.customer_name || "—"],
+      ["Rider", record.driver_name || record.rider_name || "Unassigned"],
+      [
+        "Attempt",
+        `${Number(record.attempt_number || 1)} of ${Number(
+          record.attempt_count || 1,
+        )}`,
+      ],
+      ["Recipient", formatRecipientType(record.recipient_type)],
+      ["Delivery Receipt", record.delivery_receipt_number || "—"],
+      ["Notes", record.notes || "—"],
+    ],
+    skipKeys: [
+      "id",
+      "delivery_id",
+      "order_id",
+      "order_number",
+      "customer_name",
+      "driver_name",
+      "rider_name",
+      "attempt_number",
+      "attempt_count",
+      "recipient_type",
+      "delivery_receipt_number",
+      "notes",
+      "scheduled_date",
+      "delivery_date",
+      "delivered_date",
+      "activity_date",
+      "status",
+      "report_status",
+      "updated_at",
+      "created_at",
+      "signed_receipt",
+    ],
+    filename: `operations_delivery_${pdfSanitizeFilename(recordId)}.pdf`,
+  });
 };
 
 const exportTaskRecordPdf = (record = {}) => {
@@ -482,6 +671,9 @@ const exportOperationsRecordPdf = (record = {}, operationType) => {
 
     case "appointments":
       return exportAppointmentRecordPdf(record);
+
+    case "delivery":
+      return exportDeliveryRecordPdf(record);
 
     case "warranty":
       return exportWarrantyRecordPdf(record);
@@ -784,14 +976,6 @@ export default function OperationsReportPage() {
     if (!detail.data) return;
 
     try {
-      if (operationType === "delivery") {
-        exportDeliveryRecordPdf({
-          delivery: detail.data,
-        });
-
-        return;
-      }
-
       exportOperationsRecordPdf(detail.data, operationType);
 
       toast.success(
@@ -1029,6 +1213,48 @@ export default function OperationsReportPage() {
         </span>
       </div>
 
+      <div
+        className="opr-report-tabs opr-no-print"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "4px",
+          margin: "12px 0 0",
+          overflowX: "auto",
+        }}
+      >
+        {OPERATION_TYPES.map((item) => (
+          <button
+            key={item.value}
+            type="button"
+            onClick={() => {
+              setOperationType(item.value);
+              setSearch("");
+            }}
+            style={{
+              padding: "10px 18px",
+              border: "none",
+              borderBottom:
+                operationType === item.value
+                  ? "2px solid #18181b"
+                  : "2px solid transparent",
+              background: operationType === item.value ? "#18181b" : "#f1f1f3",
+              color: operationType === item.value ? "#ffffff" : "#3f3f46",
+              fontWeight: 600,
+              cursor: "pointer",
+              borderRadius: "4px 4px 0 0",
+              boxShadow:
+                operationType === item.value
+                  ? "0 2px 0 #18181b"
+                  : "0 2px 4px rgba(24, 24, 27, 0.14)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
       <div className="opr-toolbar opr-no-print">
         {/* SEARCH BAR PLACED FIRST TO EXPAND ON LEFT */}
         <label className="opr-filter-field opr-search-field">
@@ -1039,23 +1265,6 @@ export default function OperationsReportPage() {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search ID, customer, status..."
           />
-        </label>
-
-        <label className="opr-filter-field" style={{ minWidth: 180 }}>
-          <span>Operation Type</span>
-          <select
-            value={operationType}
-            onChange={(e) => {
-              setOperationType(e.target.value);
-              setSearch("");
-            }}
-          >
-            {OPERATION_TYPES.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
         </label>
 
         {/* NEW DATE RANGE FILTER */}

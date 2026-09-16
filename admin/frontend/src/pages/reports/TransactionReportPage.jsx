@@ -59,76 +59,110 @@ const pdfSanitizeFilename = (value) =>
     .slice(0, 100);
 
 const createTransactionRecordPdf = (record = {}, reportType = "orders") => {
-  const doc = new jsPDF();
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a4",
+    compress: true,
+  });
 
   const isCancellation = reportType === "cancellations";
-
   const title = isCancellation
-    ? "Cancellation Transaction Record"
-    : "Order Transaction Record";
-
-  let y = 18;
+    ? "CANCELLATION TRANSACTION RECORD"
+    : "TRANSACTION RECORD";
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
 
   const leftMargin = 15;
   const rightMargin = 15;
-  const valueX = 63;
-  const maxValueWidth = pageWidth - valueX - rightMargin;
+  const contentWidth = pageWidth - leftMargin - rightMargin;
+
+  let y = 15;
+
+  const generatedAt = pdfFormatDateTime(new Date());
 
   const addHeader = () => {
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(17);
-    doc.setTextColor(24, 24, 27);
-    doc.text("WISDOM", leftMargin, y);
+    doc.setFontSize(15);
+    doc.setTextColor(25, 25, 25);
+    doc.text("SPIRAL WOOD SERVICES", leftMargin, y);
 
-    y += 8;
+    y += 7;
 
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(11);
-    doc.setTextColor(82, 82, 91);
-    doc.text("Transaction Report", leftMargin, y);
-
-    y += 6;
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.setTextColor(63, 63, 70);
+    doc.setFontSize(10.5);
     doc.text(title, leftMargin, y);
 
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(95, 95, 95);
+    doc.text(`Generated: ${generatedAt}`, pageWidth - rightMargin, 15, {
+      align: "right",
+    });
+
     y += 6;
 
-    doc.setDrawColor(212, 212, 216);
+    doc.setDrawColor(210, 210, 210);
+    doc.setLineWidth(0.3);
     doc.line(leftMargin, y, pageWidth - rightMargin, y);
 
-    y += 10;
+    y += 8;
   };
 
   const addFooter = () => {
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(113, 113, 122);
+    const totalPages = doc.getNumberOfPages();
 
-    doc.text("WISDOM Transaction Report", leftMargin, pageHeight - 10);
+    for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
+      doc.setPage(pageNumber);
 
-    doc.text(
-      `Generated ${pdfFormatDateTime(new Date())}`,
-      pageWidth - rightMargin,
-      pageHeight - 10,
-      { align: "right" },
-    );
+      doc.setDrawColor(215, 215, 215);
+      doc.setLineWidth(0.25);
+      doc.line(
+        leftMargin,
+        pageHeight - 12,
+        pageWidth - rightMargin,
+        pageHeight - 12,
+      );
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(100, 100, 100);
+
+      doc.text(`Report generated: ${generatedAt}`, leftMargin, pageHeight - 6);
+
+      doc.text(
+        `Transaction Record | Page ${pageNumber} of ${totalPages}`,
+        pageWidth - rightMargin,
+        pageHeight - 6,
+        { align: "right" },
+      );
+    }
   };
 
   const ensureSpace = (requiredHeight = 10) => {
-    if (y + requiredHeight <= pageHeight - 20) {
+    if (y + requiredHeight <= pageHeight - 18) {
       return;
     }
 
-    addFooter();
     doc.addPage();
-    y = 18;
+    y = 15;
     addHeader();
+  };
+
+  const addSection = (sectionTitle) => {
+    ensureSpace(13);
+
+    doc.setFillColor(245, 245, 245);
+    doc.setDrawColor(220, 220, 220);
+    doc.setLineWidth(0.25);
+    doc.rect(leftMargin, y, contentWidth, 8, "FD");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(40, 40, 40);
+    doc.text(sectionTitle.toUpperCase(), leftMargin + 3, y + 5.2);
+
+    y += 11;
   };
 
   const addField = (label, value) => {
@@ -137,45 +171,126 @@ const createTransactionRecordPdf = (record = {}, reportType = "orders") => {
         ? "—"
         : String(value);
 
-    const wrappedValue = doc.splitTextToSize(safeValue, maxValueWidth);
+    const labelWidth = 48;
+    const valueX = leftMargin + labelWidth + 3;
+    const valueWidth = contentWidth - labelWidth - 6;
 
-    const rowHeight = Math.max(8, wrappedValue.length * 5 + 4);
+    const wrappedValue = doc.splitTextToSize(safeValue, valueWidth);
+    const rowHeight = Math.max(9, wrappedValue.length * 4.5 + 4);
 
     ensureSpace(rowHeight);
 
+    doc.setDrawColor(220, 220, 220);
+    doc.setLineWidth(0.25);
+    doc.rect(leftMargin, y, contentWidth, rowHeight);
+
+    doc.line(
+      leftMargin + labelWidth,
+      y,
+      leftMargin + labelWidth,
+      y + rowHeight,
+    );
+
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(9.5);
-    doc.setTextColor(39, 39, 42);
-    doc.text(`${label}:`, leftMargin, y);
+    doc.setFontSize(8);
+    doc.setTextColor(55, 55, 55);
+    doc.text(label, leftMargin + 3, y + 5.5);
 
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(63, 63, 70);
-    doc.text(wrappedValue, valueX, y);
+    doc.setFontSize(8);
+    doc.setTextColor(45, 45, 45);
+    doc.text(wrappedValue, valueX, y + 5.5);
 
     y += rowHeight;
   };
 
-  const addSection = (sectionTitle) => {
-    ensureSpace(14);
+  const addTable = (headers, rows, widths) => {
+    const headerHeight = 8;
 
-    y += 3;
+    ensureSpace(headerHeight + 8);
+
+    doc.setFillColor(38, 38, 38);
+    doc.setDrawColor(38, 38, 38);
+    doc.rect(leftMargin, y, contentWidth, headerHeight, "F");
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.setTextColor(24, 24, 27);
-    doc.text(sectionTitle, leftMargin, y);
+    doc.setFontSize(7);
+    doc.setTextColor(255, 255, 255);
 
-    y += 7;
+    let headerX = leftMargin;
+
+    headers.forEach((header, index) => {
+      doc.text(String(header), headerX + 2, y + 5.2);
+      headerX += widths[index];
+    });
+
+    y += headerHeight;
+
+    rows.forEach((row) => {
+      const lineSets = row.map((cell, index) =>
+        doc.splitTextToSize(
+          String(cell ?? "—"),
+          Math.max(8, widths[index] - 4),
+        ),
+      );
+
+      const maxLines = Math.max(1, ...lineSets.map((lines) => lines.length));
+
+      const rowHeight = Math.max(8, maxLines * 4 + 4);
+
+      if (y + rowHeight > pageHeight - 18) {
+        doc.addPage();
+        y = 15;
+        addHeader();
+
+        doc.setFillColor(38, 38, 38);
+        doc.rect(leftMargin, y, contentWidth, headerHeight, "F");
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(7);
+        doc.setTextColor(255, 255, 255);
+
+        let repeatedHeaderX = leftMargin;
+
+        headers.forEach((header, index) => {
+          doc.text(String(header), repeatedHeaderX + 2, y + 5.2);
+          repeatedHeaderX += widths[index];
+        });
+
+        y += headerHeight;
+      }
+
+      let x = leftMargin;
+
+      row.forEach((_, index) => {
+        doc.setDrawColor(220, 220, 220);
+        doc.setLineWidth(0.25);
+        doc.rect(x, y, widths[index], rowHeight);
+        x += widths[index];
+      });
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(45, 45, 45);
+
+      x = leftMargin;
+
+      lineSets.forEach((lines, index) => {
+        doc.text(lines, x + 2, y + 4.7);
+        x += widths[index];
+      });
+
+      y += rowHeight;
+    });
   };
 
   addHeader();
 
   /*
-   * ============================================================
    * RECORD HEADER DETAILS
-   * Matches the View Details header/status area.
-   * ============================================================
    */
+  addSection("Record Information");
+
   addField("Record ID", record.id);
 
   addField(
@@ -193,10 +308,7 @@ const createTransactionRecordPdf = (record = {}, reportType = "orders") => {
   addField("Status", pdfHumanize(record.status || "completed"));
 
   /*
-   * ============================================================
    * MAIN DETAILS
-   * Matches the exact fields shown in the current modal.
-   * ============================================================
    */
   addSection(isCancellation ? "Cancellation Details" : "Order Details");
 
@@ -309,6 +421,24 @@ const createTransactionRecordPdf = (record = {}, reportType = "orders") => {
 
       addField(pdfHumanize(key), isDate ? pdfFormatDateTime(value) : value);
     });
+  }
+
+  if (Array.isArray(record.items) && record.items.length > 0) {
+    addSection("Order Items");
+
+    addTable(
+      ["Item", "Quantity", "Amount"],
+      record.items.map((item) => [
+        item.product_name || item.name || item.item_name || "—",
+        item.quantity ?? "—",
+        item.total_amount !== undefined
+          ? pdfFormatMoney(item.total_amount)
+          : item.amount !== undefined
+            ? pdfFormatMoney(item.amount)
+            : "—",
+      ]),
+      [95, 30, contentWidth - 125],
+    );
   }
 
   addFooter();
@@ -735,6 +865,46 @@ export default function TransactionReportPage() {
         </span>
       </div>
 
+      <div
+        className="trx-report-tabs trx-no-print"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "4px",
+          margin: "12px 0 0",
+        }}
+      >
+        {REPORT_TYPES.map((item) => (
+          <button
+            key={item.value}
+            type="button"
+            onClick={() => {
+              setReportType(item.value);
+              setSearch("");
+            }}
+            style={{
+              padding: "10px 18px",
+              border: "none",
+              borderBottom:
+                reportType === item.value
+                  ? "2px solid #18181b"
+                  : "2px solid transparent",
+              background: reportType === item.value ? "#18181b" : "#f1f1f3",
+              color: reportType === item.value ? "#ffffff" : "#3f3f46",
+              fontWeight: 600,
+              cursor: "pointer",
+              borderRadius: "4px 4px 0 0",
+              boxShadow:
+                reportType === item.value
+                  ? "0 2px 0 #18181b"
+                  : "0 2px 4px rgba(24, 24, 27, 0.14)",
+            }}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
       <div className="trx-toolbar trx-no-print">
         {/* SEARCH BAR PLACED FIRST TO EXPAND ON LEFT */}
         <label className="trx-filter-field trx-search-field">
@@ -745,23 +915,6 @@ export default function TransactionReportPage() {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search references, customers, or amounts..."
           />
-        </label>
-
-        <label className="trx-filter-field" style={{ minWidth: 160 }}>
-          <span>Report Type</span>
-          <select
-            value={reportType}
-            onChange={(e) => {
-              setReportType(e.target.value);
-              setSearch("");
-            }}
-          >
-            {REPORT_TYPES.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
         </label>
 
         {/* DATE RANGE FILTER */}

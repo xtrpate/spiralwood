@@ -76,74 +76,109 @@ const createStockRecordPdf = ({
   skipKeys = [],
   filename,
 }) => {
-  const doc = new jsPDF();
-
-  let currentY = 18;
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a4",
+    compress: true,
+  });
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
 
   const leftMargin = 15;
   const rightMargin = 15;
-  const valueX = 63;
-  const maxValueWidth = pageWidth - valueX - rightMargin;
+  const contentWidth = pageWidth - leftMargin - rightMargin;
+
+  let currentY = 15;
+
+  const generatedAt = pdfFormatDateTime(new Date());
+  const title = `${String(recordType).toUpperCase()} RECORD`;
 
   const addHeader = () => {
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(17);
-    doc.setTextColor(24, 24, 27);
-    doc.text("WISDOM", leftMargin, currentY);
+    doc.setFontSize(15);
+    doc.setTextColor(25, 25, 25);
+    doc.text("SPIRAL WOOD SERVICES", leftMargin, currentY);
 
-    currentY += 8;
+    currentY += 7;
+
+    doc.setFontSize(10.5);
+    doc.text(title, leftMargin, currentY);
 
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(11);
-    doc.setTextColor(82, 82, 91);
-    doc.text("Stock Report", leftMargin, currentY);
+    doc.setFontSize(7.5);
+    doc.setTextColor(95, 95, 95);
+    doc.text(`Generated: ${generatedAt}`, pageWidth - rightMargin, 15, {
+      align: "right",
+    });
 
     currentY += 6;
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.setTextColor(63, 63, 70);
-    doc.text(`${recordType} Record`, leftMargin, currentY);
-
-    currentY += 6;
-
-    doc.setDrawColor(212, 212, 216);
-
+    doc.setDrawColor(210, 210, 210);
+    doc.setLineWidth(0.3);
     doc.line(leftMargin, currentY, pageWidth - rightMargin, currentY);
 
-    currentY += 10;
+    currentY += 8;
   };
 
   const addFooter = () => {
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(113, 113, 122);
+    const totalPages = doc.getNumberOfPages();
 
-    doc.text("WISDOM Stock Report", leftMargin, pageHeight - 10);
+    for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
+      doc.setPage(pageNumber);
 
-    doc.text(
-      `Generated ${pdfFormatDateTime(new Date())}`,
-      pageWidth - rightMargin,
-      pageHeight - 10,
-      { align: "right" },
-    );
+      doc.setDrawColor(215, 215, 215);
+      doc.setLineWidth(0.25);
+
+      doc.line(
+        leftMargin,
+        pageHeight - 12,
+        pageWidth - rightMargin,
+        pageHeight - 12,
+      );
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(100, 100, 100);
+
+      doc.text(`Report generated: ${generatedAt}`, leftMargin, pageHeight - 6);
+
+      doc.text(
+        `${recordType} Record | Page ${pageNumber} of ${totalPages}`,
+        pageWidth - rightMargin,
+        pageHeight - 6,
+        { align: "right" },
+      );
+    }
   };
 
   const ensureSpace = (requiredHeight = 10) => {
-    if (currentY + requiredHeight <= pageHeight - 20) {
+    if (currentY + requiredHeight <= pageHeight - 18) {
       return;
     }
 
-    addFooter();
-
     doc.addPage();
-
-    currentY = 18;
-
+    currentY = 15;
     addHeader();
+  };
+
+  const addSection = (sectionTitle) => {
+    ensureSpace(13);
+
+    doc.setFillColor(245, 245, 245);
+    doc.setDrawColor(220, 220, 220);
+    doc.setLineWidth(0.25);
+
+    doc.rect(leftMargin, currentY, contentWidth, 8, "FD");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(40, 40, 40);
+
+    doc.text(sectionTitle.toUpperCase(), leftMargin + 3, currentY + 5.2);
+
+    currentY += 11;
   };
 
   const addField = (label, value) => {
@@ -152,38 +187,127 @@ const createStockRecordPdf = ({
         ? "—"
         : String(value);
 
-    const wrappedValue = doc.splitTextToSize(safeValue, maxValueWidth);
+    const labelWidth = 48;
+    const valueX = leftMargin + labelWidth + 3;
+    const valueWidth = contentWidth - labelWidth - 6;
 
-    const rowHeight = Math.max(8, wrappedValue.length * 5 + 4);
+    const wrappedValue = doc.splitTextToSize(safeValue, valueWidth);
+
+    const rowHeight = Math.max(9, wrappedValue.length * 4.5 + 4);
 
     ensureSpace(rowHeight);
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9.5);
-    doc.setTextColor(39, 39, 42);
+    doc.setDrawColor(220, 220, 220);
+    doc.setLineWidth(0.25);
 
-    doc.text(`${label}:`, leftMargin, currentY);
+    doc.rect(leftMargin, currentY, contentWidth, rowHeight);
+
+    doc.line(
+      leftMargin + labelWidth,
+      currentY,
+      leftMargin + labelWidth,
+      currentY + rowHeight,
+    );
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(55, 55, 55);
+
+    doc.text(label, leftMargin + 3, currentY + 5.5);
 
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(63, 63, 70);
+    doc.setFontSize(8);
+    doc.setTextColor(45, 45, 45);
 
-    doc.text(wrappedValue, valueX, currentY);
+    doc.text(wrappedValue, valueX, currentY + 5.5);
 
     currentY += rowHeight;
   };
 
-  const addSection = (sectionTitle) => {
-    ensureSpace(14);
+  const addTable = (headers, rows, widths) => {
+    const headerHeight = 8;
 
-    currentY += 3;
+    ensureSpace(headerHeight + 8);
+
+    doc.setFillColor(38, 38, 38);
+    doc.setDrawColor(38, 38, 38);
+
+    doc.rect(leftMargin, currentY, contentWidth, headerHeight, "F");
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.setTextColor(24, 24, 27);
+    doc.setFontSize(7);
+    doc.setTextColor(255, 255, 255);
 
-    doc.text(sectionTitle, leftMargin, currentY);
+    let headerX = leftMargin;
 
-    currentY += 7;
+    headers.forEach((header, index) => {
+      doc.text(String(header), headerX + 2, currentY + 5.2);
+
+      headerX += widths[index];
+    });
+
+    currentY += headerHeight;
+
+    rows.forEach((row) => {
+      const lineSets = row.map((cell, index) =>
+        doc.splitTextToSize(
+          String(cell ?? "—"),
+          Math.max(8, widths[index] - 4),
+        ),
+      );
+
+      const maxLines = Math.max(1, ...lineSets.map((lines) => lines.length));
+
+      const rowHeight = Math.max(8, maxLines * 4 + 4);
+
+      if (currentY + rowHeight > pageHeight - 18) {
+        doc.addPage();
+        currentY = 15;
+        addHeader();
+
+        doc.setFillColor(38, 38, 38);
+        doc.rect(leftMargin, currentY, contentWidth, headerHeight, "F");
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(7);
+        doc.setTextColor(255, 255, 255);
+
+        let repeatedHeaderX = leftMargin;
+
+        headers.forEach((header, index) => {
+          doc.text(String(header), repeatedHeaderX + 2, currentY + 5.2);
+
+          repeatedHeaderX += widths[index];
+        });
+
+        currentY += headerHeight;
+      }
+
+      let x = leftMargin;
+
+      row.forEach((_, index) => {
+        doc.setDrawColor(220, 220, 220);
+        doc.setLineWidth(0.25);
+
+        doc.rect(x, currentY, widths[index], rowHeight);
+
+        x += widths[index];
+      });
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(45, 45, 45);
+
+      x = leftMargin;
+
+      lineSets.forEach((lines, index) => {
+        doc.text(lines, x + 2, currentY + 4.7);
+
+        x += widths[index];
+      });
+
+      currentY += rowHeight;
+    });
   };
 
   addHeader();
@@ -191,6 +315,8 @@ const createStockRecordPdf = ({
   /*
    * Record header/status area.
    */
+  addSection("Record Information");
+
   addField("Record ID", record.id);
 
   if (record.reference_code || record.reference) {
@@ -224,6 +350,24 @@ const createStockRecordPdf = ({
 
       addField(humanize(key), isDate ? pdfFormatDateTime(value) : value);
     });
+  }
+
+  if (
+    recordType === "Stock Transfer" &&
+    Array.isArray(record.items) &&
+    record.items.length > 0
+  ) {
+    addSection("Transferred Items");
+
+    addTable(
+      ["Item", "Quantity", "Unit"],
+      record.items.map((item) => [
+        item.product_name || item.material_name || item.name || "—",
+        pdfFormatQuantity(item.quantity ?? item.total_quantity),
+        item.unit || item.material_unit || "—",
+      ]),
+      [95, 40, contentWidth - 135],
+    );
   }
 
   addFooter();
@@ -772,6 +916,74 @@ export default function StockReportPage() {
         </span>
       </div>
 
+      <div
+        className="stk-report-tabs stk-no-print"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "4px",
+          margin: "12px 0 0",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            setReportType("movements");
+            setMovementType("");
+            setInventoryType("");
+            setSearch("");
+          }}
+          style={{
+            padding: "10px 18px",
+            border: "none",
+            borderBottom:
+              reportType === "movements"
+                ? "2px solid #18181b"
+                : "2px solid transparent",
+            background: reportType === "movements" ? "#18181b" : "#f1f1f3",
+            color: reportType === "movements" ? "#ffffff" : "#3f3f46",
+            fontWeight: 600,
+            cursor: "pointer",
+            borderRadius: "4px 4px 0 0",
+            boxShadow:
+              reportType === "movements"
+                ? "0 2px 0 #18181b"
+                : "0 2px 4px rgba(24, 24, 27, 0.14)",
+          }}
+        >
+          Stock Movement
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setReportType("transfers");
+            setMovementType("");
+            setInventoryType("");
+            setSearch("");
+          }}
+          style={{
+            padding: "10px 18px",
+            border: "none",
+            borderBottom:
+              reportType === "transfers"
+                ? "2px solid #18181b"
+                : "2px solid transparent",
+            background: reportType === "transfers" ? "#18181b" : "#f1f1f3",
+            color: reportType === "transfers" ? "#ffffff" : "#3f3f46",
+            fontWeight: 600,
+            cursor: "pointer",
+            borderRadius: "4px 4px 0 0",
+            boxShadow:
+              reportType === "transfers"
+                ? "0 2px 0 #18181b"
+                : "0 2px 4px rgba(24, 24, 27, 0.14)",
+          }}
+        >
+          Stock Transfer
+        </button>
+      </div>
+
       <div className="stk-toolbar stk-no-print">
         {/* SEARCH BAR PLACED FIRST TO EXPAND ON LEFT */}
         <label className="stk-filter-field stk-search-field">
@@ -782,22 +994,6 @@ export default function StockReportPage() {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search references, items, users..."
           />
-        </label>
-
-        <label className="stk-filter-field" style={{ minWidth: 160 }}>
-          <span>Report Type</span>
-          <select
-            value={reportType}
-            onChange={(e) => {
-              setReportType(e.target.value);
-              setMovementType("");
-              setInventoryType("");
-              setSearch("");
-            }}
-          >
-            <option value="movements">Stock Movements</option>
-            <option value="transfers">Stock Transfers</option>
-          </select>
         </label>
 
         {reportType === "movements" && (
