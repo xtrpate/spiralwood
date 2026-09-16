@@ -1499,6 +1499,7 @@ exports.login = async (req, res) => {
         is_verified,
         phone_verified,
         is_active,
+        must_change_password,
         token_version
       FROM users
       WHERE email = ? 
@@ -1628,6 +1629,8 @@ exports.login = async (req, res) => {
         role: user.role,
         authority_level: user.authority_level || "user",
         staff_type: user.staff_type || null,
+        must_change_password:
+          Number(user.must_change_password) === 1 ? 1 : 0,
         token_version: Number(user.token_version) || 0,
       },
       process.env.JWT_SECRET,
@@ -1653,6 +1656,8 @@ exports.login = async (req, res) => {
         address_lat: user.address_lat,
         address_lng: user.address_lng,
         profile_photo: user.profile_photo,
+        must_change_password:
+          Number(user.must_change_password) === 1 ? 1 : 0,
       },
     });
   } catch (err) {

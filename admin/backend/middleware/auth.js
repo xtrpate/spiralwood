@@ -43,9 +43,17 @@ async function authenticate(req, res, next) {
         .json({ message: "Account deactivated. Contact support." });
     }
 
+    if (Number(decoded.token_version) !== Number(user.token_version)) {
+      return res.status(401).json({
+        message: "Session revoked. Please log in again.",
+      });
+    }
+
+    // The database is authoritative for temporary-password state.
+    // Do not rely on the JWT claim here: sessions issued before this fix
+    // must also be forced through the password-change flow.
     const internalMustChange =
       (user.role === "admin" || user.role === "staff") &&
-      Number(decoded.must_change_password) === 1 &&
       Number(user.must_change_password) === 1;
     const requestPath = String(req.originalUrl || req.path || "").split("?")[0];
     const passwordChangeAllowed =
@@ -56,12 +64,6 @@ async function authenticate(req, res, next) {
       return res.status(403).json({
         message: "Change your temporary password before continuing.",
         code: "PASSWORD_CHANGE_REQUIRED",
-      });
-    }
-
-    if (Number(decoded.token_version) !== Number(user.token_version)) {
-      return res.status(401).json({
-        message: "Session revoked. Please log in again.",
       });
     }
 

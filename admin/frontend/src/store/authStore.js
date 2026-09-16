@@ -348,6 +348,10 @@ const useAuthStore = create((set, get) => ({
           token: freshToken,
           permissions: normalizePermissions(updatedUser.permissions),
         });
+
+        if (updatedUser?.role) {
+          connectSocket(freshToken);
+        }
       } else {
         persistUserOnly(updatedUser);
         set({ user: updatedUser });
