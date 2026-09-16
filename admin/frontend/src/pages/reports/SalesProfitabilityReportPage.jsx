@@ -638,7 +638,7 @@ export default function SalesProfitabilityReportPage() {
       {detail.open && detail.data && (
         <div className="sales-detail-overlay" onClick={closeDetail}>
           <aside
-            className="sales-detail-panel"
+            className="sales-profit-detail-panel"
             role="dialog"
             aria-modal="true"
             onClick={(e) => e.stopPropagation()}

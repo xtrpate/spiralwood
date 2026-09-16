@@ -369,7 +369,7 @@
 }
 
 /* Centered Modal Panel */
-.sales-detail-panel {
+.sales-profit-detail-panel {
   width: min(1040px, calc(100vw - 48px));
   max-height: min(90vh, 900px);
   overflow-y: auto;
@@ -582,7 +582,7 @@
     padding: 0;
   }
 
-  .sales-detail-panel {
+  .sales-profit-detail-panel {
     width: 100%;
     max-height: 100vh;
     min-height: 100vh;
