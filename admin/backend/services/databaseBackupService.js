@@ -2,7 +2,15 @@
 // Shared database-backup engine for both scheduled and manual backups.
 const fs = require("fs");
 const path = require("path");
+const zlib = require("zlib");
+const { pipeline } = require("stream/promises");
 const pool = require("../config/db");
+const {
+  isR2BackupStorageEnabled,
+  isR2StoragePath,
+  uploadBackupFileToR2,
+  getR2BackupObject,
+} = require("./r2BackupStorageService");
 
 const BACKUP_LOCK_NAME = "wisdom_database_backup_v1";
 const AUTO_DEDUPE_MINUTES = 5;
@@ -267,6 +275,29 @@ async function hasRecentAutomaticBackup(conn) {
   return row || null;
 }
 
+async function gzipBackupFile(sourcePath, destinationPath) {
+  await pipeline(
+    fs.createReadStream(sourcePath),
+    zlib.createGzip(),
+    fs.createWriteStream(destinationPath),
+  );
+}
+
+async function removeTemporaryBackupFile(filePath) {
+  if (!filePath) return;
+
+  try {
+    await fs.promises.unlink(filePath);
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      console.error(
+        `[BACKUP] Failed to remove temporary file ${filePath}:`,
+        error.message,
+      );
+    }
+  }
+}
+
 async function runDatabaseBackup({
   type = "auto",
   triggeredBy = null,
@@ -309,19 +340,42 @@ async function runDatabaseBackup({
     }
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const fileName = `wisdom_backup_${type}_${timestamp}.sql`;
-    const filePath = path.join(backupDir, fileName);
+    const sqlFileName = `wisdom_backup_${type}_${timestamp}.sql`;
+    const sqlFilePath = path.join(backupDir, sqlFileName);
+    const useR2Storage = isR2BackupStorageEnabled();
+    const gzipFileName = `${sqlFileName}.gz`;
+    const gzipFilePath = `${sqlFilePath}.gz`;
+    const finalFileName = useR2Storage ? gzipFileName : sqlFileName;
 
     let backupError = null;
     let sizeKb = 0;
+    let storagePath = useR2Storage ? null : sqlFilePath;
 
     try {
-      await generateConsistentSQLDump(conn, filePath);
-      sizeKb = fs.existsSync(filePath)
-        ? Math.round(fs.statSync(filePath).size / 1024)
-        : 0;
+      await generateConsistentSQLDump(conn, sqlFilePath);
+
+      if (useR2Storage) {
+        await gzipBackupFile(sqlFilePath, gzipFilePath);
+
+        const uploadResult = await uploadBackupFileToR2({
+          filePath: gzipFilePath,
+          fileName: gzipFileName,
+        });
+
+        storagePath = uploadResult.storagePath;
+        sizeKb = Math.max(1, Math.round(uploadResult.sizeBytes / 1024));
+      } else {
+        sizeKb = fs.existsSync(sqlFilePath)
+          ? Math.round(fs.statSync(sqlFilePath).size / 1024)
+          : 0;
+      }
     } catch (error) {
       backupError = error?.message || "Unknown backup error.";
+    } finally {
+      if (useR2Storage) {
+        await removeTemporaryBackupFile(sqlFilePath);
+        await removeTemporaryBackupFile(gzipFilePath);
+      }
     }
 
     const status = backupError ? "failed" : "success";
@@ -338,9 +392,9 @@ async function runDatabaseBackup({
       [
         type,
         safeTriggeredBy,
-        fileName,
+        finalFileName,
         sizeKb,
-        filePath,
+        storagePath,
         status,
         backupError,
       ],
@@ -351,9 +405,12 @@ async function runDatabaseBackup({
       status,
       error: backupError,
       logId: logResult.insertId,
-      fileName,
-      filePath,
+      fileName: finalFileName,
+      filePath: useR2Storage ? null : sqlFilePath,
+      storagePath,
       sizeKb,
+      storage: useR2Storage ? "r2" : "local",
+      compressed: useR2Storage,
     };
   } finally {
     if (lockAcquired) {
@@ -374,4 +431,6 @@ module.exports = {
   BackupBusyError,
   getBackupDirectory,
   runDatabaseBackup,
+  isR2StoragePath,
+  getR2BackupObject,
 };
