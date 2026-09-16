@@ -446,6 +446,9 @@ exports.createOrder = async (req, res) => {
 
 /* ── Get Single Order Detail ── */
 exports.getOrderById = async (req, res) => {
+  const cashierOwnOnly =
+    req.user?.role === "staff" && req.user?.staff_type === "cashier";
+
   try {
     const [orders] = await db.query(
       `
@@ -453,8 +456,12 @@ exports.getOrderById = async (req, res) => {
       FROM orders o
       LEFT JOIN receipts r ON r.order_id = o.id
       WHERE o.id = ?
+        ${cashierOwnOnly ? "AND r.issued_by = ?" : ""}
       `,
-      [parseInt(req.params.id)],
+      [
+        parseInt(req.params.id),
+        ...(cashierOwnOnly ? [req.user.id] : []),
+      ],
     );
 
     if (orders.length === 0)
@@ -480,10 +487,17 @@ exports.getOrders = async (req, res) => {
   const pageNumber = Math.max(1, parseInt(page, 10) || 1);
   const limitNumber = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
   const offset = (pageNumber - 1) * limitNumber;
+  const cashierOwnOnly =
+    req.user?.role === "staff" && req.user?.staff_type === "cashier";
 
   try {
     let where = "WHERE o.type = 'walkin'";
     const params = [];
+
+    if (cashierOwnOnly) {
+      where += " AND r.issued_by = ?";
+      params.push(req.user.id);
+    }
 
     if (from) {
       where += " AND DATE(o.created_at) >= ?";

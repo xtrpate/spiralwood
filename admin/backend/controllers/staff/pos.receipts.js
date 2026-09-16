@@ -6,8 +6,13 @@ const db = require("../../config/db");
 // used when an optional content_key row does not exist yet.
 const DEFAULT_THANK_YOU_MESSAGE = "Thank you for your purchase!";
 
+const isCashierRequest = (req) =>
+  req.user?.role === "staff" && req.user?.staff_type === "cashier";
+
 /* ── Get Receipt by ID ── */
 exports.getReceiptById = async (req, res) => {
+  const cashierOwnOnly = isCashierRequest(req);
+
   try {
     // ── FIXED: Switched to .query and parsed ID ──
     const [rows] = await db.query(
@@ -32,9 +37,13 @@ exports.getReceiptById = async (req, res) => {
       LEFT JOIN users u ON u.id = r.issued_by
       WHERE r.id = ?
         AND r.receipt_type = 'pos_sale'
+        ${cashierOwnOnly ? "AND r.issued_by = ?" : ""}
       LIMIT 1
       `,
-      [parseInt(req.params.id)],
+      [
+        parseInt(req.params.id),
+        ...(cashierOwnOnly ? [req.user.id] : []),
+      ],
     );
 
     if (rows.length === 0) {
@@ -104,6 +113,7 @@ exports.getReceiptById = async (req, res) => {
 /* ── Get Receipt by Order ID ── */
 exports.getReceiptByOrderId = async (req, res) => {
   const { order_id } = req.query;
+  const cashierOwnOnly = isCashierRequest(req);
 
   if (!order_id) {
     return res.status(400).json({ message: "order_id required" });
@@ -133,10 +143,14 @@ exports.getReceiptByOrderId = async (req, res) => {
       LEFT JOIN users u ON u.id = r.issued_by
       WHERE r.order_id = ?
         AND r.receipt_type = 'pos_sale'
+        ${cashierOwnOnly ? "AND r.issued_by = ?" : ""}
       ORDER BY r.id DESC
       LIMIT 1
       `,
-      [parseInt(order_id)],
+      [
+        parseInt(order_id),
+        ...(cashierOwnOnly ? [req.user.id] : []),
+      ],
     );
 
     if (rows.length === 0) {
