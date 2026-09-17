@@ -72,7 +72,6 @@ const sendOtpEmail = async (email, otp, name) => {
 //   THE UNIFIED LOGIN (POST /api/auth/login)
 // ══════════════════════════════════════════════════════════════
 exports.login = async (req, res) => {
-  console.log("[LOGIN HIT] admin authController.js");
   try {
     const { email, password } = req.body;
     const attemptedEmail = String(email || "")
@@ -450,36 +449,17 @@ exports.changePassword = async (req, res) => {
     }
 
     const hashed = await bcrypt.hash(newPassword, 12);
-    const currentTokenVersion = Number(user.token_version) || 0;
-    const nextTokenVersion = currentTokenVersion + 1;
-    const [updateResult] = await pool.query(
-      `UPDATE users
-          SET password = ?,
-              must_change_password = 0,
-              token_version = ?
-        WHERE id = ?
-          AND COALESCE(token_version, 0) = ?`,
-      [hashed, nextTokenVersion, req.user.id, currentTokenVersion],
+    await pool.query(
+      "UPDATE users SET password = ?, must_change_password = 0 WHERE id = ?",
+      [hashed, req.user.id],
     );
-
-    if (Number(updateResult.affectedRows) !== 1) {
-      return res.status(409).json({
-        message:
-          "Your session changed while updating the password. Please sign in again.",
-        code: "SESSION_CHANGED",
-      });
-    }
 
     await writeAuditLogSafe({
       userId: req.user.id,
       action: "password_changed",
       tableName: "users",
       recordId: req.user.id,
-      newValues: {
-        password_changed: true,
-        must_change_password: 0,
-        previous_sessions_revoked: true,
-      },
+      newValues: { password_changed: true, must_change_password: 0 },
       ipAddress: req.ip || null,
     });
 
@@ -492,7 +472,7 @@ exports.changePassword = async (req, res) => {
         name: user.name,
         staff_type: user.staff_type || null,
         must_change_password: 0,
-        token_version: nextTokenVersion,
+        token_version: Number(user.token_version) || 0,
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || "8h" },

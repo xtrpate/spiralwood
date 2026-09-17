@@ -488,6 +488,24 @@ exports.register = async (req, res) => {
       // 1. Send email OTP ONLY
       await sendOtpEmail(normalizedEmail, emailOtp, firstName);
 
+      await writeAuditLogSafe({
+        userId: result.insertId,
+        action: "register_customer",
+        tableName: "users",
+        recordId: result.insertId,
+        oldValues: null,
+        newValues: {
+          email: normalizedEmail,
+          role: "customer",
+          is_verified: false,
+          phone_verified: false,
+          verification_stage: "email_pending",
+        },
+        ipAddress: req.ip || null,
+        actorType: "anonymous",
+        responseStatus: 201,
+      });
+
       return res.status(201).json({
         message:
           "Registration successful. A verification code was sent to your email.",
@@ -770,6 +788,25 @@ exports.verifyOtp = async (req, res) => {
     await sendSms({
       phone: user.phone,
       message: `Your Spiral Wood Services phone verification code is ${phoneOtp}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
+    });
+
+    await writeAuditLogSafe({
+      userId: user.id,
+      action: "verify_registration_email",
+      tableName: "users",
+      recordId: user.id,
+      oldValues: {
+        is_verified: false,
+      },
+      newValues: {
+        is_verified: true,
+        email: normalizedEmail,
+        phone_verified: false,
+        verification_stage: "phone_pending",
+      },
+      ipAddress: req.ip || null,
+      actorType: "anonymous",
+      responseStatus: 200,
     });
 
     return res.json({
@@ -1070,6 +1107,25 @@ exports.verifyPhoneOtp = async (req, res) => {
       [user.id],
     );
 
+    await writeAuditLogSafe({
+      userId: user.id,
+      action: "verify_registration_phone",
+      tableName: "users",
+      recordId: user.id,
+      oldValues: {
+        phone_verified: false,
+      },
+      newValues: {
+        phone_verified: true,
+        is_active: true,
+        approval_status: "approved",
+        verification_stage: "completed",
+      },
+      ipAddress: req.ip || null,
+      actorType: "anonymous",
+      responseStatus: 200,
+    });
+
     return res.json({
       message: "Phone number verified successfully. Your account is now ready.",
       verified: true,
@@ -1202,6 +1258,23 @@ exports.resendOtp = async (req, res) => {
     const firstName = rows[0].name.split(" ")[0];
     await sendOtpEmail(normalizedEmail, otp, firstName);
 
+    await writeAuditLogSafe({
+      userId: rows[0].id,
+      action: "resend_registration_email_otp",
+      tableName: "users",
+      recordId: rows[0].id,
+      oldValues: {
+        verification_stage: "email_pending",
+      },
+      newValues: {
+        verification_stage: "email_pending",
+        otp_resent: true,
+      },
+      ipAddress: req.ip || null,
+      actorType: "anonymous",
+      responseStatus: 200,
+    });
+
     return res.json({
       message: "A new verification code has been sent to your email.",
     });
@@ -1283,6 +1356,23 @@ exports.resendPhoneOtp = async (req, res) => {
     await sendSms({
       phone: user.phone,
       message: `Your Spiral Wood Services phone verification code is ${phoneOtp}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
+    });
+
+    await writeAuditLogSafe({
+      userId: user.id,
+      action: "resend_registration_phone_otp",
+      tableName: "users",
+      recordId: user.id,
+      oldValues: {
+        verification_stage: "phone_pending",
+      },
+      newValues: {
+        verification_stage: "phone_pending",
+        otp_resent: true,
+      },
+      ipAddress: req.ip || null,
+      actorType: "anonymous",
+      responseStatus: 200,
     });
 
     return res.json({
@@ -1475,12 +1565,7 @@ exports.login = async (req, res) => {
     .trim()
     .toLowerCase();
 
-  const auditLogin = async ({
-    action,
-    user = null,
-    reason,
-    responseStatus,
-  }) =>
+  const auditLogin = async ({ action, user = null, reason, responseStatus }) =>
     writeAuditLogSafe({
       userId: user?.id || null,
       action,
@@ -1702,8 +1787,7 @@ exports.login = async (req, res) => {
         role: user.role,
         authority_level: user.authority_level || "user",
         staff_type: user.staff_type || null,
-        must_change_password:
-          Number(user.must_change_password) === 1 ? 1 : 0,
+        must_change_password: Number(user.must_change_password) === 1 ? 1 : 0,
         token_version: Number(user.token_version) || 0,
       },
       process.env.JWT_SECRET,
@@ -1736,8 +1820,7 @@ exports.login = async (req, res) => {
         address_lat: user.address_lat,
         address_lng: user.address_lng,
         profile_photo: user.profile_photo,
-        must_change_password:
-          Number(user.must_change_password) === 1 ? 1 : 0,
+        must_change_password: Number(user.must_change_password) === 1 ? 1 : 0,
       },
     });
   } catch (err) {

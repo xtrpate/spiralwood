@@ -3571,6 +3571,25 @@ exports.postCustomOrderMessage = async (req, res) => {
     transactionActive = false;
     committed = true;
 
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "reply_order_discussion",
+      tableName: "custom_order_messages",
+      recordId: messageId,
+      oldValues: null,
+      newValues: {
+        order_id: order.id,
+        order_number: order.order_number,
+        sender_role: "customer",
+        message_id: messageId,
+        message_provided: Boolean(message),
+        attachment_count: uploadedAssets.length,
+        attachment_uploaded: uploadedAssets.length > 0,
+      },
+      ipAddress: req.ip || null,
+      responseStatus: 200,
+    });
+
     return res.json({
       message: files.length
         ? "Message and attachment sent successfully."
@@ -3848,10 +3867,7 @@ exports.verifyPayment = async (req, res) => {
       Number(normalizedEstimation.grand_total || 0).toFixed(2),
     );
 
-    if (
-      quotationCents === null ||
-      quotationCents !== orderBounds.totalCents
-    ) {
+    if (quotationCents === null || quotationCents !== orderBounds.totalCents) {
       await conn.rollback();
       transactionActive = false;
       return sendLifecycleConflict(res);
@@ -4749,12 +4765,10 @@ const selectPickupRemainingPaymentMethod = async ({
     if (normalize(order.status) !== "ready_for_pickup") {
       await conn.rollback();
       transactionActive = false;
-      return res
-        .status(400)
-        .json({
-          message:
-            "The remaining payment method can be chosen when the furniture is ready for pickup.",
-        });
+      return res.status(400).json({
+        message:
+          "The remaining payment method can be chosen when the furniture is ready for pickup.",
+      });
     }
     if (normalize(order.payment_status) === "paid") {
       await conn.rollback();
@@ -4779,12 +4793,10 @@ const selectPickupRemainingPaymentMethod = async ({
       if (cents === null) {
         await conn.rollback();
         transactionActive = false;
-        return res
-          .status(409)
-          .json({
-            message:
-              "This order's payment records are inconsistent. Please contact support.",
-          });
+        return res.status(409).json({
+          message:
+            "This order's payment records are inconsistent. Please contact support.",
+        });
       }
       const status = normalize(row.status);
       if (status === "verified") verifiedCents += cents;
@@ -4800,24 +4812,20 @@ const selectPickupRemainingPaymentMethod = async ({
     if (hasPendingPayment) {
       await conn.rollback();
       transactionActive = false;
-      return res
-        .status(400)
-        .json({
-          message: "A payment is already awaiting review for this order.",
-        });
+      return res.status(400).json({
+        message: "A payment is already awaiting review for this order.",
+      });
     }
     const totalCents = parseDecimalToCentsStrict(order.total);
     if (totalCents === null || totalCents <= verifiedCents) {
       await conn.rollback();
       transactionActive = false;
-      return res
-        .status(400)
-        .json({
-          message:
-            totalCents === null
-              ? "This order's total is invalid. Please contact support."
-              : "This order has already been fully paid.",
-        });
+      return res.status(400).json({
+        message:
+          totalCents === null
+            ? "This order's total is invalid. Please contact support."
+            : "This order has already been fully paid.",
+      });
     }
     if (order.paymongo_session_id || order.payment_url) {
       await conn.rollback();
@@ -4840,12 +4848,9 @@ const selectPickupRemainingPaymentMethod = async ({
       if (updateResult.affectedRows !== 1) {
         await conn.rollback();
         transactionActive = false;
-        return res
-          .status(409)
-          .json({
-            message:
-              "This order's state changed. Please refresh and try again.",
-          });
+        return res.status(409).json({
+          message: "This order's state changed. Please refresh and try again.",
+        });
       }
     }
 
@@ -4919,21 +4924,17 @@ const createPickupRemainingBalancePayMongoCheckout = async ({
     if (normalize(order.status) !== "ready_for_pickup") {
       await conn.rollback();
       transactionActive = false;
-      return res
-        .status(400)
-        .json({
-          message:
-            "Online remaining-balance payment is available when the furniture is ready for pickup.",
-        });
+      return res.status(400).json({
+        message:
+          "Online remaining-balance payment is available when the furniture is ready for pickup.",
+      });
     }
     if (normalize(order.remaining_payment_method) !== "paymongo") {
       await conn.rollback();
       transactionActive = false;
-      return res
-        .status(400)
-        .json({
-          message: "Select Online Payment for the remaining balance first.",
-        });
+      return res.status(400).json({
+        message: "Select Online Payment for the remaining balance first.",
+      });
     }
     if (normalize(order.payment_status) === "paid") {
       await conn.rollback();
@@ -4953,21 +4954,17 @@ const createPickupRemainingBalancePayMongoCheckout = async ({
       if (cents === null) {
         await conn.rollback();
         transactionActive = false;
-        return res
-          .status(409)
-          .json({
-            message:
-              "This order's payment records are inconsistent. Please contact support.",
-          });
+        return res.status(409).json({
+          message:
+            "This order's payment records are inconsistent. Please contact support.",
+        });
       }
       if (normalize(row.status) === "pending") {
         await conn.rollback();
         transactionActive = false;
-        return res
-          .status(400)
-          .json({
-            message: "A payment is already awaiting review for this order.",
-          });
+        return res.status(400).json({
+          message: "A payment is already awaiting review for this order.",
+        });
       }
       if (normalize(row.status) === "verified") verifiedCents += cents;
     }
@@ -4975,11 +4972,9 @@ const createPickupRemainingBalancePayMongoCheckout = async ({
     if (totalCents === null) {
       await conn.rollback();
       transactionActive = false;
-      return res
-        .status(409)
-        .json({
-          message: "This order's total is invalid. Please contact support.",
-        });
+      return res.status(409).json({
+        message: "This order's total is invalid. Please contact support.",
+      });
     }
     const remainingCents = Math.max(0, totalCents - verifiedCents);
     if (remainingCents <= 0) {
@@ -4995,12 +4990,10 @@ const createPickupRemainingBalancePayMongoCheckout = async ({
     if (hasSessionId !== hasPaymentUrl) {
       await conn.rollback();
       transactionActive = false;
-      return res
-        .status(409)
-        .json({
-          message:
-            "This order's payment state is inconsistent. Please contact support.",
-        });
+      return res.status(409).json({
+        message:
+          "This order's payment state is inconsistent. Please contact support.",
+      });
     }
     if (hasSessionId && hasPaymentUrl) {
       let session;
@@ -5009,11 +5002,9 @@ const createPickupRemainingBalancePayMongoCheckout = async ({
       } catch (pmErr) {
         await conn.rollback();
         transactionActive = false;
-        return res
-          .status(502)
-          .json({
-            message: "Unable to reach the payment provider. Please try again.",
-          });
+        return res.status(502).json({
+          message: "Unable to reach the payment provider. Please try again.",
+        });
       }
       const payments = session.attributes?.payments || [];
       const intent = session.attributes?.payment_intent;
@@ -5063,11 +5054,9 @@ const createPickupRemainingBalancePayMongoCheckout = async ({
     if (updateResult.affectedRows !== 1) {
       await conn.rollback();
       transactionActive = false;
-      return res
-        .status(409)
-        .json({
-          message: "This order's state changed. Please refresh and try again.",
-        });
+      return res.status(409).json({
+        message: "This order's state changed. Please refresh and try again.",
+      });
     }
     await conn.commit();
     transactionActive = false;

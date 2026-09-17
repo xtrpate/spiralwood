@@ -1,10 +1,9 @@
 // controllers/orderController.js – Order Management (Admin) [SCHEMA-CORRECTED]
 // controllers/orderController.js – Order Management (Admin) [SCHEMA-CORRECTED]
 const pool = require("../../config/db");
-const {
-  getPhilippineDateBoundsUtc,
-} = require("../../utils/philippineTime");
+const { getPhilippineDateBoundsUtc } = require("../../utils/philippineTime");
 const { signUploadPath } = require("../../utils/signedUrl");
+const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const {
   storeUploadBuffer,
   cleanupStoredUpload,
@@ -3754,6 +3753,26 @@ exports.postOrderDiscussionMessage = async (req, res) => {
     await conn.commit();
     transactionActive = false;
     committed = true;
+
+    await writeAuditLogSafe({
+      userId: req.user?.id || null,
+      action: "reply_order_discussion",
+      tableName: "custom_order_messages",
+      recordId: messageId,
+      oldValues: null,
+      newValues: {
+        order_id: order.id,
+        order_number: order.order_number,
+        sender_role: senderRole,
+        message_id: messageId,
+        message_provided: Boolean(message),
+        attachment_count: storedAssets.length,
+        attachment_uploaded: storedAssets.length > 0,
+      },
+      ipAddress: req.ip || null,
+      actorType: "user",
+      responseStatus: 200,
+    });
 
     return res.json({
       message: files.length

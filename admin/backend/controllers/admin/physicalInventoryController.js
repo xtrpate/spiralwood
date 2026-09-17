@@ -1,6 +1,7 @@
 // controllers/physicalInventoryController.js – Physical inventory reconciliation
 const crypto = require("crypto");
 const pool = require("../../config/db");
+const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const {
   getPhilippineDateBoundsUtc,
   getPhilippineDateKey,
@@ -31,7 +32,9 @@ const isValidPhysicalCountForUnit = (value, unit) => {
 
   if (unitAllowsDecimalQuantity(unit)) {
     const normalized = normalizeQuantity(number);
-    return Number.isFinite(normalized) && Math.abs(number - normalized) <= EPSILON;
+    return (
+      Number.isFinite(normalized) && Math.abs(number - normalized) <= EPSILON
+    );
   }
 
   return Number.isInteger(number);
@@ -67,14 +70,25 @@ const makeReferenceCode = () => {
 
 const sendError = (res, error) => {
   const status = Number(error?.status) || 500;
-  const body = { message: error?.message || "Physical inventory request failed." };
+  const body = {
+    message: error?.message || "Physical inventory request failed.",
+  };
   if (error?.details) body.details = error.details;
   return res.status(status).json(body);
 };
 
-const getReservedQuantities = async (connection, materialIds, { lock = false } = {}) => {
-  const ids = [...new Set((materialIds || []).map(Number).filter((id) => Number.isInteger(id) && id > 0))]
-    .sort((a, b) => a - b);
+const getReservedQuantities = async (
+  connection,
+  materialIds,
+  { lock = false } = {},
+) => {
+  const ids = [
+    ...new Set(
+      (materialIds || [])
+        .map(Number)
+        .filter((id) => Number.isInteger(id) && id > 0),
+    ),
+  ].sort((a, b) => a - b);
 
   const reservedByMaterial = new Map();
   if (ids.length === 0) return reservedByMaterial;
@@ -95,7 +109,9 @@ const getReservedQuantities = async (connection, materialIds, { lock = false } =
     const materialId = Number(row.material_id);
     reservedByMaterial.set(
       materialId,
-      normalizeQuantity((reservedByMaterial.get(materialId) || 0) + Number(row.quantity || 0)),
+      normalizeQuantity(
+        (reservedByMaterial.get(materialId) || 0) + Number(row.quantity || 0),
+      ),
     );
   }
 
@@ -114,12 +130,7 @@ const getSessionRow = async (db, sessionId, { lock = false } = {}) => {
   return row || null;
 };
 
-const applyCountPayload = async (
-  connection,
-  sessionId,
-  actorUserId,
-  items,
-) => {
+const applyCountPayload = async (connection, sessionId, actorUserId, items) => {
   if (items === undefined) return;
 
   if (!Array.isArray(items)) {
@@ -142,12 +153,16 @@ const applyCountPayload = async (
   for (const input of items) {
     const itemId = Number(input?.item_id);
     if (!Number.isInteger(itemId) || itemId <= 0 || !byId.has(itemId)) {
-      const error = new Error("One of the physical inventory items is invalid.");
+      const error = new Error(
+        "One of the physical inventory items is invalid.",
+      );
       error.status = 400;
       throw error;
     }
     if (seen.has(itemId)) {
-      const error = new Error("The same physical inventory item was submitted more than once.");
+      const error = new Error(
+        "The same physical inventory item was submitted more than once.",
+      );
       error.status = 400;
       throw error;
     }
@@ -216,7 +231,9 @@ const buildPhysicalInventorySessionFilters = (query = {}) => {
     whereParams.push(`%${search}%`);
   }
 
-  const status = String(query.status || "").trim().toLowerCase();
+  const status = String(query.status || "")
+    .trim()
+    .toLowerCase();
   if (status && !["draft", "completed", "cancelled"].includes(status)) {
     const error = new Error("Invalid physical inventory status filter.");
     error.status = 400;
@@ -227,7 +244,9 @@ const buildPhysicalInventorySessionFilters = (query = {}) => {
     whereParams.push(status);
   }
 
-  const result = String(query.result || "").trim().toLowerCase();
+  const result = String(query.result || "")
+    .trim()
+    .toLowerCase();
   if (result && !["with_differences", "no_differences"].includes(result)) {
     const error = new Error("Invalid physical inventory result filter.");
     error.status = 400;
@@ -254,7 +273,10 @@ const buildPhysicalInventorySessionFilters = (query = {}) => {
       throw error;
     }
     const parsed = new Date(`${text}T00:00:00Z`);
-    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== text) {
+    if (
+      Number.isNaN(parsed.getTime()) ||
+      parsed.toISOString().slice(0, 10) !== text
+    ) {
       const error = new Error(`${label} date is invalid.`);
       error.status = 400;
       throw error;
@@ -298,7 +320,10 @@ const mapPhysicalInventorySessionSummary = (row) => ({
 exports.listPhysicalInventorySessions = async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const limit = Math.min(
+      100,
+      Math.max(1, parseInt(req.query.limit, 10) || 20),
+    );
     const offset = (page - 1) * limit;
     const filters = buildPhysicalInventorySessionFilters(req.query);
 
@@ -324,13 +349,7 @@ exports.listPhysicalInventorySessions = async (req, res) => {
          s.started_at DESC,
          s.id DESC
        LIMIT ? OFFSET ?`,
-      [
-        EPSILON,
-        ...filters.whereParams,
-        ...filters.havingParams,
-        limit,
-        offset,
-      ],
+      [EPSILON, ...filters.whereParams, ...filters.havingParams, limit, offset],
     );
 
     const [[{ total }]] = await pool.query(
@@ -439,7 +458,9 @@ exports.getPhysicalInventorySession = async (req, res) => {
   try {
     const sessionId = Number(req.params.id);
     if (!Number.isInteger(sessionId) || sessionId <= 0) {
-      return res.status(400).json({ message: "Invalid physical inventory session ID." });
+      return res
+        .status(400)
+        .json({ message: "Invalid physical inventory session ID." });
     }
 
     const [[session]] = await pool.query(
@@ -458,7 +479,9 @@ exports.getPhysicalInventorySession = async (req, res) => {
     );
 
     if (!session) {
-      return res.status(404).json({ message: "Physical inventory session not found." });
+      return res
+        .status(404)
+        .json({ message: "Physical inventory session not found." });
     }
 
     const [items] = await pool.query(
@@ -482,7 +505,8 @@ exports.getPhysicalInventorySession = async (req, res) => {
 
     const summary = {
       item_count: items.length,
-      counted_count: items.filter((item) => item.physical_count !== null).length,
+      counted_count: items.filter((item) => item.physical_count !== null)
+        .length,
       difference_count: items.filter(
         (item) => Math.abs(Number(item.difference_quantity || 0)) > EPSILON,
       ).length,
@@ -526,7 +550,8 @@ exports.startPhysicalInventory = async (req, res) => {
     if (existingDraft) {
       await connection.rollback();
       return res.status(409).json({
-        message: "A physical inventory count is already in progress. Resume or cancel it before starting another count.",
+        message:
+          "A physical inventory count is already in progress. Resume or cancel it before starting another count.",
         active_session: existingDraft,
       });
     }
@@ -643,11 +668,15 @@ exports.savePhysicalInventoryDraft = async (req, res) => {
   try {
     const sessionId = Number(req.params.id);
     if (!Number.isInteger(sessionId) || sessionId <= 0) {
-      return res.status(400).json({ message: "Invalid physical inventory session ID." });
+      return res
+        .status(400)
+        .json({ message: "Invalid physical inventory session ID." });
     }
 
     const notes =
-      req.body?.notes === undefined ? undefined : cleanText(req.body.notes, 1000);
+      req.body?.notes === undefined
+        ? undefined
+        : cleanText(req.body.notes, 1000);
     const actorUserId = Number(req.user?.id);
 
     await connection.beginTransaction();
@@ -655,11 +684,15 @@ exports.savePhysicalInventoryDraft = async (req, res) => {
     const session = await getSessionRow(connection, sessionId, { lock: true });
     if (!session) {
       await connection.rollback();
-      return res.status(404).json({ message: "Physical inventory session not found." });
+      return res
+        .status(404)
+        .json({ message: "Physical inventory session not found." });
     }
     if (session.status !== "draft") {
       await connection.rollback();
-      return res.status(409).json({ message: "Only an active draft count can be edited." });
+      return res
+        .status(409)
+        .json({ message: "Only an active draft count can be edited." });
     }
 
     await applyCountPayload(
@@ -688,6 +721,24 @@ exports.savePhysicalInventoryDraft = async (req, res) => {
 
     await connection.commit();
 
+    await writeAuditLogSafe({
+      userId: actorUserId,
+      action: "save_physical_inventory_draft",
+      tableName: "physical_inventory_sessions",
+      recordId: sessionId,
+      oldValues: null,
+      newValues: {
+        draft_saved: true,
+        item_count: Number(summary?.item_count || 0),
+        counted_count: Number(summary?.counted_count || 0),
+        difference_count: Number(summary?.difference_count || 0),
+        notes_provided: Boolean(notes),
+      },
+      ipAddress: req.ip || null,
+      actorType: "user",
+      responseStatus: 200,
+    });
+
     return res.json({
       message: "Physical inventory draft saved.",
       summary: {
@@ -711,11 +762,15 @@ exports.finalizePhysicalInventory = async (req, res) => {
   try {
     const sessionId = Number(req.params.id);
     if (!Number.isInteger(sessionId) || sessionId <= 0) {
-      return res.status(400).json({ message: "Invalid physical inventory session ID." });
+      return res
+        .status(400)
+        .json({ message: "Invalid physical inventory session ID." });
     }
 
     const notes =
-      req.body?.notes === undefined ? undefined : cleanText(req.body.notes, 1000);
+      req.body?.notes === undefined
+        ? undefined
+        : cleanText(req.body.notes, 1000);
     const actorUserId = Number(req.user?.id);
 
     await connection.beginTransaction();
@@ -723,11 +778,15 @@ exports.finalizePhysicalInventory = async (req, res) => {
     const session = await getSessionRow(connection, sessionId, { lock: true });
     if (!session) {
       await connection.rollback();
-      return res.status(404).json({ message: "Physical inventory session not found." });
+      return res
+        .status(404)
+        .json({ message: "Physical inventory session not found." });
     }
     if (session.status !== "draft") {
       await connection.rollback();
-      return res.status(409).json({ message: "This physical inventory count is no longer active." });
+      return res.status(409).json({
+        message: "This physical inventory count is no longer active.",
+      });
     }
 
     await applyCountPayload(
@@ -757,7 +816,8 @@ exports.finalizePhysicalInventory = async (req, res) => {
     if (countedItems.length === 0) {
       await connection.rollback();
       return res.status(409).json({
-        message: "Select and count at least one raw material before finalizing.",
+        message:
+          "Select and count at least one raw material before finalizing.",
       });
     }
     const missingReasons = countedItems.filter(
@@ -789,7 +849,9 @@ exports.finalizePhysicalInventory = async (req, res) => {
        FOR UPDATE`,
       materialIds,
     );
-    const materialById = new Map(materials.map((material) => [Number(material.id), material]));
+    const materialById = new Map(
+      materials.map((material) => [Number(material.id), material]),
+    );
 
     const inactiveOrMissing = countedItems.filter((item) => {
       const material = materialById.get(Number(item.material_id));
@@ -802,7 +864,9 @@ exports.finalizePhysicalInventory = async (req, res) => {
         message:
           "One or more selected raw materials changed or were archived after this count started. Refresh and start a fresh count for those materials.",
         details: {
-          inactive_or_missing_item_ids: inactiveOrMissing.map((item) => item.id),
+          inactive_or_missing_item_ids: inactiveOrMissing.map(
+            (item) => item.id,
+          ),
         },
       });
     }
@@ -835,9 +899,13 @@ exports.finalizePhysicalInventory = async (req, res) => {
       });
     }
 
-    const reservedByMaterial = await getReservedQuantities(connection, materialIds, {
-      lock: true,
-    });
+    const reservedByMaterial = await getReservedQuantities(
+      connection,
+      materialIds,
+      {
+        lock: true,
+      },
+    );
 
     const belowReserved = [];
     for (const item of countedItems) {
@@ -1029,12 +1097,16 @@ exports.cancelPhysicalInventory = async (req, res) => {
   try {
     const sessionId = Number(req.params.id);
     if (!Number.isInteger(sessionId) || sessionId <= 0) {
-      return res.status(400).json({ message: "Invalid physical inventory session ID." });
+      return res
+        .status(400)
+        .json({ message: "Invalid physical inventory session ID." });
     }
 
     const reason = cleanText(req.body?.reason, 500);
     if (!reason) {
-      return res.status(400).json({ message: "Cancellation reason is required." });
+      return res
+        .status(400)
+        .json({ message: "Cancellation reason is required." });
     }
     const actorUserId = Number(req.user?.id);
 
@@ -1043,11 +1115,15 @@ exports.cancelPhysicalInventory = async (req, res) => {
     const session = await getSessionRow(connection, sessionId, { lock: true });
     if (!session) {
       await connection.rollback();
-      return res.status(404).json({ message: "Physical inventory session not found." });
+      return res
+        .status(404)
+        .json({ message: "Physical inventory session not found." });
     }
     if (session.status !== "draft") {
       await connection.rollback();
-      return res.status(409).json({ message: "Only an active draft count can be cancelled." });
+      return res
+        .status(409)
+        .json({ message: "Only an active draft count can be cancelled." });
     }
 
     await connection.query(

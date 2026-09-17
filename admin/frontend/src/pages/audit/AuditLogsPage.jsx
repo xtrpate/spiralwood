@@ -9,6 +9,10 @@ const ACTION_LABELS = {
   access_denied: "Access was denied",
   permission_denied: "Permission was denied",
   cleanup_abandoned_registration: "Cleaned up abandoned registration",
+  verify_registration_email: "Verified registration email",
+  resend_registration_email_otp: "Resent registration email OTP",
+  verify_registration_phone: "Verified registration phone",
+  resend_registration_phone_otp: "Resent registration phone OTP",
   password_changed: "Changed own password",
   password_reset_completed: "Completed password reset",
   update_own_profile: "Updated own profile",
@@ -38,6 +42,7 @@ const ACTION_LABELS = {
   create_stock_movement: "Recorded stock movement",
   create_raw_material_category: "Created raw material category",
   start_physical_inventory: "Started physical inventory",
+  save_physical_inventory_draft: "Saved physical inventory draft",
   finalize_physical_inventory: "Finalized physical inventory",
   cancel_physical_inventory: "Cancelled physical inventory",
   create_stock_transfer: "Created stock transfer",
@@ -56,6 +61,7 @@ const ACTION_LABELS = {
   accept_order: "Accepted order",
   decline_order: "Declined order",
   confirm_order_receipt: "Confirmed order receipt",
+  reply_order_discussion: "Replied to order discussion",
   process_cancellation: "Processed cancellation",
   request_custom_cancellation: "Requested custom furniture cancellation",
   approve_custom_cancellation: "Approved cancellation request",
@@ -107,6 +113,7 @@ const ACTION_LABELS = {
   create_project_agreement: "Created project agreement",
   accept_project_agreement: "Accepted project agreement",
   create_custom_request: "Submitted custom request",
+  register_customer: "Registered customer account",
   approve_custom_request: "Approved custom request",
   reject_custom_request: "Rejected custom request",
   accept_custom_estimate: "Approved custom quotation",
@@ -181,6 +188,7 @@ const MODULE_LABELS = {
   cancellations: "Cancellations",
   custom_cancellation_requests: "Custom Cancellations",
   support_tickets: "Support Tickets",
+  custom_order_messages: "Order Discussion",
   user_permission_overrides: "Custom Access",
   backup_logs: "Backups",
 };
@@ -370,14 +378,23 @@ const formatDateTime = (value) => {
 };
 
 const formatActorType = (value) =>
-  ACTOR_LABELS[String(value || "").trim().toLowerCase()] || "Not recorded";
+  ACTOR_LABELS[
+    String(value || "")
+      .trim()
+      .toLowerCase()
+  ] || "Not recorded";
 
 const formatCountryName = (countryCode) => {
-  const code = String(countryCode || "").trim().toUpperCase();
+  const code = String(countryCode || "")
+    .trim()
+    .toUpperCase();
   if (!code) return "";
 
   try {
-    if (typeof Intl !== "undefined" && typeof Intl.DisplayNames === "function") {
+    if (
+      typeof Intl !== "undefined" &&
+      typeof Intl.DisplayNames === "function"
+    ) {
       const displayNames = new Intl.DisplayNames(["en"], { type: "region" });
       return displayNames.of(code) || code;
     }
@@ -433,7 +450,9 @@ const parseAuditUserAgent = (userAgent) => {
 };
 
 const getAuditSourceContext = (log) => {
-  const actorType = String(log?.actor_type || "").trim().toLowerCase();
+  const actorType = String(log?.actor_type || "")
+    .trim()
+    .toLowerCase();
   const location = formatAuditLocation(log);
 
   if (actorType === "webhook") {
@@ -680,10 +699,24 @@ const getActivityLabel = (log) => {
     const reason = String(newValues.reason || "")
       .trim()
       .toLowerCase();
+
     if (reason === "account_inactive")
       return "Sign-in blocked for inactive account";
+
     if (reason === "email_not_verified")
       return "Sign-in blocked until email verification";
+
+    if (reason === "phone_not_verified")
+      return "Sign-in blocked until phone verification";
+
+    if (reason === "staff_type_not_configured")
+      return "Sign-in blocked: staff role not configured";
+
+    if (reason === "missing_credentials")
+      return "Sign-in attempt missing credentials";
+
+    if (reason === "server_error") return "Sign-in failed due to server error";
+
     return "Sign-in attempt failed";
   }
 
@@ -785,7 +818,9 @@ const getPerformedBy = (log) => {
     ...getReadableObject(log?.old_values),
     ...getReadableObject(log?.new_values),
   };
-  const actorType = String(log?.actor_type || "").trim().toLowerCase();
+  const actorType = String(log?.actor_type || "")
+    .trim()
+    .toLowerCase();
 
   if (log?.user_name) {
     return { name: log.user_name, secondary: log.user_email || "" };
@@ -811,7 +846,10 @@ const getPerformedBy = (log) => {
     return { name: "Anonymous visitor", secondary: "" };
   }
 
-  if (actorType === "system" || String(log?.action || "").startsWith("system_")) {
+  if (
+    actorType === "system" ||
+    String(log?.action || "").startsWith("system_")
+  ) {
     return { name: "System", secondary: "Automated process" };
   }
 
@@ -1037,45 +1075,65 @@ export default function AuditLogsPage() {
 
   const requestSeq = useRef(0);
 
-  const load = useCallback(async () => {
-    const seq = ++requestSeq.current;
-    setLoading(true);
-    setError("");
+  const load = useCallback(
+    async ({ silent = false } = {}) => {
+      const seq = ++requestSeq.current;
 
-    try {
-      const params = {
-        page: filters.page,
-        limit: filters.limit,
-      };
+      if (!silent) {
+        setLoading(true);
+        setError("");
+      }
 
-      if (filters.search) params.search = filters.search;
-      if (filters.action) params.action = filters.action;
-      if (filters.table_name) params.table_name = filters.table_name;
-      if (filters.actor_type) params.actor_type = filters.actor_type;
-      if (filters.date_from) params.date_from = filters.date_from;
-      if (filters.date_to) params.date_to = filters.date_to;
+      try {
+        const params = {
+          page: filters.page,
+          limit: filters.limit,
+        };
 
-      const { data } = await api.get("/audit-logs", { params });
-      if (seq !== requestSeq.current) return;
+        if (filters.search) params.search = filters.search;
+        if (filters.action) params.action = filters.action;
+        if (filters.table_name) params.table_name = filters.table_name;
+        if (filters.actor_type) params.actor_type = filters.actor_type;
+        if (filters.date_from) params.date_from = filters.date_from;
+        if (filters.date_to) params.date_to = filters.date_to;
 
-      setLogs(Array.isArray(data?.logs) ? data.logs : []);
-      setPagination(data?.pagination || DEFAULT_PAGINATION);
-    } catch (err) {
-      if (seq !== requestSeq.current) return;
+        const { data } = await api.get("/audit-logs", { params });
+        if (seq !== requestSeq.current) return;
 
-      setLogs([]);
-      setPagination(DEFAULT_PAGINATION);
-      setError(
-        err?.response?.data?.message ||
-          "Unable to load audit activity. Please try again.",
-      );
-    } finally {
-      if (seq === requestSeq.current) setLoading(false);
-    }
-  }, [filters]);
+        setLogs(Array.isArray(data?.logs) ? data.logs : []);
+        setPagination(data?.pagination || DEFAULT_PAGINATION);
+      } catch (err) {
+        if (seq !== requestSeq.current) return;
+
+        if (!silent) {
+          setLogs([]);
+          setPagination(DEFAULT_PAGINATION);
+          setError(
+            err?.response?.data?.message ||
+              "Unable to load audit activity. Please try again.",
+          );
+        }
+      } finally {
+        if (!silent && seq === requestSeq.current) {
+          setLoading(false);
+        }
+      }
+    },
+    [filters],
+  );
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  useEffect(() => {
+    const refreshTimer = window.setInterval(() => {
+      load({ silent: true });
+    }, 5000);
+
+    return () => {
+      window.clearInterval(refreshTimer);
+    };
   }, [load]);
 
   const setFilter = (key, value) =>
@@ -1146,7 +1204,8 @@ export default function AuditLogsPage() {
           <div>
             <h2 style={filterTitle}>Find Activity</h2>
             <p style={filterSubtitle}>
-              Search by person, email, activity, IP, browser, location, request ID, or record number.
+              Search by person, email, activity, IP, browser, location, request
+              ID, or record number.
             </p>
           </div>
 
@@ -1306,7 +1365,9 @@ export default function AuditLogsPage() {
                           <div style={personEmail}>{performedBy.secondary}</div>
                         )}
                         {log.actor_type && (
-                          <div style={actorBadge}>{formatActorType(log.actor_type)}</div>
+                          <div style={actorBadge}>
+                            {formatActorType(log.actor_type)}
+                          </div>
                         )}
                       </td>
 
@@ -1635,10 +1696,7 @@ function AuditDetailModal({ log, onClose }) {
               value={performedBy.name}
               secondary={performedBy.secondary}
             />
-            <DetailRow
-              label="Actor"
-              value={formatActorType(log.actor_type)}
-            />
+            <DetailRow label="Actor" value={formatActorType(log.actor_type)} />
             <DetailRow label="Area" value={formatModuleLabel(log.table_name)} />
             <DetailRow label="Target" value={getTargetLabel(log)} />
           </div>
@@ -1654,14 +1712,8 @@ function AuditDetailModal({ log, onClose }) {
                 label={sourceContext.locationLabel}
                 value={sourceContext.location}
               />
-              <DetailRow
-                label="Browser"
-                value={sourceContext.browser}
-              />
-              <DetailRow
-                label="Device / OS"
-                value={sourceContext.deviceOs}
-              />
+              <DetailRow label="Browser" value={sourceContext.browser} />
+              <DetailRow label="Device / OS" value={sourceContext.deviceOs} />
               <DetailRow
                 label="Request Method"
                 value={log.request_method || "Not recorded"}
