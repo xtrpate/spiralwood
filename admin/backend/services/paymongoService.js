@@ -82,7 +82,7 @@ exports.createCheckoutSession = async ({
         show_description: true,
         show_line_items: true,
         description,
-        payment_method_types: ["card", "gcash", "paymaya"],
+        payment_method_types: ["card", "gcash", "paymaya", "qrph"],
         line_items: [
           {
             currency: "PHP",

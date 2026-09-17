@@ -159,8 +159,23 @@ app.use(
   }),
 );
 
-app.use(express.json({ limit: "20mb" }));
-app.use(express.urlencoded({ extended: true, limit: "20mb" }));
+app.use(
+  express.json({
+    limit: "20mb",
+    verify: (req, res, buf) => {
+      if (req.originalUrl.startsWith("/api/customer/paymongo/webhook")) {
+        req.rawBody = Buffer.from(buf);
+      }
+    },
+  }),
+);
+
+app.use(
+  express.urlencoded({
+    extended: true,
+    limit: "20mb",
+  }),
+);
 
 const readPositiveInt = (value, fallback) => {
   const parsed = Number.parseInt(value, 10);
@@ -250,6 +265,7 @@ app.use("/api/customer/auth", require("./routes/customer.auth"));
 app.use("/api/customer/products", require("./routes/customer.products"));
 app.use("/api/customer/orders", require("./routes/customer.orders"));
 app.use("/api/customer/cart", require("./routes/customer.cart"));
+app.use("/api/customer/paymongo", require("./routes/customer.paymongo"));
 app.use("/api/customer/profile", require("./routes/customer.profile"));
 app.use("/api/customer/blueprints", require("./routes/customer.blueprints"));
 app.use(
