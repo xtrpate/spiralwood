@@ -3750,6 +3750,74 @@ exports.postOrderDiscussionMessage = async (req, res) => {
       targetOrderId: order.id,
     });
 
+    const [[createdMessageRow]] = await conn.query(
+      `SELECT
+          m.id,
+          m.order_id,
+          m.order_item_id,
+          m.sender_id,
+          m.sender_role,
+          m.message,
+          m.created_at,
+          m.updated_at,
+          u.name AS sender_name
+       FROM custom_order_messages m
+       LEFT JOIN users u
+         ON u.id = m.sender_id
+       WHERE m.id = ?
+       LIMIT 1`,
+      [messageId],
+    );
+
+    const [createdAttachmentRows] = await conn.query(
+      `SELECT
+          id,
+          order_id,
+          order_item_id,
+          message_id,
+          uploaded_by,
+          file_url,
+          file_name,
+          mime_type,
+          file_size,
+          attachment_type,
+          created_at
+       FROM custom_order_attachments
+       WHERE message_id = ?
+       ORDER BY id ASC`,
+      [messageId],
+    );
+
+    const discussionMessage = {
+      id: createdMessageRow?.id || messageId,
+      order_id: createdMessageRow?.order_id || order.id,
+      order_item_id: createdMessageRow?.order_item_id || null,
+      sender_id: createdMessageRow?.sender_id || req.user?.id || null,
+      sender_role: adminNormalizeText(createdMessageRow?.sender_role) || senderRole,
+      sender_name:
+        adminSafeTextOrNull(createdMessageRow?.sender_name) ||
+        adminSafeTextOrNull(req.user?.name) ||
+        (senderRole === "admin" ? "Admin" : "Staff"),
+      message:
+        adminSafeTextOrNull(createdMessageRow?.message) ||
+        (message || "Uploaded attachment."),
+      created_at: createdMessageRow?.created_at || null,
+      updated_at: createdMessageRow?.updated_at || null,
+      attachments: createdAttachmentRows.map((row) => ({
+        id: row.id,
+        order_id: row.order_id,
+        order_item_id: row.order_item_id || null,
+        message_id: row.message_id || null,
+        uploaded_by: row.uploaded_by || null,
+        file_url: signUploadPath(adminSafeTextOrNull(row.file_url)),
+        file_name: adminSafeTextOrNull(row.file_name),
+        mime_type: adminSafeTextOrNull(row.mime_type),
+        file_size: Number(row.file_size || 0) || null,
+        attachment_type: adminNormalizeText(row.attachment_type),
+        created_at: row.created_at || null,
+      })),
+    };
+
     await conn.commit();
     transactionActive = false;
     committed = true;
@@ -3774,10 +3842,23 @@ exports.postOrderDiscussionMessage = async (req, res) => {
       responseStatus: 200,
     });
 
+    try {
+      const io = req.app.get("io");
+      if (io) {
+        io.to(`discussion:order:${order.id}`).emit(
+          "discussion:message",
+          discussionMessage,
+        );
+      }
+    } catch (socketErr) {
+      console.error("[admin.order discussion socket emit]", socketErr);
+    }
+
     return res.json({
       message: files.length
         ? "Discussion reply and attachment sent successfully."
         : "Discussion reply sent successfully.",
+      discussion_message: discussionMessage,
     });
   } catch (err) {
     if (conn && transactionActive) {

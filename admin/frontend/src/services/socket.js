@@ -1,18 +1,10 @@
 import { io } from "socket.io-client";
+import { API_BASE_URL } from "./api";
 
-const SOCKET_URL = (() => {
-  const configured = String(process.env.REACT_APP_API_URL || "").trim();
-
-  if (configured) {
-    return configured.replace(/\/api\/?$/i, "");
-  }
-
-  if (window.location.hostname === "localhost") {
-    return "http://localhost:5000";
-  }
-
-  return window.location.origin;
-})();
+const SOCKET_URL =
+  String(API_BASE_URL || "")
+    .trim()
+    .replace(/\/api\/?$/i, "") || window.location.origin;
 
 let socket = null;
 
@@ -64,6 +56,13 @@ export const connectSocket = (token) => {
 
   socket.on("connect", () => {
     notifySocketReady();
+  });
+
+  socket.on("connect_error", (err) => {
+    console.error(
+      `[SOCKET CONNECT ERROR] url=${SOCKET_URL}`,
+      err?.message || err,
+    );
   });
 
   return socket;

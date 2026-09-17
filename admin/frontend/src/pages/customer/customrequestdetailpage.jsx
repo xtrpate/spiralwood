@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { Check, MapPin } from "lucide-react";
 import api, { buildAssetUrl } from "../../services/api";
+import { getSocket, subscribeSocketReady } from "../../services/socket";
 import { downloadProjectAgreementPdf } from "../../utils/projectAgreementPdf";
 import { downloadPickupAcknowledgementPdf } from "../../utils/pickupAcknowledgementPdf";
 import { DeliveryReceiptButton } from "../../components/delivery/DeliveryReceiptModal";
@@ -627,6 +628,34 @@ const getSenderMeta = (entry = {}) => {
   };
 };
 
+const isSameDiscussionSender = (current = {}, previous = {}) => {
+  const currentRole = String(current?.sender_role || "")
+    .trim()
+    .toLowerCase();
+  const previousRole = String(previous?.sender_role || "")
+    .trim()
+    .toLowerCase();
+
+  if (!currentRole || currentRole !== previousRole || currentRole === "system") {
+    return false;
+  }
+
+  const currentId = Number(current?.sender_id || 0);
+  const previousId = Number(previous?.sender_id || 0);
+
+  if (currentId > 0 || previousId > 0) {
+    return currentId > 0 && previousId > 0 && currentId === previousId;
+  }
+
+  return String(current?.sender_name || "") === String(previous?.sender_name || "");
+};
+
+const isDiscussionNearBottom = (element, threshold = 88) => {
+  if (!element) return true;
+  const distance = element.scrollHeight - element.scrollTop - element.clientHeight;
+  return distance <= threshold;
+};
+
 const parsePaymentInputCents = (value) => {
   const text = String(value ?? "").trim();
   const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(text);
@@ -666,9 +695,18 @@ export default function CustomRequestDetailPage() {
   const [discussionMessage, setDiscussionMessage] = useState("");
   const [discussionFiles, setDiscussionFiles] = useState([]);
   const [discussionSubmitting, setDiscussionSubmitting] = useState(false);
+  const [expandedDiscussionMessageIds, setExpandedDiscussionMessageIds] =
+    useState(() => new Set());
+  const [discussionRemoteTypingRole, setDiscussionRemoteTypingRole] =
+    useState("");
+  const [discussionHasNewMessage, setDiscussionHasNewMessage] = useState(false);
   const discussionFileInputRef = useRef(null);
   const discussionInputRef = useRef(null);
   const discussionThreadRef = useRef(null);
+  const discussionMessageIdsRef = useRef(new Set());
+  const discussionAutoScrollRef = useRef(true);
+  const discussionTypingStopTimerRef = useRef(null);
+  const discussionRemoteTypingTimerRef = useRef(null);
   const [selectingMethod, setSelectingMethod] = useState(false);
   const [selectionError, setSelectionError] = useState("");
   const [initialOnlineAmount, setInitialOnlineAmount] = useState("");
@@ -1261,19 +1299,216 @@ export default function CustomRequestDetailPage() {
     [requestData],
   );
 
-  useEffect(() => {
+  const scrollDiscussionToBottom = useCallback((behavior = "smooth") => {
     const thread = discussionThreadRef.current;
-    if (!thread) return undefined;
+    if (!thread) return;
+    thread.scrollTo({ top: thread.scrollHeight, behavior });
+  }, []);
+
+  useEffect(() => {
+    discussionMessageIdsRef.current = new Set(
+      discussionThread
+        .map((entry) => Number(entry?.id || 0))
+        .filter((messageId) => messageId > 0),
+    );
+  }, [discussionThread]);
+
+  useEffect(() => {
+    if (!discussionAutoScrollRef.current) return undefined;
 
     const frame = window.requestAnimationFrame(() => {
-      thread.scrollTo({
-        top: thread.scrollHeight,
-        behavior: discussionThread.length > 0 ? "smooth" : "auto",
-      });
+      scrollDiscussionToBottom(discussionThread.length > 0 ? "smooth" : "auto");
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [discussionThread.length]);
+  }, [discussionThread.length, scrollDiscussionToBottom]);
+
+  useEffect(() => {
+    if (!discussionRemoteTypingRole) return undefined;
+
+    const threadElement = discussionThreadRef.current;
+    const shouldFollowTyping =
+      discussionAutoScrollRef.current ||
+      isDiscussionNearBottom(threadElement, 140);
+
+    if (!shouldFollowTyping) return undefined;
+
+    discussionAutoScrollRef.current = true;
+    const frame = window.requestAnimationFrame(() => {
+      scrollDiscussionToBottom("smooth");
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [discussionRemoteTypingRole, scrollDiscussionToBottom]);
+
+  const appendDiscussionMessage = useCallback(
+    (entry, { forceScroll = false } = {}) => {
+      const messageId = Number(entry?.id || 0);
+      if (!messageId || discussionMessageIdsRef.current.has(messageId)) {
+        return false;
+      }
+
+      const shouldStick =
+        forceScroll || isDiscussionNearBottom(discussionThreadRef.current);
+
+      discussionMessageIdsRef.current.add(messageId);
+      discussionAutoScrollRef.current = shouldStick;
+
+      setRequestData((prev) => {
+        if (!prev) return prev;
+        const current = Array.isArray(prev.discussion) ? prev.discussion : [];
+        if (current.some((item) => Number(item?.id || 0) === messageId)) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          discussion: [...current, entry],
+        };
+      });
+
+      window.requestAnimationFrame(() => {
+        if (shouldStick) {
+          scrollDiscussionToBottom("smooth");
+          setDiscussionHasNewMessage(false);
+        } else {
+          setDiscussionHasNewMessage(true);
+        }
+      });
+
+      return true;
+    },
+    [scrollDiscussionToBottom],
+  );
+
+  useEffect(() => {
+    const numericOrderId = Number(id);
+    if (!Number.isInteger(numericOrderId) || numericOrderId <= 0) {
+      return undefined;
+    }
+
+    let boundSocket = null;
+
+    const handleRealtimeMessage = (entry) => {
+      if (Number(entry?.order_id || 0) !== numericOrderId) return;
+      appendDiscussionMessage(entry);
+    };
+
+    const handleRealtimeTyping = (payload = {}) => {
+      if (Number(payload?.orderId || 0) !== numericOrderId) return;
+
+      if (discussionRemoteTypingTimerRef.current) {
+        window.clearTimeout(discussionRemoteTypingTimerRef.current);
+        discussionRemoteTypingTimerRef.current = null;
+      }
+
+      if (!payload?.isTyping) {
+        setDiscussionRemoteTypingRole("");
+        return;
+      }
+
+      setDiscussionRemoteTypingRole(
+        String(payload?.role || "").trim().toLowerCase() || "team",
+      );
+
+      discussionRemoteTypingTimerRef.current = window.setTimeout(() => {
+        setDiscussionRemoteTypingRole("");
+        discussionRemoteTypingTimerRef.current = null;
+      }, 2600);
+    };
+
+    const bindSocket = (socket) => {
+      if (!socket) return;
+
+      if (boundSocket && boundSocket !== socket) {
+        boundSocket.off("discussion:message", handleRealtimeMessage);
+        boundSocket.off("discussion:typing", handleRealtimeTyping);
+      }
+
+      boundSocket = socket;
+      socket.off("discussion:message", handleRealtimeMessage);
+      socket.off("discussion:typing", handleRealtimeTyping);
+      socket.on("discussion:message", handleRealtimeMessage);
+      socket.on("discussion:typing", handleRealtimeTyping);
+      socket.emit("discussion:join", { orderId: numericOrderId }, (ack = {}) => {
+        if (!ack?.ok) {
+          console.warn("[DISCUSSION ROOM JOIN FAILED]", ack?.message || ack);
+        }
+      });
+    };
+
+    const unsubscribeReady = subscribeSocketReady(bindSocket);
+
+    return () => {
+      unsubscribeReady();
+
+      if (boundSocket) {
+        boundSocket.emit("discussion:typing", {
+          orderId: numericOrderId,
+          isTyping: false,
+        });
+        boundSocket.emit("discussion:leave", { orderId: numericOrderId });
+        boundSocket.off("discussion:message", handleRealtimeMessage);
+        boundSocket.off("discussion:typing", handleRealtimeTyping);
+      }
+
+      if (discussionTypingStopTimerRef.current) {
+        window.clearTimeout(discussionTypingStopTimerRef.current);
+        discussionTypingStopTimerRef.current = null;
+      }
+
+      if (discussionRemoteTypingTimerRef.current) {
+        window.clearTimeout(discussionRemoteTypingTimerRef.current);
+        discussionRemoteTypingTimerRef.current = null;
+      }
+    };
+  }, [appendDiscussionMessage, id]);
+
+  const emitDiscussionTyping = useCallback(
+    (isTyping) => {
+      const numericOrderId = Number(id);
+      const socket = getSocket();
+      if (
+        !socket?.connected ||
+        !Number.isInteger(numericOrderId) ||
+        numericOrderId <= 0
+      ) {
+        return;
+      }
+
+      socket.emit("discussion:typing", {
+        orderId: numericOrderId,
+        isTyping: Boolean(isTyping),
+      });
+    },
+    [id],
+  );
+
+  const stopDiscussionTyping = useCallback(() => {
+    if (discussionTypingStopTimerRef.current) {
+      window.clearTimeout(discussionTypingStopTimerRef.current);
+      discussionTypingStopTimerRef.current = null;
+    }
+    emitDiscussionTyping(false);
+  }, [emitDiscussionTyping]);
+
+  const handleDiscussionThreadScroll = () => {
+    const nearBottom = isDiscussionNearBottom(discussionThreadRef.current);
+    discussionAutoScrollRef.current = nearBottom;
+    if (nearBottom) setDiscussionHasNewMessage(false);
+  };
+
+  const toggleDiscussionTimestamp = (messageId) => {
+    const numericMessageId = Number(messageId || 0);
+    if (!numericMessageId) return;
+
+    setExpandedDiscussionMessageIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(numericMessageId)) next.delete(numericMessageId);
+      else next.add(numericMessageId);
+      return next;
+    });
+  };
 
   const handleEstimationDecision = async (action) => {
     if (!requestData?.id || !latestEstimation?.id) return;
@@ -1474,8 +1709,25 @@ export default function CustomRequestDetailPage() {
   };
 
   const handleDiscussionMessageChange = (e) => {
-    setDiscussionMessage(e.target.value);
+    const nextMessage = e.target.value;
+    setDiscussionMessage(nextMessage);
     resizeDiscussionInput(e.currentTarget);
+
+    if (discussionTypingStopTimerRef.current) {
+      window.clearTimeout(discussionTypingStopTimerRef.current);
+      discussionTypingStopTimerRef.current = null;
+    }
+
+    if (!nextMessage.trim()) {
+      emitDiscussionTyping(false);
+      return;
+    }
+
+    emitDiscussionTyping(true);
+    discussionTypingStopTimerRef.current = window.setTimeout(() => {
+      emitDiscussionTyping(false);
+      discussionTypingStopTimerRef.current = null;
+    }, 1200);
   };
 
   const handleDiscussionKeyDown = (e) => {
@@ -1505,9 +1757,11 @@ export default function CustomRequestDetailPage() {
       formData.append("attachments", file);
     });
 
+    const hadDiscussionFiles = discussionFiles.length > 0;
+
     setDiscussionSubmitting(true);
     try {
-      await api.post(
+      const res = await api.post(
         `/customer/custom-orders/${requestData.id}/messages`,
         formData,
         {
@@ -1517,17 +1771,22 @@ export default function CustomRequestDetailPage() {
         },
       );
 
+      const createdMessage = res.data?.discussion_message || null;
+      if (createdMessage) {
+        appendDiscussionMessage(createdMessage, { forceScroll: true });
+      } else {
+        await loadRequestDetail(false);
+      }
+
       setDiscussionMessage("");
       setDiscussionFiles([]);
+      stopDiscussionTyping();
       if (discussionInputRef.current) {
         discussionInputRef.current.style.height = "38px";
         discussionInputRef.current.style.overflowY = "hidden";
       }
-      await loadRequestDetail(false);
       toast.success(
-        discussionFiles.length
-          ? "Message and attachment sent."
-          : "Message sent.",
+        hadDiscussionFiles ? "Message and attachment sent." : "Message sent.",
       );
     } catch (err) {
       toast.error(
@@ -3910,129 +4169,179 @@ export default function CustomRequestDetailPage() {
 
               <div className="checkout-section wisdom-request-messages-v11 crd-messenger-v2">
                 <div className="checkout-section-header crd-messenger-section-head-v2">
-                  <div className="checkout-section-num">06</div>
                   <div>
-                    <h3>Order Conversation</h3>
-                    <p>Ask a question or send an update about this order.</p>
+                    <h3>Discussion</h3>
+                    <p>Messages between you and Spiral Wood Services.</p>
                   </div>
                 </div>
 
                 <div className="checkout-section-body crd-messenger-body-v2">
-                  <div className="crd-chat-wrap wisdom-request-chat-v13 crd-messenger-shell-v2">
+                  <div className="crd-chat-wrap crd-messenger-shell-v2 crd-admin-parity-shell-r24">
                     <div className="crd-chat-card">
-                      <div className="crd-chat-card-head crd-messenger-head-v2">
-                        <div>
-                          <strong>Spiral Wood Services</strong>
-                          <span>About order {requestData.order_number || "this request"}</span>
-                        </div>
-                      </div>
-
                       <div
                         ref={discussionThreadRef}
+                        onScroll={handleDiscussionThreadScroll}
                         className={`crd-chat-thread ${
                           discussionThread.length ? "has-messages" : "is-empty"
                         }`}
                       >
                         {!discussionThread.length ? (
                           <div className="crd-chat-empty crd-messenger-empty-v2">
-                            <div className="crd-messenger-empty-icon-v2" aria-hidden="true">
-                              <svg
-                                viewBox="0 0 24 24"
-                                width="22"
-                                height="22"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="1.7"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
-                              </svg>
-                            </div>
-                            <strong>Start the conversation</strong>
-                            <span>
-                              Ask about your order, payment, production, or {isPickup ? "pickup" : "delivery"}.
-                            </span>
+                            <strong>No messages yet</strong>
+                            <span>Start the conversation using the message box below.</span>
                           </div>
                         ) : (
-                          discussionThread.map((entry) => {
-                            const sender = getSenderMeta(entry);
+                          <>
+                            {discussionThread.map((entry, index) => {
+                              const sender = getSenderMeta(entry);
+                              const grouped =
+                                index > 0 &&
+                                isSameDiscussionSender(
+                                  entry,
+                                  discussionThread[index - 1],
+                                );
+                              const expanded = expandedDiscussionMessageIds.has(
+                                Number(entry.id),
+                              );
 
-                            return (
-                              <div
-                                key={entry.id}
-                                className={`crd-chat-entry ${sender.roleClass}`}
-                              >
-                                <div className="crd-chat-entry-top">
-                                  <div className="crd-chat-sender">
-                                    {sender.label}
+                              return (
+                                <div
+                                  key={entry.id}
+                                  className={`crd-chat-message-row-r21 ${sender.roleClass} ${
+                                    grouped ? "is-grouped-v3" : ""
+                                  }`}
+                                >
+                                  {!grouped && sender.roleClass !== "is-system" ? (
+                                    <div className="crd-chat-sender-r21">
+                                      {sender.label}
+                                    </div>
+                                  ) : null}
+
+                                  <div
+                                    className={`crd-chat-entry ${sender.roleClass} ${
+                                      grouped ? "is-grouped-v3" : ""
+                                    } ${expanded ? "is-time-open-v3" : ""}`}
+                                    role="button"
+                                    tabIndex={0}
+                                    aria-expanded={expanded}
+                                    onClick={() => toggleDiscussionTimestamp(entry.id)}
+                                    onKeyDown={(event) => {
+                                      if (
+                                        event.key === "Enter" ||
+                                        event.key === " "
+                                      ) {
+                                        event.preventDefault();
+                                        toggleDiscussionTimestamp(entry.id);
+                                      }
+                                    }}
+                                  >
+                                    {entry.message ? (
+                                      <div className="crd-chat-message">
+                                        {entry.message}
+                                      </div>
+                                    ) : null}
+
+                                    {Array.isArray(entry.attachments) &&
+                                    entry.attachments.length ? (
+                                      <div className="crd-chat-attachments">
+                                        {entry.attachments.map((attachment) => {
+                                          const href = resolveAttachmentUrl(
+                                            attachment.file_url,
+                                          );
+
+                                          return isImageAttachment(attachment) ? (
+                                            <a
+                                              key={attachment.id}
+                                              href={href}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              className="crd-attachment-thumb"
+                                              onClick={(event) =>
+                                                event.stopPropagation()
+                                              }
+                                            >
+                                              <img
+                                                src={href}
+                                                alt={
+                                                  attachment.file_name ||
+                                                  "Attachment"
+                                                }
+                                              />
+                                            </a>
+                                          ) : (
+                                            <a
+                                              key={attachment.id}
+                                              href={href}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              className="crd-attachment-file"
+                                              onClick={(event) =>
+                                                event.stopPropagation()
+                                              }
+                                            >
+                                              <div className="crd-attachment-name">
+                                                {attachment.file_name ||
+                                                  "Attachment"}
+                                              </div>
+                                              <div className="crd-attachment-open">
+                                                Open attachment
+                                              </div>
+                                            </a>
+                                          );
+                                        })}
+                                      </div>
+                                    ) : null}
                                   </div>
 
-                                  <div className="crd-chat-date">
-                                    {formatDate(entry.created_at)}
-                                  </div>
+                                  {expanded ? (
+                                    <div className="crd-chat-date crd-chat-date-reveal-v3 crd-chat-date-outside-r21">
+                                      {formatDate(entry.created_at)}
+                                    </div>
+                                  ) : null}
                                 </div>
+                              );
+                            })}
 
-                                {entry.message ? (
-                                  <div className="crd-chat-message">
-                                    {entry.message}
-                                  </div>
-                                ) : null}
-
-                                {Array.isArray(entry.attachments) &&
-                                entry.attachments.length ? (
-                                  <div className="crd-chat-attachments">
-                                    {entry.attachments.map((attachment) => {
-                                      const href = resolveAttachmentUrl(
-                                        attachment.file_url,
-                                      );
-
-                                      return isImageAttachment(attachment) ? (
-                                        <a
-                                          key={attachment.id}
-                                          href={href}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="crd-attachment-thumb"
-                                        >
-                                          <img
-                                            src={href}
-                                            alt={
-                                              attachment.file_name ||
-                                              "Attachment"
-                                            }
-                                          />
-                                        </a>
-                                      ) : (
-                                        <a
-                                          key={attachment.id}
-                                          href={href}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="crd-attachment-file"
-                                        >
-                                          <div className="crd-attachment-name">
-                                            {attachment.file_name ||
-                                              "Attachment"}
-                                          </div>
-                                          <div className="crd-attachment-open">
-                                            Open attachment
-                                          </div>
-                                        </a>
-                                      );
-                                    })}
-                                  </div>
-                                ) : null}
+                            {discussionRemoteTypingRole ? (
+                              <div className="crd-chat-typing-v3">
+                                <span className="crd-chat-typing-label-v3">
+                                  {discussionRemoteTypingRole === "admin" ||
+                                  discussionRemoteTypingRole === "staff"
+                                    ? "Spiral Wood Services is typing"
+                                    : "Someone is typing"}
+                                </span>
+                                <span
+                                  className="crd-chat-typing-bubble-v3"
+                                  aria-label="Spiral Wood Services is typing"
+                                >
+                                  <i />
+                                  <i />
+                                  <i />
+                                </span>
                               </div>
-                            );
-                          })
+                            ) : null}
+                          </>
                         )}
                       </div>
+
+                      {discussionHasNewMessage ? (
+                        <button
+                          type="button"
+                          className="crd-chat-new-message-v3"
+                          onClick={() => {
+                            discussionAutoScrollRef.current = true;
+                            scrollDiscussionToBottom("smooth");
+                            setDiscussionHasNewMessage(false);
+                          }}
+                        >
+                          New message ↓
+                        </button>
+                      ) : null}
                     </div>
 
                     <form
                       onSubmit={handleSendDiscussionMessage}
-                      className="crd-chat-form wisdom-request-chat-form-v13 crd-messenger-composer-v2"
+                      className="crd-chat-form crd-messenger-composer-v2 crd-admin-parity-composer-r24"
                     >
                       {discussionFiles.length ? (
                         <div className="crd-messenger-file-chips-v2">
@@ -4088,22 +4397,11 @@ export default function CustomRequestDetailPage() {
                           type="button"
                           className="crd-messenger-icon-btn-v2 crd-messenger-attach-v2"
                           onClick={() => discussionFileInputRef.current?.click()}
-                          aria-label="Attach files"
-                          title="Attach files"
+                          aria-label="Add attachment"
+                          title="Add attachment"
                           disabled={discussionSubmitting || discussionFiles.length >= 5}
                         >
-                          <svg
-                            viewBox="0 0 24 24"
-                            width="18"
-                            height="18"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.8"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                          </svg>
+                          +
                         </button>
 
                         <textarea
@@ -4127,29 +4425,13 @@ export default function CustomRequestDetailPage() {
                           aria-label="Send message"
                           title="Send message"
                         >
-                          {discussionSubmitting ? (
-                            <span className="crd-messenger-sending-v2">…</span>
-                          ) : (
-                            <svg
-                              viewBox="0 0 24 24"
-                              width="18"
-                              height="18"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.8"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M22 2 11 13" />
-                              <path d="m22 2-7 20-4-9-9-4Z" />
-                            </svg>
-                          )}
+                          {discussionSubmitting ? "…" : "➤"}
                         </button>
                       </div>
 
                       <div className="crd-messenger-helper-v2">
                         <span>Enter to send · Shift + Enter for a new line</span>
-                        <span>Up to 5 images or PDFs · 8MB each</span>
+                        <span>Up to 5 files</span>
                       </div>
                     </form>
                   </div>

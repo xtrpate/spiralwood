@@ -102,6 +102,125 @@ io.use(async (socket, next) => {
 //   );
 // });
 
+const toDiscussionOrderId = (value) => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const getDiscussionRoomName = (orderId) => `discussion:order:${orderId}`;
+
+const socketUserHasOrdersViewPermission = async (user) => {
+  const userId = Number(user?.id || 0);
+  const role = String(user?.role || "")
+    .trim()
+    .toLowerCase();
+
+  if (!userId || !["admin", "staff"].includes(role)) return false;
+
+  const permissionKey = "orders.view";
+
+  const [overrideRows] = await pool.query(
+    `SELECT upo.granted
+     FROM user_permission_overrides upo
+     INNER JOIN permissions p
+       ON p.id = upo.permission_id
+     WHERE upo.user_id = ?
+       AND p.permission_key = ?
+     LIMIT 1`,
+    [userId, permissionKey],
+  );
+
+  if (overrideRows.length) {
+    return Number(overrideRows[0].granted) === 1;
+  }
+
+  const authority = String(user?.authority_level || "user")
+    .trim()
+    .toLowerCase();
+
+  const [authorityRows] = await pool.query(
+    `SELECT p.id
+     FROM authority_permissions ap
+     INNER JOIN permissions p
+       ON p.id = ap.permission_id
+     WHERE ap.authority_level = ?
+       AND p.permission_key = ?
+     LIMIT 1`,
+    [authority, permissionKey],
+  );
+
+  if (authorityRows.length) return true;
+
+  const staffType = user?.staff_type
+    ? String(user.staff_type).trim().toLowerCase()
+    : null;
+  const roleParams = [role, permissionKey];
+
+  let roleSql = `
+    SELECT p.id
+    FROM role_permissions rp
+    INNER JOIN permissions p
+      ON p.id = rp.permission_id
+    WHERE rp.role = ?
+      AND p.permission_key = ?
+  `;
+
+  if (role === "staff") {
+    roleSql += `
+      AND (
+        rp.staff_type IS NULL
+        OR rp.staff_type = ?
+      )
+    `;
+    roleParams.push(staffType);
+  } else {
+    roleSql += ` AND rp.staff_type IS NULL `;
+  }
+
+  roleSql += " LIMIT 1";
+
+  const [roleRows] = await pool.query(roleSql, roleParams);
+  return roleRows.length > 0;
+};
+
+const socketUserCanJoinDiscussion = async (user, orderId) => {
+  const role = String(user?.role || "")
+    .trim()
+    .toLowerCase();
+  const userId = Number(user?.id || 0);
+
+  if (!userId) return false;
+
+  if (role === "customer") {
+    const [rows] = await pool.query(
+      `SELECT id
+       FROM orders
+       WHERE id = ?
+         AND customer_id = ?
+         AND order_type = 'blueprint'
+       LIMIT 1`,
+      [orderId, userId],
+    );
+    return rows.length > 0;
+  }
+
+  if (role === "admin" || role === "staff") {
+    if (!(await socketUserHasOrdersViewPermission(user))) return false;
+
+    const [rows] = await pool.query(
+      `SELECT id
+       FROM orders
+       WHERE id = ?
+         AND order_type = 'blueprint'
+       LIMIT 1`,
+      [orderId],
+    );
+    return rows.length > 0;
+  }
+
+  return false;
+};
+
 io.on("connection", (socket) => {
   const userId = Number(socket.user?.id);
   const role = String(socket.user?.role || "")
@@ -115,6 +234,7 @@ io.on("connection", (socket) => {
   if (role === "admin" || role === "staff") {
     socket.join("staff-updates");
   }
+
   console.log(
     `[SOCKET ROOM] user=${socket.user?.id} role=${role} rooms=${[
       ...socket.rooms,
@@ -124,6 +244,61 @@ io.on("connection", (socket) => {
   console.log(
     `[SOCKET CONNECTED] user=${socket.user?.id} role=${socket.user?.role}`,
   );
+
+  socket.on("discussion:join", async (payload = {}, acknowledge) => {
+    const reply = typeof acknowledge === "function" ? acknowledge : () => {};
+    const orderId = toDiscussionOrderId(payload?.orderId);
+
+    if (!orderId) {
+      reply({ ok: false, message: "Invalid discussion room." });
+      return;
+    }
+
+    try {
+      const allowed = await socketUserCanJoinDiscussion(socket.user, orderId);
+      if (!allowed) {
+        reply({ ok: false, message: "Discussion access denied." });
+        return;
+      }
+
+      socket.join(getDiscussionRoomName(orderId));
+      reply({ ok: true, orderId });
+    } catch (err) {
+      console.error("[SOCKET DISCUSSION JOIN]", err);
+      reply({ ok: false, message: "Unable to join discussion right now." });
+    }
+  });
+
+  socket.on("discussion:leave", (payload = {}) => {
+    const orderId = toDiscussionOrderId(payload?.orderId);
+    if (!orderId) return;
+
+    const room = getDiscussionRoomName(orderId);
+    if (socket.rooms.has(room)) {
+      socket.to(room).emit("discussion:typing", {
+        orderId,
+        userId: Number(socket.user?.id || 0) || null,
+        role,
+        isTyping: false,
+      });
+      socket.leave(room);
+    }
+  });
+
+  socket.on("discussion:typing", (payload = {}) => {
+    const orderId = toDiscussionOrderId(payload?.orderId);
+    if (!orderId) return;
+
+    const room = getDiscussionRoomName(orderId);
+    if (!socket.rooms.has(room)) return;
+
+    socket.to(room).emit("discussion:typing", {
+      orderId,
+      userId: Number(socket.user?.id || 0) || null,
+      role,
+      isTyping: Boolean(payload?.isTyping),
+    });
+  });
 
   socket.on("disconnect", (reason) => {
     console.log(
