@@ -2217,7 +2217,15 @@ export default function EstimationPage() {
   const isSent = String(estimation?.status || "").toLowerCase() === "sent";
   const isReadOnly = isApproved || isSent;
 
-  const saveDisabled = saving || isReadOnly || !hasUnsavedChanges;
+  // A generated first-time draft has no estimation.id yet. It still needs
+  // to be saveable so the auto-draft can become a persisted estimation.
+  // Existing drafts keep the previous behavior: Save Changes is enabled
+  // only when editable estimate data or the delivery decision is dirty.
+  const isNewUnsavedEstimate = !estimation?.id;
+  const saveDisabled =
+    saving ||
+    isReadOnly ||
+    (!isNewUnsavedEstimate && !hasUnsavedChanges);
 
   const saveButtonLabel = saving
     ? "Saving..."
