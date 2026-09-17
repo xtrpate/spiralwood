@@ -2,6 +2,7 @@
 
 const crypto = require("crypto");
 const db = require("../../config/db");
+const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const {
   createStandardOnlineReceipt,
 } = require("../../services/receiptService");
@@ -302,6 +303,8 @@ exports.handlePaymongoWebhook = async (req, res) => {
        * PayMongo may deliver the same webhook more than once.
        * Do not create another payment transaction if one already exists.
        */
+      let paymentTransactionCreated = false;
+
       let [[paymentTransaction]] = await conn.query(
         `SELECT id, amount, status
          FROM payment_transactions
@@ -341,6 +344,7 @@ exports.handlePaymongoWebhook = async (req, res) => {
           amount: amountFromWebhook,
           status: "verified",
         };
+        paymentTransactionCreated = true;
       }
 
       /*
@@ -360,9 +364,42 @@ exports.handlePaymongoWebhook = async (req, res) => {
        * This keeps webhook processing safe when the customer also
        * returns through the existing success URL.
        */
-      await createReceiptIfNeeded(conn, order, paymentTransaction.id);
+      const receiptId = await createReceiptIfNeeded(
+        conn,
+        order,
+        paymentTransaction.id,
+      );
 
       await conn.commit();
+
+      await writeAuditLogSafe({
+        userId: null,
+        action: "confirm_paymongo_webhook_payment",
+        tableName: "payment_transactions",
+        recordId: paymentTransaction.id,
+        oldValues: {
+          order_id: order.id,
+          order_status: order.status || null,
+          payment_status: order.payment_status || null,
+          verified_paymongo_payment_existed: !paymentTransactionCreated,
+        },
+        newValues: {
+          order_id: order.id,
+          payment_transaction_id: paymentTransaction.id,
+          payment_transaction_created: paymentTransactionCreated,
+          amount: Number(paymentTransaction.amount || 0),
+          payment_method: "paymongo",
+          payment_transaction_status: "verified",
+          order_status: "confirmed",
+          payment_status: "paid",
+          receipt_id: receiptId,
+          event_type: eventType,
+          provider_session_present: Boolean(sessionId),
+        },
+        ipAddress: req.ip || null,
+        actorType: "webhook",
+        responseStatus: 200,
+      });
 
       console.log(
         `[PayMongo Webhook] Payment confirmed. ` +

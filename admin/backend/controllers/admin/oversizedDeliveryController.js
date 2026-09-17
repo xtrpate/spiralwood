@@ -1,4 +1,5 @@
 const db = require("../../config/db");
+const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const {
   resolveLifecycleByBlueprint,
 } = require("../../services/blueprintLifecycleService");
@@ -141,6 +142,11 @@ const loadOrderDeliverySummary = async (
        blueprint_id,
        status,
        order_type,
+       subtotal,
+       tax,
+       discount,
+       total,
+       down_payment,
        delivery_address,
        delivery_lat,
        delivery_lng
@@ -712,6 +718,54 @@ exports.saveDecisionByBlueprint = async (req, res) => {
     }
 
     await conn.commit();
+
+    await writeAuditLogSafe({
+      userId: decidedBy,
+      action: "update_oversized_delivery_decision",
+      tableName: "estimations",
+      recordId: estimation.id,
+      oldValues: {
+        blueprint_id: blueprintId,
+        order_id: order.id,
+        decision: normalizeDecisionFromMeta(meta, assessment).decision,
+        additional_delivery_fee: roundMoney(
+          meta.additional_delivery_fee || 0,
+        ),
+        reason:
+          String(meta.oversized_delivery_reason || "").trim() || null,
+        truck_type:
+          String(meta.oversized_truck_type || "").trim() || null,
+        tax: roundMoney(estimation.tax),
+        discount: roundMoney(estimation.discount),
+        grand_total: roundMoney(estimation.grand_total),
+        order_subtotal: roundMoney(order.subtotal),
+        order_tax: roundMoney(order.tax),
+        order_discount: roundMoney(order.discount),
+        order_total: roundMoney(order.total),
+        order_down_payment: roundMoney(order.down_payment),
+      },
+      newValues: {
+        blueprint_id: blueprintId,
+        order_id: order.id,
+        decision: requestedDecision,
+        additional_delivery_fee: additionalDeliveryFee,
+        reason,
+        truck_type: truckType || null,
+        tax: taxAmount,
+        discount: discountAmount,
+        grand_total: grandTotal,
+        order_subtotal: subtotal,
+        order_tax: taxAmount,
+        order_discount: discountAmount,
+        order_total: grandTotal,
+        order_down_payment: roundMoney(grandTotal * 0.3),
+        decided_by: decidedBy,
+        decided_at: decidedAt,
+      },
+      ipAddress: req.ip || null,
+      actorType: "user",
+      responseStatus: 200,
+    });
 
     return res.json({
       message:
