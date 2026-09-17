@@ -9,7 +9,7 @@ const DEFAULT_TERMS = `1. PROJECT WORK
 Spiral Wood Services will build the furniture based on the approved design and quotation.
 
 2. PAYMENT
-Production starts after the required 30% down payment is verified. The remaining balance must be fully paid before the order is completed.
+Production starts after at least the required 30% minimum payment is verified. The customer may pay more than the minimum, up to the full project total. Any remaining balance must be fully paid before the order is completed.
 
 3. CHANGES
 Any requested change after the contract is accepted must be reviewed first. Approved changes may affect the price or completion date.

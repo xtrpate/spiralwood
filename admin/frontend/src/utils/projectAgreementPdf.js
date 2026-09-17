@@ -347,13 +347,13 @@ export function downloadProjectAgreementPdf({
   moneyRow("Total Price", approvedTotal, true);
 
   sectionTitle("Payment Terms");
-  moneyRow("Down Payment (30%)", requiredDownPayment, true);
-  moneyRow("Remaining Balance", remainingBalance, true);
+  moneyRow("Minimum Down Payment (30%)", requiredDownPayment, true);
+  moneyRow("Balance After Minimum Payment", remainingBalance, true);
   y += 2;
   text(
     isPickup
-      ? "Production starts after the 30% down payment is verified. The remaining balance must be fully paid before the furniture can be released for pickup."
-      : "Production starts after the 30% down payment is verified. The remaining balance must be fully paid before the order is completed.",
+      ? "Production starts after at least the minimum 30% payment is verified. The customer may pay more than the minimum, up to the full project total. Any remaining balance must be fully paid before the furniture can be released for pickup."
+      : "Production starts after at least the minimum 30% payment is verified. The customer may pay more than the minimum, up to the full project total. Any remaining balance must be fully paid before the order is completed.",
     margin,
     contentWidth,
   );

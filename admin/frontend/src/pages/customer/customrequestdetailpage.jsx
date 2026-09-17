@@ -627,6 +627,17 @@ const getSenderMeta = (entry = {}) => {
   };
 };
 
+const parsePaymentInputCents = (value) => {
+  const text = String(value ?? "").trim();
+  const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(text);
+  if (!match) return null;
+
+  const centsText = `${match[1]}${(match[2] || "").padEnd(2, "0")}`;
+  const cents = Number(centsText);
+
+  return Number.isSafeInteger(cents) && cents > 0 ? cents : null;
+};
+
 const DetailValue = ({ label, children }) => (
   <div className="summary-row">
     <span>{label}</span>
@@ -660,6 +671,8 @@ export default function CustomRequestDetailPage() {
   const discussionThreadRef = useRef(null);
   const [selectingMethod, setSelectingMethod] = useState(false);
   const [selectionError, setSelectionError] = useState("");
+  const [initialOnlineAmount, setInitialOnlineAmount] = useState("");
+  const [payingInitialOnline, setPayingInitialOnline] = useState(false);
   const [selectingRemainingMethod, setSelectingRemainingMethod] = useState(false);
   const [payingRemainingBalance, setPayingRemainingBalance] = useState(false);
   const [remainingMethodError, setRemainingMethodError] = useState("");
@@ -764,6 +777,9 @@ export default function CustomRequestDetailPage() {
         // 👉 FIX: Only delete the URL trigger if it actually worked!
         if (isSuccess) {
           params.delete(paramKey);
+          if (isInitialVerify) {
+            params.delete("initial_amount_cents");
+          }
           const url =
             window.location.pathname +
             (params.toString() ? `?${params.toString()}` : "");
@@ -905,6 +921,81 @@ export default function CustomRequestDetailPage() {
     Number(verifiedPaymentTotal || 0) <= 0 &&
     !hasPendingPaymentTransaction &&
     !paymentMethodChangeLocked;
+
+  const initialOnlineTotalCents =
+    quotedTotal > 0
+      ? Math.round((Number(quotedTotal) + Number.EPSILON) * 100)
+      : 0;
+  const initialOnlineMinimumCents =
+    downPaymentDue > 0
+      ? Math.round((Number(downPaymentDue) + Number.EPSILON) * 100)
+      : 0;
+  const initialOnlineAmountCents = parsePaymentInputCents(initialOnlineAmount);
+  const initialOnlineAmountValid =
+    initialOnlineAmountCents !== null &&
+    initialOnlineMinimumCents > 0 &&
+    initialOnlineTotalCents >= initialOnlineMinimumCents &&
+    initialOnlineAmountCents >= initialOnlineMinimumCents &&
+    initialOnlineAmountCents <= initialOnlineTotalCents;
+  const initialOnlineBalanceAfterCents = initialOnlineAmountValid
+    ? Math.max(initialOnlineTotalCents - initialOnlineAmountCents, 0)
+    : null;
+  const initialOnlineHalfCents =
+    initialOnlineTotalCents > 0
+      ? Math.floor((initialOnlineTotalCents + 1) / 2)
+      : 0;
+  const initialOnlineQuickAmounts = [
+    { label: "Minimum 30%", cents: initialOnlineMinimumCents },
+    { label: "50%", cents: initialOnlineHalfCents },
+    { label: "Full 100%", cents: initialOnlineTotalCents },
+  ].filter(
+    (option, index, all) =>
+      option.cents >= initialOnlineMinimumCents &&
+      option.cents <= initialOnlineTotalCents &&
+      option.cents > 0 &&
+      all.findIndex((candidate) => candidate.cents === option.cents) === index,
+  );
+
+  useEffect(() => {
+    if (
+      requestData?.payment_status !== "unpaid" ||
+      initialOnlineMinimumCents <= 0 ||
+      initialOnlineTotalCents < initialOnlineMinimumCents
+    ) {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const restoredRaw = params.get("initial_amount_cents");
+    const restoredCents =
+      restoredRaw && /^[1-9]\d*$/.test(restoredRaw)
+        ? Number(restoredRaw)
+        : null;
+    const restoredIsSafe =
+      Number.isSafeInteger(restoredCents) &&
+      restoredCents >= initialOnlineMinimumCents &&
+      restoredCents <= initialOnlineTotalCents;
+    const fallbackCents = restoredIsSafe
+      ? restoredCents
+      : initialOnlineMinimumCents;
+
+    setInitialOnlineAmount((current) => {
+      const currentCents = parsePaymentInputCents(current);
+      if (
+        currentCents !== null &&
+        currentCents >= initialOnlineMinimumCents &&
+        currentCents <= initialOnlineTotalCents
+      ) {
+        return current;
+      }
+      return (fallbackCents / 100).toFixed(2);
+    });
+  }, [
+    requestData?.id,
+    requestData?.payment_status,
+    initialOnlineMinimumCents,
+    initialOnlineTotalCents,
+  ]);
 
   const cancellationStatusKey = String(
     cancellationRequest?.status || "",
@@ -1450,11 +1541,30 @@ export default function CustomRequestDetailPage() {
   };
 
   const handlePayNow = async () => {
-    if (!requestData?.id) return;
+    if (!requestData?.id || payingInitialOnline) return;
+
+    const amountCents = parsePaymentInputCents(initialOnlineAmount);
+
+    if (
+      !paymentMethodChangeLocked &&
+      (amountCents === null ||
+        amountCents < initialOnlineMinimumCents ||
+        amountCents > initialOnlineTotalCents)
+    ) {
+      toast.error(
+        `Enter an amount from ${formatMoney(initialOnlineMinimumCents / 100)} to ${formatMoney(initialOnlineTotalCents / 100)}.`,
+      );
+      return;
+    }
+
+    setPayingInitialOnline(true);
 
     try {
       const res = await api.post(
         `/customer/custom-orders/${requestData.id}/pay`,
+        paymentMethodChangeLocked
+          ? {}
+          : { amount: (amountCents / 100).toFixed(2) },
       );
 
       if (!res.data?.payment_url) {
@@ -1471,6 +1581,8 @@ export default function CustomRequestDetailPage() {
           err.response?.data?.error ||
           "Failed to launch PayMongo checkout.",
       );
+    } finally {
+      setPayingInitialOnline(false);
     }
   };
 
@@ -2152,14 +2264,14 @@ export default function CustomRequestDetailPage() {
 
                         <div className="crd-panel crd-panel-soft" style={{ marginBottom: 16 }}>
                           <h4>Payment Terms</h4>
-                          <DetailValue label="Down Payment (30%)">
+                          <DetailValue label="Minimum Down Payment (30%)">
                             {formatMoney(downPaymentDue)}
                           </DetailValue>
-                          <DetailValue label="Remaining Balance">
+                          <DetailValue label="Balance After Minimum Payment">
                             {formatMoney(agreementRemainingAfterDownPayment)}
                           </DetailValue>
                           <p style={{ margin: "10px 0 0", lineHeight: 1.6, color: "#52525b", fontSize: 13 }}>
-                            Production starts after the 30% down payment is verified. The remaining balance must be fully paid before the order is completed.
+                            Production starts after at least the minimum 30% payment is verified. You may pay more than the minimum, up to the full project total.
                           </p>
 
                           <div style={{ marginTop: 14 }}>
@@ -2493,7 +2605,7 @@ export default function CustomRequestDetailPage() {
                           {formatMoney(quotedTotal || 0)}
                         </DetailValue>
 
-                        <DetailValue label="Required down payment (30%)">
+                        <DetailValue label="Minimum required payment (30%)">
                           {formatMoney(downPaymentDue || 0)}
                         </DetailValue>
 
@@ -2511,11 +2623,11 @@ export default function CustomRequestDetailPage() {
                         ) : (
                           <>
                             <div className="wisdom-payment-due-v16 is-initial">
-                              <span>Amount due now</span>
+                              <span>Minimum due now</span>
                               <strong>{formatMoney(downPaymentDue || 0)}</strong>
                             </div>
 
-                            <DetailValue label="Balance after down payment">
+                            <DetailValue label="Balance after minimum payment">
                               {formatMoney(
                                 Math.max(
                                   Number(quotedTotal || 0) -
@@ -2534,9 +2646,9 @@ export default function CustomRequestDetailPage() {
                             : hasPendingPaymentTransaction
                               ? "Your payment is currently awaiting verification."
                               : normalizedOrderPaymentMethod === "cash"
-                                ? "Pay the required down payment at the Spiral Wood store."
+                                ? "Pay at least the required 30% minimum at the Spiral Wood store. You may pay more, up to the full total."
                                 : normalizedOrderPaymentMethod === "paymongo"
-                                  ? "Complete the required down payment through secure online payment."
+                                  ? "Pay at least the required 30% minimum online. You may choose a larger amount, up to the full total."
                                   : "Choose a payment method to continue."}
                         </p>
 
@@ -2662,7 +2774,7 @@ export default function CustomRequestDetailPage() {
                                   Pay the required down payment at the Spiral Wood store.
                                 </p>
                                 <div className="summary-row">
-                                  <span>30% Down Payment</span>
+                                  <span>Minimum Down Payment (30%)</span>
                                   <strong>
                                     {formatMoney(downPaymentDue)}
                                   </strong>
@@ -2682,10 +2794,10 @@ export default function CustomRequestDetailPage() {
                               <div className="crd-panel crd-panel-soft">
                                 <h4>Online Payment</h4>
                                 <p className="crd-panel-copy muted">
-                                  Pay securely with GCash, Maya, online banking, or card.
+                                  Pay securely with GCash, Maya, or credit/debit card.
                                 </p>
                                 <div className="summary-row">
-                                  <span>30% Down Payment</span>
+                                  <span>Minimum Down Payment (30%)</span>
                                   <strong>
                                     {formatMoney(downPaymentDue)}
                                   </strong>
@@ -2732,9 +2844,10 @@ export default function CustomRequestDetailPage() {
                               Your quotation has been approved.
                             </div>
                             <p style={{ margin: "8px 0 0" }}>
-                              Pay the required{" "}
-                              <strong>30% down payment</strong> at the Spiral
-                              Wood physical store.
+                              Pay at least the required{" "}
+                              <strong>30% minimum</strong> at the Spiral Wood
+                              physical store. The cashier can accept a larger
+                              amount, up to the full project total.
                             </p>
                           </div>
 
@@ -2744,7 +2857,7 @@ export default function CustomRequestDetailPage() {
                               <strong>{formatMoney(quotedTotal)}</strong>
                             </div>
                             <div className="summary-row">
-                              <span>30% Down Payment</span>
+                              <span>Minimum Down Payment (30%)</span>
                               <strong>{formatMoney(downPaymentDue)}</strong>
                             </div>
                           </div>
@@ -2764,22 +2877,21 @@ export default function CustomRequestDetailPage() {
                         </div>
                       ) : normalizedOrderPaymentMethod === "paymongo" ? (
                         <div className="crd-panel">
-                          <h4>Step 2: Pay Online</h4>
+                          <h4>Step 2: Choose Online Payment Amount</h4>
 
                           <div
                             className="crd-info-box"
                             style={{ marginTop: 0 }}
                           >
                             <div className="crd-info-title">
-                              Your quotation has been approved and is ready
-                              for payment.
+                              Pay at least 30%, or pay more now.
                             </div>
 
                             <p style={{ margin: "8px 0 0" }}>
-                              To continue with production, please complete
-                              the required
-                              <strong> 30% down payment </strong>
-                              using our secure PayMongo payment gateway.
+                              The minimum initial payment is{" "}
+                              <strong>{formatMoney(downPaymentDue)}</strong>.
+                              You may choose 50%, pay the full project total,
+                              or enter a custom amount up to 100%.
                             </p>
 
                             <p style={{ margin: "12px 0 0" }}>
@@ -2789,7 +2901,6 @@ export default function CustomRequestDetailPage() {
                             <ul className="crd-payment-method-list">
                               <li>GCash</li>
                               <li>Maya</li>
-                              <li>Online Banking</li>
                               <li>Credit or Debit Card</li>
                             </ul>
                           </div>
@@ -2801,7 +2912,7 @@ export default function CustomRequestDetailPage() {
                             </div>
 
                             <div className="summary-row">
-                              <span>30% Down Payment</span>
+                              <span>Minimum Down Payment (30%)</span>
                               <strong>{formatMoney(downPaymentDue)}</strong>
                             </div>
 
@@ -2813,10 +2924,161 @@ export default function CustomRequestDetailPage() {
                             </div>
 
                             <div className="summary-row">
-                              <span>Remaining Balance</span>
+                              <span>Current Remaining Balance</span>
                               <strong>{formatMoney(balanceDue)}</strong>
                             </div>
                           </div>
+
+                          <div
+                            style={{
+                              display: paymentMethodChangeLocked
+                                ? "none"
+                                : "grid",
+                              gap: 12,
+                              marginTop: 16,
+                              paddingTop: 16,
+                              borderTop: "1px solid #e4e4e7",
+                            }}
+                          >
+                            <div>
+                              <strong>Amount to pay now</strong>
+                              <p
+                                className="crd-panel-copy muted"
+                                style={{ marginBottom: 0 }}
+                              >
+                                Choose a quick amount or enter any amount from
+                                the 30% minimum up to the full total.
+                              </p>
+                            </div>
+
+                            <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns:
+                                  "repeat(auto-fit, minmax(130px, 1fr))",
+                                gap: 8,
+                              }}
+                            >
+                              {initialOnlineQuickAmounts.map((option) => {
+                                const selected =
+                                  initialOnlineAmountCents === option.cents;
+                                return (
+                                  <button
+                                    key={option.cents}
+                                    type="button"
+                                    className={
+                                      selected
+                                        ? "btn btn-primary"
+                                        : "btn btn-secondary"
+                                    }
+                                    disabled={
+                                      payingInitialOnline ||
+                                      paymentMethodChangeLocked
+                                    }
+                                    onClick={() =>
+                                      setInitialOnlineAmount(
+                                        (option.cents / 100).toFixed(2),
+                                      )
+                                    }
+                                  >
+                                    <span>{option.label}</span>{" "}
+                                    <strong>
+                                      {formatMoney(option.cents / 100)}
+                                    </strong>
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            <label
+                              style={{
+                                display: "grid",
+                                gap: 7,
+                              }}
+                            >
+                              <span>Custom amount</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={initialOnlineAmount}
+                                disabled={
+                                  payingInitialOnline ||
+                                  paymentMethodChangeLocked
+                                }
+                                onChange={(event) =>
+                                  setInitialOnlineAmount(event.target.value)
+                                }
+                                placeholder={(
+                                  initialOnlineMinimumCents / 100
+                                ).toFixed(2)}
+                                style={{
+                                  width: "100%",
+                                  boxSizing: "border-box",
+                                  minHeight: 44,
+                                  border: "1px solid #d4d4d8",
+                                  padding: "10px 12px",
+                                  font: "inherit",
+                                  background: paymentMethodChangeLocked
+                                    ? "#f4f4f5"
+                                    : "#ffffff",
+                                }}
+                              />
+                            </label>
+
+                            {!initialOnlineAmountValid ? (
+                              <div className="crd-info-box pending">
+                                Enter an amount from{" "}
+                                {formatMoney(initialOnlineMinimumCents / 100)}{" "}
+                                to {formatMoney(initialOnlineTotalCents / 100)}.
+                              </div>
+                            ) : (
+                              <div className="crd-payment-breakdown">
+                                <div className="summary-row">
+                                  <span>Pay now</span>
+                                  <strong>
+                                    {formatMoney(
+                                      initialOnlineAmountCents / 100,
+                                    )}
+                                  </strong>
+                                </div>
+                                <div className="summary-row">
+                                  <span>Balance after this payment</span>
+                                  <strong>
+                                    {formatMoney(
+                                      initialOnlineBalanceAfterCents / 100,
+                                    )}
+                                  </strong>
+                                </div>
+                              </div>
+                            )}
+
+                            {paymentMethodChangeLocked ? (
+                              <div className="crd-info-box">
+                                An online checkout is already active. The amount
+                                is locked for that checkout; continue it to
+                                resume payment. If the checkout has expired, the
+                                server will safely replace it using this same
+                                amount.
+                              </div>
+                            ) : null}
+                          </div>
+
+                          {paymentMethodChangeLocked ? (
+                            <div
+                              className="crd-info-box"
+                              style={{ marginTop: 16 }}
+                            >
+                              <div className="crd-info-title">
+                                Online checkout already active
+                              </div>
+                              <p style={{ margin: "8px 0 0" }}>
+                                Continue the existing checkout below. Its
+                                original amount stays locked on the server and
+                                will be verified against PayMongo before any
+                                payment is recorded.
+                              </p>
+                            </div>
+                          ) : null}
 
                           <button
                             type="button"
@@ -2826,17 +3088,32 @@ export default function CustomRequestDetailPage() {
                               requestData.payment_status !== "unpaid" ||
                               Number(verifiedPaymentTotal || 0) > 0 ||
                               Number(paymentSummary.total_pending || 0) > 0 ||
-                              downPaymentDue <= 0
+                              (!paymentMethodChangeLocked &&
+                                !initialOnlineAmountValid) ||
+                              payingInitialOnline
                             }
                             onClick={handlePayNow}
                           >
-                            <div>Pay 30% Down Payment</div>
-                            <strong>{formatMoney(downPaymentDue)}</strong>
+                            <div>
+                              {payingInitialOnline
+                                ? "Opening Secure Checkout..."
+                                : paymentMethodChangeLocked
+                                  ? "Continue Online Payment"
+                                  : "Pay Online"}
+                            </div>
+                            <strong>
+                              {paymentMethodChangeLocked
+                                ? "Existing checkout"
+                                : initialOnlineAmountValid
+                                  ? formatMoney(initialOnlineAmountCents / 100)
+                                  : formatMoney(0)}
+                            </strong>
                           </button>
 
                           <div className="crd-help-text">
-                            You will be redirected to our secure checkout
-                            page to complete your payment.
+                            You will be redirected to PayMongo. The server will
+                            verify the exact paid amount before recording the
+                            payment.
                           </div>
 
                           {canChooseMethod ? (
