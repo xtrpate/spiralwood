@@ -7,6 +7,8 @@ const ACTION_LABELS = {
   login_success: "Signed in successfully",
   login_failed: "Sign-in attempt failed",
   access_denied: "Access was denied",
+  permission_denied: "Permission was denied",
+  cleanup_abandoned_registration: "Cleaned up abandoned registration",
   password_changed: "Changed own password",
   password_reset_completed: "Completed password reset",
   update_own_profile: "Updated own profile",
@@ -19,11 +21,13 @@ const ACTION_LABELS = {
   feature_product: "Featured product",
   unfeature_product: "Removed product from featured",
   publish_product: "Published product",
+  publish_blueprint_product: "Published blueprint product",
   unpublish_product: "Unpublished product",
   bulk_publish_products: "Published products",
   bulk_unpublish_products: "Unpublished products",
   unpublish_blueprint_products: "Unpublished blueprint products",
   create_raw_material: "Created raw material",
+  create_raw_material_bulk: "Created raw materials in bulk",
   update_raw_material: "Updated raw material",
   archive_raw_material: "Archived raw material",
   restore_raw_material: "Restored raw material",
@@ -45,6 +49,8 @@ const ACTION_LABELS = {
   verify_online_payment: "Verified online payment",
   system_recover_online_payment: "Recovered online payment",
   system_cancel_unpaid_order: "Auto-cancelled unpaid order",
+  cancel_unpaid_custom_project: "Auto-cancelled unpaid custom project",
+  confirm_paymongo_webhook_payment: "Confirmed PayMongo webhook payment",
   create_pos_sale: "Created POS sale",
   update_order_status: "Updated order status",
   accept_order: "Accepted order",
@@ -68,11 +74,15 @@ const ACTION_LABELS = {
   recovery_verify_pos_qr_payment: "Recovered POS QR payment",
   attach_pos_qr_provider_session: "Linked POS QR provider session",
   expire_pos_qr_payment_attempt: "Expired POS QR payment attempt",
+  recover_pos_qr_paid_attempt: "Recovered paid POS QR attempt",
+  mark_pos_qr_provider_unknown: "Marked POS QR provider result unresolved",
   admin_manual_release_pos_qr_attempt: "Released POS QR payment attempt",
   admin_resolve_unpaid_pos_qr_attempt: "Resolved unpaid POS QR attempt",
   create_delivery: "Created delivery",
+  reassign_delivery_rider: "Reassigned delivery rider",
   reschedule_delivery: "Rescheduled delivery",
   update_delivery_status: "Updated delivery status",
+  confirm_blueprint_pickup: "Confirmed blueprint pickup",
 
   // Production and blueprints
   assign_production_staff: "Assigned production staff",
@@ -81,6 +91,10 @@ const ACTION_LABELS = {
   update_project_task_status: "Updated production task status",
   delete_project_task: "Deleted production task",
   mark_production_ready_for_shipping: "Marked production ready for shipping",
+  mark_production_ready_for_pickup: "Marked production ready for pickup",
+  mark_production_complete_pickup_state_unchanged:
+    "Completed production with pickup state unchanged",
+  update_oversized_delivery_decision: "Updated oversized delivery decision",
   create_blueprint: "Created blueprint",
   update_blueprint: "Updated blueprint",
   archive_blueprint: "Archived blueprint",
@@ -90,6 +104,8 @@ const ACTION_LABELS = {
   create_blueprint_estimation: "Created blueprint quotation",
   send_blueprint_estimation: "Sent blueprint quotation",
   generate_contract: "Generated contract",
+  create_project_agreement: "Created project agreement",
+  accept_project_agreement: "Accepted project agreement",
   create_custom_request: "Submitted custom request",
   approve_custom_request: "Approved custom request",
   reject_custom_request: "Rejected custom request",
@@ -111,13 +127,21 @@ const ACTION_LABELS = {
   update_customer_status: "Updated customer account",
   create_user: "Created user account",
   update_user: "Updated user account",
+  update_user_authority: "Updated user authority",
+  update_user_permissions: "Updated user permissions",
   reset_user_password: "Reset user password",
   delete_user: "Deactivated user account",
+  deactivate_user: "Deactivated user account",
   update_customer_avatar: "Updated customer profile photo",
   update_customer_email: "Updated customer email",
   update_customer_password: "Changed customer password",
   update_customer_phone: "Updated customer phone",
   update_customer_profile: "Updated customer profile",
+
+  // Support
+  create_support_ticket: "Created support ticket",
+  reply_support_ticket: "Replied to support ticket",
+  close_support_ticket: "Closed support ticket",
 
   // Website and backups
   update_website_settings: "Updated website settings",
@@ -156,6 +180,8 @@ const MODULE_LABELS = {
   contracts: "Contracts",
   cancellations: "Cancellations",
   custom_cancellation_requests: "Custom Cancellations",
+  support_tickets: "Support Tickets",
+  user_permission_overrides: "Custom Access",
   backup_logs: "Backups",
 };
 
@@ -185,6 +211,8 @@ const TARGET_LABELS = {
   contracts: "Contract",
   cancellations: "Cancellation",
   custom_cancellation_requests: "Cancellation Request",
+  support_tickets: "Support Ticket",
+  user_permission_overrides: "Permission Override",
   backup_logs: "Backup",
 };
 
@@ -280,14 +308,23 @@ const FIELD_LABELS = {
   reason_provided: "Reason Provided",
 };
 
+const ACTOR_LABELS = {
+  user: "User",
+  system: "System",
+  webhook: "Webhook",
+  anonymous: "Anonymous",
+};
+
 const KNOWN_ACTIONS = Object.keys(ACTION_LABELS);
 const KNOWN_TABLES = Object.keys(MODULE_LABELS);
+const KNOWN_ACTORS = Object.keys(ACTOR_LABELS);
 const LIMIT_OPTIONS = [10, 20, 50, 100];
 
 const DEFAULT_FILTERS = {
   search: "",
   action: "",
   table_name: "",
+  actor_type: "",
   date_from: "",
   date_to: "",
   page: 1,
@@ -330,6 +367,125 @@ const formatDateTime = (value) => {
     hour: "2-digit",
     minute: "2-digit",
   });
+};
+
+const formatActorType = (value) =>
+  ACTOR_LABELS[String(value || "").trim().toLowerCase()] || "Not recorded";
+
+const formatCountryName = (countryCode) => {
+  const code = String(countryCode || "").trim().toUpperCase();
+  if (!code) return "";
+
+  try {
+    if (typeof Intl !== "undefined" && typeof Intl.DisplayNames === "function") {
+      const displayNames = new Intl.DisplayNames(["en"], { type: "region" });
+      return displayNames.of(code) || code;
+    }
+  } catch {
+    // Fall through to the stored country code.
+  }
+
+  return code;
+};
+
+const formatAuditLocation = (log) => {
+  const values = [
+    String(log?.ip_city || "").trim(),
+    String(log?.ip_region || "").trim(),
+    formatCountryName(log?.ip_country_code),
+  ].filter(Boolean);
+
+  return [...new Set(values)].join(", ") || "Not available";
+};
+
+const parseAuditUserAgent = (userAgent) => {
+  const ua = String(userAgent || "").trim();
+  if (!ua) {
+    return {
+      browser: "Not recorded",
+      os: "Not recorded",
+      device: "Not recorded",
+    };
+  }
+
+  let browser = "Other browser";
+  if (/Edg\//i.test(ua)) browser = "Microsoft Edge";
+  else if (/OPR\//i.test(ua)) browser = "Opera";
+  else if (/Chrome\//i.test(ua)) browser = "Google Chrome";
+  else if (/Firefox\//i.test(ua)) browser = "Mozilla Firefox";
+  else if (/Safari\//i.test(ua)) browser = "Safari";
+
+  let os = "Other OS";
+  if (/Windows NT/i.test(ua)) os = "Windows";
+  else if (/Android/i.test(ua)) os = "Android";
+  else if (/iPad|iPhone|iPod/i.test(ua)) os = "iOS / iPadOS";
+  else if (/Mac OS X|Macintosh/i.test(ua)) os = "macOS";
+  else if (/Linux/i.test(ua)) os = "Linux";
+
+  let device = "Desktop";
+  if (/iPad|Tablet/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua))) {
+    device = "Tablet";
+  } else if (/Mobile|iPhone|iPod|Android/i.test(ua)) {
+    device = "Mobile";
+  }
+
+  return { browser, os, device };
+};
+
+const getAuditSourceContext = (log) => {
+  const actorType = String(log?.actor_type || "").trim().toLowerCase();
+  const location = formatAuditLocation(log);
+
+  if (actorType === "webhook") {
+    return {
+      primary: String(log?.action || "").includes("paymongo")
+        ? "PayMongo Webhook"
+        : "Webhook",
+      secondary: location !== "Not available" ? location : "",
+      browser: "Not applicable",
+      deviceOs: "Not applicable",
+      location,
+      locationLabel: "Origin",
+    };
+  }
+
+  if (actorType === "system") {
+    return {
+      primary: "System",
+      secondary: "",
+      browser: "Not applicable",
+      deviceOs: "Not applicable",
+      location: "Not applicable",
+      locationLabel: "Location",
+    };
+  }
+
+  const parsed = parseAuditUserAgent(log?.user_agent);
+  const hasUserAgent = Boolean(String(log?.user_agent || "").trim());
+
+  const primary = hasUserAgent
+    ? `${parsed.browser} · ${parsed.device}`
+    : location;
+
+  const secondaryParts = [];
+  if (hasUserAgent && parsed.os !== "Not recorded") {
+    secondaryParts.push(parsed.os);
+  }
+  if (location !== "Not available" && location !== primary) {
+    secondaryParts.push(location);
+  }
+
+  return {
+    primary: primary || "Not available",
+    secondary: secondaryParts.join(" · "),
+    browser: parsed.browser,
+    deviceOs:
+      parsed.device === "Not recorded"
+        ? "Not available"
+        : `${parsed.device} · ${parsed.os}`,
+    location,
+    locationLabel: "Location",
+  };
 };
 
 const safeParseJSON = (value) => {
@@ -629,9 +785,19 @@ const getPerformedBy = (log) => {
     ...getReadableObject(log?.old_values),
     ...getReadableObject(log?.new_values),
   };
+  const actorType = String(log?.actor_type || "").trim().toLowerCase();
 
   if (log?.user_name) {
     return { name: log.user_name, secondary: log.user_email || "" };
+  }
+
+  if (actorType === "webhook") {
+    return {
+      name: String(log?.action || "").includes("paymongo")
+        ? "PayMongo Webhook"
+        : "External Webhook",
+      secondary: "External provider callback",
+    };
   }
 
   if (log?.action === "login_failed" && values.attempted_email) {
@@ -641,8 +807,16 @@ const getPerformedBy = (log) => {
     };
   }
 
-  if (String(log?.action || "").startsWith("system_")) {
+  if (actorType === "anonymous") {
+    return { name: "Anonymous visitor", secondary: "" };
+  }
+
+  if (actorType === "system" || String(log?.action || "").startsWith("system_")) {
     return { name: "System", secondary: "Automated process" };
+  }
+
+  if (log?.user_id) {
+    return { name: `Account #${log.user_id}`, secondary: "" };
   }
 
   return { name: "System", secondary: "" };
@@ -802,6 +976,10 @@ export default function AuditLogsPage() {
         params.table_name = filters.table_name;
       }
 
+      if (filters.actor_type) {
+        params.actor_type = filters.actor_type;
+      }
+
       if (filters.date_from) {
         params.date_from = filters.date_from;
       }
@@ -873,6 +1051,7 @@ export default function AuditLogsPage() {
       if (filters.search) params.search = filters.search;
       if (filters.action) params.action = filters.action;
       if (filters.table_name) params.table_name = filters.table_name;
+      if (filters.actor_type) params.actor_type = filters.actor_type;
       if (filters.date_from) params.date_from = filters.date_from;
       if (filters.date_to) params.date_to = filters.date_to;
 
@@ -917,6 +1096,7 @@ export default function AuditLogsPage() {
     "search",
     "action",
     "table_name",
+    "actor_type",
     "date_from",
     "date_to",
   ].filter((key) => Boolean(filters[key])).length;
@@ -966,7 +1146,7 @@ export default function AuditLogsPage() {
           <div>
             <h2 style={filterTitle}>Find Activity</h2>
             <p style={filterSubtitle}>
-              Search by person, email, activity, area, or record number.
+              Search by person, email, activity, IP, browser, location, request ID, or record number.
             </p>
           </div>
 
@@ -980,7 +1160,7 @@ export default function AuditLogsPage() {
         <div style={filterGrid}>
           <FilterField label="Search" wide>
             <input
-              placeholder="Search person, email, activity, or record..."
+              placeholder="Search person, IP, browser, location, request ID, activity..."
               value={searchInput}
               onChange={(event) => setSearchInput(event.target.value)}
               style={inputBase}
@@ -1012,6 +1192,21 @@ export default function AuditLogsPage() {
               {KNOWN_TABLES.map((tableName) => (
                 <option key={tableName} value={tableName}>
                   {formatModuleLabel(tableName)}
+                </option>
+              ))}
+            </select>
+          </FilterField>
+
+          <FilterField label="Actor">
+            <select
+              value={filters.actor_type}
+              onChange={(event) => setFilter("actor_type", event.target.value)}
+              style={inputBase}
+            >
+              <option value="">All Actors</option>
+              {KNOWN_ACTORS.map((actorType) => (
+                <option key={actorType} value={actorType}>
+                  {formatActorType(actorType)}
                 </option>
               ))}
             </select>
@@ -1065,6 +1260,7 @@ export default function AuditLogsPage() {
                 <th style={{ ...th, width: 280 }}>Activity</th>
                 <th style={{ ...th, width: 180 }}>Area</th>
                 <th style={{ ...th, width: 190 }}>Target</th>
+                <th style={{ ...th, width: 220 }}>Source / Device</th>
                 <th style={{ ...th, width: 110 }} aria-label="Details" />
               </tr>
             </thead>
@@ -1072,13 +1268,13 @@ export default function AuditLogsPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} style={emptyCell}>
+                  <td colSpan={7} style={emptyCell}>
                     Loading audit activity...
                   </td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan={6} style={emptyCell}>
+                  <td colSpan={7} style={emptyCell}>
                     <div style={emptyState}>
                       <div style={emptyStateTitle}>Unable to load activity</div>
                       <div style={emptyStateText}>{error}</div>
@@ -1087,7 +1283,7 @@ export default function AuditLogsPage() {
                 </tr>
               ) : logs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={emptyCell}>
+                  <td colSpan={7} style={emptyCell}>
                     <div style={emptyState}>
                       <div style={emptyStateTitle}>No matching activity</div>
                       <div style={emptyStateText}>
@@ -1099,6 +1295,7 @@ export default function AuditLogsPage() {
               ) : (
                 logs.map((log) => {
                   const performedBy = getPerformedBy(log);
+                  const sourceContext = getAuditSourceContext(log);
                   return (
                     <tr key={log.id} style={tbodyRow}>
                       <td style={td}>{formatDateTime(log.created_at)}</td>
@@ -1107,6 +1304,9 @@ export default function AuditLogsPage() {
                         <div style={personName}>{performedBy.name}</div>
                         {performedBy.secondary && (
                           <div style={personEmail}>{performedBy.secondary}</div>
+                        )}
+                        {log.actor_type && (
+                          <div style={actorBadge}>{formatActorType(log.actor_type)}</div>
                         )}
                       </td>
 
@@ -1124,6 +1324,15 @@ export default function AuditLogsPage() {
 
                       <td style={td}>
                         <span style={targetText}>{getTargetLabel(log)}</span>
+                      </td>
+
+                      <td style={td}>
+                        <div style={sourcePrimary}>{sourceContext.primary}</div>
+                        {sourceContext.secondary && (
+                          <div style={sourceSecondary}>
+                            {sourceContext.secondary}
+                          </div>
+                        )}
                       </td>
 
                       <td style={td}>
@@ -1382,6 +1591,7 @@ function AuditDetailModal({ log, onClose }) {
   const performedBy = getPerformedBy(log);
   const beforeEntries = getPanelEntries(log, "before");
   const afterEntries = getPanelEntries(log, "after");
+  const sourceContext = getAuditSourceContext(log);
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -1425,13 +1635,64 @@ function AuditDetailModal({ log, onClose }) {
               value={performedBy.name}
               secondary={performedBy.secondary}
             />
+            <DetailRow
+              label="Actor"
+              value={formatActorType(log.actor_type)}
+            />
             <DetailRow label="Area" value={formatModuleLabel(log.table_name)} />
             <DetailRow label="Target" value={getTargetLabel(log)} />
-            <DetailRow
-              label="Source IP"
-              value={log.ip_address || "Not recorded"}
-            />
           </div>
+
+          <section style={contextCard}>
+            <div style={contextTitle}>Request Context</div>
+            <div style={contextGrid}>
+              <DetailRow
+                label="Source IP"
+                value={log.ip_address || "Not recorded"}
+              />
+              <DetailRow
+                label={sourceContext.locationLabel}
+                value={sourceContext.location}
+              />
+              <DetailRow
+                label="Browser"
+                value={sourceContext.browser}
+              />
+              <DetailRow
+                label="Device / OS"
+                value={sourceContext.deviceOs}
+              />
+              <DetailRow
+                label="Request Method"
+                value={log.request_method || "Not recorded"}
+              />
+              <DetailRow
+                label="Request Path"
+                value={log.request_path || "Not recorded"}
+              />
+              <DetailRow
+                label="Response Status"
+                value={
+                  log.response_status === null ||
+                  log.response_status === undefined
+                    ? "Not recorded"
+                    : String(log.response_status)
+                }
+              />
+              <DetailRow
+                label="Request ID"
+                value={log.request_id || "Not recorded"}
+              />
+            </div>
+            {!log.request_id &&
+              !log.user_agent &&
+              !log.request_method &&
+              !log.ip_country_code && (
+                <div style={contextNote}>
+                  Request context was not recorded for this older audit entry.
+                </div>
+              )}
+          </section>
 
           {summary && (
             <section style={summaryCard}>
@@ -1558,7 +1819,7 @@ const filterSubtitle = {
 const filterGrid = {
   display: "grid",
   gridTemplateColumns:
-    "minmax(300px, 1.8fr) minmax(180px, 1fr) minmax(170px, 0.9fr) minmax(145px, 0.75fr) minmax(145px, 0.75fr)",
+    "minmax(280px, 1.6fr) minmax(165px, 0.9fr) minmax(155px, 0.85fr) minmax(145px, 0.75fr) minmax(135px, 0.7fr) minmax(135px, 0.7fr)",
   gap: 10,
   alignItems: "end",
 };
@@ -1635,7 +1896,7 @@ const tableWrap = {
 
 const table = {
   width: "100%",
-  minWidth: 1080,
+  minWidth: 1280,
   borderCollapse: "separate",
   borderSpacing: 0,
 };
@@ -1683,6 +1944,20 @@ const personEmail = {
   wordBreak: "break-word",
 };
 
+const actorBadge = {
+  display: "inline-flex",
+  alignItems: "center",
+  marginTop: 5,
+  padding: "2px 6px",
+  border: "1px solid #dfe2e6",
+  borderRadius: 999,
+  background: "#f7f7f8",
+  color: "#5d636c",
+  fontSize: 9.5,
+  fontWeight: 650,
+  letterSpacing: "0.2px",
+};
+
 const activityText = {
   color: "#202328",
   fontWeight: 650,
@@ -1696,6 +1971,21 @@ const secondaryText = {
 const targetText = {
   color: "#3b4047",
   fontWeight: 600,
+};
+
+const sourcePrimary = {
+  color: "#30343a",
+  fontSize: 11.5,
+  fontWeight: 650,
+  lineHeight: 1.35,
+};
+
+const sourceSecondary = {
+  marginTop: 3,
+  color: "#818790",
+  fontSize: 10.5,
+  fontWeight: 400,
+  lineHeight: 1.4,
 };
 
 const btnView = {
@@ -1862,6 +2152,36 @@ const detailGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
   gap: 18,
+};
+
+const contextCard = {
+  marginTop: 18,
+  padding: "14px",
+  border: "1px solid #e0e3e7",
+  borderRadius: 3,
+  background: "#fafafa",
+};
+
+const contextTitle = {
+  marginBottom: 12,
+  color: "#555b63",
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: "0.9px",
+  textTransform: "uppercase",
+};
+
+const contextGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+  gap: 16,
+};
+
+const contextNote = {
+  marginTop: 12,
+  color: "#858b94",
+  fontSize: 10.5,
+  lineHeight: 1.45,
 };
 
 const detailLabel = {

@@ -4,6 +4,9 @@ const {
   getRequestAuditContext,
   normalizeClientIp,
 } = require("../utils/clientIp");
+const {
+  resolveApproximateLocation,
+} = require("../utils/ipGeolocation");
 
 // Never persist credentials, authentication tokens, OTP values, cookies, or
 // secrets in audit metadata. Exact-key matching keeps useful boolean flags such
@@ -164,18 +167,31 @@ async function writeAuditLogSafe({
     requestId ?? requestContext?.requestId,
     36,
   );
-  const safeIpCountryCode = cleanOptionalString(
-    ipCountryCode ?? requestContext?.ipCountryCode,
-    2,
-  )?.toUpperCase() || null;
-  const safeIpRegion = cleanOptionalString(
+  let safeIpCountryCode =
+    cleanOptionalString(
+      ipCountryCode ?? requestContext?.ipCountryCode,
+      2,
+    )?.toUpperCase() || null;
+  let safeIpRegion = cleanOptionalString(
     ipRegion ?? requestContext?.ipRegion,
     120,
   );
-  const safeIpCity = cleanOptionalString(
+  let safeIpCity = cleanOptionalString(
     ipCity ?? requestContext?.ipCity,
     120,
   );
+
+  const resolvedLocation = await resolveApproximateLocation({
+    ipAddress: safeIp,
+    actorType: safeActorType,
+    countryCode: safeIpCountryCode,
+    region: safeIpRegion,
+    city: safeIpCity,
+  });
+
+  safeIpCountryCode = resolvedLocation.countryCode;
+  safeIpRegion = resolvedLocation.region;
+  safeIpCity = resolvedLocation.city;
 
   const auditParams = {
     safeUserId,

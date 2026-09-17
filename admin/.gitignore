@@ -32,3 +32,6 @@ defaultdb4_fixed.sql
 backend/.env
 frontend/.env
 backend/backups/*.sql
+
+# Generated GeoLite database (downloaded during backend install/deploy)
+backend/data/geoip/

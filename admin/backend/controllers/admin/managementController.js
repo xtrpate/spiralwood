@@ -1543,6 +1543,12 @@ const isValidDateString = (str) => {
 const AUDIT_DEFAULT_PAGE = 1;
 const AUDIT_DEFAULT_LIMIT = 20;
 const AUDIT_MAX_LIMIT = 100;
+const AUDIT_ACTOR_TYPES = new Set([
+  "user",
+  "anonymous",
+  "system",
+  "webhook",
+]);
 
 exports.getAuditLogs = async (req, res) => {
   try {
@@ -1567,11 +1573,21 @@ exports.getAuditLogs = async (req, res) => {
       typeof req.query.table_name === "string"
         ? req.query.table_name.trim()
         : "";
+    const rawActorType =
+      typeof req.query.actor_type === "string"
+        ? req.query.actor_type.trim().toLowerCase()
+        : "";
     const rawDateFrom =
       typeof req.query.date_from === "string" ? req.query.date_from.trim() : "";
     const rawDateTo =
       typeof req.query.date_to === "string" ? req.query.date_to.trim() : "";
 
+    if (rawActorType && !AUDIT_ACTOR_TYPES.has(rawActorType)) {
+      return res.status(400).json({
+        message:
+          "Invalid actor_type. Use user, anonymous, system, or webhook.",
+      });
+    }
     if (rawDateFrom && !isValidDateString(rawDateFrom)) {
       return res.status(400).json({
         message: "Invalid date_from. Use YYYY-MM-DD format.",
@@ -1613,9 +1629,17 @@ exports.getAuditLogs = async (req, res) => {
       const likeValue = `%${rawSearch}%`;
       if (/^\d+$/.test(rawSearch)) {
         where.push(
-          "(u.name LIKE ? OR u.email LIKE ? OR al.action LIKE ? OR al.table_name LIKE ? OR al.old_values LIKE ? OR al.new_values LIKE ? OR al.record_id = ?)",
+          "(u.name LIKE ? OR u.email LIKE ? OR al.action LIKE ? OR al.table_name LIKE ? OR al.old_values LIKE ? OR al.new_values LIKE ? OR al.ip_address LIKE ? OR al.user_agent LIKE ? OR al.request_id LIKE ? OR al.request_path LIKE ? OR al.ip_country_code LIKE ? OR al.ip_region LIKE ? OR al.ip_city LIKE ? OR al.actor_type LIKE ? OR al.record_id = ?)",
         );
         params.push(
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
           likeValue,
           likeValue,
           likeValue,
@@ -1626,9 +1650,17 @@ exports.getAuditLogs = async (req, res) => {
         );
       } else {
         where.push(
-          "(u.name LIKE ? OR u.email LIKE ? OR al.action LIKE ? OR al.table_name LIKE ? OR al.old_values LIKE ? OR al.new_values LIKE ?)",
+          "(u.name LIKE ? OR u.email LIKE ? OR al.action LIKE ? OR al.table_name LIKE ? OR al.old_values LIKE ? OR al.new_values LIKE ? OR al.ip_address LIKE ? OR al.user_agent LIKE ? OR al.request_id LIKE ? OR al.request_path LIKE ? OR al.ip_country_code LIKE ? OR al.ip_region LIKE ? OR al.ip_city LIKE ? OR al.actor_type LIKE ?)",
         );
         params.push(
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
           likeValue,
           likeValue,
           likeValue,
@@ -1645,6 +1677,10 @@ exports.getAuditLogs = async (req, res) => {
     if (rawTableName) {
       where.push("al.table_name = ?");
       params.push(rawTableName);
+    }
+    if (rawActorType) {
+      where.push("al.actor_type = ?");
+      params.push(rawActorType);
     }
     if (userIdFilter !== null) {
       where.push("al.user_id = ?");
@@ -1677,12 +1713,22 @@ exports.getAuditLogs = async (req, res) => {
     const [rows] = await pool.query(
       `SELECT
          al.id,
+         al.user_id,
+         al.actor_type,
          al.action,
          al.table_name,
          al.record_id,
          al.old_values,
          al.new_values,
          al.ip_address,
+         al.user_agent,
+         al.request_method,
+         al.request_path,
+         al.response_status,
+         al.request_id,
+         al.ip_country_code,
+         al.ip_region,
+         al.ip_city,
          al.created_at,
          u.name AS user_name,
          u.email AS user_email
@@ -1708,6 +1754,7 @@ exports.getAuditLogs = async (req, res) => {
         search: rawSearch,
         action: rawAction,
         table_name: rawTableName,
+        actor_type: rawActorType,
         user_id: userIdFilter,
         date_from: rawDateFrom,
         date_to: rawDateTo,
@@ -1731,6 +1778,11 @@ exports.exportAuditLogs = async (req, res) => {
         ? req.query.table_name.trim()
         : "";
 
+    const rawActorType =
+      typeof req.query.actor_type === "string"
+        ? req.query.actor_type.trim().toLowerCase()
+        : "";
+
     const rawDateFrom =
       typeof req.query.date_from === "string" ? req.query.date_from.trim() : "";
 
@@ -1739,6 +1791,13 @@ exports.exportAuditLogs = async (req, res) => {
 
     const where = ["1=1"];
     const params = [];
+
+    if (rawActorType && !AUDIT_ACTOR_TYPES.has(rawActorType)) {
+      return res.status(400).json({
+        message:
+          "Invalid actor_type. Use user, anonymous, system, or webhook.",
+      });
+    }
 
     if (rawSearch) {
       const likeValue = `%${rawSearch}%`;
@@ -1752,11 +1811,27 @@ exports.exportAuditLogs = async (req, res) => {
             OR al.table_name LIKE ?
             OR al.old_values LIKE ?
             OR al.new_values LIKE ?
+            OR al.ip_address LIKE ?
+            OR al.user_agent LIKE ?
+            OR al.request_id LIKE ?
+            OR al.request_path LIKE ?
+            OR al.ip_country_code LIKE ?
+            OR al.ip_region LIKE ?
+            OR al.ip_city LIKE ?
+            OR al.actor_type LIKE ?
             OR al.record_id = ?
           )`,
         );
 
         params.push(
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
           likeValue,
           likeValue,
           likeValue,
@@ -1774,10 +1849,26 @@ exports.exportAuditLogs = async (req, res) => {
             OR al.table_name LIKE ?
             OR al.old_values LIKE ?
             OR al.new_values LIKE ?
+            OR al.ip_address LIKE ?
+            OR al.user_agent LIKE ?
+            OR al.request_id LIKE ?
+            OR al.request_path LIKE ?
+            OR al.ip_country_code LIKE ?
+            OR al.ip_region LIKE ?
+            OR al.ip_city LIKE ?
+            OR al.actor_type LIKE ?
           )`,
         );
 
         params.push(
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
           likeValue,
           likeValue,
           likeValue,
@@ -1796,6 +1887,11 @@ exports.exportAuditLogs = async (req, res) => {
     if (rawTableName) {
       where.push("al.table_name = ?");
       params.push(rawTableName);
+    }
+
+    if (rawActorType) {
+      where.push("al.actor_type = ?");
+      params.push(rawActorType);
     }
 
     if (rawDateFrom) {
@@ -1839,12 +1935,21 @@ exports.exportAuditLogs = async (req, res) => {
           al.user_id,
           u.name AS user_name,
           u.email AS user_email,
+          al.actor_type,
           al.action,
           al.table_name,
           al.record_id,
           al.old_values,
           al.new_values,
-          al.ip_address
+          al.ip_address,
+          al.user_agent,
+          al.request_method,
+          al.request_path,
+          al.response_status,
+          al.request_id,
+          al.ip_country_code,
+          al.ip_region,
+          al.ip_city
         FROM audit_logs al
         LEFT JOIN users u
           ON u.id = al.user_id
@@ -1871,12 +1976,21 @@ exports.exportAuditLogs = async (req, res) => {
       "User ID",
       "User Name",
       "User Email",
+      "Actor Type",
       "Action",
       "Table",
       "Record ID",
       "Old Values",
       "New Values",
       "IP Address",
+      "User Agent",
+      "Request Method",
+      "Request Path",
+      "Response Status",
+      "Request ID",
+      "Country",
+      "Region",
+      "City",
     ];
 
     const csvRows = [
@@ -1888,12 +2002,21 @@ exports.exportAuditLogs = async (req, res) => {
           row.user_id,
           row.user_name,
           row.user_email,
+          row.actor_type,
           row.action,
           row.table_name,
           row.record_id,
           row.old_values,
           row.new_values,
           row.ip_address,
+          row.user_agent,
+          row.request_method,
+          row.request_path,
+          row.response_status,
+          row.request_id,
+          row.ip_country_code,
+          row.ip_region,
+          row.ip_city,
         ]
           .map(escapeCsv)
           .join(","),
