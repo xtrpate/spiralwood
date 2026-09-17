@@ -1,6 +1,7 @@
 // controllers/staff/pos.deliveries.js
 const fs = require("fs");
 const db = require("../../config/db");
+const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const {
   getPhilippineDateBoundsUtc,
 } = require("../../utils/philippineTime");
@@ -3118,51 +3119,6 @@ exports.updateDeliveryStatus = async (req, res) => {
 
     const externalMilestoneEvent = isFailureUpdate;
 
-    // PHASE 5 -- dedicated audit for the blueprint rider cash collection,
-    // written only after the transaction has actually committed. Kept
-    // separate from the generic "update_delivery_status" audit below
-    // (which is logged by the route's own logAction middleware) since
-    // this needs its own action name. Only safe, structured, non-PII
-    // values -- no customer name/address/phone, no raw file paths.
-    if (blueprintCashCollection && blueprintPaymentTransactionId) {
-      try {
-        await db.query(
-          `INSERT INTO audit_logs
-             (user_id, action, table_name, record_id, old_values, new_values, ip_address)
-           VALUES (?, 'confirm_blueprint_rider_cash_collection', 'payment_transactions', ?, ?, ?, ?)`,
-          [
-            req.user.id,
-            blueprintPaymentTransactionId,
-            JSON.stringify({
-              collection_status: "pending",
-            }),
-            JSON.stringify({
-              order_id: existing.order_id,
-              delivery_id: deliveryId,
-              payment_transaction_id: blueprintPaymentTransactionId,
-              amount_collected: centsToAmount(
-                blueprintCashCollection.amountCents,
-              ),
-              previous_verified_total: centsToAmount(
-                blueprintCashCollection.verifiedCentsBefore,
-              ),
-              current_verified_remaining_balance: centsToAmount(
-                blueprintCashCollection.amountCents,
-              ),
-              collection_status: "pending",
-            }),
-            req.ip || null,
-          ],
-        );
-      } catch (auditErr) {
-        // Non-blocking -- never turn a successful collection into a
-        // failed response because of an audit-logging error.
-        console.error(
-          "[updateDeliveryStatus confirm_blueprint_rider_cash_collection audit]",
-          auditErr,
-        );
-      }
-    }
 
     req.auditRecord = {
       id: deliveryId,
@@ -3230,6 +3186,39 @@ exports.updateDeliveryStatus = async (req, res) => {
     }
 
     await conn.commit();
+
+    // Dedicated audit is intentionally outside the delivery transaction.
+    // At this point the payment/delivery/order changes are committed, so the
+    // audit can never describe a business mutation that later rolls back.
+    if (blueprintCashCollection && blueprintPaymentTransactionId) {
+      await writeAuditLogSafe({
+        userId: req.user.id,
+        action: "confirm_blueprint_rider_cash_collection",
+        tableName: "payment_transactions",
+        recordId: blueprintPaymentTransactionId,
+        oldValues: {
+          collection_status: "pending",
+        },
+        newValues: {
+          order_id: existing.order_id,
+          delivery_id: deliveryId,
+          payment_transaction_id: blueprintPaymentTransactionId,
+          amount_collected: centsToAmount(
+            blueprintCashCollection.amountCents,
+          ),
+          previous_verified_total: centsToAmount(
+            blueprintCashCollection.verifiedCentsBefore,
+          ),
+          current_verified_remaining_balance: centsToAmount(
+            blueprintCashCollection.amountCents,
+          ),
+          collection_status: "pending",
+        },
+        ipAddress: req.ip || null,
+        actorType: "user",
+        responseStatus: 200,
+      });
+    }
 
     if (nextOrderStatus) {
       const io = req.app.get("io");

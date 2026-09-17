@@ -1,5 +1,6 @@
 // controllers/staff/pos.tasks.js
 const db = require("../../config/db"); // Uses the unified db config
+const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const {
   createNotificationSafe,
 } = require("../../utils/notificationHelper");
@@ -1176,45 +1177,32 @@ exports.updateTaskStatus = async (req, res) => {
     }
 
     if (becameProductionReady) {
-      try {
-        await db.query(
-          `INSERT INTO audit_logs
-             (user_id, action, table_name, record_id, old_values, new_values, ip_address)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [
-            req.user.id,
-            isPickupOrder && pickupReadyApplied
-              ? "mark_production_ready_for_pickup"
-              : isPickupOrder
-                ? "mark_production_complete_pickup_state_unchanged"
-                : "mark_production_ready_for_shipping",
-            "orders",
-            parseInt(existing.order_id),
-            JSON.stringify(
-              isPickupOrder
-                ? { ready_for_pickup: false }
-                : { ready_for_shipping: false },
-            ),
-            JSON.stringify(
-              isPickupOrder
-                ? {
-                    ready_for_pickup: pickupReadyApplied,
-                    completed_required_steps: REQUIRED_PRODUCTION_STEP_KEYS.length,
-                  }
-                : {
-                    ready_for_shipping: true,
-                    completed_required_steps: REQUIRED_PRODUCTION_STEP_KEYS.length,
-                  },
-            ),
-            req.ip || null,
-          ],
-        );
-      } catch (auditErr) {
-        console.error(
-          "[pos.tasks] readiness audit insert failed:",
-          auditErr.message,
-        );
-      }
+      await writeAuditLogSafe({
+        userId: req.user.id,
+        action:
+          isPickupOrder && pickupReadyApplied
+            ? "mark_production_ready_for_pickup"
+            : isPickupOrder
+              ? "mark_production_complete_pickup_state_unchanged"
+              : "mark_production_ready_for_shipping",
+        tableName: "orders",
+        recordId: parseInt(existing.order_id),
+        oldValues: isPickupOrder
+          ? { ready_for_pickup: false }
+          : { ready_for_shipping: false },
+        newValues: isPickupOrder
+          ? {
+              ready_for_pickup: pickupReadyApplied,
+              completed_required_steps: REQUIRED_PRODUCTION_STEP_KEYS.length,
+            }
+          : {
+              ready_for_shipping: true,
+              completed_required_steps: REQUIRED_PRODUCTION_STEP_KEYS.length,
+            },
+        ipAddress: req.ip || null,
+        actorType: "user",
+        responseStatus: 200,
+      });
     }
 
     const responseMessage =

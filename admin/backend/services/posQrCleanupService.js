@@ -1,4 +1,5 @@
 const db = require("../config/db");
+const { writeAuditLogSafe } = require("../middleware/auditLog");
 const {
   retrieveCheckoutSession,
   expireCheckoutSession,
@@ -61,20 +62,18 @@ const isPosQrCleanupTestSafeConfigured = () => {
 };
 
 const writeSystemAudit = async ({ action, attemptId, oldValues, newValues }) => {
-  try {
-    await db.query(
-      `INSERT INTO audit_logs
-        (user_id, action, table_name, record_id, old_values, new_values, ip_address)
-       VALUES (NULL, ?, 'pos_qr_payment_attempts', ?, ?, ?, NULL)`,
-      [
-        action,
-        attemptId,
-        oldValues ? JSON.stringify(oldValues) : null,
-        newValues ? JSON.stringify(newValues) : null,
-      ],
-    );
-  } catch (err) {
-    console.error("[POS QR CLEANUP audit]", err.message);
+  const written = await writeAuditLogSafe({
+    userId: null,
+    action,
+    tableName: "pos_qr_payment_attempts",
+    recordId: attemptId,
+    oldValues,
+    newValues,
+    actorType: "system",
+  });
+
+  if (!written) {
+    console.error("[POS QR CLEANUP audit] Failed to write audit event.");
   }
 };
 
