@@ -1,7 +1,7 @@
 // middleware/auditLog.js – Central audit trail helpers for WISDOM
 const pool = require("../config/db");
 const {
-  getRequestClientIp,
+  getRequestAuditContext,
   normalizeClientIp,
 } = require("../utils/clientIp");
 
@@ -25,6 +25,15 @@ const SENSITIVE_AUDIT_KEYS = new Set([
   "secret",
   "client_secret",
 ]);
+
+const ALLOWED_ACTOR_TYPES = new Set([
+  "user",
+  "anonymous",
+  "system",
+  "webhook",
+]);
+
+let warnedAboutLegacyAuditSchema = false;
 
 const sanitizeAuditValue = (value, depth = 0) => {
   if (depth > 8) return "[omitted]";
@@ -57,6 +66,51 @@ const serializeAuditValue = (value) => {
   return JSON.stringify(sanitizeAuditValue(value));
 };
 
+const cleanOptionalString = (value, maxLength) => {
+  if (value === null || value === undefined) return null;
+  const clean = String(value).trim();
+  return clean ? clean.slice(0, maxLength) : null;
+};
+
+const normalizeActorType = (value) => {
+  const clean = String(value || "")
+    .trim()
+    .toLowerCase();
+  return ALLOWED_ACTOR_TYPES.has(clean) ? clean : null;
+};
+
+const normalizeResponseStatus = (value) => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 100 && parsed <= 599
+    ? parsed
+    : null;
+};
+
+const writeLegacyAuditRow = async ({
+  safeUserId,
+  cleanAction,
+  cleanTableName,
+  safeRecordId,
+  oldValues,
+  newValues,
+  safeIp,
+}) => {
+  await pool.query(
+    `INSERT INTO audit_logs
+       (user_id, action, table_name, record_id, old_values, new_values, ip_address)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      safeUserId,
+      cleanAction.slice(0, 100),
+      cleanTableName.slice(0, 100),
+      safeRecordId,
+      serializeAuditValue(oldValues),
+      serializeAuditValue(newValues),
+      safeIp,
+    ],
+  );
+};
+
 async function writeAuditLogSafe({
   userId = null,
   action,
@@ -65,6 +119,15 @@ async function writeAuditLogSafe({
   oldValues = null,
   newValues = null,
   ipAddress = null,
+  actorType = null,
+  userAgent = null,
+  requestMethod = null,
+  requestPath = null,
+  responseStatus = null,
+  requestId = null,
+  ipCountryCode = null,
+  ipRegion = null,
+  ipCity = null,
 }) {
   const cleanAction = String(action || "").trim();
   const cleanTableName = String(tableName || "").trim();
@@ -78,29 +141,102 @@ async function writeAuditLogSafe({
     Number.isInteger(parsedRecordId) && parsedRecordId > 0
       ? parsedRecordId
       : null;
-  // Prefer the visitor address captured by the request middleware.
-  // This fixes existing audit callers centrally, even if they still pass
-  // req.ip (which can be a Render/private proxy address in production).
-  const requestClientIp = getRequestClientIp();
-  const safeIp = normalizeClientIp(requestClientIp || ipAddress);
+
+  const requestContext = getRequestAuditContext();
+  const safeIp = normalizeClientIp(requestContext?.clientIp || ipAddress);
+  const safeActorType =
+    normalizeActorType(actorType) ||
+    (safeUserId ? "user" : requestContext ? "anonymous" : "system");
+  const safeUserAgent = cleanOptionalString(
+    userAgent ?? requestContext?.userAgent,
+    512,
+  );
+  const safeRequestMethod = cleanOptionalString(
+    requestMethod ?? requestContext?.requestMethod,
+    10,
+  );
+  const safeRequestPath = cleanOptionalString(
+    requestPath ?? requestContext?.requestPath,
+    1000,
+  );
+  const safeResponseStatus = normalizeResponseStatus(responseStatus);
+  const safeRequestId = cleanOptionalString(
+    requestId ?? requestContext?.requestId,
+    36,
+  );
+  const safeIpCountryCode = cleanOptionalString(
+    ipCountryCode ?? requestContext?.ipCountryCode,
+    2,
+  )?.toUpperCase() || null;
+  const safeIpRegion = cleanOptionalString(
+    ipRegion ?? requestContext?.ipRegion,
+    120,
+  );
+  const safeIpCity = cleanOptionalString(
+    ipCity ?? requestContext?.ipCity,
+    120,
+  );
+
+  const auditParams = {
+    safeUserId,
+    cleanAction,
+    cleanTableName,
+    safeRecordId,
+    oldValues,
+    newValues,
+    safeIp,
+  };
 
   try {
     await pool.query(
       `INSERT INTO audit_logs
-         (user_id, action, table_name, record_id, old_values, new_values, ip_address)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         (user_id, actor_type, action, table_name, record_id,
+          old_values, new_values, ip_address, user_agent,
+          request_method, request_path, response_status, request_id,
+          ip_country_code, ip_region, ip_city)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         safeUserId,
+        safeActorType,
         cleanAction.slice(0, 100),
         cleanTableName.slice(0, 100),
         safeRecordId,
         serializeAuditValue(oldValues),
         serializeAuditValue(newValues),
         safeIp,
+        safeUserAgent,
+        safeRequestMethod,
+        safeRequestPath,
+        safeResponseStatus,
+        safeRequestId,
+        safeIpCountryCode,
+        safeIpRegion,
+        safeIpCity,
       ],
     );
     return true;
   } catch (error) {
+    // R1 is deliberately deployment-order safe. If the additive migration has
+    // not been applied yet, preserve the existing audit trail instead of
+    // dropping the event. Once migration 015 exists, the full-context insert is
+    // used automatically.
+    if (error?.code === "ER_BAD_FIELD_ERROR" || Number(error?.errno) === 1054) {
+      if (!warnedAboutLegacyAuditSchema) {
+        warnedAboutLegacyAuditSchema = true;
+        console.warn(
+          "Audit context columns are not available yet; using legacy audit schema until migration 015 is applied.",
+        );
+      }
+
+      try {
+        await writeLegacyAuditRow(auditParams);
+        return true;
+      } catch (legacyError) {
+        console.error("Audit log error:", legacyError.message);
+        return false;
+      }
+    }
+
     console.error("Audit log error:", error.message);
     return false;
   }
@@ -128,6 +264,8 @@ function logAction(action, tableName) {
           oldValues: req.auditRecord.old || null,
           newValues: req.auditRecord.new || null,
           ipAddress: req.ip || null,
+          actorType: "user",
+          responseStatus: Number(res.statusCode || 200),
         });
       }
       return originalJson(body);
@@ -137,4 +275,10 @@ function logAction(action, tableName) {
   };
 }
 
-module.exports = { logAction, writeAuditLogSafe, sanitizeAuditValue };
+module.exports = {
+  logAction,
+  writeAuditLogSafe,
+  sanitizeAuditValue,
+  normalizeActorType,
+  normalizeResponseStatus,
+};

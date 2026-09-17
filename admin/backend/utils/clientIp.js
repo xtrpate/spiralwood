@@ -1,9 +1,10 @@
 "use strict";
 
+const crypto = require("crypto");
 const net = require("net");
 const { AsyncLocalStorage } = require("async_hooks");
 
-const requestIpStorage = new AsyncLocalStorage();
+const requestContextStorage = new AsyncLocalStorage();
 
 const isRenderRuntime = () =>
   String(process.env.RENDER || "").trim().toLowerCase() === "true";
@@ -13,6 +14,27 @@ const firstHeaderValue = (value) => {
     return value.length ? value[0] : null;
   }
   return value;
+};
+
+const normalizeHeaderText = (value, maxLength = 512) => {
+  const raw = firstHeaderValue(value);
+  if (raw === null || raw === undefined) return null;
+
+  const clean = String(raw)
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!clean) return null;
+  return clean.slice(0, maxLength);
+};
+
+const normalizeCountryCode = (value) => {
+  const clean = normalizeHeaderText(value, 2);
+  if (!clean) return null;
+
+  const upper = clean.toUpperCase();
+  return /^[A-Z0-9]{2}$/.test(upper) ? upper : null;
 };
 
 const normalizeClientIp = (value) => {
@@ -110,17 +132,70 @@ const getClientIp = (req) => {
   );
 };
 
-const clientIpContextMiddleware = (req, _res, next) => {
-  const clientIp = getClientIp(req);
-  requestIpStorage.run({ clientIp }, () => next());
+const getSafeRequestPath = (req) => {
+  const raw = String(req?.originalUrl || req?.url || req?.path || "");
+  const withoutQuery = raw.split("?")[0].trim();
+  return withoutQuery ? withoutQuery.slice(0, 1000) : null;
+};
+
+const getTrustedLocationContext = (req) => {
+  if (!isRenderRuntime()) {
+    return {
+      ipCountryCode: null,
+      ipRegion: null,
+      ipCity: null,
+    };
+  }
+
+  // These values are accepted only on Render, where the request reaches the
+  // app through Cloudflare. CF-IPCountry is commonly available. CF-Region and
+  // CF-IPCity are populated only when the upstream Cloudflare configuration
+  // enables visitor-location headers; otherwise they safely remain null.
+  return {
+    ipCountryCode: normalizeCountryCode(req?.headers?.["cf-ipcountry"]),
+    ipRegion: normalizeHeaderText(req?.headers?.["cf-region"], 120),
+    ipCity: normalizeHeaderText(req?.headers?.["cf-ipcity"], 120),
+  };
+};
+
+const clientIpContextMiddleware = (req, res, next) => {
+  const requestId = crypto.randomUUID();
+  const location = getTrustedLocationContext(req);
+  const context = {
+    clientIp: getClientIp(req),
+    userAgent: normalizeHeaderText(req?.headers?.["user-agent"], 512),
+    requestMethod:
+      normalizeHeaderText(req?.method, 10)?.toUpperCase() || null,
+    requestPath: getSafeRequestPath(req),
+    requestId,
+    ...location,
+  };
+
+  try {
+    res?.setHeader?.("X-Request-ID", requestId);
+  } catch {
+    // A response-header failure must never block the request itself.
+  }
+
+  requestContextStorage.run(context, () => next());
+};
+
+const getRequestAuditContext = () => {
+  const store = requestContextStorage.getStore();
+  return store ? { ...store } : null;
 };
 
 const getRequestClientIp = () =>
-  requestIpStorage.getStore()?.clientIp || null;
+  getRequestAuditContext()?.clientIp || null;
 
 module.exports = {
   normalizeClientIp,
+  normalizeHeaderText,
+  normalizeCountryCode,
   getClientIp,
+  getSafeRequestPath,
+  getTrustedLocationContext,
   clientIpContextMiddleware,
   getRequestClientIp,
+  getRequestAuditContext,
 };
