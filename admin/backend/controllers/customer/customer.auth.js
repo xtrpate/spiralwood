@@ -1470,16 +1470,48 @@ exports.resetPassword = async (req, res) => {
 };
 
 exports.login = async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password } = req.body || {};
+  const attemptedEmail = String(email || "")
+    .trim()
+    .toLowerCase();
+
+  const auditLogin = async ({
+    action,
+    user = null,
+    reason,
+    responseStatus,
+  }) =>
+    writeAuditLogSafe({
+      userId: user?.id || null,
+      action,
+      tableName: "security",
+      recordId: user?.id || null,
+      newValues: {
+        attempted_email: attemptedEmail || null,
+        result: action === "login_success" ? "success" : "failed",
+        reason,
+        user_role: user?.role || null,
+        staff_type: user?.staff_type || null,
+      },
+      ipAddress: req.ip || null,
+      actorType: action === "login_success" ? "user" : "anonymous",
+      responseStatus,
+    });
 
   if (!email || !password) {
+    await auditLogin({
+      action: "login_failed",
+      reason: "missing_credentials",
+      responseStatus: 400,
+    });
+
     return res
       .status(400)
       .json({ message: "Email and password are required." });
   }
 
   try {
-    const normalizedEmail = String(email).trim().toLowerCase();
+    const normalizedEmail = attemptedEmail;
 
     const [rows] = await db.query(
       `
@@ -1509,6 +1541,12 @@ exports.login = async (req, res) => {
     );
 
     if (rows.length === 0) {
+      await auditLogin({
+        action: "login_failed",
+        reason: "invalid_credentials",
+        responseStatus: 401,
+      });
+
       return res.status(401).json({ message: "Invalid email or password." });
     }
 
@@ -1516,6 +1554,13 @@ exports.login = async (req, res) => {
 
     const match = await bcrypt.compare(password, user.password || "");
     if (!match) {
+      await auditLogin({
+        action: "login_failed",
+        user,
+        reason: "invalid_credentials",
+        responseStatus: 401,
+      });
+
       return res.status(401).json({ message: "Invalid email or password." });
     }
 
@@ -1553,6 +1598,13 @@ exports.login = async (req, res) => {
 
       const firstName = user.name.split(" ")[0];
       await sendOtpEmail(user.email, newOtp, firstName);
+
+      await auditLogin({
+        action: "login_failed",
+        user,
+        reason: "email_not_verified",
+        responseStatus: 403,
+      });
 
       return res.status(403).json({
         message: "Email not verified. A new verification code has been sent.",
@@ -1596,6 +1648,13 @@ exports.login = async (req, res) => {
         message: `Your Spiral Wood Services phone verification code is ${phoneOtp}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
       });
 
+      await auditLogin({
+        action: "login_failed",
+        user,
+        reason: "phone_not_verified",
+        responseStatus: 403,
+      });
+
       return res.status(403).json({
         message: "Phone not verified. A new verification code has been sent.",
         code: "PHONE_NOT_VERIFIED",
@@ -1605,6 +1664,13 @@ exports.login = async (req, res) => {
 
     // B. Staff Configuration Check
     if (String(user.role).trim() === "staff" && !user.staff_type) {
+      await auditLogin({
+        action: "login_failed",
+        user,
+        reason: "staff_type_not_configured",
+        responseStatus: 403,
+      });
+
       return res.status(403).json({
         message: "Staff account type is not configured yet. Contact admin.",
       });
@@ -1612,6 +1678,13 @@ exports.login = async (req, res) => {
 
     // 3. GLOBAL ACTIVE CHECK
     if (!user.is_active) {
+      await auditLogin({
+        action: "login_failed",
+        user,
+        reason: "account_inactive",
+        responseStatus: 403,
+      });
+
       return res.status(403).json({
         message: "Your account has been deactivated. Please contact support.",
         code: "ACCOUNT_INACTIVE",
@@ -1641,6 +1714,13 @@ exports.login = async (req, res) => {
       user.id,
     ]);
 
+    await auditLogin({
+      action: "login_success",
+      user,
+      reason: "authenticated",
+      responseStatus: 200,
+    });
+
     return res.json({
       token,
       user: {
@@ -1662,6 +1742,13 @@ exports.login = async (req, res) => {
     });
   } catch (err) {
     console.error("[login]", err);
+
+    await auditLogin({
+      action: "login_failed",
+      reason: "server_error",
+      responseStatus: 500,
+    });
+
     return res.status(500).json({
       message: "Server error",
       error: err.message,
