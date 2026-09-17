@@ -28,7 +28,15 @@ const {
   calcDownPaymentAmount,
   parseDecimalToCentsStrict,
   centsToAmount,
+  centsToDecimalString,
 } = require("../../utils/paymentAmounts");
+const {
+  INITIAL_PAYMENT_REASON,
+  resolveInitialOnlinePaymentAmount,
+  validateInitialPayMongoSessionContext,
+  analyzeInitialPayMongoSession,
+  summarizeVerifiedPaymentRows,
+} = require("../../services/blueprintInitialOnlinePaymentService");
 const { parseStrictPositiveInt } = require("../../utils/validators");
 const { createNotificationSafe } = require("../../utils/notificationHelper");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
@@ -1388,7 +1396,7 @@ exports.getCustomOrderById = async (req, res) => {
         canSubmitInitialDownPayment = true;
         paymentStage = "initial";
         paymentActionMessage =
-          "Your Project Agreement is accepted. Complete the required 30% down payment to proceed.";
+          "Your Project Agreement is accepted. Pay at least the required 30% minimum to proceed.";
       } else {
         paymentStage = "awaiting_release";
         paymentActionMessage =
@@ -2319,7 +2327,7 @@ exports.acceptEstimation = async (req, res) => {
     await notifyActiveAdminsSafe(conn, {
       type: "estimation_customer_approved",
       title: "Quotation Approved by Customer",
-      message: `Customer approved the quotation for ${order.order_number}. Required 30% down payment: ₱${downPaymentAmount.toFixed(2)}.`,
+      message: `Customer approved the quotation for ${order.order_number}. Minimum required payment (30%): ₱${downPaymentAmount.toFixed(2)}.`,
       targetType: "order",
       targetId: order.id,
       targetOrderId: order.id,
@@ -3615,54 +3623,100 @@ exports.verifyPayment = async (req, res) => {
       return res.status(400).json({ message: "Invalid custom request ID." });
     }
 
+    // 1) FAST READ only. Release the connection before the provider call.
     conn = await db.getConnection();
 
-    // 1. FAST READ: Check idempotency WITHOUT locking the database
     const [[fastOrder]] = await conn.execute(
-      `SELECT id, customer_id, payment_status, paymongo_session_id 
-       FROM orders WHERE id = ? LIMIT 1`,
+      `SELECT id, customer_id, order_type, payment_status, paymongo_session_id
+       FROM orders
+       WHERE id = ?
+       LIMIT 1`,
       [orderId],
     );
 
     if (!fastOrder) {
-      conn.release();
       return res.status(404).json({ message: "Custom order not found." });
     }
 
     if (Number(fastOrder.customer_id) !== Number(req.user.id)) {
-      conn.release();
       return res.status(403).json({ message: "Unauthorized." });
     }
 
+    if (normalize(fastOrder.order_type) !== "blueprint") {
+      return res.status(400).json({
+        message: "This order does not support this action.",
+      });
+    }
+
     if (!fastOrder.paymongo_session_id) {
-      conn.release();
       if (
-        fastOrder.payment_status === "partial" ||
-        fastOrder.payment_status === "paid"
+        normalize(fastOrder.payment_status) === "partial" ||
+        normalize(fastOrder.payment_status) === "paid"
       ) {
         return res.json({
           success: true,
           message: "Payment already verified.",
         });
       }
-      return res
-        .status(400)
-        .json({ success: false, message: "No pending payment session found." });
+
+      return res.status(400).json({
+        success: false,
+        message: "No pending payment session found.",
+      });
     }
 
-    // 2. NETWORK CALL: Ask PayMongo while the database connection is free
-    const session = await retrieveCheckoutSession(
-      fastOrder.paymongo_session_id,
-    );
-    const payments = session.attributes?.payments || [];
-    const paymentIntent = session.attributes?.payment_intent;
+    const providerSessionId = fastOrder.paymongo_session_id;
 
-    const hasSuccessfulPayment =
-      payments.some((p) => p.attributes?.status === "paid") ||
-      (paymentIntent && paymentIntent.attributes?.status === "succeeded");
+    conn.release();
+    conn = null;
 
-    if (!hasSuccessfulPayment) {
-      conn.release();
+    // 2) NETWORK CALL with no DB connection held idle.
+    let session;
+    try {
+      session = await retrieveCheckoutSession(providerSessionId);
+    } catch (pmErr) {
+      console.error(
+        "[customer.customorders verifyPayment provider]",
+        pmErr.response?.data || pmErr.message || pmErr,
+      );
+      return res.status(502).json({
+        success: false,
+        message:
+          "Unable to confirm the online payment right now. Please try again.",
+      });
+    }
+
+    const providerContext = validateInitialPayMongoSessionContext(session, {
+      orderId,
+    });
+
+    if (!providerContext.ok) {
+      console.error("[verifyPayment] provider session context failure", {
+        orderId,
+        reason: providerContext.reason,
+      });
+      return res.status(409).json({
+        success: false,
+        message:
+          "The online payment session does not match this order. Please contact support.",
+      });
+    }
+
+    const initialProviderAnalysis = analyzeInitialPayMongoSession(session);
+
+    if (!initialProviderAnalysis.ok) {
+      console.error("[verifyPayment] provider session integrity failure", {
+        orderId,
+        reason: initialProviderAnalysis.reason,
+      });
+      return res.status(409).json({
+        success: false,
+        message:
+          "The online payment details could not be verified safely. Please contact support.",
+      });
+    }
+
+    if (!initialProviderAnalysis.hasSuccessfulPayment) {
       return res.status(400).json({
         success: false,
         message:
@@ -3670,7 +3724,8 @@ exports.verifyPayment = async (req, res) => {
       });
     }
 
-    // 3. SECURE WRITE: Open transaction and lock the row
+    // 3) SECURE WRITE. Reacquire, lock, and re-derive every financial fact.
+    conn = await db.getConnection();
     await conn.beginTransaction();
     transactionActive = true;
 
@@ -3678,6 +3733,7 @@ exports.verifyPayment = async (req, res) => {
       orderId,
       lockOrder: true,
       lockBlueprint: true,
+      lockEstimation: true,
     });
 
     if (
@@ -3692,9 +3748,20 @@ exports.verifyPayment = async (req, res) => {
 
     const lockedOrder = lifecycle.order;
 
-    // New payment sessions can only be created after acceptance. A
-    // contract-less legacy session may still be verified for backward
-    // compatibility, but an existing unsigned agreement is never payable.
+    if (Number(lockedOrder.customer_id) !== Number(req.user.id)) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(404).json({ message: "Custom order not found." });
+    }
+
+    if (normalize(lockedOrder.order_type) !== "blueprint") {
+      await conn.rollback();
+      transactionActive = false;
+      return sendLifecycleConflict(res);
+    }
+
+    // A legacy contract-less session may still be completed, matching the
+    // previous behavior. An existing but unsigned agreement is never payable.
     if (lifecycle.contract && !lifecycle.contract.signed_at) {
       await conn.rollback();
       transactionActive = false;
@@ -3703,44 +3770,216 @@ exports.verifyPayment = async (req, res) => {
       });
     }
 
-    // 👉 FIX 1: Explicitly check the DB row inside the lock, because lifecycle.order hides the session ID column
     const [[lockedCheck]] = await conn.execute(
-      `SELECT paymongo_session_id FROM orders WHERE id = ?`,
+      `SELECT
+          paymongo_session_id,
+          payment_url,
+          payment_status,
+          payment_method,
+          status,
+          total
+       FROM orders
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
       [lockedOrder.id],
     );
 
-    if (!lockedCheck.paymongo_session_id) {
+    if (!lockedCheck?.paymongo_session_id) {
       await conn.rollback();
       transactionActive = false;
-      return res.json({
-        success: true,
-        message: "Payment was already verified.",
+
+      if (
+        normalize(lockedCheck?.payment_status) === "partial" ||
+        normalize(lockedCheck?.payment_status) === "paid"
+      ) {
+        return res.json({
+          success: true,
+          message: "Payment was already verified.",
+        });
+      }
+
+      return res.status(409).json({
+        success: false,
+        message:
+          "This order's payment session changed. Please refresh and try again.",
       });
     }
 
-    // 👉 FIX 2: Safely calculate the 30% from the estimation, bypassing the stripped order object entirely
+    if (lockedCheck.paymongo_session_id !== providerSessionId) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        success: false,
+        message:
+          "This order's payment session changed. Please refresh and try again.",
+      });
+    }
+
+    if (normalize(lockedCheck.payment_method) !== "paymongo") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        success: false,
+        message:
+          "This order's payment method changed. Please refresh and contact support if needed.",
+      });
+    }
+
     const normalizedEstimation = await normalizeLifecycleEstimation(
       conn,
       lifecycle.estimation,
     );
-    const quotedTotal = roundMoney(normalizedEstimation.grand_total || 0);
-    const downPaymentAmount = calcDownPaymentAmount(quotedTotal);
 
-    // 4. INSERT THE RECORD
+    const orderBounds = resolveInitialOnlinePaymentAmount({
+      orderTotalRaw: lockedCheck.total,
+      amountRaw: undefined,
+    });
+
+    if (!orderBounds.ok) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message: "This order's total is invalid. Please contact support.",
+      });
+    }
+
+    const quotationCents = parseDecimalToCentsStrict(
+      Number(normalizedEstimation.grand_total || 0).toFixed(2),
+    );
+
+    if (
+      quotationCents === null ||
+      quotationCents !== orderBounds.totalCents
+    ) {
+      await conn.rollback();
+      transactionActive = false;
+      return sendLifecycleConflict(res);
+    }
+
+    const providerAnalysis = analyzeInitialPayMongoSession(session, {
+      // Sessions created before this patch did not store the selected amount
+      // in metadata. Their only supported initial amount was the 30% minimum.
+      fallbackExpectedCents: orderBounds.minimumCents,
+    });
+
+    if (
+      !providerAnalysis.ok ||
+      !providerAnalysis.hasSuccessfulPayment ||
+      !Number.isSafeInteger(providerAnalysis.expectedCents) ||
+      !Number.isSafeInteger(providerAnalysis.paidCents)
+    ) {
+      await conn.rollback();
+      transactionActive = false;
+      console.error("[verifyPayment] provider amount integrity failure", {
+        orderId,
+        reason: providerAnalysis.reason || "missing_amount",
+      });
+      return res.status(409).json({
+        message:
+          "The online payment amount could not be verified safely. Please contact support.",
+      });
+    }
+
+    const expectedAmountValidation = resolveInitialOnlinePaymentAmount({
+      orderTotalRaw: lockedCheck.total,
+      amountRaw: centsToDecimalString(providerAnalysis.expectedCents),
+    });
+
+    if (!expectedAmountValidation.ok) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message:
+          "The online payment amount is outside the allowed initial payment range. Please contact support.",
+      });
+    }
+
+    if (providerAnalysis.paidCents !== providerAnalysis.expectedCents) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message:
+          "The paid amount does not match the online checkout amount. Please contact support.",
+      });
+    }
+
+    const [paymentRows] = await conn.query(
+      `SELECT id, amount, status
+       FROM payment_transactions
+       WHERE order_id = ?
+       ORDER BY id
+       FOR UPDATE`,
+      [lockedOrder.id],
+    );
+
+    const paymentSummary = summarizeVerifiedPaymentRows(paymentRows);
+
+    if (paymentSummary.hasInvalidAmount) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message:
+          "This order's existing payment records are inconsistent. Please contact support.",
+      });
+    }
+
+    if (paymentSummary.hasPendingPayment) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message:
+          "A different payment is already awaiting review for this order. Please contact support.",
+      });
+    }
+
+    // Initial PayMongo checkout creation is allowed only before any verified
+    // payment exists. If another route recorded money while this provider
+    // session remained open, stop instead of risking a double payment.
+    if (paymentSummary.verifiedTotalCents > 0) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message:
+          "Another verified payment already exists for this order. Please contact support before continuing.",
+      });
+    }
+
+    const paymentAmountCents = providerAnalysis.paidCents;
+    const nextPaymentStatus =
+      paymentAmountCents === orderBounds.totalCents ? "paid" : "partial";
+
+    const paymentAmountDecimal = centsToDecimalString(paymentAmountCents);
+
     const [paymentInsertResult] = await conn.execute(
       `INSERT INTO payment_transactions
         (order_id, amount, payment_method, proof_url, status, verified_at, notes)
-       VALUES (?, ?, 'paymongo', ?, 'verified', NOW(), 'Automatically verified via PayMongo checkout.')`,
-      [lockedOrder.id, downPaymentAmount, session.id],
+       VALUES (?, ?, 'paymongo', ?, 'verified', NOW(), ?)`,
+      [
+        lockedOrder.id,
+        paymentAmountDecimal,
+        session.id,
+        "Initial blueprint payment automatically verified via PayMongo checkout.",
+      ],
     );
 
-    // 5. UPDATE THE ORDER. New-flow orders move to contract_released as
-    // soon as the accepted agreement and required 30% payment are both true.
-    // A legacy PayMongo session without an agreement remains confirmed.
+    if (
+      paymentInsertResult.affectedRows !== 1 ||
+      !Number.isSafeInteger(paymentInsertResult.insertId) ||
+      paymentInsertResult.insertId <= 0
+    ) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message: "Failed to record the verified payment. Please try again.",
+      });
+    }
+
     const releaseAfterVerification = Boolean(lifecycle.contract?.signed_at);
+
     const [orderPaymentUpdate] = await conn.execute(
       `UPDATE orders
-       SET payment_status = 'partial',
+       SET payment_status = ?,
            status = CASE
              WHEN ? = 1 AND status = 'confirmed' THEN 'contract_released'
              ELSE status
@@ -3748,8 +3987,22 @@ exports.verifyPayment = async (req, res) => {
            payment_url = NULL,
            paymongo_session_id = NULL,
            updated_at = NOW()
-       WHERE id = ?`,
-      [releaseAfterVerification ? 1 : 0, lockedOrder.id],
+       WHERE id = ?
+         AND customer_id = ?
+         AND order_type = 'blueprint'
+         AND payment_method = 'paymongo'
+         AND paymongo_session_id = ?
+         AND status = ?
+         AND payment_status = ?`,
+      [
+        nextPaymentStatus,
+        releaseAfterVerification ? 1 : 0,
+        lockedOrder.id,
+        req.user.id,
+        providerSessionId,
+        lockedCheck.status,
+        lockedCheck.payment_status,
+      ],
     );
 
     if (orderPaymentUpdate.affectedRows !== 1) {
@@ -3761,10 +4014,7 @@ exports.verifyPayment = async (req, res) => {
       });
     }
 
-    // 6. Receipt — created inside this same transaction, after the
-    // payment transaction is verified and the order is updated, before
-    // commit. A failure here rolls back the whole verification.
-    await ensureReceiptForVerifiedPayment(conn, {
+    const receiptResult = await ensureReceiptForVerifiedPayment(conn, {
       orderId: lockedOrder.id,
       paymentTransactionId: paymentInsertResult.insertId,
       issuedByUserId: req.user.id,
@@ -3773,32 +4023,32 @@ exports.verifyPayment = async (req, res) => {
     await conn.commit();
     transactionActive = false;
 
-    // Note: this route has no logAction middleware wired (unlike
-    // verifyRemainingBalancePayment below), so req.auditRecord is
-    // intentionally not set here -- matching this function's existing
-    // behavior. The receipt itself is already committed above.
-
     return res.json({
       success: true,
       message: "Payment verified successfully.",
+      payment_amount: Number(paymentAmountDecimal),
+      payment_status: nextPaymentStatus,
+      receipt_id: receiptResult.receiptId,
+      receipt_number: receiptResult.receiptNumber,
     });
   } catch (err) {
     if (conn && transactionActive) {
       try {
         await conn.rollback();
+        transactionActive = false;
       } catch (rollbackErr) {
         console.error("Rollback failed:", rollbackErr);
       }
     }
+
     console.error(
       "[customer.customorders verifyPayment]",
       err.response?.data || err,
     );
+
     return res.status(500).json({ message: "Failed to verify payment." });
   } finally {
-    if (conn) {
-      conn.release();
-    }
+    if (conn) conn.release();
   }
 };
 
@@ -3807,7 +4057,11 @@ exports.createPayMongoCheckout = async (req, res) => {
   let transactionActive = false;
 
   try {
-    const orderId = parseInt(req.params.id);
+    const orderId = parseStrictPositiveInt(req.params.id);
+
+    if (!orderId) {
+      return res.status(400).json({ message: "Invalid custom request ID." });
+    }
 
     conn = await db.getConnection();
     await conn.beginTransaction();
@@ -3817,6 +4071,7 @@ exports.createPayMongoCheckout = async (req, res) => {
       orderId,
       lockOrder: true,
       lockBlueprint: true,
+      lockEstimation: true,
     });
 
     if (
@@ -3850,7 +4105,7 @@ exports.createPayMongoCheckout = async (req, res) => {
       transactionActive = false;
       return res.status(400).json({
         message:
-          "You can pay the 30% down payment only after approving the quotation.",
+          "Initial online payment is available only after approving the quotation.",
       });
     }
 
@@ -3859,7 +4114,7 @@ exports.createPayMongoCheckout = async (req, res) => {
       transactionActive = false;
       return res.status(400).json({
         message:
-          "The quotation must be approved before submitting a down payment.",
+          "The quotation must be approved before starting an online payment.",
       });
     }
 
@@ -3876,7 +4131,7 @@ exports.createPayMongoCheckout = async (req, res) => {
       await conn.rollback();
       transactionActive = false;
       return res.status(400).json({
-        message: "The required 30% down payment has already been recorded.",
+        message: "An initial payment has already been recorded.",
       });
     }
 
@@ -3884,7 +4139,7 @@ exports.createPayMongoCheckout = async (req, res) => {
       await conn.rollback();
       transactionActive = false;
       return res.status(400).json({
-        message: "The required 30% down payment has already been recorded.",
+        message: "An initial payment has already been recorded.",
       });
     }
 
@@ -3904,6 +4159,67 @@ exports.createPayMongoCheckout = async (req, res) => {
       });
     }
 
+    const normalizedEstimation = await normalizeLifecycleEstimation(
+      conn,
+      estimation,
+    );
+
+    const amountWasExplicitlyRequested =
+      Object.prototype.hasOwnProperty.call(req.body || {}, "amount") &&
+      req.body?.amount !== undefined &&
+      req.body?.amount !== null &&
+      !(typeof req.body.amount === "string" && req.body.amount.trim() === "");
+
+    let amountResolution = resolveInitialOnlinePaymentAmount({
+      orderTotalRaw: order.total,
+      amountRaw: req.body?.amount,
+    });
+
+    if (!amountResolution.ok) {
+      await conn.rollback();
+      transactionActive = false;
+
+      if (amountResolution.reason === INITIAL_PAYMENT_REASON.BELOW_MINIMUM) {
+        return res.status(400).json({
+          message: `Initial payment must be at least ₱${(
+            amountResolution.minimumCents / 100
+          ).toFixed(2)} (30% of the project total).`,
+        });
+      }
+
+      if (amountResolution.reason === INITIAL_PAYMENT_REASON.ABOVE_TOTAL) {
+        return res.status(400).json({
+          message: `Initial payment cannot exceed the project total of ₱${(
+            amountResolution.totalCents / 100
+          ).toFixed(2)}.`,
+        });
+      }
+
+      if (amountResolution.reason === INITIAL_PAYMENT_REASON.INVALID_TOTAL) {
+        return res.status(409).json({
+          message: "The project total is invalid. Please contact support.",
+        });
+      }
+
+      return res.status(400).json({
+        message:
+          "Enter a valid payment amount using no more than two decimal places.",
+      });
+    }
+
+    const quotationCents = parseDecimalToCentsStrict(
+      Number(normalizedEstimation.grand_total || 0).toFixed(2),
+    );
+
+    if (
+      quotationCents === null ||
+      quotationCents !== amountResolution.totalCents
+    ) {
+      await conn.rollback();
+      transactionActive = false;
+      return sendLifecycleConflict(res);
+    }
+
     const hasSessionId = Boolean(order.paymongo_session_id);
     const hasPaymentUrl = Boolean(order.payment_url);
     const hasCompleteSession = hasSessionId && hasPaymentUrl;
@@ -3919,10 +4235,8 @@ exports.createPayMongoCheckout = async (req, res) => {
     }
 
     if (hasCompleteSession) {
-      // Re-check the stored PayMongo session instead of blindly reusing an
-      // expired/failed checkout URL. A provider/network failure never clears
-      // local state; only a confirmed stale session is replaced.
       let existingSession;
+
       try {
         existingSession = await retrieveCheckoutSession(
           order.paymongo_session_id,
@@ -3940,25 +4254,88 @@ exports.createPayMongoCheckout = async (req, res) => {
         });
       }
 
-      const payments = existingSession.attributes?.payments || [];
-      const paymentIntent = existingSession.attributes?.payment_intent;
-      const hasSuccessfulPayment =
-        payments.some((p) => p.attributes?.status === "paid") ||
-        (paymentIntent && paymentIntent.attributes?.status === "succeeded");
-      const sessionStatus = normalize(existingSession.attributes?.status);
-      const sessionStillActive = sessionStatus === "active";
+      const existingContext = validateInitialPayMongoSessionContext(
+        existingSession,
+        { orderId: order.id },
+      );
 
-      if (hasSuccessfulPayment || sessionStillActive) {
+      if (!existingContext.ok) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(409).json({
+          message:
+            "The existing online payment session does not match this order. Please contact support.",
+        });
+      }
+
+      const existingAnalysis = analyzeInitialPayMongoSession(existingSession, {
+        // A session created before R1 could only have been the fixed 30%
+        // checkout, so the minimum is the safe legacy fallback.
+        fallbackExpectedCents: amountResolution.minimumCents,
+      });
+
+      if (
+        !existingAnalysis.ok ||
+        !Number.isSafeInteger(existingAnalysis.expectedCents)
+      ) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(409).json({
+          message:
+            "The existing online payment session could not be verified safely. Please contact support.",
+        });
+      }
+
+      const existingAmountResolution = resolveInitialOnlinePaymentAmount({
+        orderTotalRaw: order.total,
+        amountRaw: centsToDecimalString(existingAnalysis.expectedCents),
+      });
+
+      if (!existingAmountResolution.ok) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(409).json({
+          message:
+            "The existing online checkout amount is outside the allowed initial payment range. Please contact support.",
+        });
+      }
+
+      if (
+        existingAnalysis.hasSuccessfulPayment ||
+        existingAnalysis.sessionActive
+      ) {
+        if (
+          amountWasExplicitlyRequested &&
+          existingAnalysis.expectedCents !== amountResolution.amountCents
+        ) {
+          await conn.rollback();
+          transactionActive = false;
+          return res.status(409).json({
+            message:
+              "An online checkout is already active for a different amount. Continue that checkout or wait for it to expire before choosing another amount.",
+          });
+        }
+
         await conn.commit();
         transactionActive = false;
+
         return res.json({
           payment_url: order.payment_url,
+          payment_amount: existingAmountResolution.amount,
+          minimum_payment: existingAmountResolution.minimumAmount,
           reused: true,
         });
       }
 
-      // Expired/failed/unknown and not paid: clear only the exact session we
-      // just checked, then continue below to create a fresh checkout.
+      // If the customer is merely resuming (no amount submitted), preserve
+      // the expired checkout's original amount when replacing it. If they
+      // explicitly chose a new amount, that explicit valid amount wins.
+      if (!amountWasExplicitlyRequested) {
+        amountResolution = existingAmountResolution;
+      }
+
+      // Expired/failed/unknown and not paid: clear only the exact stale
+      // session that was just inspected, then create a fresh one below.
       const [clearResult] = await conn.execute(
         `UPDATE orders
          SET payment_url = NULL,
@@ -3989,18 +4366,32 @@ exports.createPayMongoCheckout = async (req, res) => {
       [req.user.id],
     );
 
-    const downPayment = calcDownPaymentAmount(order.total);
-    const frontendUrl = process.env.FRONTEND_URL || req.headers.origin;
+    const frontendUrl = String(
+      process.env.FRONTEND_URL || req.headers.origin || "",
+    ).replace(/\/+$/, "");
+
+    if (!frontendUrl) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(500).json({
+        message: "Online payment return URL is not configured.",
+      });
+    }
+
+    const amountQuery = `initial_amount_cents=${amountResolution.amountCents}`;
 
     const checkout = await createCheckoutSession({
       customer,
-      amount: downPayment,
-      description: `30% Down Payment for ${order.order_number}`,
-      successUrl: `${frontendUrl}/custom-requests/${order.id}?verify_success=true`,
-      cancelUrl: `${frontendUrl}/custom-requests/${order.id}`,
+      amountCents: amountResolution.amountCents,
+      description: `Initial Payment for ${order.order_number}`,
+      successUrl: `${frontendUrl}/custom-requests/${order.id}?verify_success=true&${amountQuery}`,
+      cancelUrl: `${frontendUrl}/custom-requests/${order.id}?${amountQuery}`,
       metadata: {
-        order_id: order.id,
+        order_id: String(order.id),
         order_type: "blueprint",
+        payment_purpose: "initial_payment",
+        initial_payment_amount_cents: String(amountResolution.amountCents),
+        minimum_down_payment_cents: String(amountResolution.minimumCents),
       },
     });
 
@@ -4009,9 +4400,8 @@ exports.createPayMongoCheckout = async (req, res) => {
 
     const [updateResult] = await conn.execute(
       `UPDATE orders
-       SET
-         payment_url = ?,
-         paymongo_session_id = ?
+       SET payment_url = ?,
+           paymongo_session_id = ?
        WHERE id = ?
          AND customer_id = ?
          AND order_type = 'blueprint'
@@ -4026,15 +4416,6 @@ exports.createPayMongoCheckout = async (req, res) => {
     if (updateResult.affectedRows !== 1) {
       await conn.rollback();
       transactionActive = false;
-      // The PayMongo checkout session above was already created on
-      // PayMongo's side before this guarded UPDATE ran. If the UPDATE did
-      // not commit, that specific session id/URL becomes an orphan,
-      // unreferenced by any order row — it cannot be reached by
-      // verifyPayment (which looks up sessions via the order's own stored
-      // paymongo_session_id) and so poses no double-charge risk, but it is
-      // not automatically cancelled here since no session-cancellation
-      // call exists in the current PayMongo service. Flagged for
-      // awareness only — not fixed in this phase.
       return res.status(409).json({
         message: "This order's state changed. Please refresh and try again.",
       });
@@ -4045,19 +4426,29 @@ exports.createPayMongoCheckout = async (req, res) => {
 
     return res.json({
       payment_url: checkoutUrl,
+      payment_amount: amountResolution.amount,
+      minimum_payment: amountResolution.minimumAmount,
+      reused: false,
     });
   } catch (err) {
     if (conn && transactionActive) {
       try {
         await conn.rollback();
+        transactionActive = false;
       } catch (rollbackErr) {
         console.error("Rollback failed:", rollbackErr);
       }
     }
-    console.error(err.response?.data || err);
 
-    return res.status(500).json({
-      message: "Failed to create PayMongo checkout.",
+    console.error(
+      "[customer.customorders createPayMongoCheckout]",
+      err.response?.data || err,
+    );
+
+    return res.status(err.response ? 502 : 500).json({
+      message: err.response
+        ? "Unable to start the online payment right now. Please try again."
+        : "Failed to create PayMongo checkout.",
     });
   } finally {
     if (conn) conn.release();
