@@ -115,6 +115,14 @@ const createReceiptIfNeeded = async (conn, order, paymentTransactionId) => {
     return existingReceipt.id;
   }
 
+  const [items] = await conn.query(
+    `SELECT product_name, quantity, unit_price
+     FROM order_items
+     WHERE order_id = ?
+     ORDER BY id ASC`,
+    [order.id],
+  );
+
   const receiptNumber = `OR-${Date.now()}`;
 
   const receipt = await createStandardOnlineReceipt(conn, {
@@ -122,9 +130,13 @@ const createReceiptIfNeeded = async (conn, order, paymentTransactionId) => {
     paymentTransactionId,
     receiptNumber,
     issuedTo: order.customer_name || order.walkin_customer_name || "Customer",
+    issuedBy: order.customer_id,
+    totalAmount: Number(order.total || 0),
+    providerReference: order.paymongo_session_id || null,
+    itemsSnapshot: JSON.stringify(items || []),
   });
 
-  return receipt?.id || null;
+  return receipt?.receiptId || null;
 };
 
 exports.handlePaymongoWebhook = async (req, res) => {
