@@ -165,7 +165,7 @@ exports.handlePaymongoWebhook = async (req, res) => {
 
     const eventData = payload?.data;
 
-    const eventType = eventData?.type || eventData?.attributes?.type || null;
+    const eventType = eventData?.attributes?.type || eventData?.type || null;
 
     if (eventType !== "checkout_session.payment.paid") {
       return res.status(200).json({
