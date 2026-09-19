@@ -61,7 +61,12 @@ const isPosQrCleanupTestSafeConfigured = () => {
   );
 };
 
-const writeSystemAudit = async ({ action, attemptId, oldValues, newValues }) => {
+const writeSystemAudit = async ({
+  action,
+  attemptId,
+  oldValues,
+  newValues,
+}) => {
   const written = await writeAuditLogSafe({
     userId: null,
     action,
@@ -155,6 +160,7 @@ const processExpiredAwaitingAttempt = async (attemptId, config, stats) => {
       matchedPayment: analysis.payment,
       actorUserId: attempt.cashier_id,
       requireOwner: false,
+      io,
     });
 
     if (finalized.httpStatus === 200) {
@@ -168,8 +174,7 @@ const processExpiredAwaitingAttempt = async (attemptId, config, stats) => {
           newValues: {
             status: "consumed",
             order_id: finalized.payload.order_id,
-            payment_transaction_id:
-              finalized.payload.payment_transaction_id,
+            payment_transaction_id: finalized.payload.payment_transaction_id,
             receipt_id: finalized.payload.receipt_id,
           },
         });
@@ -296,7 +301,7 @@ const processStaleCreatingAttempt = async (attemptId, stats) => {
   });
 };
 
-const runPosQrCleanupBatch = async () => {
+const runPosQrCleanupBatch = async ({ io = null } = {}) => {
   if (!isPosQrCleanupTestSafeConfigured()) {
     return { skipped: true, reason: "disabled_or_not_test_safe" };
   }

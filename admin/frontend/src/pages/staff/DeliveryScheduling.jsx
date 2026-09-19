@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../services/api";
+import { getSocket, subscribeSocketReady } from "../../services/socket";
 import {
   Plus,
   Search,
@@ -452,6 +453,80 @@ export default function DeliveryScheduling() {
     fetchRiders();
   }, [fetchDeliveries, fetchEligibleOrders, fetchRiders]);
 
+  useEffect(() => {
+    const handleDeliveryUpdated = (payload) => {
+      const deliveryId = Number(payload?.delivery_id);
+      const orderId = Number(payload?.order_id);
+
+      if (!Number.isInteger(deliveryId) && !Number.isInteger(orderId)) {
+        return;
+      }
+
+      Promise.all([fetchDeliveries(), fetchEligibleOrders()]).catch((err) => {
+        console.error(
+          "Failed to refresh delivery scheduling data after realtime update:",
+          err,
+        );
+      });
+    };
+
+    const handleOrderStatusUpdated = (payload) => {
+      const orderStatus = String(payload?.status || "")
+        .trim()
+        .toLowerCase();
+
+      if (
+        !["confirmed", "contract_released", "production"].includes(orderStatus)
+      ) {
+        return;
+      }
+
+      const orderId = Number(payload?.order_id);
+
+      if (!Number.isInteger(orderId)) {
+        return;
+      }
+
+      fetchEligibleOrders().catch((err) => {
+        console.error(
+          "Failed to refresh eligible delivery orders after realtime order status update:",
+          err,
+        );
+      });
+    };
+
+    const attachListener = (socket) => {
+      if (!socket) return;
+
+      socket.off("delivery:updated", handleDeliveryUpdated);
+      socket.on("delivery:updated", handleDeliveryUpdated);
+
+      socket.off("order:status_updated", handleOrderStatusUpdated);
+      socket.on("order:status_updated", handleOrderStatusUpdated);
+    };
+
+    const socket = getSocket();
+
+    if (socket) {
+      attachListener(socket);
+    }
+
+    const unsubscribeReady = subscribeSocketReady((readySocket) => {
+      attachListener(readySocket);
+    });
+
+    return () => {
+      const currentSocket = getSocket();
+
+      if (currentSocket) {
+        currentSocket.off("delivery:updated", handleDeliveryUpdated);
+        currentSocket.off("order:status_updated", handleOrderStatusUpdated);
+      }
+
+      unsubscribeReady();
+    };
+  }, [fetchDeliveries, fetchEligibleOrders]);
+
   // 👉 NEW: Auto-open modal from Assign Delivery button shortcut
   useEffect(() => {
     const preselectOrderId = searchParams.get("schedule_order_id");
@@ -766,7 +841,8 @@ export default function DeliveryScheduling() {
     if (!reason) {
       nextErrors.reason = "Reassignment reason is required.";
     } else if (reason.length > 500) {
-      nextErrors.reason = "Reassignment reason must be 500 characters or fewer.";
+      nextErrors.reason =
+        "Reassignment reason must be 500 characters or fewer.";
     }
 
     setReassignFieldErrors(nextErrors);
@@ -800,8 +876,7 @@ export default function DeliveryScheduling() {
         response.data?.previous_driver?.name ||
         reassignTarget.driver_name ||
         "Previous rider";
-      const assignedName =
-        response.data?.assigned_driver?.name || "new rider";
+      const assignedName = response.data?.assigned_driver?.name || "new rider";
 
       setReassignTarget(null);
       setReassignForm({
@@ -1400,8 +1475,7 @@ export default function DeliveryScheduling() {
                     {riders
                       .filter(
                         (rider) =>
-                          Number(rider.id) !==
-                          Number(reassignTarget.driver_id),
+                          Number(rider.id) !== Number(reassignTarget.driver_id),
                       )
                       .map((rider) => (
                         <option key={rider.id} value={rider.id}>

@@ -2,6 +2,7 @@
 const db = require("../../config/db");
 const { createPosSaleReceipt } = require("../../services/receiptService");
 const { parseStrictPositiveInt } = require("../../utils/validators");
+const { emitOrderCreated } = require("../../utils/orderStatusSocket");
 const {
   normalizePhilippinePhone,
   getPhoneLookupVariants,
@@ -409,6 +410,15 @@ exports.createOrder = async (req, res) => {
 
     await conn.commit();
 
+    const io = req.app.get("io");
+
+    emitOrderCreated(io, {
+      orderId,
+      orderNumber,
+      status: initialOrderStatus,
+      orderType: "standard",
+    });
+
     req.auditRecord = {
       id: orderId,
       old: null,
@@ -458,10 +468,7 @@ exports.getOrderById = async (req, res) => {
       WHERE o.id = ?
         ${cashierOwnOnly ? "AND r.issued_by = ?" : ""}
       `,
-      [
-        parseInt(req.params.id),
-        ...(cashierOwnOnly ? [req.user.id] : []),
-      ],
+      [parseInt(req.params.id), ...(cashierOwnOnly ? [req.user.id] : [])],
     );
 
     if (orders.length === 0)

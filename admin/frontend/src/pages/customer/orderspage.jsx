@@ -283,14 +283,92 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
         return;
       }
 
-      setOrder((currentOrder) =>
-        currentOrder
-          ? {
-              ...currentOrder,
-              status: payload.status,
-            }
-          : currentOrder,
-      );
+      api
+        .get(`/customer/orders/${orderId}`)
+        .then((response) => {
+          setOrder(response.data);
+        })
+        .catch((err) => {
+          console.error(
+            "Failed to refresh customer order after realtime status update:",
+            err?.response?.data || err,
+          );
+        });
+    };
+
+    const handleOrderPaymentUpdated = (payload) => {
+      console.log("[SOCKET RECEIVED] order:payment_updated", payload);
+
+      const updatedOrderId = Number(payload?.order_id);
+
+      if (
+        !Number.isInteger(updatedOrderId) ||
+        updatedOrderId !== Number(orderId)
+      ) {
+        return;
+      }
+
+      api
+        .get(`/customer/orders/${orderId}`)
+        .then((response) => {
+          setOrder(response.data);
+        })
+        .catch((err) => {
+          console.error(
+            "Failed to refresh customer order after payment update:",
+            err?.response?.data || err,
+          );
+        });
+    };
+
+    const handleBlueprintUpdated = (payload) => {
+      const updatedOrderId = Number(payload?.order_id);
+
+      if (!Number.isInteger(updatedOrderId)) {
+        return;
+      }
+
+      api
+        .get("/customer/orders")
+        .then((response) => {
+          const nextOrders = Array.isArray(response.data) ? response.data : [];
+
+          setOrders(nextOrders);
+        })
+        .catch((err) => {
+          console.error(
+            "Failed to refresh customer orders after realtime blueprint update:",
+            err?.response?.data || err,
+          );
+        });
+    };
+
+    const handleDeliveryUpdated = (payload) => {
+      console.log("[SOCKET RECEIVED] delivery:updated", payload);
+
+      const orderId = Number(payload?.order_id);
+
+      if (!Number.isInteger(orderId)) {
+        return;
+      }
+
+      if (payload?.order_status_changed) {
+        return;
+      }
+
+      api
+        .get("/customer/orders")
+        .then((response) => {
+          const nextOrders = Array.isArray(response.data) ? response.data : [];
+
+          setOrders(nextOrders);
+        })
+        .catch((err) => {
+          console.error(
+            "Failed to refresh customer orders after realtime delivery update:",
+            err?.response?.data || err,
+          );
+        });
     };
 
     const attachListener = (socket) => {
@@ -298,6 +376,15 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
 
       socket.off("order:status_updated", handleOrderStatusUpdated);
       socket.on("order:status_updated", handleOrderStatusUpdated);
+
+      socket.off("order:payment_updated", handleOrderPaymentUpdated);
+      socket.on("order:payment_updated", handleOrderPaymentUpdated);
+
+      socket.off("blueprint:updated", handleBlueprintUpdated);
+      socket.on("blueprint:updated", handleBlueprintUpdated);
+
+      socket.off("delivery:updated", handleDeliveryUpdated);
+      socket.on("delivery:updated", handleDeliveryUpdated);
     };
 
     const socket = getSocket();
@@ -315,6 +402,9 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
 
       if (currentSocket) {
         currentSocket.off("order:status_updated", handleOrderStatusUpdated);
+        currentSocket.off("order:payment_updated", handleOrderPaymentUpdated);
+        currentSocket.off("blueprint:updated", handleBlueprintUpdated);
+        currentSocket.off("delivery:updated", handleDeliveryUpdated);
       }
 
       unsubscribeReady();
@@ -783,16 +873,93 @@ export default function OrdersPage() {
         return;
       }
 
-      setOrders((currentOrders) =>
-        currentOrders.map((order) =>
-          Number(order?.id) === orderId
-            ? {
-                ...order,
-                status: payload.status,
-              }
-            : order,
-        ),
-      );
+      api
+        .get("/customer/orders")
+        .then((response) => {
+          const nextOrders = Array.isArray(response.data) ? response.data : [];
+
+          setOrders(nextOrders);
+        })
+        .catch((err) => {
+          console.error(
+            "Failed to refresh customer orders after realtime status update:",
+            err?.response?.data || err,
+          );
+        });
+    };
+
+    const handleOrderPaymentUpdated = (payload) => {
+      console.log("[SOCKET RECEIVED] order:payment_updated", payload);
+
+      const orderId = Number(payload?.order_id);
+
+      if (!Number.isInteger(orderId)) {
+        return;
+      }
+
+      api
+        .get("/customer/orders")
+        .then((response) => {
+          const nextOrders = Array.isArray(response.data) ? response.data : [];
+
+          setOrders(nextOrders);
+        })
+        .catch((err) => {
+          console.error(
+            "Failed to refresh customer orders after payment update:",
+            err?.response?.data || err,
+          );
+        });
+    };
+
+    const handleBlueprintUpdated = (payload) => {
+      const updatedOrderId = Number(payload?.order_id);
+
+      if (
+        !Number.isInteger(updatedOrderId) ||
+        updatedOrderId !== Number(orderId)
+      ) {
+        return;
+      }
+
+      api
+        .get(`/customer/orders/${orderId}`)
+        .then((response) => {
+          setOrder(response.data);
+        })
+        .catch((err) => {
+          console.error(
+            "Failed to refresh customer order after realtime blueprint update:",
+            err?.response?.data || err,
+          );
+        });
+    };
+
+    const handleDeliveryUpdated = (payload) => {
+      console.log("[SOCKET RECEIVED] delivery:updated", payload);
+
+      const updatedOrderId = Number(payload?.order_id);
+
+      if (!Number.isInteger(updatedOrderId)) {
+        return;
+      }
+
+      if (payload?.order_status_changed) {
+        return;
+      }
+
+      api
+        .get("/customer/orders")
+        .then((response) => {
+          const nextOrders = Array.isArray(response.data) ? response.data : [];
+          setOrders(nextOrders);
+        })
+        .catch((err) => {
+          console.error(
+            "Failed to refresh customer orders after realtime delivery update:",
+            err?.response?.data || err,
+          );
+        });
     };
 
     const attachListener = (socket) => {
@@ -800,6 +967,15 @@ export default function OrdersPage() {
 
       socket.off("order:status_updated", handleOrderStatusUpdated);
       socket.on("order:status_updated", handleOrderStatusUpdated);
+
+      socket.off("order:payment_updated", handleOrderPaymentUpdated);
+      socket.on("order:payment_updated", handleOrderPaymentUpdated);
+
+      socket.off("blueprint:updated", handleBlueprintUpdated);
+      socket.on("blueprint:updated", handleBlueprintUpdated);
+
+      socket.off("delivery:updated", handleDeliveryUpdated);
+      socket.on("delivery:updated", handleDeliveryUpdated);
     };
 
     const socket = getSocket();
@@ -817,6 +993,9 @@ export default function OrdersPage() {
 
       if (currentSocket) {
         currentSocket.off("order:status_updated", handleOrderStatusUpdated);
+        currentSocket.off("order:payment_updated", handleOrderPaymentUpdated);
+        currentSocket.off("blueprint:updated", handleBlueprintUpdated);
+        currentSocket.off("delivery:updated", handleDeliveryUpdated);
       }
 
       unsubscribeReady();

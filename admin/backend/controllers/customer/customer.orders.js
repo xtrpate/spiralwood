@@ -12,6 +12,10 @@ const {
 const { createNotificationSafe } = require("../../utils/notificationHelper");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const {
+  emitOrderStatusUpdate,
+  emitOrderCreated,
+} = require("../../utils/orderStatusSocket");
+const {
   createStandardOnlineReceipt,
 } = require("../../services/receiptService");
 
@@ -472,6 +476,16 @@ exports.createOrder = async (req, res) => {
     }
 
     await conn.commit();
+
+    // const io = req.app.get("io");
+
+    emitOrderCreated(io, {
+      orderId: order_id,
+      orderNumber: order_number,
+      status: "pending",
+      orderType: "standard",
+      customerId: req.user.id,
+    });
 
     await writeAuditLogSafe({
       userId: req.user.id,
@@ -942,9 +956,8 @@ exports.getOrderById = async (req, res) => {
 /* ── Customer Confirms Delivery ── */
 exports.confirmOrder = async (req, res) => {
   try {
-    // ── FIXED: Switched to .query and parsed ID ──
     const [[order]] = await db.query(
-      `SELECT id, status, payment_status, payment_method
+      `SELECT id, order_number, customer_id, status, payment_status, payment_method
        FROM orders
        WHERE id = ? AND customer_id = ?
        LIMIT 1`,
@@ -984,13 +997,20 @@ exports.confirmOrder = async (req, res) => {
       });
     }
 
-    // 👉 NEW: Also update the rider's delivery record to 'completed'
     await db.query(
       `UPDATE deliveries 
        SET status = 'completed', updated_at = NOW() 
        WHERE order_id = ? AND status = 'delivered'`,
       [parsedOrderId],
     );
+
+    const io = req.app.get("io");
+    emitOrderStatusUpdate(io, {
+      orderId: order.id,
+      orderNumber: order.order_number,
+      status: "completed",
+      customerId: order.customer_id,
+    });
 
     req.auditRecord = {
       id: order.id,
@@ -1015,8 +1035,8 @@ exports.verifyPayment = async (req, res) => {
     }
 
     const [[order]] = await db.query(
-      `SELECT id, order_number, total, payment_status, paymongo_session_id,
-              customer_id,
+      `SELECT id, order_number, total, status, payment_status, paymongo_session_id,
+                customer_id,
               COALESCE(
                 (SELECT name FROM users WHERE id = customer_id LIMIT 1),
                 walkin_customer_name,
@@ -1183,6 +1203,20 @@ exports.verifyPayment = async (req, res) => {
 
       await conn.commit();
 
+      if (
+        String(lockedOrder.status || "")
+          .trim()
+          .toLowerCase() !== "confirmed"
+      ) {
+        const io = req.app.get("io");
+        emitOrderStatusUpdate(io, {
+          orderId: lockedOrder.id,
+          orderNumber: lockedOrder.order_number,
+          status: "confirmed",
+          customerId: lockedOrder.customer_id,
+        });
+      }
+
       if (insertedPayment) {
         await writeAuditLogSafe({
           userId: req.user.id,
@@ -1231,7 +1265,6 @@ exports.verifyPayment = async (req, res) => {
     });
   }
 };
-
 
 exports.getDeliveryReceipt = async (req, res) => {
   const orderId = Number(req.params.id);
@@ -1308,9 +1341,7 @@ exports.getDeliveryReceipt = async (req, res) => {
       recipient_type: row.recipient_type,
       signature_data: row.signature_data || null,
       signature_mime: row.signature_mime || null,
-      signature_present: Boolean(
-        String(row.signature_data || "").trim(),
-      ),
+      signature_present: Boolean(String(row.signature_data || "").trim()),
       acknowledgement_text: row.acknowledgement_text,
       note: row.note,
       acknowledged_at: row.acknowledged_at,
@@ -1409,6 +1440,14 @@ exports.cancelOrder = async (req, res) => {
 
     await conn.commit();
 
+    const io = req.app.get("io");
+    emitOrderStatusUpdate(io, {
+      orderId,
+      orderNumber: cancelledOrder?.order_number || `#${orderId}`,
+      status: "cancelled",
+      customerId,
+    });
+
     await writeAuditLogSafe({
       userId: req.user.id,
       action: "cancel_online_order",
@@ -1435,7 +1474,7 @@ exports.cancelOrder = async (req, res) => {
 // taking back the reserve stock on unpaid online transactions
 
 /* ── Automated Task: Audit and Cancel Unpaid PayMongo Orders ── */
-exports.autoCancelExpiredOrders = async () => {
+exports.autoCancelExpiredOrders = async (io = null) => {
   try {
     // 1. Find expired orders (No transaction lock here to save Aiven DB limits)
     const [expiredOrders] = await db.query(
@@ -1451,6 +1490,8 @@ exports.autoCancelExpiredOrders = async () => {
     // 2. Loop through and audit each order ONE BY ONE
     for (const order of expiredOrders) {
       let isActuallyPaid = false;
+      let realtimeStatusChanged = false;
+      let realtimeStatus = null;
 
       // Double-check with PayMongo over the network (No DB locks held during this wait!)
       if (order.paymongo_session_id) {
@@ -1503,10 +1544,12 @@ exports.autoCancelExpiredOrders = async () => {
           // Re-check the locked row so a concurrent cancellation/payment
           // verification cannot be overwritten by this stale cron candidate.
           if (
-            String(lockedOrder.status || "").trim().toLowerCase() !==
-              "pending" ||
-            String(lockedOrder.payment_status || "").trim().toLowerCase() !==
-              "unpaid"
+            String(lockedOrder.status || "")
+              .trim()
+              .toLowerCase() !== "pending" ||
+            String(lockedOrder.payment_status || "")
+              .trim()
+              .toLowerCase() !== "unpaid"
           ) {
             await conn.rollback();
             continue;
@@ -1541,6 +1584,9 @@ exports.autoCancelExpiredOrders = async () => {
             verifiedPayment.id,
           );
 
+          realtimeStatusChanged = true;
+          realtimeStatus = "confirmed";
+
           console.log(
             `[Cron] Recovered payment safely for order ${lockedOrder.order_number}`,
           );
@@ -1562,6 +1608,9 @@ exports.autoCancelExpiredOrders = async () => {
             await conn.rollback();
             continue;
           }
+
+          realtimeStatusChanged = true;
+          realtimeStatus = "cancelled";
 
           const [items] = await conn.query(
             `SELECT id AS order_item_id, product_id, quantity
@@ -1610,6 +1659,25 @@ exports.autoCancelExpiredOrders = async () => {
         }
 
         await conn.commit();
+
+        if (realtimeStatusChanged) {
+          const [[updatedOrder]] = await db.query(
+            `SELECT id, order_number, customer_id, status
+             FROM orders
+             WHERE id = ?
+             LIMIT 1`,
+            [order.id],
+          );
+
+          if (updatedOrder) {
+            emitOrderStatusUpdate(io, {
+              orderId: updatedOrder.id,
+              orderNumber: updatedOrder.order_number,
+              status: realtimeStatus || updatedOrder.status,
+              customerId: updatedOrder.customer_id,
+            });
+          }
+        }
 
         await writeAuditLogSafe({
           userId: null,

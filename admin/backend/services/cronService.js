@@ -3,7 +3,9 @@ const cron = require("node-cron");
 const pool = require("../config/db");
 const { runDatabaseBackup } = require("./databaseBackupService");
 const { runPosQrCleanupBatch } = require("./posQrCleanupService");
-const { cleanupUnverifiedCustomers } = require("./unverifiedCustomerCleanupService");
+const {
+  cleanupUnverifiedCustomers,
+} = require("./unverifiedCustomerCleanupService");
 
 async function runBackup(type = "auto") {
   return runDatabaseBackup({ type });
@@ -46,45 +48,69 @@ async function runScheduledAutoBackup(label) {
   }
 }
 
-function startCronJobs() {
-  cron.schedule("0 0 * * *", () => {
-    console.log("[CRON] Running midnight auto-backup...");
-    void runScheduledAutoBackup("Midnight");
-  }, { timezone: "Asia/Manila" });
+function startCronJobs(io = null) {
+  cron.schedule(
+    "0 0 * * *",
+    () => {
+      console.log("[CRON] Running midnight auto-backup...");
+      void runScheduledAutoBackup("Midnight");
+    },
+    { timezone: "Asia/Manila" },
+  );
 
-  cron.schedule("0 12 * * *", () => {
-    console.log("[CRON] Running noon auto-backup...");
-    void runScheduledAutoBackup("Noon");
-  }, { timezone: "Asia/Manila" });
+  cron.schedule(
+    "0 12 * * *",
+    () => {
+      console.log("[CRON] Running noon auto-backup...");
+      void runScheduledAutoBackup("Noon");
+    },
+    { timezone: "Asia/Manila" },
+  );
 
-  cron.schedule("*/5 * * * *", async () => {
-    try {
-      await runPosQrCleanupBatch();
-    } catch (err) {
-      console.error("[CRON] POS QR cleanup failed:", err.message);
-    }
-  }, { timezone: "Asia/Manila" });
+  cron.schedule(
+    "*/5 * * * *",
+    async () => {
+      try {
+        await runPosQrCleanupBatch({ io });
+      } catch (err) {
+        console.error("[CRON] POS QR cleanup failed:", err.message);
+      }
+    },
+    { timezone: "Asia/Manila" },
+  );
 
   // Abandoned customer registration cleanup — once daily at 2:30 AM.
-  cron.schedule("30 2 * * *", async () => {
-    try {
-      const result = await cleanupUnverifiedCustomers({ ageDays: 7, batchSize: 100 });
-      console.log(
-        `[CRON] Unverified registration cleanup: scanned=${result.scanned}, deleted=${result.deleted}, skipped_linked=${result.skipped_linked}`,
-      );
-    } catch (err) {
-      console.error("[CRON] Unverified registration cleanup failed:", err.message);
-    }
-  }, { timezone: "Asia/Manila" });
+  cron.schedule(
+    "30 2 * * *",
+    async () => {
+      try {
+        const result = await cleanupUnverifiedCustomers({
+          ageDays: 7,
+          batchSize: 100,
+        });
+        console.log(
+          `[CRON] Unverified registration cleanup: scanned=${result.scanned}, deleted=${result.deleted}, skipped_linked=${result.skipped_linked}`,
+        );
+      } catch (err) {
+        console.error(
+          "[CRON] Unverified registration cleanup failed:",
+          err.message,
+        );
+      }
+    },
+    { timezone: "Asia/Manila" },
+  );
 
   // New: Support ticket auto-close (Runs at midnight)
-  cron.schedule("0 0 * * *", async () => {
-    try {
-      console.log(
-        "[CRON] Running nightly auto-close check for resolved tickets...",
-      );
-      const [result] = await pool.query(
-        `
+  cron.schedule(
+    "0 0 * * *",
+    async () => {
+      try {
+        console.log(
+          "[CRON] Running nightly auto-close check for resolved tickets...",
+        );
+        const [result] = await pool.query(
+          `
         UPDATE support_tickets
         SET 
           status = 'closed',
@@ -92,20 +118,22 @@ function startCronJobs() {
         WHERE status = 'resolved' 
           AND resolved_at <= NOW() - INTERVAL 3 DAY
         `,
-      );
-      if (result.affectedRows > 0) {
-        console.log(
-          `[CRON] Successfully auto-closed ${result.affectedRows} ticket(s).`,
         );
-      } else {
-        console.log(
-          "[CRON] Check complete: No tickets met the 3-day auto-close criteria.",
-        );
+        if (result.affectedRows > 0) {
+          console.log(
+            `[CRON] Successfully auto-closed ${result.affectedRows} ticket(s).`,
+          );
+        } else {
+          console.log(
+            "[CRON] Check complete: No tickets met the 3-day auto-close criteria.",
+          );
+        }
+      } catch (err) {
+        console.error("[CRON] Error running auto-close tickets job:", err);
       }
-    } catch (err) {
-      console.error("[CRON] Error running auto-close tickets job:", err);
-    }
-  }, { timezone: "Asia/Manila" });
+    },
+    { timezone: "Asia/Manila" },
+  );
 
   console.log(
     "✅  Cron jobs started: auto-backup at 12:00 AM and 12:00 PM daily; POS QR cleanup every 5 minutes; unverified registration cleanup at 2:30 AM; ticket auto-close at 12:00 AM.",

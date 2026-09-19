@@ -6,14 +6,15 @@ const {
   centsToDecimalString,
   centsToAmount,
 } = require("../utils/paymentAmounts");
-const {
-  resolveLifecycleByOrder,
-} = require("./blueprintLifecycleService");
+const { resolveLifecycleByOrder } = require("./blueprintLifecycleService");
 const {
   ensureReceiptForVerifiedPayment,
 } = require("./blueprintReceiptService");
 
-const normalize = (value) => String(value || "").trim().toLowerCase();
+const normalize = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
 
 const ALLOWED_STATUSES = [
   "confirmed",
@@ -179,7 +180,10 @@ const evaluate = ({
     return build(REASON.PAYMENT_TOTAL_INCONSISTENT);
   }
 
-  const derivedStatus = derivePaymentStatus(verifiedTotalCents, orderTotalCents);
+  const derivedStatus = derivePaymentStatus(
+    verifiedTotalCents,
+    orderTotalCents,
+  );
 
   if (normalize(order.payment_status) !== derivedStatus) {
     return build(REASON.PAYMENT_STATUS_INCONSISTENT);
@@ -213,7 +217,11 @@ const evaluate = ({
   };
 };
 
-const computeLimits = ({ orderTotalCents, requiredMinimumCents, verifiedTotalCents }) => {
+const computeLimits = ({
+  orderTotalCents,
+  requiredMinimumCents,
+  verifiedTotalCents,
+}) => {
   const minEligibleCents =
     verifiedTotalCents < requiredMinimumCents
       ? requiredMinimumCents - verifiedTotalCents
@@ -267,8 +275,11 @@ const buildSummary = ({ order, estimation, contract = null, paymentRows }) => {
     };
   }
 
-  const { verifiedCents: verifiedTotalCents, hasPendingPayment, hasInvalidAmount } =
-    summarizePaymentRowsStrict(paymentRows);
+  const {
+    verifiedCents: verifiedTotalCents,
+    hasPendingPayment,
+    hasInvalidAmount,
+  } = summarizePaymentRowsStrict(paymentRows);
   const hasPayMongoSessionData = Boolean(
     order.paymongo_session_id || order.payment_url,
   );
@@ -378,7 +389,12 @@ exports.getRestrictedPaymentSummary = async (conn, orderId) => {
 
 exports.buildPaymentSummaryFromRows = buildSummary;
 
-exports.recordCashPayment = async ({ pool, orderId, amountRaw, verifiedByUserId }) => {
+exports.recordCashPayment = async ({
+  pool,
+  orderId,
+  amountRaw,
+  verifiedByUserId,
+}) => {
   const parsedAmount = parseStrictMoneyToCents(amountRaw);
   if (!parsedAmount) {
     return {
@@ -528,7 +544,12 @@ exports.recordCashPayment = async ({ pool, orderId, amountRaw, verifiedByUserId 
       `INSERT INTO payment_transactions
         (order_id, amount, payment_method, proof_url, verified_by, verified_at, status, notes)
        VALUES (?, ?, 'cash', NULL, ?, NOW(), 'verified', ?)`,
-      [orderId, amountDecimalString, verifiedByUserId, "Cash payment recorded at store."],
+      [
+        orderId,
+        amountDecimalString,
+        verifiedByUserId,
+        "Cash payment recorded at store.",
+      ],
     );
 
     if (
@@ -575,7 +596,9 @@ exports.recordCashPayment = async ({ pool, orderId, amountRaw, verifiedByUserId 
       transactionActive = false;
       return {
         httpStatus: 409,
-        body: { message: "This order's state changed. Please refresh and try again." },
+        body: {
+          message: "This order's state changed. Please refresh and try again.",
+        },
       };
     }
 
@@ -646,7 +669,9 @@ exports.recordCashPayment = async ({ pool, orderId, amountRaw, verifiedByUserId 
       transactionActive = false;
       return {
         httpStatus: 409,
-        body: { message: "Payment verification mismatch. Please contact support." },
+        body: {
+          message: "Payment verification mismatch. Please contact support.",
+        },
       };
     }
 
@@ -671,7 +696,9 @@ exports.recordCashPayment = async ({ pool, orderId, amountRaw, verifiedByUserId 
         payment_method: "cash",
         amount: centsToAmount(amountCents),
         verified_total: roundMoney(finalVerifiedCents / 100),
-        remaining_balance: roundMoney((orderTotalCents - finalVerifiedCents) / 100),
+        remaining_balance: roundMoney(
+          (orderTotalCents - finalVerifiedCents) / 100,
+        ),
         payment_status: finalStatus,
         order_status: nextOrderStatus,
         receipt_id: receiptResult.receiptId,
@@ -692,9 +719,13 @@ exports.recordCashPayment = async ({ pool, orderId, amountRaw, verifiedByUserId 
         payment_transaction_id: insertResult.insertId,
         amount_recorded: centsToAmount(amountCents),
         verified_total: roundMoney(finalVerifiedCents / 100),
-        remaining_balance: roundMoney((orderTotalCents - finalVerifiedCents) / 100),
+        remaining_balance: roundMoney(
+          (orderTotalCents - finalVerifiedCents) / 100,
+        ),
         payment_status: finalStatus,
         order_status: nextOrderStatus,
+        order_status_changed:
+          normalize(order.status) !== normalize(nextOrderStatus),
         receipt_id: receiptResult.receiptId,
         receipt_number: receiptResult.receiptNumber,
         payment_label: receiptResult.paymentLabel,
@@ -709,7 +740,10 @@ exports.recordCashPayment = async ({ pool, orderId, amountRaw, verifiedByUserId 
       }
     }
     console.error("[blueprintCashPaymentService recordCashPayment]", err);
-    return { httpStatus: 500, body: { message: "Failed to record cash payment." } };
+    return {
+      httpStatus: 500,
+      body: { message: "Failed to record cash payment." },
+    };
   } finally {
     if (conn) conn.release();
   }

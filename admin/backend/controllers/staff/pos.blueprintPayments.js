@@ -6,8 +6,15 @@ const {
 const { parseStrictPositiveInt } = require("../../utils/validators");
 const { parseDecimalToCentsStrict } = require("../../utils/paymentAmounts");
 const { createNotificationSafe } = require("../../utils/notificationHelper");
+const {
+  emitOrderStatusUpdate,
+  emitOrderPaymentUpdate,
+} = require("../../utils/orderStatusSocket");
 
-const normalize = (value) => String(value || "").trim().toLowerCase();
+const normalize = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
 
 const safeParseJson = (value, fallback = null) => {
   try {
@@ -149,7 +156,8 @@ const buildProcessorDisplay = ({ paymentMethod, status, verifierName }) => {
 
   if (method === "paymongo") return "PayMongo / Online Payment";
   if (normalizedStatus === "verified" && verifierName) return verifierName;
-  if (normalizedStatus === "pending" && !verifierName) return "Pending verification";
+  if (normalizedStatus === "pending" && !verifierName)
+    return "Pending verification";
   if (normalizedStatus === "verified" && !verifierName) return "System";
   return "—";
 };
@@ -193,8 +201,8 @@ const getPaymentHistoryForOrder = async (dbPool, orderId) => {
     // link is only ever surfaced to the UI when the payment itself is
     // verified -- matching the "View Receipt only when verified AND
     // receipt_id AND receipt_number exist" rule exactly.
-    const receiptId = isVerified ? row.receipt_id ?? null : null;
-    const receiptNumber = isVerified ? row.receipt_number ?? null : null;
+    const receiptId = isVerified ? (row.receipt_id ?? null) : null;
+    const receiptNumber = isVerified ? (row.receipt_number ?? null) : null;
 
     return {
       payment_transaction_id: row.payment_transaction_id,
@@ -202,7 +210,7 @@ const getPaymentHistoryForOrder = async (dbPool, orderId) => {
       amount: row.amount,
       payment_method: row.payment_method,
       status: row.status,
-      payment_label: isVerified ? row.payment_label ?? null : null,
+      payment_label: isVerified ? (row.payment_label ?? null) : null,
       processor_display: buildProcessorDisplay({
         paymentMethod: row.payment_method,
         status: row.status,
@@ -213,7 +221,6 @@ const getPaymentHistoryForOrder = async (dbPool, orderId) => {
     };
   });
 };
-
 
 exports.listOrders = async (req, res) => {
   try {
@@ -327,7 +334,9 @@ exports.listOrders = async (req, res) => {
         stored_payment_status: storedStatus,
         initial_payment_method: row.initial_payment_method || null,
         fulfillment_method:
-          normalize(row.fulfillment_method) === "pickup" ? "pickup" : "delivery",
+          normalize(row.fulfillment_method) === "pickup"
+            ? "pickup"
+            : "delivery",
         picked_up_at: row.picked_up_at || null,
         total,
         verified_total: verifiedTotal,
@@ -397,7 +406,10 @@ exports.lookupByOrderNumber = async (req, res) => {
 
     const summary = await getRestrictedPaymentSummary(pool, row.id);
     const paymentHistory = await getPaymentHistoryForOrder(pool, row.id);
-    const pickupAcknowledgement = await getPickupAcknowledgementForOrder(pool, row.id);
+    const pickupAcknowledgement = await getPickupAcknowledgementForOrder(
+      pool,
+      row.id,
+    );
     const draftPreviewByOrderId = await getOrderDraftPreviewMap(pool, [row.id]);
 
     return res.json({
@@ -408,8 +420,7 @@ exports.lookupByOrderNumber = async (req, res) => {
       thumbnail_url: row.thumbnail_url || null,
       blueprint_design_data: row.blueprint_design_data || null,
       blueprint_view_3d_data: row.blueprint_view_3d_data || null,
-      draft_editor_snapshot:
-        draftPreviewByOrderId.get(Number(row.id)) || null,
+      draft_editor_snapshot: draftPreviewByOrderId.get(Number(row.id)) || null,
       payment_history: paymentHistory,
       pickup_acknowledgement: pickupAcknowledgement,
     });
@@ -429,7 +440,9 @@ exports.recordPayment = async (req, res) => {
 
   const bodyKeys = Object.keys(req.body || {});
   if (bodyKeys.length !== 1 || bodyKeys[0] !== "amount") {
-    return res.status(400).json({ message: "Request must contain only an amount field." });
+    return res
+      .status(400)
+      .json({ message: "Request must contain only an amount field." });
   }
 
   try {
@@ -446,6 +459,38 @@ exports.recordPayment = async (req, res) => {
       req.auditRecord = null;
     }
 
+    if (result.httpStatus === 200) {
+      const [[updatedOrder]] = await pool.query(
+        `SELECT id, order_number, customer_id, status
+         FROM orders
+         WHERE id = ?
+         LIMIT 1`,
+        [orderId],
+      );
+
+      if (updatedOrder) {
+        const io = req.app.get("io");
+
+        if (result.body?.order_status_changed === true) {
+          emitOrderStatusUpdate(io, {
+            orderId: updatedOrder.id,
+            orderNumber: updatedOrder.order_number,
+            status: updatedOrder.status,
+            customerId: updatedOrder.customer_id,
+          });
+        } else {
+          emitOrderPaymentUpdate(io, {
+            orderId: updatedOrder.id,
+            orderNumber: updatedOrder.order_number,
+            paymentStatus: result.body?.payment_status,
+            paymentMethod: "cash",
+            paymentTransactionId: result.body?.payment_transaction_id || null,
+            customerId: updatedOrder.customer_id,
+          });
+        }
+      }
+    }
+
     return res.status(result.httpStatus).json(result.body);
   } catch (err) {
     req.auditRecord = null;
@@ -460,27 +505,45 @@ exports.markPickedUp = async (req, res) => {
   if (!orderId) return res.status(400).json({ message: "Invalid order id." });
 
   const bodyKeys = Object.keys(req.body || {}).sort();
-  const allowedBodyKeys = ["note", "received_by_name", "recipient_type", "signature_data"].sort();
+  const allowedBodyKeys = [
+    "note",
+    "received_by_name",
+    "recipient_type",
+    "signature_data",
+  ].sort();
   if (bodyKeys.some((key) => !allowedBodyKeys.includes(key))) {
-    return res.status(400).json({ message: "Unexpected pickup acknowledgement field." });
+    return res
+      .status(400)
+      .json({ message: "Unexpected pickup acknowledgement field." });
   }
 
-  const receivedByName = String(req.body?.received_by_name || "").trim().replace(/\s+/g, " ");
+  const receivedByName = String(req.body?.received_by_name || "")
+    .trim()
+    .replace(/\s+/g, " ");
   const recipientType = normalizePickupRecipientType(req.body?.recipient_type);
   const signatureData = normalizePickupSignature(req.body?.signature_data);
   const note = String(req.body?.note || "").trim();
 
   if (!receivedByName || receivedByName.length > 150) {
-    return res.status(400).json({ message: "Enter the name of the person receiving the furniture." });
+    return res.status(400).json({
+      message: "Enter the name of the person receiving the furniture.",
+    });
   }
   if (!recipientType) {
-    return res.status(400).json({ message: "Choose Customer or Authorized Representative." });
+    return res
+      .status(400)
+      .json({ message: "Choose Customer or Authorized Representative." });
   }
   if (!signatureData) {
-    return res.status(400).json({ message: "A valid customer or recipient signature is required before pickup release." });
+    return res.status(400).json({
+      message:
+        "A valid customer or recipient signature is required before pickup release.",
+    });
   }
   if (note.length > 500) {
-    return res.status(400).json({ message: "Pickup note must be 500 characters or fewer." });
+    return res
+      .status(400)
+      .json({ message: "Pickup note must be 500 characters or fewer." });
   }
 
   let conn = null;
@@ -508,17 +571,23 @@ exports.markPickedUp = async (req, res) => {
     if (normalize(order.fulfillment_method) !== "pickup") {
       await conn.rollback();
       transactionActive = false;
-      return res.status(400).json({ message: "Only pickup orders can use pickup acknowledgement." });
+      return res.status(400).json({
+        message: "Only pickup orders can use pickup acknowledgement.",
+      });
     }
     if (order.picked_up_at || normalize(order.status) === "completed") {
       await conn.rollback();
       transactionActive = false;
-      return res.status(409).json({ message: "This order has already been picked up." });
+      return res
+        .status(409)
+        .json({ message: "This order has already been picked up." });
     }
     if (normalize(order.status) !== "ready_for_pickup") {
       await conn.rollback();
       transactionActive = false;
-      return res.status(400).json({ message: "This furniture is not ready for pickup yet." });
+      return res
+        .status(400)
+        .json({ message: "This furniture is not ready for pickup yet." });
     }
 
     const [[existingAcknowledgement]] = await conn.query(
@@ -528,7 +597,9 @@ exports.markPickedUp = async (req, res) => {
     if (existingAcknowledgement) {
       await conn.rollback();
       transactionActive = false;
-      return res.status(409).json({ message: "A pickup acknowledgement already exists for this order." });
+      return res.status(409).json({
+        message: "A pickup acknowledgement already exists for this order.",
+      });
     }
 
     const [tasks] = await conn.query(
@@ -547,14 +618,23 @@ exports.markPickedUp = async (req, res) => {
         normalize(row.status),
       ]),
     );
-    const requiredRoles = ["cutting_machine", "edge_banding", "horizontal_drilling", "retouching", "packing"];
+    const requiredRoles = [
+      "cutting_machine",
+      "edge_banding",
+      "horizontal_drilling",
+      "retouching",
+      "packing",
+    ];
     const productionComplete = requiredRoles.every(
       (role) => statusByRole.get(role) === "completed",
     );
     if (!productionComplete) {
       await conn.rollback();
       transactionActive = false;
-      return res.status(400).json({ message: "All required production tasks must be completed before pickup." });
+      return res.status(400).json({
+        message:
+          "All required production tasks must be completed before pickup.",
+      });
     }
 
     const [payments] = await conn.query(
@@ -571,21 +651,33 @@ exports.markPickedUp = async (req, res) => {
       if (cents === null) {
         await conn.rollback();
         transactionActive = false;
-        return res.status(409).json({ message: "This order's payment records are inconsistent." });
+        return res
+          .status(409)
+          .json({ message: "This order's payment records are inconsistent." });
       }
       const status = normalize(payment.status);
       if (status === "pending") {
         await conn.rollback();
         transactionActive = false;
-        return res.status(400).json({ message: "A payment is still awaiting verification." });
+        return res
+          .status(400)
+          .json({ message: "A payment is still awaiting verification." });
       }
       if (status === "verified") verifiedCents += cents;
     }
     const totalCents = parseDecimalToCentsStrict(order.total);
-    if (totalCents === null || totalCents <= 0 || verifiedCents !== totalCents || normalize(order.payment_status) !== "paid") {
+    if (
+      totalCents === null ||
+      totalCents <= 0 ||
+      verifiedCents !== totalCents ||
+      normalize(order.payment_status) !== "paid"
+    ) {
       await conn.rollback();
       transactionActive = false;
-      return res.status(400).json({ message: "The full balance must be verified before releasing this furniture." });
+      return res.status(400).json({
+        message:
+          "The full balance must be verified before releasing this furniture.",
+      });
     }
 
     const [acknowledgementInsert] = await conn.execute(
@@ -604,10 +696,16 @@ exports.markPickedUp = async (req, res) => {
       ],
     );
 
-    if (acknowledgementInsert.affectedRows !== 1 || !acknowledgementInsert.insertId) {
+    if (
+      acknowledgementInsert.affectedRows !== 1 ||
+      !acknowledgementInsert.insertId
+    ) {
       await conn.rollback();
       transactionActive = false;
-      return res.status(409).json({ message: "The pickup acknowledgement could not be saved. No release was recorded." });
+      return res.status(409).json({
+        message:
+          "The pickup acknowledgement could not be saved. No release was recorded.",
+      });
     }
 
     const [updateResult] = await conn.execute(
@@ -619,7 +717,9 @@ exports.markPickedUp = async (req, res) => {
     if (updateResult.affectedRows !== 1) {
       await conn.rollback();
       transactionActive = false;
-      return res.status(409).json({ message: "This order's pickup state changed. No release was recorded." });
+      return res.status(409).json({
+        message: "This order's pickup state changed. No release was recorded.",
+      });
     }
 
     const [[acknowledgement]] = await conn.query(
@@ -634,13 +734,16 @@ exports.markPickedUp = async (req, res) => {
       [acknowledgementInsert.insertId],
     );
 
-    const orderLabel = order.order_number || ("#" + order.id);
+    const orderLabel = order.order_number || "#" + order.id;
     if (order.customer_id) {
       await createNotificationSafe(conn, {
         userId: order.customer_id,
         type: "pickup_completed",
         title: "Pickup Completed",
-        message: "Order " + orderLabel + " was handed over and your signed pickup acknowledgement was recorded.",
+        message:
+          "Order " +
+          orderLabel +
+          " was handed over and your signed pickup acknowledgement was recorded.",
         targetType: "order",
         targetId: order.id,
         targetOrderId: order.id,
@@ -649,6 +752,15 @@ exports.markPickedUp = async (req, res) => {
 
     await conn.commit();
     transactionActive = false;
+
+    const io = req.app.get("io");
+    emitOrderStatusUpdate(io, {
+      orderId: order.id,
+      orderNumber: order.order_number,
+      status: "completed",
+      customerId: order.customer_id,
+    });
+
     req.auditRecord = {
       id: orderId,
       old: { status: order.status, picked_up_at: null },
@@ -670,10 +782,14 @@ exports.markPickedUp = async (req, res) => {
   } catch (err) {
     req.auditRecord = null;
     if (conn && transactionActive) {
-      try { await conn.rollback(); } catch {}
+      try {
+        await conn.rollback();
+      } catch {}
     }
     console.error("[pos.blueprintPayments markPickedUp]", err);
-    return res.status(500).json({ message: "Failed to confirm pickup. No release was recorded." });
+    return res
+      .status(500)
+      .json({ message: "Failed to confirm pickup. No release was recorded." });
   } finally {
     if (conn) conn.release();
   }

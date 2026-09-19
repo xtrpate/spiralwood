@@ -84,9 +84,9 @@ const ACTIVE_CASHIER_ATTEMPT_STATUSES = [
   "awaiting_payment",
   "provider_unknown",
 ];
-const ACTIVE_CASHIER_ATTEMPT_STATUS_SQL = ACTIVE_CASHIER_ATTEMPT_STATUSES
-  .map((status) => `'${status}'`)
-  .join(",");
+const ACTIVE_CASHIER_ATTEMPT_STATUS_SQL = ACTIVE_CASHIER_ATTEMPT_STATUSES.map(
+  (status) => `'${status}'`,
+).join(",");
 
 const getTtlMinutes = () => {
   const parsed = parseInt(process.env.POS_QR_TTL_MINUTES, 10);
@@ -175,7 +175,11 @@ const isValidProviderSessionIdFormat = (value) =>
 // write. Deliberately a positive allowlist rather than a negative
 // exclusion list, so a future new analysis kind defaults to safe
 // rejection instead of silently falling through.
-const ATTACH_ALLOWED_ANALYSIS_KINDS = new Set(["paid", "pending", "expired_unpaid"]);
+const ATTACH_ALLOWED_ANALYSIS_KINDS = new Set([
+  "paid",
+  "pending",
+  "expired_unpaid",
+]);
 
 // Phase 3D-E read-only recovery list validation. The read endpoints are
 // intentionally available even when recovery actions are disabled, but
@@ -277,7 +281,10 @@ const buildCashierResumeCheckoutSummary = (snapshot) => {
 
 /* ── Normalization helpers — request INTENT only, never prices. These
    feed request_hash and must never change based on live DB values. ── */
-const normalizeText = (value) => String(value ?? "").trim().replace(/\s+/g, " ");
+const normalizeText = (value) =>
+  String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ");
 
 const normalizePhoneDigits = (value) => String(value ?? "").replace(/\D/g, "");
 
@@ -322,7 +329,11 @@ const validateDeliveryCoords = (delivery) => {
   return { ok: true, lat: latNum, lng: lngNum };
 };
 
-const normalizeDeliveryForHash = (delivery, coords, normalizedRequestedDate) => {
+const normalizeDeliveryForHash = (
+  delivery,
+  coords,
+  normalizedRequestedDate,
+) => {
   if (!delivery) return null;
   return {
     address: normalizeText(delivery.address),
@@ -364,18 +375,21 @@ const normalizeDeliveryRequestedDate = (rawValue) => {
   const second = match[6] !== undefined ? Number(match[6]) : 0;
 
   if (
-    month < 1 || month > 12 ||
-    day < 1 || day > 31 ||
-    hour < 0 || hour > 23 ||
-    minute < 0 || minute > 59 ||
-    second < 0 || second > 59
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > 31 ||
+    hour < 0 ||
+    hour > 23 ||
+    minute < 0 ||
+    minute > 59 ||
+    second < 0 ||
+    second > 59
   ) {
     return null;
   }
 
-  const asDate = new Date(
-    Date.UTC(year, month - 1, day, hour, minute, second),
-  );
+  const asDate = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
   if (
     Number.isNaN(asDate.getTime()) ||
     asDate.getUTCFullYear() !== year ||
@@ -403,9 +417,14 @@ const resolveDeliveryRequestedDate = (delivery) => {
   if (!delivery) return { ok: true, value: null };
 
   const rawRequestedDate =
-    delivery.requested_date || delivery.preferred_date || delivery.scheduled_date;
+    delivery.requested_date ||
+    delivery.preferred_date ||
+    delivery.scheduled_date;
 
-  if (typeof rawRequestedDate !== "string" || rawRequestedDate.trim().length === 0) {
+  if (
+    typeof rawRequestedDate !== "string" ||
+    rawRequestedDate.trim().length === 0
+  ) {
     return { ok: false, value: null };
   }
 
@@ -432,7 +451,10 @@ const stableStringify = (value) => {
 };
 
 const buildRequestHash = (canonicalInput) =>
-  crypto.createHash("sha256").update(stableStringify(canonicalInput)).digest("hex");
+  crypto
+    .createHash("sha256")
+    .update(stableStringify(canonicalInput))
+    .digest("hex");
 
 /* ── Deduplicate cart lines by product_id (summing quantity) and sort
    ascending — this is both the idempotency-hash input shape AND the
@@ -489,7 +511,10 @@ const DEFINITE_FAILURE_STATUS_ALLOWLIST = new Set([400, 401, 403, 422]);
 const classifyProviderError = (err) => {
   const status = err?.response?.status;
 
-  if (typeof status === "number" && DEFINITE_FAILURE_STATUS_ALLOWLIST.has(status)) {
+  if (
+    typeof status === "number" &&
+    DEFINITE_FAILURE_STATUS_ALLOWLIST.has(status)
+  ) {
     return {
       definite: true,
       code: `provider_http_${status}`,
@@ -771,7 +796,10 @@ const claimAndCreateSession = async (req, res, attemptId) => {
   // Defensive re-validation of the exact integer cents threaded through
   // from Transaction A — this value was already validated before the
   // snapshot was written, so this should never fail in practice.
-  if (!Number.isSafeInteger(snapshot.total_cents) || snapshot.total_cents <= 0) {
+  if (
+    !Number.isSafeInteger(snapshot.total_cents) ||
+    snapshot.total_cents <= 0
+  ) {
     await handleDefiniteFailure(attemptId, {
       code: "invalid_snapshot_total",
       message: "The stored order total could not be verified.",
@@ -939,14 +967,17 @@ const handleConflictRace = async (
 
   if (byToken && byKey && byToken.id !== byKey.id) {
     return res.status(409).json({
-      message: "This checkout_token and idempotency_key refer to different attempts.",
+      message:
+        "This checkout_token and idempotency_key refer to different attempts.",
     });
   }
 
   const existing = byToken || byKey || null;
 
   if (!existing) {
-    return res.status(409).json({ message: "Conflicting request. Please retry." });
+    return res
+      .status(409)
+      .json({ message: "Conflicting request. Please retry." });
   }
 
   if (Number(existing.cashier_id) !== Number(req.user.id)) {
@@ -1003,7 +1034,9 @@ const runTransactionA = async (req, res, ctx) => {
 
     if (!cashierRows[0]) {
       await conn.rollback();
-      return res.status(401).json({ message: "Authenticated user was not found." });
+      return res
+        .status(401)
+        .json({ message: "Authenticated user was not found." });
     }
 
     /* ── steps 1-2: idempotency lookup + conflict rules (trimmed tokens
@@ -1023,7 +1056,8 @@ const runTransactionA = async (req, res, ctx) => {
     if (tokenAttempt && keyAttempt && tokenAttempt.id !== keyAttempt.id) {
       await conn.rollback();
       return res.status(409).json({
-        message: "This checkout_token and idempotency_key refer to different attempts.",
+        message:
+          "This checkout_token and idempotency_key refer to different attempts.",
       });
     }
 
@@ -1118,7 +1152,9 @@ const runTransactionA = async (req, res, ctx) => {
       productIds,
     );
 
-    const productMap = new Map(productRows.map((product) => [product.id, product]));
+    const productMap = new Map(
+      productRows.map((product) => [product.id, product]),
+    );
 
     /* ── steps 5-6: canonical values + missing/insufficient-stock check. ── */
     for (const item of dedupedItems) {
@@ -1146,7 +1182,8 @@ const runTransactionA = async (req, res, ctx) => {
     for (const item of dedupedItems) {
       const product = productMap.get(item.product_id);
       const unitPriceCents = parseDecimalToCentsStrict(product.walkin_price);
-      const productionCostCents = parseDecimalToCentsStrict(product.production_cost) ?? 0;
+      const productionCostCents =
+        parseDecimalToCentsStrict(product.production_cost) ?? 0;
 
       if (unitPriceCents === null) {
         await conn.rollback();
@@ -1202,10 +1239,13 @@ const runTransactionA = async (req, res, ctx) => {
     }
     if (discountInputCents > subtotalCents) {
       await conn.rollback();
-      return res.status(400).json({ message: "Discount cannot exceed the subtotal." });
+      return res
+        .status(400)
+        .json({ message: "Discount cannot exceed the subtotal." });
     }
 
-    const totalCentsRaw = subtotalCents - discountInputCents + deliveryFeeInputCents;
+    const totalCentsRaw =
+      subtotalCents - discountInputCents + deliveryFeeInputCents;
 
     if (!Number.isSafeInteger(totalCentsRaw)) {
       await conn.rollback();
@@ -1241,7 +1281,8 @@ const runTransactionA = async (req, res, ctx) => {
       if (displayUpdateResult.affectedRows !== 1) {
         await conn.rollback();
         return res.status(409).json({
-          message: "Sales / Display stock changed for one of the items. Please try again.",
+          message:
+            "Sales / Display stock changed for one of the items. Please try again.",
         });
       }
 
@@ -1253,7 +1294,8 @@ const runTransactionA = async (req, res, ctx) => {
       if (updateResult.affectedRows !== 1) {
         await conn.rollback();
         return res.status(409).json({
-          message: "Total stock changed for one of the items. Please try again.",
+          message:
+            "Total stock changed for one of the items. Please try again.",
         });
       }
 
@@ -1385,10 +1427,14 @@ exports.createAttempt = async (req, res) => {
      or undefined token values outright, before any trim/lookup/hash
      work touches them. Only a genuine string is acceptable. ── */
   if (typeof checkout_token !== "string") {
-    return res.status(400).json({ message: "A valid checkout_token is required." });
+    return res
+      .status(400)
+      .json({ message: "A valid checkout_token is required." });
   }
   if (typeof idempotency_key !== "string") {
-    return res.status(400).json({ message: "A valid idempotency_key is required." });
+    return res
+      .status(400)
+      .json({ message: "A valid idempotency_key is required." });
   }
 
   /* ── Trim tokens — every subsequent step (length check, lookup,
@@ -1401,13 +1447,17 @@ exports.createAttempt = async (req, res) => {
     trimmedCheckoutToken.length === 0 ||
     trimmedCheckoutToken.length > MAX_TOKEN_LENGTH
   ) {
-    return res.status(400).json({ message: "A valid checkout_token is required." });
+    return res
+      .status(400)
+      .json({ message: "A valid checkout_token is required." });
   }
   if (
     trimmedIdempotencyKey.length === 0 ||
     trimmedIdempotencyKey.length > MAX_TOKEN_LENGTH
   ) {
-    return res.status(400).json({ message: "A valid idempotency_key is required." });
+    return res
+      .status(400)
+      .json({ message: "A valid idempotency_key is required." });
   }
 
   /* ── Required customer fields — no silent "Walk-in Customer" fallback
@@ -1415,7 +1465,10 @@ exports.createAttempt = async (req, res) => {
   if (!isNonEmptyString(customer_name)) {
     return res.status(400).json({ message: "Customer name is required." });
   }
-  if (!isNonEmptyString(customer_phone) || !isValidPhoneNumber(customer_phone)) {
+  if (
+    !isNonEmptyString(customer_phone) ||
+    !isValidPhoneNumber(customer_phone)
+  ) {
     return res
       .status(400)
       .json({ message: "A valid customer phone number is required." });
@@ -1544,12 +1597,18 @@ exports.createAttempt = async (req, res) => {
      fresh connection/transaction; since the prior attempt was fully
      rolled back by MySQL before throwing, this can never decrement
      stock twice, create a duplicate attempt, or call PayMongo twice. ── */
-  for (let attemptNum = 1; attemptNum <= MAX_LOCK_RETRY_ATTEMPTS; attemptNum += 1) {
+  for (
+    let attemptNum = 1;
+    attemptNum <= MAX_LOCK_RETRY_ATTEMPTS;
+    attemptNum += 1
+  ) {
     try {
       return await runTransactionA(req, res, ctx);
     } catch (err) {
       const isLockContention =
-        err && (err.code === "ER_LOCK_DEADLOCK" || err.code === "ER_LOCK_WAIT_TIMEOUT");
+        err &&
+        (err.code === "ER_LOCK_DEADLOCK" ||
+          err.code === "ER_LOCK_WAIT_TIMEOUT");
 
       if (isLockContention && attemptNum < MAX_LOCK_RETRY_ATTEMPTS) {
         continue;
@@ -1704,9 +1763,12 @@ exports.resumeAttempt = async (req, res) => {
     }
 
     if (
-      !["reserved", "creating_session", "awaiting_payment", "provider_unknown"].includes(
-        attempt.status,
-      )
+      ![
+        "reserved",
+        "creating_session",
+        "awaiting_payment",
+        "provider_unknown",
+      ].includes(attempt.status)
     ) {
       return res.status(409).json({
         ...base,
@@ -1844,6 +1906,7 @@ exports.verifyAttempt = async (req, res) => {
         matchedPayment: null,
         actorUserId: req.user.id,
         requireOwner: true,
+        io: req.app.get("io"),
       });
       return res.status(replay.httpStatus).json(replay.payload);
     }
@@ -1980,8 +2043,7 @@ exports.listRecoveryAttempts = async (req, res) => {
   const statusFilter = parseRecoveryStatusFilter(req.query.status);
   if (!statusFilter.ok) {
     return res.status(400).json({
-      message:
-        "status must be either provider_unknown or awaiting_payment.",
+      message: "status must be either provider_unknown or awaiting_payment.",
       recovery_actions_enabled: isPosQrRecoveryEnabled(),
     });
   }
@@ -2222,7 +2284,8 @@ exports.attachProviderSession = async (req, res) => {
         return res.status(409).json({
           attempt_id: attemptId,
           status: claimCheck.status || null,
-          message: "This payment attempt is not eligible for session attachment.",
+          message:
+            "This payment attempt is not eligible for session attachment.",
         });
       }
       console.error(
@@ -2370,7 +2433,8 @@ exports.attachProviderSession = async (req, res) => {
         return res.status(409).json({
           attempt_id: attempt.id,
           status: attached.status || null,
-          message: "This payment attempt is no longer eligible for session attachment.",
+          message:
+            "This payment attempt is no longer eligible for session attachment.",
         });
       }
       console.error("[pos.qrPayments attachProviderSession] attach failed", {
@@ -2384,7 +2448,10 @@ exports.attachProviderSession = async (req, res) => {
     // paid-finalization step below does NOT revert anything (see the
     // finalization_pending branch further down).
     if (analysis.kind !== "paid") {
-      const outcome = analysis.kind === "expired_unpaid" ? "expired_unpaid" : "awaiting_payment";
+      const outcome =
+        analysis.kind === "expired_unpaid"
+          ? "expired_unpaid"
+          : "awaiting_payment";
       req.auditRecord = {
         id: attempt.id,
         old: { status: "provider_unknown" },
@@ -2428,7 +2495,8 @@ exports.attachProviderSession = async (req, res) => {
             order_created: true,
             payment_verified: true,
             order_id: finalized.payload?.order_id ?? null,
-            payment_transaction_id: finalized.payload?.payment_transaction_id ?? null,
+            payment_transaction_id:
+              finalized.payload?.payment_transaction_id ?? null,
             receipt_id: finalized.payload?.receipt_id ?? null,
             admin_user_id: req.user.id,
           },
@@ -2527,7 +2595,9 @@ exports.requestManualRelease = async (req, res) => {
     typeof reasonCode !== "string" ||
     !ALLOWED_RECOVERY_REASON_CODES.has(reasonCode)
   ) {
-    return res.status(400).json({ message: "A valid reason_code is required." });
+    return res
+      .status(400)
+      .json({ message: "A valid reason_code is required." });
   }
 
   try {
@@ -2612,12 +2682,16 @@ exports.confirmManualRelease = async (req, res) => {
     typeof reasonCode !== "string" ||
     !ALLOWED_RECOVERY_REASON_CODES.has(reasonCode)
   ) {
-    return res.status(400).json({ message: "A valid reason_code is required." });
+    return res
+      .status(400)
+      .json({ message: "A valid reason_code is required." });
   }
 
   const rawToken = req.body?.confirmation_token;
   if (!isNonEmptyString(rawToken)) {
-    return res.status(400).json({ message: "A confirmation_token is required." });
+    return res
+      .status(400)
+      .json({ message: "A confirmation_token is required." });
   }
 
   const verified = verifyRecoveryToken(rawToken.trim());
@@ -2646,14 +2720,14 @@ exports.confirmManualRelease = async (req, res) => {
     });
   }
   if (Number(token.admin_user_id) !== Number(req.user.id)) {
-    return res
-      .status(403)
-      .json({ message: "This confirmation token belongs to a different admin." });
+    return res.status(403).json({
+      message: "This confirmation token belongs to a different admin.",
+    });
   }
   if (token.reason_code !== reasonCode) {
-    return res
-      .status(409)
-      .json({ message: "The reason_code does not match the confirmation token." });
+    return res.status(409).json({
+      message: "The reason_code does not match the confirmation token.",
+    });
   }
 
   try {
@@ -2688,7 +2762,8 @@ exports.confirmManualRelease = async (req, res) => {
         return res.status(409).json({
           attempt_id: attemptId,
           status: released.status || null,
-          message: "This payment attempt is no longer eligible for manual release.",
+          message:
+            "This payment attempt is no longer eligible for manual release.",
         });
       }
       console.error("[pos.qrPayments confirmManualRelease] release failed", {
@@ -2772,11 +2847,12 @@ exports.recoveryVerifyAttempt = async (req, res) => {
     // Idempotent replay for an already-consumed attempt — no provider
     // call, no audit (freshCommit is always false on this path).
     if (attemptRow.status === "consumed") {
-      const replay = await finalizePaidAttempt({
-        attemptId,
-        matchedPayment: null,
+      const finalized = await finalizePaidAttempt({
+        attemptId: attempt.id,
+        matchedPayment: analysis.payment,
         actorUserId: req.user.id,
         requireOwner: false,
+        io: req.app.get("io"),
       });
       return res.status(replay.httpStatus).json(replay.payload);
     }
@@ -2924,7 +3000,9 @@ exports.cancelUnpaidAttempt = async (req, res) => {
     typeof reasonCode !== "string" ||
     !ALLOWED_UNPAID_CANCEL_REASON_CODES.has(reasonCode)
   ) {
-    return res.status(400).json({ message: "A valid reason_code is required." });
+    return res
+      .status(400)
+      .json({ message: "A valid reason_code is required." });
   }
 
   const providerErrorResponse = (err, fallbackMessage) => {
@@ -3190,4 +3268,3 @@ exports.cancelUnpaidAttempt = async (req, res) => {
     return res.status(500).json({ message: "Server error." });
   }
 };
-

@@ -6,18 +6,15 @@ const {
   resolveLifecycleByOrder,
 } = require("../../services/blueprintLifecycleService");
 const { calcDownPaymentAmount } = require("../../utils/paymentAmounts");
-const {
-  createNotificationSafe,
-} = require("../../utils/notificationHelper");
+const { createNotificationSafe } = require("../../utils/notificationHelper");
+const { emitBlueprintUpdate } = require("../../utils/orderStatusSocket");
 const { persistUserProfilePhoto } = require("../../config/upload");
 const {
   normalizePhilippinePhone,
   getPhoneLookupVariants,
   phoneDigitsSql,
 } = require("../../utils/phone");
-const {
-  getPhilippineDateBoundsUtc,
-} = require("../../utils/philippineTime");
+const { getPhilippineDateBoundsUtc } = require("../../utils/philippineTime");
 const {
   normalizeInternalAccess,
   isSuperAdminAccount,
@@ -385,6 +382,17 @@ exports.generateContract = async (req, res) => {
     await conn.commit();
     transactionActive = false;
 
+    const io = req.app.get("io");
+
+    emitBlueprintUpdate(io, {
+      blueprintId: blueprint.id,
+      orderId: order.id,
+      orderNumber: order.order_number,
+      customerId: order.customer_id,
+      changeType: "contract_created",
+      notifyCustomer: true,
+    });
+
     await createNotificationSafe(pool, {
       userId: order.customer_id,
       type: "contract_ready",
@@ -509,7 +517,9 @@ exports.getCustomers = async (req, res) => {
 
     if (email_status) {
       if (!["verified", "not_verified"].includes(email_status)) {
-        return res.status(400).json({ message: "Invalid email status filter." });
+        return res
+          .status(400)
+          .json({ message: "Invalid email status filter." });
       }
       where.push("u.is_verified = ?");
       params.push(email_status === "verified" ? 1 : 0);
@@ -517,7 +527,9 @@ exports.getCustomers = async (req, res) => {
 
     if (phone_status) {
       if (!["verified", "not_verified"].includes(phone_status)) {
-        return res.status(400).json({ message: "Invalid phone status filter." });
+        return res
+          .status(400)
+          .json({ message: "Invalid phone status filter." });
       }
       where.push("u.phone_verified = ?");
       params.push(phone_status === "verified" ? 1 : 0);
@@ -525,7 +537,9 @@ exports.getCustomers = async (req, res) => {
 
     if (account_status) {
       if (!["active", "inactive"].includes(account_status)) {
-        return res.status(400).json({ message: "Invalid account status filter." });
+        return res
+          .status(400)
+          .json({ message: "Invalid account status filter." });
       }
       where.push("u.is_active = ?");
       params.push(account_status === "active" ? 1 : 0);
@@ -899,7 +913,8 @@ exports.updateUser = async (req, res) => {
 
     if (isManagerAccount(req.user) && !isStandardStaffAccount(user)) {
       return res.status(403).json({
-        message: "Managers cannot change Staff accounts into management accounts.",
+        message:
+          "Managers cannot change Staff accounts into management accounts.",
       });
     }
 
@@ -1280,7 +1295,10 @@ exports.getUserPermissions = async (req, res) => {
 
     const details = await getPermissionDetailsForUser(user);
     const overrideMap = new Map(
-      details.overrides.map((item) => [Number(item.permission_id), item.granted]),
+      details.overrides.map((item) => [
+        Number(item.permission_id),
+        item.granted,
+      ]),
     );
     const effectiveSet = new Set(details.permissions);
 
@@ -1543,12 +1561,7 @@ const isValidDateString = (str) => {
 const AUDIT_DEFAULT_PAGE = 1;
 const AUDIT_DEFAULT_LIMIT = 20;
 const AUDIT_MAX_LIMIT = 100;
-const AUDIT_ACTOR_TYPES = new Set([
-  "user",
-  "anonymous",
-  "system",
-  "webhook",
-]);
+const AUDIT_ACTOR_TYPES = new Set(["user", "anonymous", "system", "webhook"]);
 
 exports.getAuditLogs = async (req, res) => {
   try {
@@ -1584,8 +1597,7 @@ exports.getAuditLogs = async (req, res) => {
 
     if (rawActorType && !AUDIT_ACTOR_TYPES.has(rawActorType)) {
       return res.status(400).json({
-        message:
-          "Invalid actor_type. Use user, anonymous, system, or webhook.",
+        message: "Invalid actor_type. Use user, anonymous, system, or webhook.",
       });
     }
     if (rawDateFrom && !isValidDateString(rawDateFrom)) {
@@ -1794,8 +1806,7 @@ exports.exportAuditLogs = async (req, res) => {
 
     if (rawActorType && !AUDIT_ACTOR_TYPES.has(rawActorType)) {
       return res.status(400).json({
-        message:
-          "Invalid actor_type. Use user, anonymous, system, or webhook.",
+        message: "Invalid actor_type. Use user, anonymous, system, or webhook.",
       });
     }
 

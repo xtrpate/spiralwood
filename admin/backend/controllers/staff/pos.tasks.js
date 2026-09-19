@@ -1,12 +1,14 @@
 // controllers/staff/pos.tasks.js
 const db = require("../../config/db"); // Uses the unified db config
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
-const {
-  createNotificationSafe,
-} = require("../../utils/notificationHelper");
+const { createNotificationSafe } = require("../../utils/notificationHelper");
 const {
   sendCustomerMilestoneNotificationSafe,
 } = require("../../services/customerMilestoneNotificationService");
+const {
+  emitOrderStatusUpdate,
+  emitTaskUpdate,
+} = require("../../utils/orderStatusSocket");
 
 const ensureIndoorAssignee = async (userId) => {
   // ── FIXED: Switched to .query and parsed ID ──
@@ -438,7 +440,8 @@ exports.getTasks = async (req, res) => {
 
       for (const row of auditRows) {
         const recordId = Number(row.record_id);
-        if (!Number.isInteger(recordId) || reasonByTaskId.has(recordId)) continue;
+        if (!Number.isInteger(recordId) || reasonByTaskId.has(recordId))
+          continue;
 
         let nextValues = row.new_values;
         if (typeof nextValues === "string") {
@@ -591,8 +594,7 @@ exports.getAssignedOrderBlueprint = async (req, res) => {
       const productBlueprintId = Number(item?.product_blueprint_id || 0);
 
       return (
-        savedBlueprintId === blueprintId ||
-        productBlueprintId === blueprintId
+        savedBlueprintId === blueprintId || productBlueprintId === blueprintId
       );
     });
 
@@ -688,9 +690,7 @@ exports.getAssignedOrderBlueprint = async (req, res) => {
           "",
       ).trim();
       const doorStyle = String(
-        customization.door_style ||
-          customizationSnapshot.door_style ||
-          "",
+        customization.door_style || customizationSnapshot.door_style || "",
       ).trim();
 
       const positiveNumber = (...values) => {
@@ -749,7 +749,9 @@ exports.getAssignedOrderBlueprint = async (req, res) => {
         ...(Object.keys(defaultDimensions).length
           ? { default_dimensions: defaultDimensions }
           : {}),
-        ...(material ? { primary_material: material, wood_type: material } : {}),
+        ...(material
+          ? { primary_material: material, wood_type: material }
+          : {}),
         ...(hardware ? { hardware } : {}),
         ...(doorStyle ? { door_style: doorStyle } : {}),
       };
@@ -989,11 +991,14 @@ exports.updateTaskStatus = async (req, res) => {
     }
 
     const acceptedAtChanged =
-      (existing.accepted_at ? new Date(existing.accepted_at).getTime() : null) !==
+      (existing.accepted_at
+        ? new Date(existing.accepted_at).getTime()
+        : null) !==
       (nextAcceptedAt ? new Date(nextAcceptedAt).getTime() : null);
     const completedAtChanged =
-      (existing.completed_at ? new Date(existing.completed_at).getTime() : null) !==
-      (completedAt ? new Date(completedAt).getTime() : null);
+      (existing.completed_at
+        ? new Date(existing.completed_at).getTime()
+        : null) !== (completedAt ? new Date(completedAt).getTime() : null);
 
     req.auditRecord = {
       id: taskId,
@@ -1052,8 +1057,9 @@ exports.updateTaskStatus = async (req, res) => {
 
     let becameProductionReady = false;
     const isPickupOrder =
-      String(existing.fulfillment_method || "delivery").trim().toLowerCase() ===
-      "pickup";
+      String(existing.fulfillment_method || "delivery")
+        .trim()
+        .toLowerCase() === "pickup";
     let pickupReadyApplied = false;
 
     try {
@@ -1085,9 +1091,7 @@ exports.updateTaskStatus = async (req, res) => {
         };
 
         const rowsBeforeThisRequest = packetRows.map((row) =>
-          Number(row.id) === taskId
-            ? { ...row, status: existing.status }
-            : row,
+          Number(row.id) === taskId ? { ...row, status: existing.status } : row,
         );
 
         const wasProductionReadyBefore = isFullyReady(rowsBeforeThisRequest);
@@ -1174,6 +1178,42 @@ exports.updateTaskStatus = async (req, res) => {
         "[pos.tasks updateTaskStatus readiness]",
         readinessErr.message,
       );
+    }
+
+    const io = req.app.get("io");
+
+    const taskChangeType =
+      status === "in_progress"
+        ? existing.status === "blocked"
+          ? "resumed"
+          : "started"
+        : status === "completed"
+          ? "completed"
+          : status === "blocked"
+            ? "blocked"
+            : "updated";
+
+    emitTaskUpdate(io, {
+      taskId,
+      taskIds: [taskId],
+      orderId: existing.order_id,
+      orderNumber: existing.order_number,
+      taskRole: existing.task_role,
+      status,
+      assignedTo: existing.assigned_to,
+      previousAssigneeIds: [],
+      changeType: taskChangeType,
+      productionReady: becameProductionReady,
+      orderStatusChanged: pickupReadyApplied,
+    });
+
+    if (pickupReadyApplied) {
+      emitOrderStatusUpdate(io, {
+        orderId: existing.order_id,
+        orderNumber: existing.order_number,
+        status: "ready_for_pickup",
+        customerId: existing.customer_id,
+      });
     }
 
     if (becameProductionReady) {
@@ -1431,9 +1471,7 @@ exports.updateTask = async (req, res) => {
         [nextBlueprintId],
       );
       if (!blueprintExists) {
-        return res
-          .status(400)
-          .json({ message: "Linked blueprint not found." });
+        return res.status(400).json({ message: "Linked blueprint not found." });
       }
     }
 
@@ -1448,9 +1486,8 @@ exports.updateTask = async (req, res) => {
     const existingHasRequiredRole = REQUIRED_PRODUCTION_STEP_KEYS.includes(
       normalizedExistingRole,
     );
-    const nextHasRequiredRole = REQUIRED_PRODUCTION_STEP_KEYS.includes(
-      normalizedNextRole,
-    );
+    const nextHasRequiredRole =
+      REQUIRED_PRODUCTION_STEP_KEYS.includes(normalizedNextRole);
 
     if (nextHasRequiredRole && !nextOrderId) {
       return res.status(400).json({
@@ -1586,6 +1623,26 @@ exports.updateTask = async (req, res) => {
         targetOrderId: nextOrderId,
       });
     }
+
+    const io = req.app.get("io");
+
+    emitTaskUpdate(io, {
+      taskId,
+      taskIds: [taskId],
+      orderId: nextOrderId,
+      orderNumber: null,
+      taskRole: nextTaskRole,
+      status: nextStatus,
+      assignedTo: nextAssignedTo,
+      previousAssigneeIds: assignedToChanged ? [existing.assigned_to] : [],
+      changeType: assignedToChanged
+        ? "reassigned"
+        : statusChanged
+          ? "status_changed"
+          : "updated",
+      productionReady: false,
+      orderStatusChanged: false,
+    });
 
     res.json({ message: "Task updated successfully." });
   } catch (err) {

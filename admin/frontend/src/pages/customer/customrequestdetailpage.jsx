@@ -97,7 +97,8 @@ const CUSTOMER_JOURNEY_STEPS = [
   {
     key: "approval-payment",
     label: "Agreement and payment",
-    description: "You review the Project Agreement, accept it, and complete the required payment.",
+    description:
+      "You review the Project Agreement, accept it, and complete the required payment.",
   },
   {
     key: "production",
@@ -122,19 +123,31 @@ const getCustomerJourneyState = ({
   hasProjectAgreement = false,
   projectAgreementAccepted = false,
 } = {}) => {
-  const order = String(orderStatus || "").trim().toLowerCase();
-  const estimation = String(estimationStatus || "").trim().toLowerCase();
-  const payment = String(paymentStatus || "").trim().toLowerCase();
-  const delivery = String(deliveryStatus || "").trim().toLowerCase();
+  const order = String(orderStatus || "")
+    .trim()
+    .toLowerCase();
+  const estimation = String(estimationStatus || "")
+    .trim()
+    .toLowerCase();
+  const payment = String(paymentStatus || "")
+    .trim()
+    .toLowerCase();
+  const delivery = String(deliveryStatus || "")
+    .trim()
+    .toLowerCase();
   const remainingBalance = Math.max(0, Number(balanceDue) || 0);
   const verifiedTotal = Math.max(0, Number(verifiedPaymentTotal) || 0);
-  const isPickupJourney = String(fulfillmentMethod || "").trim().toLowerCase() === "pickup";
+  const isPickupJourney =
+    String(fulfillmentMethod || "")
+      .trim()
+      .toLowerCase() === "pickup";
   const journeySteps = CUSTOMER_JOURNEY_STEPS.map((step) =>
     isPickupJourney && step.key === "delivery"
       ? {
           ...step,
           label: "Pickup",
-          description: "Your finished furniture is prepared for store pickup and confirmed at handoff.",
+          description:
+            "Your finished furniture is prepared for store pickup and confirmed at handoff.",
         }
       : step,
   );
@@ -186,7 +199,8 @@ const getCustomerJourneyState = ({
       remainingBalance > 0
         ? "Production is complete. Complete the remaining balance before collecting your furniture at Spiral Wood Services."
         : "Production is complete and your balance is fully paid. Visit Spiral Wood Services for pickup and signed handoff confirmation.";
-    actionTitle = remainingBalance > 0 ? "Payment action needed" : "Ready for collection";
+    actionTitle =
+      remainingBalance > 0 ? "Payment action needed" : "Ready for collection";
     actionText =
       remainingBalance > 0
         ? "Choose how to pay the remaining balance below."
@@ -196,7 +210,8 @@ const getCustomerJourneyState = ({
     title = "Your furniture is on the way";
     description =
       "Your furniture is in the delivery stage. Please make sure someone is available to receive it.";
-    actionTitle = remainingBalance > 0 ? "Prepare for delivery" : "No action needed";
+    actionTitle =
+      remainingBalance > 0 ? "Prepare for delivery" : "No action needed";
     actionText =
       remainingBalance > 0
         ? "Please review the remaining balance instructions below and prepare for delivery."
@@ -229,7 +244,8 @@ const getCustomerJourneyState = ({
     description =
       "Review the project price and details below. You can approve the quotation, request changes, or reject it.";
     actionTitle = "Action needed";
-    actionText = "Review your quotation below and choose how you want to continue.";
+    actionText =
+      "Review your quotation below and choose how you want to continue.";
   } else if (estimation === "rejected") {
     currentIndex = 2;
     title = "Your quotation needs an update";
@@ -245,7 +261,8 @@ const getCustomerJourneyState = ({
       description =
         "Our team is preparing your Project Agreement using the approved quotation and project details.";
       actionTitle = "No action needed";
-      actionText = "We will notify you when the Project Agreement is ready to review.";
+      actionText =
+        "We will notify you when the Project Agreement is ready to review.";
     } else if (!projectAgreementAccepted) {
       title = "Review your Project Agreement";
       description =
@@ -314,8 +331,12 @@ const getSubmittedItemProgressLabel = ({
   orderStatus = "",
   estimationStatus = "",
 } = {}) => {
-  const order = String(orderStatus || "").trim().toLowerCase();
-  const estimation = String(estimationStatus || "").trim().toLowerCase();
+  const order = String(orderStatus || "")
+    .trim()
+    .toLowerCase();
+  const estimation = String(estimationStatus || "")
+    .trim()
+    .toLowerCase();
 
   if (order === "completed") return "Completed";
   if (order === "ready_for_pickup") return "Ready for pickup";
@@ -466,13 +487,14 @@ const historyTdStyle = {
 };
 
 function HistoryStatusBadge({ status }) {
-  const key = String(status || "").trim().toLowerCase();
-  const colors =
-    HISTORY_STATUS_COLORS[key] || {
-      background: "#f4f4f5",
-      color: "#3f3f46",
-      border: "#e4e4e7",
-    };
+  const key = String(status || "")
+    .trim()
+    .toLowerCase();
+  const colors = HISTORY_STATUS_COLORS[key] || {
+    background: "#f4f4f5",
+    color: "#3f3f46",
+    border: "#e4e4e7",
+  };
   return (
     <span
       style={{
@@ -636,7 +658,11 @@ const isSameDiscussionSender = (current = {}, previous = {}) => {
     .trim()
     .toLowerCase();
 
-  if (!currentRole || currentRole !== previousRole || currentRole === "system") {
+  if (
+    !currentRole ||
+    currentRole !== previousRole ||
+    currentRole === "system"
+  ) {
     return false;
   }
 
@@ -647,12 +673,15 @@ const isSameDiscussionSender = (current = {}, previous = {}) => {
     return currentId > 0 && previousId > 0 && currentId === previousId;
   }
 
-  return String(current?.sender_name || "") === String(previous?.sender_name || "");
+  return (
+    String(current?.sender_name || "") === String(previous?.sender_name || "")
+  );
 };
 
 const isDiscussionNearBottom = (element, threshold = 88) => {
   if (!element) return true;
-  const distance = element.scrollHeight - element.scrollTop - element.clientHeight;
+  const distance =
+    element.scrollHeight - element.scrollTop - element.clientHeight;
   return distance <= threshold;
 };
 
@@ -711,7 +740,8 @@ export default function CustomRequestDetailPage() {
   const [selectionError, setSelectionError] = useState("");
   const [initialOnlineAmount, setInitialOnlineAmount] = useState("");
   const [payingInitialOnline, setPayingInitialOnline] = useState(false);
-  const [selectingRemainingMethod, setSelectingRemainingMethod] = useState(false);
+  const [selectingRemainingMethod, setSelectingRemainingMethod] =
+    useState(false);
   const [payingRemainingBalance, setPayingRemainingBalance] = useState(false);
   const [remainingMethodError, setRemainingMethodError] = useState("");
 
@@ -725,7 +755,9 @@ export default function CustomRequestDetailPage() {
     try {
       const res = await api.get(`/customer/custom-orders/${id}/receipts`);
       setPaymentHistory(
-        Array.isArray(res.data?.payment_history) ? res.data.payment_history : [],
+        Array.isArray(res.data?.payment_history)
+          ? res.data.payment_history
+          : [],
       );
     } catch (err) {
       setPaymentHistory([]);
@@ -763,10 +795,7 @@ export default function CustomRequestDetailPage() {
         // that payment history also refreshes every time this succeeds
         // -- including right after a PayMongo verification attempt below,
         // with no manual page reload required.
-        await Promise.all([
-          loadPaymentHistory(),
-          loadCancellationRequest(),
-        ]);
+        await Promise.all([loadPaymentHistory(), loadCancellationRequest()]);
       } catch (err) {
         setError(
           err.response?.data?.message ||
@@ -785,14 +814,17 @@ export default function CustomRequestDetailPage() {
       const params = new URLSearchParams(window.location.search);
 
       const isInitialVerify = params.get("verify_success") === "true";
-      const isRemainingVerify = params.get("verify_remaining_success") === "true";
+      const isRemainingVerify =
+        params.get("verify_remaining_success") === "true";
 
       if (!isInitialVerify && !isRemainingVerify) {
         loadRequestDetail(true);
         return;
       }
 
-      const paramKey = isInitialVerify ? "verify_success" : "verify_remaining_success";
+      const paramKey = isInitialVerify
+        ? "verify_success"
+        : "verify_remaining_success";
       const endpoint = isInitialVerify
         ? `/customer/custom-orders/${id}/verify-payment`
         : `/customer/custom-orders/${id}/remaining-balance/verify-payment`;
@@ -830,6 +862,105 @@ export default function CustomRequestDetailPage() {
     verifyPayment();
   }, [id, loadRequestDetail]);
 
+  useEffect(() => {
+    const handleOrderStatusUpdated = (payload) => {
+      const updatedOrderId = Number(payload?.order_id);
+
+      if (!Number.isInteger(updatedOrderId) || updatedOrderId !== Number(id)) {
+        return;
+      }
+
+      console.log(
+        "[SOCKET RECEIVED] custom request order:status_updated",
+        payload,
+      );
+
+      loadRequestDetail(false);
+    };
+
+    const handleOrderPaymentUpdated = (payload) => {
+      console.log("[SOCKET RECEIVED] order:payment_updated", payload);
+
+      const updatedOrderId = Number(payload?.order_id);
+
+      if (!Number.isInteger(updatedOrderId) || updatedOrderId !== Number(id)) {
+        return;
+      }
+
+      loadRequestDetail(false);
+    };
+
+    const handleBlueprintUpdated = (payload) => {
+      const updatedOrderId = Number(payload?.order_id);
+
+      if (!Number.isInteger(updatedOrderId) || updatedOrderId !== Number(id)) {
+        return;
+      }
+
+      console.log(
+        "[SOCKET RECEIVED] custom request blueprint:updated",
+        payload,
+      );
+
+      loadRequestDetail(false);
+    };
+
+    const handleDeliveryUpdated = (payload) => {
+      console.log("[SOCKET RECEIVED] delivery:updated", payload);
+
+      const updatedOrderId = Number(payload?.order_id);
+
+      if (!Number.isInteger(updatedOrderId) || updatedOrderId !== Number(id)) {
+        return;
+      }
+
+      if (payload?.order_status_changed) {
+        return;
+      }
+
+      loadRequestDetail(false);
+    };
+
+    const attachListener = (socket) => {
+      if (!socket) return;
+
+      socket.off("order:status_updated", handleOrderStatusUpdated);
+      socket.on("order:status_updated", handleOrderStatusUpdated);
+
+      socket.off("order:payment_updated", handleOrderPaymentUpdated);
+      socket.on("order:payment_updated", handleOrderPaymentUpdated);
+
+      socket.off("delivery:updated", handleDeliveryUpdated);
+      socket.on("delivery:updated", handleDeliveryUpdated);
+
+      socket.off("blueprint:updated", handleBlueprintUpdated);
+      socket.on("blueprint:updated", handleBlueprintUpdated);
+    };
+
+    const socket = getSocket();
+
+    if (socket) {
+      attachListener(socket);
+    }
+
+    const unsubscribeReady = subscribeSocketReady((readySocket) => {
+      attachListener(readySocket);
+    });
+
+    return () => {
+      const currentSocket = getSocket();
+
+      if (currentSocket) {
+        currentSocket.off("order:status_updated", handleOrderStatusUpdated);
+        currentSocket.off("order:payment_updated", handleOrderPaymentUpdated);
+        currentSocket.off("delivery:updated", handleDeliveryUpdated);
+        currentSocket.off("blueprint:updated", handleBlueprintUpdated);
+      }
+
+      unsubscribeReady();
+    };
+  }, [id, loadRequestDetail]);
+
   const statusMeta = useMemo(
     () =>
       STATUS_META[requestData?.status] || {
@@ -859,9 +990,7 @@ export default function CustomRequestDetailPage() {
     cop: "Cash on Pick-up",
   };
 
-  const normalizedOrderPaymentMethod = String(
-    requestData?.payment_method || "",
-  )
+  const normalizedOrderPaymentMethod = String(requestData?.payment_method || "")
     .trim()
     .toLowerCase();
 
@@ -880,20 +1009,24 @@ export default function CustomRequestDetailPage() {
   const projectAgreement = requestData?.project_agreement || null;
   const projectAgreementAccepted = Boolean(projectAgreement?.signed_at);
   const fulfillmentMethod =
-    String(requestData?.fulfillment_method || "").trim().toLowerCase() === "pickup"
+    String(requestData?.fulfillment_method || "")
+      .trim()
+      .toLowerCase() === "pickup"
       ? "pickup"
       : "delivery";
   const isPickup = fulfillmentMethod === "pickup";
   const pickupAcknowledgement = requestData?.pickup_acknowledgement || null;
 
-  const additionalDeliveryFee = isPickup ? 0 : Math.max(
-    0,
-    Number(
-      latestEstimation?.additional_delivery_fee ??
-        requestData?.oversized_delivery_quote?.additional_delivery_fee ??
+  const additionalDeliveryFee = isPickup
+    ? 0
+    : Math.max(
         0,
-    ) || 0,
-  );
+        Number(
+          latestEstimation?.additional_delivery_fee ??
+            requestData?.oversized_delivery_quote?.additional_delivery_fee ??
+            0,
+        ) || 0,
+      );
 
   // Backend quotation-state fields — source of truth for whether a
   // quotation is safe to display/act on. Never inferred from
@@ -946,7 +1079,9 @@ export default function CustomRequestDetailPage() {
   const balanceDue = Number(paymentSummary.balance_due ?? 0);
   const verifiedPaymentTotal = Number(paymentSummary.total_verified ?? 0);
   const paymentMethodFieldLabel =
-    verifiedPaymentTotal > 0 ? "Initial payment method" : "Selected payment method";
+    verifiedPaymentTotal > 0
+      ? "Initial payment method"
+      : "Selected payment method";
   const latestPayment = paymentSummary.latest_transaction || null;
   const paymentMethodChangeLocked = Boolean(
     paymentSummary.payment_method_change_locked,
@@ -1035,9 +1170,7 @@ export default function CustomRequestDetailPage() {
     initialOnlineTotalCents,
   ]);
 
-  const cancellationStatusKey = String(
-    cancellationRequest?.status || "",
-  )
+  const cancellationStatusKey = String(cancellationRequest?.status || "")
     .trim()
     .toLowerCase();
 
@@ -1160,14 +1293,10 @@ export default function CustomRequestDetailPage() {
         : "Not scheduled yet";
 
   const customerDeliveryAddress = String(
-    deliveryDetailsForCustomer?.address ||
-      requestData?.delivery_address ||
-      "",
+    deliveryDetailsForCustomer?.address || requestData?.delivery_address || "",
   ).trim();
 
-  const customerDeliveryLatitude = Number(
-    deliveryDetailsForCustomer?.latitude,
-  );
+  const customerDeliveryLatitude = Number(deliveryDetailsForCustomer?.latitude);
   const customerDeliveryLongitude = Number(
     deliveryDetailsForCustomer?.longitude,
   );
@@ -1226,12 +1355,16 @@ export default function CustomRequestDetailPage() {
   // safely replaces, if expired) the existing session server-side.
   const canPayRemainingBalanceOnline =
     remainingPaymentMethod === "paymongo" &&
-    String(requestData?.payment_status || "").trim().toLowerCase() !== "paid" &&
+    String(requestData?.payment_status || "")
+      .trim()
+      .toLowerCase() !== "paid" &&
     Number(verifiedPaymentTotal || 0) > 0 &&
     balanceDue > 0 &&
     (isPickup
       ? orderStatusKey === "ready_for_pickup"
-      : ["scheduled", "in_transit"].includes(deliveryStatusForRemainingMethod)) &&
+      : ["scheduled", "in_transit"].includes(
+          deliveryStatusForRemainingMethod,
+        )) &&
     !["cancelled", "completed"].includes(orderStatusKey) &&
     !Boolean(paymentSummary.has_pending_payment);
 
@@ -1241,8 +1374,10 @@ export default function CustomRequestDetailPage() {
 
   const customerQuotationItemsV141 = useMemo(
     () =>
-      (Array.isArray(latestEstimation?.items) ? latestEstimation.items : [])
-        .filter((item) => !item?.raw_material_id),
+      (Array.isArray(latestEstimation?.items)
+        ? latestEstimation.items
+        : []
+      ).filter((item) => !item?.raw_material_id),
     [latestEstimation],
   );
 
@@ -1408,7 +1543,9 @@ export default function CustomRequestDetailPage() {
       }
 
       setDiscussionRemoteTypingRole(
-        String(payload?.role || "").trim().toLowerCase() || "team",
+        String(payload?.role || "")
+          .trim()
+          .toLowerCase() || "team",
       );
 
       discussionRemoteTypingTimerRef.current = window.setTimeout(() => {
@@ -1430,11 +1567,15 @@ export default function CustomRequestDetailPage() {
       socket.off("discussion:typing", handleRealtimeTyping);
       socket.on("discussion:message", handleRealtimeMessage);
       socket.on("discussion:typing", handleRealtimeTyping);
-      socket.emit("discussion:join", { orderId: numericOrderId }, (ack = {}) => {
-        if (!ack?.ok) {
-          console.warn("[DISCUSSION ROOM JOIN FAILED]", ack?.message || ack);
-        }
-      });
+      socket.emit(
+        "discussion:join",
+        { orderId: numericOrderId },
+        (ack = {}) => {
+          if (!ack?.ok) {
+            console.warn("[DISCUSSION ROOM JOIN FAILED]", ack?.message || ack);
+          }
+        },
+      );
     };
 
     const unsubscribeReady = subscribeSocketReady(bindSocket);
@@ -1573,7 +1714,9 @@ export default function CustomRequestDetailPage() {
       return;
     }
     if (!agreementChecked) {
-      toast.error("Review the Project Agreement and check the acknowledgement first.");
+      toast.error(
+        "Review the Project Agreement and check the acknowledgement first.",
+      );
       return;
     }
 
@@ -1585,7 +1728,9 @@ export default function CustomRequestDetailPage() {
       setAgreementConfirmOpen(false);
       setAgreementChecked(false);
       await loadRequestDetail(false);
-      toast.success(res.data?.message || "Project Agreement accepted successfully.");
+      toast.success(
+        res.data?.message || "Project Agreement accepted successfully.",
+      );
     } catch (err) {
       toast.error(
         err.response?.data?.message || "Failed to accept Project Agreement.",
@@ -1645,13 +1790,11 @@ export default function CustomRequestDetailPage() {
       setCancelReason("");
       await loadRequestDetail(false);
       toast.success(
-        res.data?.message ||
-          "Cancellation request submitted for admin review.",
+        res.data?.message || "Cancellation request submitted for admin review.",
       );
     } catch (err) {
       toast.error(
-        err.response?.data?.message ||
-          "Failed to submit cancellation request.",
+        err.response?.data?.message || "Failed to submit cancellation request.",
       );
     } finally {
       setCancellingProject(false);
@@ -1660,7 +1803,14 @@ export default function CustomRequestDetailPage() {
 
   const handleDiscussionFilesChange = (e) => {
     const picked = Array.from(e.target.files || []);
-    const allowedExtensions = [".jpg", ".jpeg", ".jfif", ".png", ".webp", ".pdf"];
+    const allowedExtensions = [
+      ".jpg",
+      ".jpeg",
+      ".jfif",
+      ".png",
+      ".webp",
+      ".pdf",
+    ];
     const maxSize = 8 * 1024 * 1024;
     const accepted = [];
 
@@ -1986,7 +2136,10 @@ export default function CustomRequestDetailPage() {
       <div className="page-hero">
         <div>
           <h1>Request details</h1>
-          <p>Track your custom furniture project, payments, and fulfillment in one place.</p>
+          <p>
+            Track your custom furniture project, payments, and fulfillment in
+            one place.
+          </p>
 
           {requestData ? (
             <div className="crd-request-meta-v12">
@@ -1996,7 +2149,10 @@ export default function CustomRequestDetailPage() {
                   {requestData.order_number || "-"}
                 </span>
               </span>
-              <span className="crd-request-meta-separator-v12" aria-hidden="true">
+              <span
+                className="crd-request-meta-separator-v12"
+                aria-hidden="true"
+              >
                 •
               </span>
               <span>
@@ -2120,8 +2276,10 @@ export default function CustomRequestDetailPage() {
           <div className="checkout-layout crd-layout">
             <div
               className={`checkout-form-panel wisdom-request-details-main-v11 crd-customer-journey-v2 ${
-                String(requestData.status || "").trim().toLowerCase() ===
-                  "completed" && requestData.payment_status === "paid"
+                String(requestData.status || "")
+                  .trim()
+                  .toLowerCase() === "completed" &&
+                requestData.payment_status === "paid"
                   ? "crd-completed-layout-v4"
                   : ""
               }`}
@@ -2221,31 +2379,31 @@ export default function CustomRequestDetailPage() {
                       </summary>
 
                       <div className="crd-table">
-                      <div className="crd-table-head">
-                        <div>Item</div>
-                        <div>Qty</div>
-                        <div>Unit price</div>
-                        <div>Amount</div>
-                      </div>
-
-                      {customerQuotationItemsV141.length ? (
-                        customerQuotationItemsV141.map((item) => (
-                          <div key={item.id} className="crd-table-row">
-                            <div className="crd-table-desc">
-                              {item.description || "Quotation item"}
-                            </div>
-                            <div>{item.quantity || 0}</div>
-                            <div>{formatMoney(item.unit_cost || 0)}</div>
-                            <div className="crd-table-amount">
-                              {formatMoney(item.subtotal || 0)}
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="crd-table-empty">
-                          No quotation line items available yet.
+                        <div className="crd-table-head">
+                          <div>Item</div>
+                          <div>Qty</div>
+                          <div>Unit price</div>
+                          <div>Amount</div>
                         </div>
-                      )}
+
+                        {customerQuotationItemsV141.length ? (
+                          customerQuotationItemsV141.map((item) => (
+                            <div key={item.id} className="crd-table-row">
+                              <div className="crd-table-desc">
+                                {item.description || "Quotation item"}
+                              </div>
+                              <div>{item.quantity || 0}</div>
+                              <div>{formatMoney(item.unit_cost || 0)}</div>
+                              <div className="crd-table-amount">
+                                {formatMoney(item.subtotal || 0)}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="crd-table-empty">
+                            No quotation line items available yet.
+                          </div>
+                        )}
                       </div>
                     </details>
 
@@ -2396,7 +2554,9 @@ export default function CustomRequestDetailPage() {
                       className="crd-status-pill"
                       style={{
                         marginLeft: "auto",
-                        background: projectAgreementAccepted ? "#f0fdf4" : "#fffbeb",
+                        background: projectAgreementAccepted
+                          ? "#f0fdf4"
+                          : "#fffbeb",
                         color: projectAgreementAccepted ? "#166534" : "#92400e",
                       }}
                     >
@@ -2411,22 +2571,28 @@ export default function CustomRequestDetailPage() {
                   <div className="checkout-section-body">
                     {!projectAgreement ? (
                       <div className="crd-info-box pending">
-                        Your quotation is approved. Spiral Wood Services is preparing your
-                        Project Agreement. Payment will become available after you review and
-                        accept the agreement.
+                        Your quotation is approved. Spiral Wood Services is
+                        preparing your Project Agreement. Payment will become
+                        available after you review and accept the agreement.
                       </div>
                     ) : (
                       <>
-                        <div className="crd-panel crd-panel-soft" style={{ marginBottom: 16 }}>
+                        <div
+                          className="crd-panel crd-panel-soft"
+                          style={{ marginBottom: 16 }}
+                        >
                           <h4>Contract Details</h4>
                           <DetailValue label="Contract Number">
                             {agreementNumber}
                           </DetailValue>
                           <DetailValue label="Order">
-                            {requestData?.order_number || "#" + String(requestData?.id || "").padStart(5, "0")}
+                            {requestData?.order_number ||
+                              "#" +
+                                String(requestData?.id || "").padStart(5, "0")}
                           </DetailValue>
                           <DetailValue label="Customer">
-                            {projectAgreement.customer_name || "WISDOM Customer"}
+                            {projectAgreement.customer_name ||
+                              "WISDOM Customer"}
                           </DetailValue>
                           <DetailValue label="Issued">
                             {formatDate(projectAgreement.created_at)}
@@ -2445,25 +2611,36 @@ export default function CustomRequestDetailPage() {
                             {agreementDimensions}
                           </DetailValue>
                           <DetailValue label="Wood">
-                            {prettifyText(agreementProjectItem?.wood_type, "Not specified")}
+                            {prettifyText(
+                              agreementProjectItem?.wood_type,
+                              "Not specified",
+                            )}
                           </DetailValue>
                           <DetailValue label="Finish">
                             {prettifyText(
-                              agreementProjectItem?.finish_color || agreementProjectItem?.color,
+                              agreementProjectItem?.finish_color ||
+                                agreementProjectItem?.color,
                               "Not specified",
                             )}
                           </DetailValue>
                           <DetailValue label="Assembly">
-                            {String(agreementProjectItem?.assembly_choice || "").toLowerCase() === "included"
+                            {String(
+                              agreementProjectItem?.assembly_choice || "",
+                            ).toLowerCase() === "included"
                               ? "Included"
-                              : String(agreementProjectItem?.assembly_choice || "").toLowerCase() === "none"
+                              : String(
+                                    agreementProjectItem?.assembly_choice || "",
+                                  ).toLowerCase() === "none"
                                 ? "Not included"
                                 : "Not specified"}
                           </DetailValue>
                         </div>
 
                         {agreementVisibleItems.length > 0 ? (
-                          <div className="crd-panel" style={{ marginBottom: 16 }}>
+                          <div
+                            className="crd-panel"
+                            style={{ marginBottom: 16 }}
+                          >
                             <h4>Scope of Work</h4>
                             <div style={{ border: "1px solid #e4e4e7" }}>
                               {agreementVisibleItems.map((item, index) => (
@@ -2481,16 +2658,25 @@ export default function CustomRequestDetailPage() {
                                     fontSize: 13,
                                   }}
                                 >
-                                  <span>{item.description || "Item " + (index + 1)}</span>
-                                  <span>Qty {Number(item.quantity || 0) || "—"}</span>
-                                  <strong>{formatMoney(item.subtotal || 0)}</strong>
+                                  <span>
+                                    {item.description || "Item " + (index + 1)}
+                                  </span>
+                                  <span>
+                                    Qty {Number(item.quantity || 0) || "—"}
+                                  </span>
+                                  <strong>
+                                    {formatMoney(item.subtotal || 0)}
+                                  </strong>
                                 </div>
                               ))}
                             </div>
                           </div>
                         ) : null}
 
-                        <div className="crd-panel crd-panel-soft" style={{ marginBottom: 16 }}>
+                        <div
+                          className="crd-panel crd-panel-soft"
+                          style={{ marginBottom: 16 }}
+                        >
                           <h4>Cost Summary</h4>
                           <DetailValue label="Materials">
                             {formatMoney(latestEstimation.material_cost || 0)}
@@ -2521,7 +2707,10 @@ export default function CustomRequestDetailPage() {
                           </DetailValue>
                         </div>
 
-                        <div className="crd-panel crd-panel-soft" style={{ marginBottom: 16 }}>
+                        <div
+                          className="crd-panel crd-panel-soft"
+                          style={{ marginBottom: 16 }}
+                        >
                           <h4>Payment Terms</h4>
                           <DetailValue label="Minimum Down Payment (30%)">
                             {formatMoney(downPaymentDue)}
@@ -2529,8 +2718,17 @@ export default function CustomRequestDetailPage() {
                           <DetailValue label="Balance After Minimum Payment">
                             {formatMoney(agreementRemainingAfterDownPayment)}
                           </DetailValue>
-                          <p style={{ margin: "10px 0 0", lineHeight: 1.6, color: "#52525b", fontSize: 13 }}>
-                            Production starts after at least the minimum 30% payment is verified. You may pay more than the minimum, up to the full project total.
+                          <p
+                            style={{
+                              margin: "10px 0 0",
+                              lineHeight: 1.6,
+                              color: "#52525b",
+                              fontSize: 13,
+                            }}
+                          >
+                            Production starts after at least the minimum 30%
+                            payment is verified. You may pay more than the
+                            minimum, up to the full project total.
                           </p>
 
                           <div style={{ marginTop: 14 }}>
@@ -2554,7 +2752,8 @@ export default function CustomRequestDetailPage() {
                               fontSize: 14,
                             }}
                           >
-                            {projectAgreement.terms || "Project Agreement terms are not available."}
+                            {projectAgreement.terms ||
+                              "Project Agreement terms are not available."}
                           </div>
                         </div>
 
@@ -2568,15 +2767,23 @@ export default function CustomRequestDetailPage() {
                               fontSize: 14,
                             }}
                           >
-                            {projectAgreement.warranty_terms || "Warranty terms are not available."}
+                            {projectAgreement.warranty_terms ||
+                              "Warranty terms are not available."}
                           </div>
                         </div>
 
                         {projectAgreementAccepted ? (
-                          <div className="crd-info-box" style={{ background: "#f0fdf4" }}>
-                            <div className="crd-info-title">Agreement Accepted</div>
+                          <div
+                            className="crd-info-box"
+                            style={{ background: "#f0fdf4" }}
+                          >
+                            <div className="crd-info-title">
+                              Agreement Accepted
+                            </div>
                             <p style={{ margin: "8px 0 0" }}>
-                              Accepted on {formatDate(projectAgreement.signed_at)} through your WISDOM Customer Account.
+                              Accepted on{" "}
+                              {formatDate(projectAgreement.signed_at)} through
+                              your WISDOM Customer Account.
                             </p>
 
                             {cancellationRequest ? (
@@ -2599,12 +2806,20 @@ export default function CustomRequestDetailPage() {
                                       ? "Cancellation request approved"
                                       : "Cancellation request declined"}
                                 </div>
-                                <p style={{ margin: "8px 0 0", lineHeight: 1.6 }}>
+                                <p
+                                  style={{ margin: "8px 0 0", lineHeight: 1.6 }}
+                                >
                                   Reason: {cancellationRequest.reason}
                                 </p>
                                 {cancellationRequest.review_note ? (
-                                  <p style={{ margin: "8px 0 0", lineHeight: 1.6 }}>
-                                    Admin note: {cancellationRequest.review_note}
+                                  <p
+                                    style={{
+                                      margin: "8px 0 0",
+                                      lineHeight: 1.6,
+                                    }}
+                                  >
+                                    Admin note:{" "}
+                                    {cancellationRequest.review_note}
                                   </p>
                                 ) : null}
                                 <p
@@ -2628,7 +2843,9 @@ export default function CustomRequestDetailPage() {
                                 <button
                                   type="button"
                                   className="crd-danger-btn"
-                                  disabled={cancellingProject || cancellationLoading}
+                                  disabled={
+                                    cancellingProject || cancellationLoading
+                                  }
                                   onClick={() => setCancelConfirmOpen(true)}
                                 >
                                   {cancellationStatusKey === "declined"
@@ -2643,10 +2860,13 @@ export default function CustomRequestDetailPage() {
                                 className="crd-info-box"
                                 style={{ marginTop: 14, background: "#fef2f2" }}
                               >
-                                <div className="crd-info-title">Transaction cancelled</div>
+                                <div className="crd-info-title">
+                                  Transaction cancelled
+                                </div>
                                 <p style={{ margin: "8px 0 0" }}>
-                                  This project will not proceed. The accepted Project Agreement
-                                  remains in your transaction history.
+                                  This project will not proceed. The accepted
+                                  Project Agreement remains in your transaction
+                                  history.
                                   {requestData?.cancellation_reason
                                     ? ` Reason: ${requestData.cancellation_reason}`
                                     : ""}
@@ -2668,7 +2888,10 @@ export default function CustomRequestDetailPage() {
                                   zIndex: 1200,
                                 }}
                                 onMouseDown={(event) => {
-                                  if (event.target === event.currentTarget && !cancellingProject) {
+                                  if (
+                                    event.target === event.currentTarget &&
+                                    !cancellingProject
+                                  ) {
                                     setCancelConfirmOpen(false);
                                   }
                                 }}
@@ -2684,14 +2907,24 @@ export default function CustomRequestDetailPage() {
                                     padding: 24,
                                   }}
                                 >
-                                  <h3 id="cancel-project-title" style={{ margin: 0 }}>
+                                  <h3
+                                    id="cancel-project-title"
+                                    style={{ margin: 0 }}
+                                  >
                                     Request Cancellation
                                   </h3>
-                                  <p style={{ margin: "10px 0 16px", lineHeight: 1.6 }}>
-                                    Submitting this request does not cancel the order immediately.
-                                    Your order stays active while Spiral Wood Services reviews the
-                                    request. Existing recorded payments stay in payment history and
-                                    this workflow does not issue a refund.
+                                  <p
+                                    style={{
+                                      margin: "10px 0 16px",
+                                      lineHeight: 1.6,
+                                    }}
+                                  >
+                                    Submitting this request does not cancel the
+                                    order immediately. Your order stays active
+                                    while Spiral Wood Services reviews the
+                                    request. Existing recorded payments stay in
+                                    payment history and this workflow does not
+                                    issue a refund.
                                   </p>
 
                                   <label style={{ display: "grid", gap: 8 }}>
@@ -2701,9 +2934,15 @@ export default function CustomRequestDetailPage() {
                                       maxLength={500}
                                       value={cancelReason}
                                       disabled={cancellingProject}
-                                      onChange={(event) => setCancelReason(event.target.value)}
+                                      onChange={(event) =>
+                                        setCancelReason(event.target.value)
+                                      }
                                       placeholder="Explain why you are requesting cancellation"
-                                      style={{ width: "100%", boxSizing: "border-box", resize: "vertical" }}
+                                      style={{
+                                        width: "100%",
+                                        boxSizing: "border-box",
+                                        resize: "vertical",
+                                      }}
                                     />
                                   </label>
 
@@ -2719,7 +2958,9 @@ export default function CustomRequestDetailPage() {
                                       type="button"
                                       className="btn btn-secondary"
                                       disabled={cancellingProject}
-                                      onClick={() => setCancelConfirmOpen(false)}
+                                      onClick={() =>
+                                        setCancelConfirmOpen(false)
+                                      }
                                     >
                                       Back
                                     </button>
@@ -2729,7 +2970,9 @@ export default function CustomRequestDetailPage() {
                                       disabled={cancellingProject}
                                       onClick={handleRequestCancellation}
                                     >
-                                      {cancellingProject ? "Submitting..." : "Submit Request"}
+                                      {cancellingProject
+                                        ? "Submitting..."
+                                        : "Submit Request"}
                                     </button>
                                   </div>
                                 </div>
@@ -2750,12 +2993,15 @@ export default function CustomRequestDetailPage() {
                               <input
                                 type="checkbox"
                                 checked={agreementChecked}
-                                onChange={(event) => setAgreementChecked(event.target.checked)}
+                                onChange={(event) =>
+                                  setAgreementChecked(event.target.checked)
+                                }
                                 style={{ marginTop: 4 }}
                               />
                               <span>
-                                I have reviewed the approved quotation, Project Agreement terms,
-                                payment terms, and warranty coverage.
+                                I have reviewed the approved quotation, Project
+                                Agreement terms, payment terms, and warranty
+                                coverage.
                               </span>
                             </label>
 
@@ -2796,13 +3042,17 @@ export default function CustomRequestDetailPage() {
                                 boxShadow: "0 18px 50px rgba(0,0,0,0.18)",
                               }}
                             >
-                              <h3 id="confirm-project-agreement-title" style={{ marginTop: 0 }}>
+                              <h3
+                                id="confirm-project-agreement-title"
+                                style={{ marginTop: 0 }}
+                              >
                                 Confirm Agreement
                               </h3>
                               <p style={{ lineHeight: 1.6, color: "#52525b" }}>
-                                You are about to electronically accept this Project Agreement for
-                                {" "}{formatMoney(quotedTotal)}. The minimum down payment after
-                                acceptance is {formatMoney(downPaymentDue)}.
+                                You are about to electronically accept this
+                                Project Agreement for {formatMoney(quotedTotal)}
+                                . The minimum down payment after acceptance is{" "}
+                                {formatMoney(downPaymentDue)}.
                               </p>
                               <div
                                 style={{
@@ -2826,7 +3076,9 @@ export default function CustomRequestDetailPage() {
                                   disabled={agreementAccepting}
                                   onClick={handleAcceptProjectAgreement}
                                 >
-                                  {agreementAccepting ? "Confirming..." : "Confirm"}
+                                  {agreementAccepting
+                                    ? "Confirming..."
+                                    : "Confirm"}
                                 </button>
                               </div>
                             </div>
@@ -2883,7 +3135,9 @@ export default function CustomRequestDetailPage() {
                           <>
                             <div className="wisdom-payment-due-v16 is-initial">
                               <span>Minimum due now</span>
-                              <strong>{formatMoney(downPaymentDue || 0)}</strong>
+                              <strong>
+                                {formatMoney(downPaymentDue || 0)}
+                              </strong>
                             </div>
 
                             <DetailValue label="Balance after minimum payment">
@@ -2940,10 +3194,10 @@ export default function CustomRequestDetailPage() {
                                       .includes("collected on delivery")
                                     ? "Cash on Delivery"
                                     : PAYMENT_METHOD_LABELS[
-                                          String(latestPayment.payment_method)
-                                            .trim()
-                                            .toLowerCase()
-                                        ] ||
+                                        String(latestPayment.payment_method)
+                                          .trim()
+                                          .toLowerCase()
+                                      ] ||
                                       prettifyText(
                                         latestPayment.payment_method,
                                         "Unknown",
@@ -2987,8 +3241,9 @@ export default function CustomRequestDetailPage() {
                         </div>
                       ) : null}
 
-                      {requestData.payment_status === "paid" ? null
-                      : requestData.payment_status === "partial" ? (
+                      {requestData.payment_status ===
+                      "paid" ? null : requestData.payment_status ===
+                        "partial" ? (
                         <div className="crd-panel">
                           <h4>Initial Payment Method</h4>
                           <div
@@ -3016,8 +3271,8 @@ export default function CustomRequestDetailPage() {
                             </div>
                             <p style={{ margin: "8px 0 0" }}>
                               A payment is currently awaiting verification for
-                              this order. Your payment method cannot be
-                              changed while a payment is pending review.
+                              this order. Your payment method cannot be changed
+                              while a payment is pending review.
                             </p>
                           </div>
                         </div>
@@ -3030,13 +3285,12 @@ export default function CustomRequestDetailPage() {
                               <div className="crd-panel crd-panel-soft">
                                 <h4>Cash at Store</h4>
                                 <p className="crd-panel-copy muted">
-                                  Pay the required down payment at the Spiral Wood store.
+                                  Pay the required down payment at the Spiral
+                                  Wood store.
                                 </p>
                                 <div className="summary-row">
                                   <span>Minimum Down Payment (30%)</span>
-                                  <strong>
-                                    {formatMoney(downPaymentDue)}
-                                  </strong>
+                                  <strong>{formatMoney(downPaymentDue)}</strong>
                                 </div>
                                 <button
                                   type="button"
@@ -3053,13 +3307,12 @@ export default function CustomRequestDetailPage() {
                               <div className="crd-panel crd-panel-soft">
                                 <h4>Online Payment</h4>
                                 <p className="crd-panel-copy muted">
-                                  Pay securely with GCash, Maya, or credit/debit card.
+                                  Pay securely with GCash, Maya, or credit/debit
+                                  card.
                                 </p>
                                 <div className="summary-row">
                                   <span>Minimum Down Payment (30%)</span>
-                                  <strong>
-                                    {formatMoney(downPaymentDue)}
-                                  </strong>
+                                  <strong>{formatMoney(downPaymentDue)}</strong>
                                 </div>
                                 <button
                                   type="button"
@@ -3149,8 +3402,8 @@ export default function CustomRequestDetailPage() {
                             <p style={{ margin: "8px 0 0" }}>
                               The minimum initial payment is{" "}
                               <strong>{formatMoney(downPaymentDue)}</strong>.
-                              You may choose 50%, pay the full project total,
-                              or enter a custom amount up to 100%.
+                              You may choose 50%, pay the full project total, or
+                              enter a custom amount up to 100%.
                             </p>
 
                             <p style={{ margin: "12px 0 0" }}>
@@ -3380,9 +3633,7 @@ export default function CustomRequestDetailPage() {
                               type="button"
                               className="btn btn-secondary crd-small-btn"
                               disabled={selectingMethod}
-                              onClick={() =>
-                                handleSelectPaymentMethod("cash")
-                              }
+                              onClick={() => handleSelectPaymentMethod("cash")}
                             >
                               Change to Cash at Store
                             </button>
@@ -3553,7 +3804,9 @@ export default function CustomRequestDetailPage() {
                                 handleSelectRemainingPaymentMethod("cash")
                               }
                             >
-                              {isPickup ? "Use Cash at Store instead" : "Use Cash on Delivery instead"}
+                              {isPickup
+                                ? "Use Cash at Store instead"
+                                : "Use Cash on Delivery instead"}
                             </button>
                           ) : null}
                         </div>
@@ -3589,7 +3842,12 @@ export default function CustomRequestDetailPage() {
                         No payment transactions found.
                       </div>
                     ) : (
-                      <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                      <div
+                        style={{
+                          overflowX: "auto",
+                          WebkitOverflowScrolling: "touch",
+                        }}
+                      >
                         <table
                           style={{
                             width: "100%",
@@ -3633,13 +3891,16 @@ export default function CustomRequestDetailPage() {
                                 .trim()
                                 .toLowerCase();
                               const canViewReceipt =
-                                String(row.status || "").trim().toLowerCase() ===
-                                  "verified" &&
+                                String(row.status || "")
+                                  .trim()
+                                  .toLowerCase() === "verified" &&
                                 Boolean(row.receipt_id) &&
                                 Boolean(row.receipt_number);
                               const isVerifiedNoReceipt =
-                                String(row.status || "").trim().toLowerCase() ===
-                                  "verified" && !canViewReceipt;
+                                String(row.status || "")
+                                  .trim()
+                                  .toLowerCase() === "verified" &&
+                                !canViewReceipt;
 
                               return (
                                 <tr key={row.payment_transaction_id}>
@@ -3647,14 +3908,20 @@ export default function CustomRequestDetailPage() {
                                     {formatDate(row.created_at)}
                                   </td>
                                   <td style={historyTdStyle}>
-                                    {HISTORY_PAYMENT_LABEL_TEXT[row.payment_label] ||
-                                      "Payment"}
+                                    {HISTORY_PAYMENT_LABEL_TEXT[
+                                      row.payment_label
+                                    ] || "Payment"}
                                   </td>
                                   <td style={historyTdStyle}>
                                     {HISTORY_PAYMENT_METHOD_LABELS[method] ||
                                       (method ? prettifyText(method) : "—")}
                                   </td>
-                                  <td style={{ ...historyTdStyle, fontWeight: 700 }}>
+                                  <td
+                                    style={{
+                                      ...historyTdStyle,
+                                      fontWeight: 700,
+                                    }}
+                                  >
                                     {formatMoney(row.amount)}
                                   </td>
                                   <td style={historyTdStyle}>
@@ -3665,7 +3932,10 @@ export default function CustomRequestDetailPage() {
                                       <button
                                         type="button"
                                         className="btn btn-secondary"
-                                        style={{ fontSize: 12, padding: "6px 12px" }}
+                                        style={{
+                                          fontSize: 12,
+                                          padding: "6px 12px",
+                                        }}
                                         onClick={() =>
                                           navigate(
                                             `/custom-requests/${id}/receipts/${row.receipt_id}`,
@@ -3675,11 +3945,21 @@ export default function CustomRequestDetailPage() {
                                         View Receipt
                                       </button>
                                     ) : isVerifiedNoReceipt ? (
-                                      <span style={{ color: "#a1a1aa", fontSize: 12 }}>
+                                      <span
+                                        style={{
+                                          color: "#a1a1aa",
+                                          fontSize: 12,
+                                        }}
+                                      >
                                         Receipt unavailable
                                       </span>
                                     ) : (
-                                      <span style={{ color: "#a1a1aa", fontSize: 12 }}>
+                                      <span
+                                        style={{
+                                          color: "#a1a1aa",
+                                          fontSize: 12,
+                                        }}
+                                      >
                                         —
                                       </span>
                                     )}
@@ -3787,8 +4067,6 @@ export default function CustomRequestDetailPage() {
                               Design
                             </div>
                           )}
-
-
                         </div>
 
                         <div className="checkout-item-details">
@@ -3825,7 +4103,10 @@ export default function CustomRequestDetailPage() {
 
                                 {item.wood_type && (
                                   <span className="custom-spec-tag">
-                                    {prettifyText(item.wood_type, item.wood_type)}
+                                    {prettifyText(
+                                      item.wood_type,
+                                      item.wood_type,
+                                    )}
                                   </span>
                                 )}
 
@@ -3840,7 +4121,10 @@ export default function CustomRequestDetailPage() {
 
                                 {item.door_style && (
                                   <span className="custom-spec-tag">
-                                    {prettifyText(item.door_style, item.door_style)}
+                                    {prettifyText(
+                                      item.door_style,
+                                      item.door_style,
+                                    )}
                                   </span>
                                 )}
 
@@ -3867,7 +4151,8 @@ export default function CustomRequestDetailPage() {
                                     Your submitted design
                                   </span>
                                   <span className="crd-design-access-help-v2">
-                                    Open the blueprint and 3D design you submitted.
+                                    Open the blueprint and 3D design you
+                                    submitted.
                                   </span>
                                 </div>
 
@@ -3902,8 +4187,6 @@ export default function CustomRequestDetailPage() {
                               </div>
                             ) : null}
                           </div>
-
-
 
                           {item.comments ? (
                             <div
@@ -3941,7 +4224,6 @@ export default function CustomRequestDetailPage() {
                           ) : null}
                         </div>
 
-
                         <div className="checkout-item-price crd-quote-note">
                           {submittedItemProgressLabel}
                         </div>
@@ -3961,7 +4243,9 @@ export default function CustomRequestDetailPage() {
                   {isPickup ? (
                     <div className="crd-delivery-layout-v5 crd-delivery-layout-v6">
                       <div className="crd-delivery-column-v5">
-                        <div className="crd-delivery-column-title-v5">Pickup information</div>
+                        <div className="crd-delivery-column-title-v5">
+                          Pickup information
+                        </div>
                         <div className="crd-delivery-pair-v5">
                           <div className="crd-delivery-fact-v5">
                             <span>Pickup status</span>
@@ -3982,14 +4266,21 @@ export default function CustomRequestDetailPage() {
                           <div className="crd-delivery-note-v5">
                             <span>Received by</span>
                             <p style={{ marginBottom: 4 }}>
-                              <strong>{pickupAcknowledgement.received_by_name || "Recipient"}</strong>
+                              <strong>
+                                {pickupAcknowledgement.received_by_name ||
+                                  "Recipient"}
+                              </strong>
                             </p>
                             <p style={{ margin: 0 }}>
-                              {pickupAcknowledgement.recipient_type === "authorized_representative"
+                              {pickupAcknowledgement.recipient_type ===
+                              "authorized_representative"
                                 ? "Authorized Representative"
                                 : "Customer"}
                               {pickupAcknowledgement.acknowledged_at
-                                ? " • " + formatDate(pickupAcknowledgement.acknowledged_at)
+                                ? " • " +
+                                  formatDate(
+                                    pickupAcknowledgement.acknowledged_at,
+                                  )
                                 : ""}
                             </p>
                           </div>
@@ -3997,14 +4288,19 @@ export default function CustomRequestDetailPage() {
                           <div className="crd-delivery-note-v5">
                             <span>Pickup handoff</span>
                             <p>
-                              When the balance is fully verified, the customer or authorized representative signs the Pickup Acknowledgement at the store before the Cashier confirms release.
+                              When the balance is fully verified, the customer
+                              or authorized representative signs the Pickup
+                              Acknowledgement at the store before the Cashier
+                              confirms release.
                             </p>
                           </div>
                         )}
                       </div>
 
                       <div className="crd-delivery-column-v5 is-confirmation">
-                        <div className="crd-delivery-column-title-v5">Pickup confirmation</div>
+                        <div className="crd-delivery-column-title-v5">
+                          Pickup confirmation
+                        </div>
                         <div className="crd-delivery-confirmation-row-v5">
                           <span>Assembly</span>
                           <strong>{customerAssemblyLabel}</strong>
@@ -4026,143 +4322,147 @@ export default function CustomRequestDetailPage() {
                         {pickupAcknowledgement?.released_by_name ? (
                           <div className="crd-delivery-confirmation-row-v5">
                             <span>Released by</span>
-                            <strong>{pickupAcknowledgement.released_by_name}</strong>
+                            <strong>
+                              {pickupAcknowledgement.released_by_name}
+                            </strong>
                           </div>
                         ) : null}
                       </div>
                     </div>
                   ) : (
-                  <div className="crd-delivery-layout-v5 crd-delivery-layout-v6">
-                    <div className="crd-delivery-column-v5">
-                      <div className="crd-delivery-column-title-v5">
-                        Delivery information
-                      </div>
-
-                      <div className="crd-delivery-pair-v5">
-                        <div className="crd-delivery-fact-v5">
-                          <span>Delivery status</span>
-                          <strong>{customerDeliveryStatusLabel}</strong>
+                    <div className="crd-delivery-layout-v5 crd-delivery-layout-v6">
+                      <div className="crd-delivery-column-v5">
+                        <div className="crd-delivery-column-title-v5">
+                          Delivery information
                         </div>
 
-                        <div className="crd-delivery-fact-v5">
-                          <span>{customerDeliveryDateLabel}</span>
-                          <strong>{customerDeliveryDateText}</strong>
+                        <div className="crd-delivery-pair-v5">
+                          <div className="crd-delivery-fact-v5">
+                            <span>Delivery status</span>
+                            <strong>{customerDeliveryStatusLabel}</strong>
+                          </div>
+
+                          <div className="crd-delivery-fact-v5">
+                            <span>{customerDeliveryDateLabel}</span>
+                            <strong>{customerDeliveryDateText}</strong>
+                          </div>
                         </div>
-                      </div>
 
-                      <div className="crd-delivery-address-v5">
-                        <span>Delivery address</span>
-                        <strong>
-                          {customerDeliveryAddress ||
-                            "No delivery address provided."}
-                        </strong>
+                        <div className="crd-delivery-address-v5">
+                          <span>Delivery address</span>
+                          <strong>
+                            {customerDeliveryAddress ||
+                              "No delivery address provided."}
+                          </strong>
 
-                        {customerDeliveryMapHref ? (
-                          <a
-                            href={customerDeliveryMapHref}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="crd-delivery-location-btn-v6"
-                          >
-                            <MapPin size={15} strokeWidth={1.8} />
-                            <span>Delivery location</span>
-                          </a>
-                        ) : null}
-                      </div>
-
-                      {String(requestData.notes || "").trim() ? (
-                        <div className="crd-delivery-note-v5">
-                          <span>Customer notes</span>
-                          <p>{requestData.notes}</p>
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <div className="crd-delivery-column-v5 is-confirmation">
-                      <div className="crd-delivery-column-title-v5">
-                        Delivery confirmation
-                      </div>
-
-                      <div className="crd-delivery-confirmation-row-v5">
-                        <span>Assembly</span>
-                        <strong>{customerAssemblyLabel}</strong>
-                      </div>
-
-                      <div className="crd-delivery-confirmation-row-v5">
-                        <span>Rider</span>
-                        <strong>
-                          {customerDeliveryRider ||
-                            customerDeliveryRiderFallback}
-                        </strong>
-                        {customerDeliveryRider ? (
-                          <small>Delivery staff</small>
-                        ) : null}
-                      </div>
-
-                      <div className="crd-delivery-confirmation-row-v5">
-                        <span>Proof of delivery</span>
-
-                        {customerDeliveryProofHref ? (
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: 8,
-                              flexWrap: "wrap",
-                              justifyContent: "flex-end",
-                            }}
-                          >
+                          {customerDeliveryMapHref ? (
                             <a
-                              href={customerDeliveryProofHref}
+                              href={customerDeliveryMapHref}
                               target="_blank"
                               rel="noreferrer"
-                              className="crd-delivery-proof-btn-v5"
+                              className="crd-delivery-location-btn-v6"
                             >
-                              View proof
+                              <MapPin size={15} strokeWidth={1.8} />
+                              <span>Delivery location</span>
                             </a>
-                            <DownloadFileButton
-                              url={customerDeliveryProofHref}
-                              filename={`Proof_of_Delivery_${requestData.order_number || requestData.id || id}`}
-                              label="Download proof"
-                              className="crd-delivery-proof-btn-v5"
-                            />
+                          ) : null}
+                        </div>
+
+                        {String(requestData.notes || "").trim() ? (
+                          <div className="crd-delivery-note-v5">
+                            <span>Customer notes</span>
+                            <p>{requestData.notes}</p>
                           </div>
-                        ) : (
-                          <strong>
-                            {customerDeliveryIsFinished
-                              ? "Proof not available"
-                              : "Available after delivery"}
-                          </strong>
-                        )}
+                        ) : null}
                       </div>
 
-                      <div className="crd-delivery-confirmation-row-v5">
-                        <span>Delivery receipt</span>
-                        {deliveryDetailsForCustomer?.receipt_number ? (
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 8,
-                              flexWrap: "wrap",
-                              justifyContent: "flex-end",
-                            }}
-                          >
-                            <strong>{deliveryDetailsForCustomer.receipt_number}</strong>
-                            <DeliveryReceiptButton
-                              endpoint={`/customer/orders/${requestData.id || id}/delivery-receipt`}
-                              className="crd-delivery-proof-btn-v5"
-                            />
-                          </div>
-                        ) : (
+                      <div className="crd-delivery-column-v5 is-confirmation">
+                        <div className="crd-delivery-column-title-v5">
+                          Delivery confirmation
+                        </div>
+
+                        <div className="crd-delivery-confirmation-row-v5">
+                          <span>Assembly</span>
+                          <strong>{customerAssemblyLabel}</strong>
+                        </div>
+
+                        <div className="crd-delivery-confirmation-row-v5">
+                          <span>Rider</span>
                           <strong>
-                            {customerDeliveryIsFinished
-                              ? "Receipt not available"
-                              : "Available after delivery"}
+                            {customerDeliveryRider ||
+                              customerDeliveryRiderFallback}
                           </strong>
-                        )}
+                          {customerDeliveryRider ? (
+                            <small>Delivery staff</small>
+                          ) : null}
+                        </div>
+
+                        <div className="crd-delivery-confirmation-row-v5">
+                          <span>Proof of delivery</span>
+
+                          {customerDeliveryProofHref ? (
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: 8,
+                                flexWrap: "wrap",
+                                justifyContent: "flex-end",
+                              }}
+                            >
+                              <a
+                                href={customerDeliveryProofHref}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="crd-delivery-proof-btn-v5"
+                              >
+                                View proof
+                              </a>
+                              <DownloadFileButton
+                                url={customerDeliveryProofHref}
+                                filename={`Proof_of_Delivery_${requestData.order_number || requestData.id || id}`}
+                                label="Download proof"
+                                className="crd-delivery-proof-btn-v5"
+                              />
+                            </div>
+                          ) : (
+                            <strong>
+                              {customerDeliveryIsFinished
+                                ? "Proof not available"
+                                : "Available after delivery"}
+                            </strong>
+                          )}
+                        </div>
+
+                        <div className="crd-delivery-confirmation-row-v5">
+                          <span>Delivery receipt</span>
+                          {deliveryDetailsForCustomer?.receipt_number ? (
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                                flexWrap: "wrap",
+                                justifyContent: "flex-end",
+                              }}
+                            >
+                              <strong>
+                                {deliveryDetailsForCustomer.receipt_number}
+                              </strong>
+                              <DeliveryReceiptButton
+                                endpoint={`/customer/orders/${requestData.id || id}/delivery-receipt`}
+                                className="crd-delivery-proof-btn-v5"
+                              />
+                            </div>
+                          ) : (
+                            <strong>
+                              {customerDeliveryIsFinished
+                                ? "Receipt not available"
+                                : "Available after delivery"}
+                            </strong>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
                   )}
                 </div>
               </div>
@@ -4188,7 +4488,10 @@ export default function CustomRequestDetailPage() {
                         {!discussionThread.length ? (
                           <div className="crd-chat-empty crd-messenger-empty-v2">
                             <strong>No messages yet</strong>
-                            <span>Start the conversation using the message box below.</span>
+                            <span>
+                              Start the conversation using the message box
+                              below.
+                            </span>
                           </div>
                         ) : (
                           <>
@@ -4211,7 +4514,8 @@ export default function CustomRequestDetailPage() {
                                     grouped ? "is-grouped-v3" : ""
                                   }`}
                                 >
-                                  {!grouped && sender.roleClass !== "is-system" ? (
+                                  {!grouped &&
+                                  sender.roleClass !== "is-system" ? (
                                     <div className="crd-chat-sender-r21">
                                       {sender.label}
                                     </div>
@@ -4224,7 +4528,9 @@ export default function CustomRequestDetailPage() {
                                     role="button"
                                     tabIndex={0}
                                     aria-expanded={expanded}
-                                    onClick={() => toggleDiscussionTimestamp(entry.id)}
+                                    onClick={() =>
+                                      toggleDiscussionTimestamp(entry.id)
+                                    }
                                     onKeyDown={(event) => {
                                       if (
                                         event.key === "Enter" ||
@@ -4249,7 +4555,9 @@ export default function CustomRequestDetailPage() {
                                             attachment.file_url,
                                           );
 
-                                          return isImageAttachment(attachment) ? (
+                                          return isImageAttachment(
+                                            attachment,
+                                          ) ? (
                                             <a
                                               key={attachment.id}
                                               href={href}
@@ -4350,7 +4658,10 @@ export default function CustomRequestDetailPage() {
                               key={`${file.name}_${index}`}
                               className="crd-messenger-file-chip-v2"
                             >
-                              <span className="crd-messenger-file-icon-v2" aria-hidden="true">
+                              <span
+                                className="crd-messenger-file-icon-v2"
+                                aria-hidden="true"
+                              >
                                 <svg
                                   viewBox="0 0 24 24"
                                   width="14"
@@ -4370,7 +4681,9 @@ export default function CustomRequestDetailPage() {
                               </span>
                               <button
                                 type="button"
-                                onClick={() => handleRemoveDiscussionFile(index)}
+                                onClick={() =>
+                                  handleRemoveDiscussionFile(index)
+                                }
                                 className="crd-messenger-file-remove-v2"
                                 aria-label={`Remove ${file.name}`}
                                 title="Remove attachment"
@@ -4396,10 +4709,14 @@ export default function CustomRequestDetailPage() {
                         <button
                           type="button"
                           className="crd-messenger-icon-btn-v2 crd-messenger-attach-v2"
-                          onClick={() => discussionFileInputRef.current?.click()}
+                          onClick={() =>
+                            discussionFileInputRef.current?.click()
+                          }
                           aria-label="Add attachment"
                           title="Add attachment"
-                          disabled={discussionSubmitting || discussionFiles.length >= 5}
+                          disabled={
+                            discussionSubmitting || discussionFiles.length >= 5
+                          }
                         >
                           +
                         </button>
@@ -4420,7 +4737,8 @@ export default function CustomRequestDetailPage() {
                           className="crd-messenger-send-v2"
                           disabled={
                             discussionSubmitting ||
-                            (!discussionMessage.trim() && !discussionFiles.length)
+                            (!discussionMessage.trim() &&
+                              !discussionFiles.length)
                           }
                           aria-label="Send message"
                           title="Send message"
@@ -4430,7 +4748,9 @@ export default function CustomRequestDetailPage() {
                       </div>
 
                       <div className="crd-messenger-helper-v2">
-                        <span>Enter to send · Shift + Enter for a new line</span>
+                        <span>
+                          Enter to send · Shift + Enter for a new line
+                        </span>
                         <span>Up to 5 files</span>
                       </div>
                     </form>
@@ -4455,7 +4775,9 @@ export default function CustomRequestDetailPage() {
                 <div className="summary-row">
                   <span>Quotation</span>
                   <span className="crd-summary-total">
-                    {quotedTotal > 0 ? formatMoney(quotedTotal) : "Not ready yet"}
+                    {quotedTotal > 0
+                      ? formatMoney(quotedTotal)
+                      : "Not ready yet"}
                   </span>
                 </div>
 

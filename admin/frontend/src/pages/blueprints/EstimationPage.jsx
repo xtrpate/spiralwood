@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import api, { buildAssetUrl } from "../../services/api";
+import { getSocket, subscribeSocketReady } from "../../services/socket";
 import OversizedDeliveryEstimatorPanel from "../../components/OversizedDeliveryEstimatorPanel";
 import { buildEstimateProductionSnapshot } from "./data/estimateProductionSummary";
 
@@ -2107,6 +2108,127 @@ export default function EstimationPage() {
       currentDraftSignature !== savedDraftSignature,
     ) || Boolean(deliveryGate.dirty);
 
+  useEffect(() => {
+    let boundSocket = null;
+
+    const handleBlueprintUpdated = async (payload) => {
+      const updatedBlueprintId = Number(payload?.blueprint_id);
+
+      if (
+        !Number.isInteger(updatedBlueprintId) ||
+        updatedBlueprintId !== Number(id)
+      ) {
+        return;
+      }
+
+      if (loading || saving || approving) {
+        return;
+      }
+
+      if (hasUnsavedChanges) {
+        toast(
+          "This quotation changed elsewhere. Your unsaved changes were kept. Save or discard them before refreshing.",
+        );
+        return;
+      }
+
+      try {
+        const [blueprintResponse, estimationResponse] = await Promise.all([
+          api.get(`/blueprints/${id}`),
+          api.get(`/blueprints/${id}/estimation`).catch((error) => {
+            if (error?.response?.status === 404) {
+              return { data: null };
+            }
+            throw error;
+          }),
+        ]);
+
+        const loadedBlueprint = blueprintResponse.data;
+        const loadedEstimation = estimationResponse.data;
+
+        setBlueprint(loadedBlueprint);
+
+        const latestAutoItems = buildPreferredAutoItems(
+          parseBlueprintDesignData(loadedBlueprint),
+        );
+
+        if (loadedEstimation) {
+          const normalizedItems = reconcileLoadedItems(
+            loadedEstimation.items || [],
+            latestAutoItems,
+          );
+
+          const normalizedCosts = {
+            labor_cost: Number(loadedEstimation.labor_cost ?? 0),
+            overhead_cost: Number(loadedEstimation.overhead_cost ?? 0),
+            tax_rate: Number(loadedEstimation.tax_rate ?? 12),
+            discount: Number(loadedEstimation.discount ?? 0),
+            notes: String(loadedEstimation.notes ?? ""),
+          };
+
+          setEstimation(loadedEstimation);
+          setItems(normalizedItems);
+          setCosts(normalizedCosts);
+          setSavedDraftSignature(
+            buildEditableEstimateSignature(normalizedItems, normalizedCosts),
+          );
+
+          setDeliveryGate((current) => ({
+            ...current,
+            dirty: false,
+          }));
+        } else {
+          setEstimation(null);
+          setItems(latestAutoItems);
+          setCosts({
+            labor_cost: 0,
+            overhead_cost: 0,
+            tax_rate: 12,
+            discount: 0,
+            notes: "",
+          });
+          setSavedDraftSignature(null);
+
+          setDeliveryGate((current) => ({
+            ...current,
+            dirty: false,
+          }));
+        }
+      } catch (error) {
+        console.error(
+          "Failed to refresh estimation after realtime blueprint update:",
+          error,
+        );
+      }
+    };
+
+    const attachListener = (socket) => {
+      if (!socket) return;
+
+      socket.off("blueprint:updated", handleBlueprintUpdated);
+      socket.on("blueprint:updated", handleBlueprintUpdated);
+      boundSocket = socket;
+    };
+
+    const socket = getSocket();
+
+    if (socket) {
+      attachListener(socket);
+    }
+
+    const unsubscribeReady = subscribeSocketReady((readySocket) => {
+      attachListener(readySocket);
+    });
+
+    return () => {
+      if (boundSocket) {
+        boundSocket.off("blueprint:updated", handleBlueprintUpdated);
+      }
+
+      unsubscribeReady();
+    };
+  }, [id, loading, saving, approving, hasUnsavedChanges]);
+
   const quotationGateReasons = useMemo(() => {
     const reasons = [];
 
@@ -2223,9 +2345,7 @@ export default function EstimationPage() {
   // only when editable estimate data or the delivery decision is dirty.
   const isNewUnsavedEstimate = !estimation?.id;
   const saveDisabled =
-    saving ||
-    isReadOnly ||
-    (!isNewUnsavedEstimate && !hasUnsavedChanges);
+    saving || isReadOnly || (!isNewUnsavedEstimate && !hasUnsavedChanges);
 
   const saveButtonLabel = saving
     ? "Saving..."

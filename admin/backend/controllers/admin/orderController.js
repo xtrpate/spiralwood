@@ -34,7 +34,13 @@ const {
   createNotification,
   createNotificationSafe,
 } = require("../../utils/notificationHelper");
-const { emitOrderStatusUpdate } = require("../../utils/orderStatusSocket");
+const {
+  emitOrderStatusUpdate,
+  emitOrderPaymentUpdate,
+  emitTaskUpdate,
+  emitBlueprintUpdate,
+  emitDiscussionMessage,
+} = require("../../utils/orderStatusSocket");
 const {
   isSettingEnabled,
   getGlobalEmailFooter,
@@ -453,6 +459,26 @@ exports.approveCustomRequest = async (req, res) => {
 
     await conn.commit();
 
+    const io = req.app.get("io");
+
+    if (resolvedBlueprintId) {
+      emitBlueprintUpdate(io, {
+        blueprintId: resolvedBlueprintId,
+        orderId: order.id,
+        orderNumber: order.order_number,
+        customerId: order.customer_id,
+        changeType: "custom_request_approved",
+        notifyCustomer: false,
+      });
+    }
+
+    emitOrderStatusUpdate(io, {
+      orderId: order.id,
+      orderNumber: order.order_number,
+      status: "confirmed",
+      customerId: order.customer_id,
+    });
+
     req.auditRecord = {
       id: orderId,
       old: { status: currentStatus, blueprint_id: oldBlueprintId },
@@ -582,6 +608,14 @@ exports.rejectCustomRequest = async (req, res) => {
     });
 
     await conn.commit();
+
+    const io = req.app.get("io");
+    emitOrderStatusUpdate(io, {
+      orderId: order.id,
+      orderNumber: order.order_number,
+      status: "cancelled",
+      customerId: order.customer_id,
+    });
 
     req.auditRecord = {
       id: orderId,
@@ -2025,19 +2059,20 @@ exports.verifyPayment = async (req, res) => {
     // project-wide order-first lock discipline.
     const [[order]] = await conn.query(
       `SELECT
-          id,
-          customer_id,
-          order_number,
-          order_type,
-          status,
-          total,
-          blueprint_id,
-          payment_method,
-          payment_proof
-       FROM orders
-       WHERE id = ?
-       LIMIT 1
-       FOR UPDATE`,
+      id,
+      customer_id,
+      order_number,
+      order_type,
+      status,
+      payment_status,
+      total,
+      blueprint_id,
+      payment_method,
+      payment_proof
+   FROM orders
+   WHERE id = ?
+   LIMIT 1
+   FOR UPDATE`,
       [orderId],
     );
 
@@ -2428,6 +2463,32 @@ exports.verifyPayment = async (req, res) => {
     await conn.commit();
     transactionActive = false;
 
+    const orderStatusChanged =
+      normalize(nextOrderStatus) !== normalize(order.status);
+
+    const paymentStatusChanged =
+      normalize(nextPaymentStatus) !== normalize(order.payment_status);
+
+    const io = req.app.get("io");
+
+    if (orderStatusChanged) {
+      emitOrderStatusUpdate(io, {
+        orderId: order.id,
+        orderNumber: order.order_number,
+        status: nextOrderStatus,
+        customerId: order.customer_id,
+      });
+    } else if (paymentStatusChanged || Boolean(writtenPaymentTransactionId)) {
+      emitOrderPaymentUpdate(io, {
+        orderId: order.id,
+        orderNumber: order.order_number,
+        paymentStatus: nextPaymentStatus,
+        paymentMethod: order.payment_method,
+        paymentTransactionId: writtenPaymentTransactionId,
+        customerId: order.customer_id,
+      });
+    }
+
     req.auditRecord = {
       id: order.id,
       new: {
@@ -2518,15 +2579,33 @@ exports.uploadDeliveryReceipt = async (req, res) => {
       });
     }
 
-    await pool.query(
+    const [orderUpdate] = await pool.query(
       `UPDATE orders
-       SET status = CASE
-         WHEN status IN ('shipping', 'production') THEN 'delivered'
-         ELSE status
-       END
-       WHERE id = ? AND status NOT IN ('completed', 'cancelled')`,
+       SET status = 'delivered'
+       WHERE id = ?
+         AND status IN ('shipping', 'production')`,
       [orderId],
     );
+
+    if (orderUpdate.affectedRows === 1) {
+      const [[updatedOrder]] = await pool.query(
+        `SELECT id, order_number, customer_id, status
+         FROM orders
+         WHERE id = ?
+         LIMIT 1`,
+        [orderId],
+      );
+
+      if (updatedOrder) {
+        const io = req.app.get("io");
+        emitOrderStatusUpdate(io, {
+          orderId: updatedOrder.id,
+          orderNumber: updatedOrder.order_number,
+          status: updatedOrder.status,
+          customerId: updatedOrder.customer_id,
+        });
+      }
+    }
 
     res.json({
       message: "Signed delivery receipt uploaded successfully.",
@@ -2783,6 +2862,31 @@ exports.assignStaff = async (req, res) => {
 
     await conn.commit();
     transactionActive = false;
+
+    const io = req.app.get("io");
+
+    emitTaskUpdate(io, {
+      taskId: createdTaskIds[0],
+      taskIds: createdTaskIds,
+      orderId: order.id,
+      orderNumber: order.order_number,
+      taskRole: "production_packet",
+      status: "pending",
+      assignedTo: staffId,
+      previousAssigneeIds: [],
+      changeType: "assigned",
+      productionReady: false,
+      orderStatusChanged: false,
+    });
+
+    if (orderStatusChanged) {
+      emitOrderStatusUpdate(io, {
+        orderId: order.id,
+        orderNumber: order.order_number,
+        status: "production",
+        customerId: order.customer_id,
+      });
+    }
 
     req.auditRecord = {
       id: orderId,
@@ -3178,6 +3282,28 @@ exports.reassignStaff = async (req, res) => {
 
     await conn.commit();
     transactionActive = false;
+
+    const io = req.app.get("io");
+
+    emitTaskUpdate(io, {
+      taskId: eligibleRows[0]?.id || null,
+      taskIds: eligibleRows.map((row) => row.id),
+      orderId,
+      orderNumber: order.order_number,
+      taskRole: "production_packet",
+      status: "pending",
+      assignedTo: newStaffId,
+      previousAssigneeIds: [
+        ...new Set(
+          eligibleRows
+            .map((row) => Number(row.assigned_to))
+            .filter((value) => Number.isSafeInteger(value) && value > 0),
+        ),
+      ],
+      changeType: "reassigned",
+      productionReady: false,
+      orderStatusChanged: false,
+    });
 
     req.auditRecord = auditRecord;
     return res.json(responseBody);
@@ -3793,14 +3919,16 @@ exports.postOrderDiscussionMessage = async (req, res) => {
       order_id: createdMessageRow?.order_id || order.id,
       order_item_id: createdMessageRow?.order_item_id || null,
       sender_id: createdMessageRow?.sender_id || req.user?.id || null,
-      sender_role: adminNormalizeText(createdMessageRow?.sender_role) || senderRole,
+      sender_role:
+        adminNormalizeText(createdMessageRow?.sender_role) || senderRole,
       sender_name:
         adminSafeTextOrNull(createdMessageRow?.sender_name) ||
         adminSafeTextOrNull(req.user?.name) ||
         (senderRole === "admin" ? "Admin" : "Staff"),
       message:
         adminSafeTextOrNull(createdMessageRow?.message) ||
-        (message || "Uploaded attachment."),
+        message ||
+        "Uploaded attachment.",
       created_at: createdMessageRow?.created_at || null,
       updated_at: createdMessageRow?.updated_at || null,
       attachments: createdAttachmentRows.map((row) => ({
@@ -3842,17 +3970,10 @@ exports.postOrderDiscussionMessage = async (req, res) => {
       responseStatus: 200,
     });
 
-    try {
-      const io = req.app.get("io");
-      if (io) {
-        io.to(`discussion:order:${order.id}`).emit(
-          "discussion:message",
-          discussionMessage,
-        );
-      }
-    } catch (socketErr) {
-      console.error("[admin.order discussion socket emit]", socketErr);
-    }
+    emitDiscussionMessage(req.app.get("io"), {
+      orderId: order.id,
+      discussionMessage,
+    });
 
     return res.json({
       message: files.length

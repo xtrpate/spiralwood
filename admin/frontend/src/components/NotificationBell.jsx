@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { Bell } from "lucide-react";
 import api from "../services/api";
+import { getSocket, subscribeSocketReady } from "../services/socket";
 import useAuthStore from "../store/authStore";
 import staffNotificationBell from "../assets/staff-notification-bell.png";
 import "./NotificationBell.css";
@@ -158,10 +159,7 @@ function resolveNotificationRoute(
   }
 }
 
-async function preflightDirectNotificationTarget(
-  n,
-  { isAdmin },
-) {
+async function preflightDirectNotificationTarget(n, { isAdmin }) {
   if (!isAdmin) {
     return { available: true, fallback: null };
   }
@@ -217,7 +215,8 @@ export default function NotificationBell({
   const isCashier = user?.role === "staff" && user?.staff_type === "cashier";
   const isDeliveryRider =
     user?.role === "staff" && user?.staff_type === "delivery_rider";
-  const useMonochromeNotification = isCashier || isDeliveryRider || isIndoorStaff;
+  const useMonochromeNotification =
+    isCashier || isDeliveryRider || isIndoorStaff;
 
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(false);
@@ -229,6 +228,7 @@ export default function NotificationBell({
   const NOTIFICATION_PAGE_SIZE = 50;
 
   const markingInFlightRef = useRef(new Set());
+  const realtimeNotificationIdsRef = useRef(new Set());
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -306,12 +306,73 @@ export default function NotificationBell({
   }, [fetchNotifications, fetchUnreadCount]);
 
   useEffect(() => {
-    const iv = setInterval(() => {
+    const handleNotificationNew = (payload) => {
+      const notificationId = Number(payload?.id);
+      const notificationUserId = Number(payload?.user_id);
+
+      if (!Number.isSafeInteger(notificationId) || notificationId <= 0) {
+        return;
+      }
+
+      if (notificationUserId && notificationUserId !== Number(user?.id)) {
+        return;
+      }
+
+      if (realtimeNotificationIdsRef.current.has(notificationId)) {
+        return;
+      }
+
+      realtimeNotificationIdsRef.current.add(notificationId);
+
+      setNotifications((current) => {
+        const alreadyVisible = current.some(
+          (item) => Number(item?.id) === notificationId,
+        );
+
+        if (alreadyVisible) {
+          return current;
+        }
+
+        return mergeNotifications(current, [payload]);
+      });
+
+      if (Number(payload?.is_read) !== 1) {
+        setUnreadCount((count) => count + 1);
+      }
+    };
+
+    const attachListener = (socket) => {
+      if (!socket) return;
+
+      socket.off("notification:new", handleNotificationNew);
+      socket.on("notification:new", handleNotificationNew);
+    };
+
+    const socket = getSocket();
+
+    if (socket) {
+      attachListener(socket);
+    }
+
+    const unsubscribeReady = subscribeSocketReady((readySocket) => {
+      attachListener(readySocket);
+
+      // Reconcile anything that may have arrived while
+      // this browser was temporarily disconnected.
       fetchNotifications();
       fetchUnreadCount();
-    }, 30000);
-    return () => clearInterval(iv);
-  }, [fetchNotifications, fetchUnreadCount]);
+    });
+
+    return () => {
+      const currentSocket = getSocket();
+
+      if (currentSocket) {
+        currentSocket.off("notification:new", handleNotificationNew);
+      }
+
+      unsubscribeReady();
+    };
+  }, [fetchNotifications, fetchUnreadCount, mergeNotifications, user?.id]);
 
   const markAllRead = async () => {
     try {

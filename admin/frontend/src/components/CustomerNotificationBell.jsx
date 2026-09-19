@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { Bell } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "../services/api";
+import { getSocket, subscribeSocketReady } from "../services/socket";
 
 const formatCustomerNotificationDate = (value) => {
   if (!value) return null;
@@ -85,6 +86,7 @@ export default function CustomerNotificationBell() {
   const CUSTOMER_NOTIFICATION_PAGE_SIZE = 20;
 
   const markingInFlightRef = useRef(new Set());
+  const realtimeNotificationIdsRef = useRef(new Set());
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -167,12 +169,65 @@ export default function CustomerNotificationBell() {
   }, [fetchNotifications, fetchUnreadCount]);
 
   useEffect(() => {
-    const iv = setInterval(() => {
+    const handleNotificationNew = (payload) => {
+      const notificationId = Number(payload?.id);
+      if (!Number.isSafeInteger(notificationId) || notificationId <= 0) {
+        return;
+      }
+
+      if (realtimeNotificationIdsRef.current.has(notificationId)) {
+        return;
+      }
+
+      realtimeNotificationIdsRef.current.add(notificationId);
+
+      setNotifications((current) => {
+        const alreadyVisible = current.some(
+          (item) => Number(item?.id) === notificationId,
+        );
+
+        if (alreadyVisible) {
+          return current;
+        }
+
+        return mergeNotifications(current, [payload]);
+      });
+
+      if (Number(payload?.is_read) !== 1) {
+        setUnreadCount((count) => count + 1);
+      }
+    };
+
+    const attachListener = (socket) => {
+      if (!socket) return;
+
+      socket.off("notification:new", handleNotificationNew);
+      socket.on("notification:new", handleNotificationNew);
+    };
+
+    const socket = getSocket();
+
+    if (socket) {
+      attachListener(socket);
+    }
+
+    const unsubscribeReady = subscribeSocketReady((readySocket) => {
+      attachListener(readySocket);
+
       fetchNotifications();
       fetchUnreadCount();
-    }, 30000);
-    return () => clearInterval(iv);
-  }, [fetchNotifications, fetchUnreadCount]);
+    });
+
+    return () => {
+      const currentSocket = getSocket();
+
+      if (currentSocket) {
+        currentSocket.off("notification:new", handleNotificationNew);
+      }
+
+      unsubscribeReady();
+    };
+  }, [fetchNotifications, fetchUnreadCount, mergeNotifications]);
 
   const markAllRead = async () => {
     try {

@@ -41,6 +41,13 @@ const { parseStrictPositiveInt } = require("../../utils/validators");
 const { createNotificationSafe } = require("../../utils/notificationHelper");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const {
+  emitOrderStatusUpdate,
+  emitOrderCreated,
+  emitOrderPaymentUpdate,
+  emitBlueprintUpdate,
+  emitDiscussionMessage,
+} = require("../../utils/orderStatusSocket");
+const {
   getGlobalEmailFooter,
   sendBrevoEmail,
 } = require("../../utils/emailHelper");
@@ -840,6 +847,16 @@ exports.createCustomOrder = async (req, res) => {
     }
 
     await conn.commit();
+
+    const io = req.app.get("io");
+
+    emitOrderCreated(io, {
+      orderId: order_id,
+      orderNumber: order_number,
+      status: "pending",
+      orderType: "blueprint",
+      customerId: req.user.id,
+    });
 
     await writeAuditLogSafe({
       userId: req.user.id,
@@ -1862,6 +1879,14 @@ exports.cancelUnpaidProject = async (req, res) => {
     await conn.commit();
     transactionActive = false;
 
+    const io = req.app.get("io");
+    emitOrderStatusUpdate(io, {
+      orderId: order.id,
+      orderNumber: order.order_number,
+      status: "cancelled",
+      customerId: order.customer_id,
+    });
+
     await writeAuditLogSafe({
       userId: req.user.id,
       action: "cancel_unpaid_custom_project",
@@ -2081,6 +2106,28 @@ exports.acceptProjectAgreement = async (req, res) => {
 
     await conn.commit();
     transactionActive = false;
+
+    const io = req.app.get("io");
+
+    if (!alreadyAccepted) {
+      emitBlueprintUpdate(io, {
+        blueprintId: blueprint.id,
+        orderId: order.id,
+        orderNumber: order.order_number,
+        customerId: order.customer_id,
+        changeType: "agreement_accepted",
+        notifyCustomer: !released,
+      });
+    }
+
+    if (released) {
+      emitOrderStatusUpdate(io, {
+        orderId: order.id,
+        orderNumber: order.order_number,
+        status: "contract_released",
+        customerId: order.customer_id,
+      });
+    }
 
     if (!alreadyAccepted) {
       await writeAuditLogSafe({
@@ -2335,6 +2382,30 @@ exports.acceptEstimation = async (req, res) => {
 
     await conn.commit();
     transactionActive = false;
+
+    const io = req.app.get("io");
+
+    const paymentStatusChanged =
+      normalize(order.payment_status) !== normalize(derivedPaymentStatus);
+
+    emitBlueprintUpdate(io, {
+      blueprintId: blueprint.id,
+      orderId: order.id,
+      orderNumber: order.order_number,
+      customerId: order.customer_id,
+      changeType: "quotation_approved",
+      notifyCustomer: !paymentStatusChanged,
+    });
+
+    if (paymentStatusChanged) {
+      emitOrderPaymentUpdate(io, {
+        orderId: order.id,
+        orderNumber: order.order_number,
+        paymentStatus: derivedPaymentStatus,
+        paymentMethod: order.payment_method,
+        customerId: order.customer_id,
+      });
+    }
 
     await writeAuditLogSafe({
       userId: req.user.id,
@@ -2734,6 +2805,14 @@ exports.rejectEstimation = async (req, res) => {
 
     await conn.commit();
     transactionActive = false;
+
+    const io = req.app.get("io");
+    emitOrderStatusUpdate(io, {
+      orderId: order.id,
+      orderNumber: order.order_number,
+      status: "cancelled",
+      customerId: order.customer_id,
+    });
 
     await writeAuditLogSafe({
       userId: req.user.id,
@@ -3617,7 +3696,8 @@ exports.postCustomOrderMessage = async (req, res) => {
         "Customer",
       message:
         toTrimmedStringOrNull(createdMessageRow?.message) ||
-        (message || "Sent an attachment."),
+        message ||
+        "Sent an attachment.",
       created_at: createdMessageRow?.created_at || null,
       updated_at: createdMessageRow?.updated_at || null,
       attachments: createdAttachmentRows.map((row) => ({
@@ -3658,17 +3738,10 @@ exports.postCustomOrderMessage = async (req, res) => {
       responseStatus: 200,
     });
 
-    try {
-      const io = req.app.get("io");
-      if (io) {
-        io.to(`discussion:order:${order.id}`).emit(
-          "discussion:message",
-          discussionMessage,
-        );
-      }
-    } catch (socketErr) {
-      console.error("[customer.customorders discussion socket emit]", socketErr);
-    }
+    emitDiscussionMessage(req.app.get("io"), {
+      orderId: order.id,
+      discussionMessage,
+    });
 
     return res.json({
       message: files.length
@@ -4119,6 +4192,37 @@ exports.verifyPayment = async (req, res) => {
 
     await conn.commit();
     transactionActive = false;
+
+    const paymentStatusChanged =
+      normalize(lockedCheck.payment_status) !== normalize(nextPaymentStatus);
+
+    const orderStatusChanged =
+      normalize(lockedCheck.status) !==
+      normalize(
+        releaseAfterVerification ? "contract_released" : lockedCheck.status,
+      );
+
+    const io = req.app.get("io");
+
+    if (orderStatusChanged) {
+      emitOrderStatusUpdate(io, {
+        orderId: lockedOrder.id,
+        orderNumber: lockedOrder.order_number,
+        status: releaseAfterVerification
+          ? "contract_released"
+          : lockedCheck.status,
+        customerId: lockedOrder.customer_id,
+      });
+    } else if (paymentStatusChanged) {
+      emitOrderPaymentUpdate(io, {
+        orderId: lockedOrder.id,
+        orderNumber: lockedOrder.order_number,
+        paymentStatus: nextPaymentStatus,
+        paymentMethod: "paymongo",
+        paymentTransactionId: paymentInsertResult.insertId,
+        customerId: lockedOrder.customer_id,
+      });
+    }
 
     return res.json({
       success: true,
@@ -6092,6 +6196,19 @@ exports.verifyRemainingBalancePayment = async (req, res) => {
 
     await conn.commit();
     transactionActive = false;
+
+    if (normalize(order.payment_status) !== normalize(nextPaymentStatus)) {
+      const io = req.app.get("io");
+
+      emitOrderPaymentUpdate(io, {
+        orderId: order.id,
+        orderNumber: order.order_number,
+        paymentStatus: nextPaymentStatus,
+        paymentMethod: "paymongo",
+        paymentTransactionId: insertResult.insertId,
+        customerId: order.customer_id,
+      });
+    }
 
     req.auditRecord = preparedAuditRecord;
 

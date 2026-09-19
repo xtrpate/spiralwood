@@ -435,11 +435,56 @@ export default function OrdersPage() {
       load({ silent: true });
     };
 
+    const handleOrderPaymentUpdated = (payload) => {
+      const updatedOrderId = Number(payload?.order_id);
+
+      if (!Number.isInteger(updatedOrderId)) {
+        return;
+      }
+
+      load({ silent: true });
+    };
+
+    const handleDeliveryUpdated = (payload) => {
+      const updatedOrderId = Number(payload?.order_id);
+
+      if (!Number.isInteger(updatedOrderId)) {
+        return;
+      }
+
+      if (payload?.order_status_changed) {
+        return;
+      }
+
+      load({ silent: true });
+    };
+
+    const handleOrderCreated = (payload) => {
+      const orderId = Number(payload?.order_id);
+
+      if (!Number.isInteger(orderId)) {
+        return;
+      }
+
+      console.log("[SOCKET RECEIVED] order:created", payload);
+
+      load({ silent: true });
+    };
+
     const attachListener = (socket) => {
       if (!socket) return;
 
       socket.off("order:status_updated", handleOrderStatusUpdated);
       socket.on("order:status_updated", handleOrderStatusUpdated);
+
+      socket.off("order:payment_updated", handleOrderPaymentUpdated);
+      socket.on("order:payment_updated", handleOrderPaymentUpdated);
+
+      socket.off("delivery:updated", handleDeliveryUpdated);
+      socket.on("delivery:updated", handleDeliveryUpdated);
+
+      socket.off("order:created", handleOrderCreated);
+      socket.on("order:created", handleOrderCreated);
     };
 
     const socket = getSocket();
@@ -457,6 +502,9 @@ export default function OrdersPage() {
 
       if (currentSocket) {
         currentSocket.off("order:status_updated", handleOrderStatusUpdated);
+        currentSocket.off("order:created", handleOrderCreated);
+        currentSocket.off("order:payment_updated", handleOrderPaymentUpdated);
+        currentSocket.off("delivery:updated", handleDeliveryUpdated);
       }
 
       unsubscribeReady();

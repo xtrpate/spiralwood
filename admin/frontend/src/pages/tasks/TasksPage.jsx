@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../services/api";
+import { getSocket, subscribeSocketReady } from "../../services/socket";
 import {
   formatPHDateTime,
   formatPHDateTimeLocalInput,
@@ -323,28 +324,76 @@ export default function TasksPage() {
   );
   const assignmentOrderIdParam = searchParams.get("assign_order_id");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { data: t } = await api.get("/tasks");
-      setTasks(t);
-      if (canManageTasks) {
-        const [{ data: s }, { data: o }] = await Promise.all([
-          api.get("/tasks/staff-list"),
-          api.get("/tasks/orders-list"),
-        ]);
-        setStaff(s);
-        setOrders(o);
+  const load = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!silent) setLoading(true);
+      try {
+        const { data: t } = await api.get("/tasks");
+        setTasks(t);
+        if (canManageTasks) {
+          const [{ data: s }, { data: o }] = await Promise.all([
+            api.get("/tasks/staff-list"),
+            api.get("/tasks/orders-list"),
+          ]);
+          setStaff(s);
+          setOrders(o);
+        }
+      } catch {
+        toast.error("Failed to load tasks.");
+      } finally {
+        if (!silent) setLoading(false);
       }
-    } catch {
-      toast.error("Failed to load tasks.");
-    } finally {
-      setLoading(false);
-    }
-  }, [canManageTasks]);
+    },
+    [canManageTasks],
+  );
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  useEffect(() => {
+    const handleTaskUpdated = (payload) => {
+      const taskId = Number(payload?.task_id);
+      const orderId = Number(payload?.order_id);
+
+      if (!Number.isInteger(taskId) && !Number.isInteger(orderId)) {
+        return;
+      }
+
+      load({ silent: true }).catch((err) => {
+        console.error(
+          "Failed to refresh task assignments after realtime update:",
+          err,
+        );
+      });
+    };
+
+    const attachListener = (socket) => {
+      if (!socket) return;
+
+      socket.off("task:updated", handleTaskUpdated);
+      socket.on("task:updated", handleTaskUpdated);
+    };
+
+    const socket = getSocket();
+
+    if (socket) {
+      attachListener(socket);
+    }
+
+    const unsubscribeReady = subscribeSocketReady((readySocket) => {
+      attachListener(readySocket);
+    });
+
+    return () => {
+      const currentSocket = getSocket();
+
+      if (currentSocket) {
+        currentSocket.off("task:updated", handleTaskUpdated);
+      }
+
+      unsubscribeReady();
+    };
   }, [load]);
 
   const openCreate = () => {
@@ -646,12 +695,8 @@ export default function TasksPage() {
 
   const filteredOrders = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const fromTime = dueFrom
-      ? productionDueTime(`${dueFrom}T00:00:00`)
-      : null;
-    const toTime = dueTo
-      ? productionDueTime(`${dueTo}T23:59:59`) + 999
-      : null;
+    const fromTime = dueFrom ? productionDueTime(`${dueFrom}T00:00:00`) : null;
+    const toTime = dueTo ? productionDueTime(`${dueTo}T23:59:59`) + 999 : null;
 
     return productionOrderGroups.filter((order) => {
       const statusMatches =
@@ -756,10 +801,11 @@ export default function TasksPage() {
         },
       });
     } catch (exportError) {
-      toast.error(exportError?.message || "Failed to export production order details.");
+      toast.error(
+        exportError?.message || "Failed to export production order details.",
+      );
     }
   };
-
 
   const eligibleProductionOrders = orders.filter((item) => {
     const normalizedStatus = String(item?.status || "")
@@ -1359,7 +1405,8 @@ export default function TasksPage() {
                         <button
                           type="button"
                           onClick={() =>
-                            order.orderId && navigate(`/admin/orders/${order.orderId}`)
+                            order.orderId &&
+                            navigate(`/admin/orders/${order.orderId}`)
                           }
                           disabled={!order.orderId}
                           style={{
@@ -1371,10 +1418,14 @@ export default function TasksPage() {
                             fontWeight: 650,
                             cursor: order.orderId ? "pointer" : "default",
                             textAlign: "left",
-                            textDecoration: order.orderId ? "underline" : "none",
+                            textDecoration: order.orderId
+                              ? "underline"
+                              : "none",
                             textUnderlineOffset: 3,
                           }}
-                          title={order.orderId ? "Open order details" : undefined}
+                          title={
+                            order.orderId ? "Open order details" : undefined
+                          }
                         >
                           {order.orderNumber
                             ? `#${order.orderNumber}`
@@ -1579,7 +1630,8 @@ export default function TasksPage() {
                           {task ? (
                             <div style={{ fontSize: 11, lineHeight: 1.55 }}>
                               <div>
-                                Assigned: {formatTaskEventDateTime(task.created_at)}
+                                Assigned:{" "}
+                                {formatTaskEventDateTime(task.created_at)}
                               </div>
                               <div>
                                 Started:{" "}
@@ -1623,7 +1675,9 @@ export default function TasksPage() {
                     type="button"
                     style={{ ...S.btn, ...S.btnPrim }}
                     onClick={() =>
-                      navigate(`/admin/orders/${selectedProductionOrder.orderId}`)
+                      navigate(
+                        `/admin/orders/${selectedProductionOrder.orderId}`,
+                      )
                     }
                   >
                     Open Order
@@ -2136,10 +2190,7 @@ export default function TasksPage() {
                       ? formatTaskEventDateTime(target.completed_at)
                       : "—",
                   ],
-                  [
-                    "Created",
-                    formatTaskEventDateTime(target.created_at),
-                  ],
+                  ["Created", formatTaskEventDateTime(target.created_at)],
                 ].map(([k, v]) => (
                   <div
                     key={k}

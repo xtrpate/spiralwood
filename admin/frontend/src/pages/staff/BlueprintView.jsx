@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import api, { buildAssetUrl } from "../../services/api";
+import { getSocket, subscribeSocketReady } from "../../services/socket";
 import { Search, FileText, Eye, X } from "lucide-react";
 
 export default function BlueprintView() {
@@ -33,7 +34,59 @@ export default function BlueprintView() {
     setSelected(res.data);
   };
 
-  // UI UPDATE: Converted to return monochrome inline styles instead of CSS classes
+  useEffect(() => {
+    const handleBlueprintUpdated = (payload) => {
+      const updatedBlueprintId = Number(payload?.blueprint_id);
+
+      if (!Number.isInteger(updatedBlueprintId)) {
+        return;
+      }
+
+      fetchBlueprints(query);
+
+      if (Number(selected?.id) !== updatedBlueprintId) {
+        return;
+      }
+
+      api
+        .get(`/pos/blueprints/${updatedBlueprintId}`)
+        .then((response) => {
+          setSelected(response.data);
+        })
+        .catch(() => {
+          setSelected(null);
+        });
+    };
+
+    const attachListener = (socket) => {
+      if (!socket) return;
+
+      socket.off("blueprint:updated", handleBlueprintUpdated);
+      socket.on("blueprint:updated", handleBlueprintUpdated);
+    };
+
+    const socket = getSocket();
+
+    if (socket) {
+      attachListener(socket);
+    }
+
+    const unsubscribeReady = subscribeSocketReady((readySocket) => {
+      attachListener(readySocket);
+    });
+
+    return () => {
+      const currentSocket = getSocket();
+
+      if (currentSocket) {
+        currentSocket.off("blueprint:updated", handleBlueprintUpdated);
+      }
+
+      unsubscribeReady();
+    };
+  }, [query, selected?.id]);
+
+  // UI UPDATE:
   const getStageStyle = (s) => {
     const stage = String(s || "").toLowerCase();
     switch (stage) {

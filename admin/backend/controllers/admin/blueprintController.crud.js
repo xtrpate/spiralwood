@@ -33,6 +33,8 @@ const {
   purgeExpiredArchivedBlueprints,
 } = require("./blueprintController.helpers");
 
+const { emitBlueprintUpdate } = require("../../utils/orderStatusSocket");
+
 exports.getAll = async (req, res) => {
   try {
     await backfillLegacyArchivedDates();
@@ -167,7 +169,6 @@ exports.getAll = async (req, res) => {
        LIMIT ? OFFSET ?`,
       [...params, parseInt(limitNum), parseInt(offset)],
     );
-
 
     // WISDOM SAVED BLUEPRINT COMPONENT PREVIEW FALLBACK V1
     // Older blueprints may keep their real furniture geometry in
@@ -371,8 +372,7 @@ exports.getOne = async (req, res) => {
               order_item_id: row.order_item_id || null,
               product_name: row.product_name || null,
               quantity: Number(row.order_quantity || 0) || 0,
-              customization:
-                safeJsonParse(row.customization_json, {}) || {},
+              customization: safeJsonParse(row.customization_json, {}) || {},
             })),
           }
         : null;
@@ -464,6 +464,13 @@ exports.create = async (req, res) => {
         null,
       ],
     );
+
+    const io = req.app.get("io");
+
+    emitBlueprintUpdate(io, {
+      blueprintId: r.insertId,
+      changeType: "created",
+    });
 
     req.auditRecord = {
       id: r.insertId,
@@ -672,6 +679,13 @@ exports.update = async (req, res) => {
 
     await conn.commit();
 
+    const io = req.app.get("io");
+
+    emitBlueprintUpdate(io, {
+      blueprintId,
+      changeType: "updated",
+    });
+
     // A revision row is written whenever incomingHasDesignData is true,
     // even if the normalized design content turns out equivalent — that
     // write is real and must be captured even when actualChangedFields
@@ -732,7 +746,9 @@ exports.archive = async (req, res) => {
     }
 
     if (Number(bp.is_deleted) === 1) {
-      return res.status(400).json({ message: "Blueprint is already archived." });
+      return res
+        .status(400)
+        .json({ message: "Blueprint is already archived." });
     }
 
     const [[activeLinkedOrder]] = await pool.query(
@@ -800,6 +816,13 @@ exports.archive = async (req, res) => {
     );
 
     if (updateResult.affectedRows > 0) {
+      const io = req.app.get("io");
+
+      emitBlueprintUpdate(io, {
+        blueprintId,
+        changeType: "archived",
+      });
+
       req.auditRecord = {
         id: blueprintId,
         old: { stage: bp.stage, archived: Boolean(Number(bp.is_deleted)) },
@@ -851,6 +874,13 @@ exports.restore = async (req, res) => {
     );
 
     if (wasArchived) {
+      const io = req.app.get("io");
+
+      emitBlueprintUpdate(io, {
+        blueprintId: parseInt(req.params.id),
+        changeType: "restored",
+      });
+
       const newStage = bp.stage === "archived" ? "design" : bp.stage;
       req.auditRecord = {
         id: parseInt(req.params.id),
@@ -911,6 +941,13 @@ exports.permanentDelete = async (req, res) => {
     await deleteBlueprintCascade(conn, [Number(req.params.id)]);
 
     await conn.commit();
+
+    const io = req.app.get("io");
+
+    emitBlueprintUpdate(io, {
+      blueprintId: parseInt(req.params.id),
+      changeType: "deleted",
+    });
 
     req.auditRecord = {
       id: parseInt(req.params.id),

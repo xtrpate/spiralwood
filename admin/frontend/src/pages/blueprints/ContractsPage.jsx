@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import api from "../../services/api";
+import { getSocket, subscribeSocketReady } from "../../services/socket";
 import toast from "react-hot-toast";
 import { downloadProjectAgreementPdf } from "../../utils/projectAgreementPdf";
 import "./ContractsPage.css";
@@ -144,6 +145,77 @@ export default function ContractsPage() {
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    const handleOrderStatusUpdated = (payload) => {
+      const status = String(payload?.status || "")
+        .trim()
+        .toLowerCase();
+
+      if (!["confirmed", "contract_released", "cancelled"].includes(status)) {
+        return;
+      }
+
+      load();
+    };
+
+    const handleBlueprintUpdated = (payload) => {
+      load();
+
+      const updatedOrderId = Number(payload?.order_id);
+
+      if (
+        !modal ||
+        !Number.isInteger(updatedOrderId) ||
+        updatedOrderId !== Number(form.order_id)
+      ) {
+        return;
+      }
+
+      api
+        .get(`/orders/${form.order_id}`)
+        .then((response) => {
+          setSelectedOrderInfo(response.data || null);
+        })
+        .catch((err) => {
+          console.error(
+            "Failed to refresh selected contract order after realtime blueprint update:",
+            err?.response?.data || err,
+          );
+        });
+    };
+
+    const attachListener = (socket) => {
+      if (!socket) return;
+
+      socket.off("order:status_updated", handleOrderStatusUpdated);
+      socket.on("order:status_updated", handleOrderStatusUpdated);
+
+      socket.off("blueprint:updated", handleBlueprintUpdated);
+      socket.on("blueprint:updated", handleBlueprintUpdated);
+    };
+
+    const socket = getSocket();
+
+    if (socket) {
+      attachListener(socket);
+    }
+
+    const unsubscribeReady = subscribeSocketReady((readySocket) => {
+      attachListener(readySocket);
+    });
+
+    return () => {
+      const currentSocket = getSocket();
+
+      if (currentSocket) {
+        currentSocket.off("order:status_updated", handleOrderStatusUpdated);
+        currentSocket.off("blueprint:updated", handleBlueprintUpdated);
+      }
+
+      unsubscribeReady();
+    };
+  }, [modal, form.order_id]);
 
   useEffect(() => {
     const draft = location.state?.contractDraft;
@@ -389,7 +461,15 @@ export default function ContractsPage() {
     const startOfDay = (date) =>
       new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
     const endOfDay = (date) =>
-      new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+      new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+        23,
+        59,
+        59,
+        999,
+      );
 
     let rangeStart = null;
     let rangeEnd = null;
@@ -438,7 +518,9 @@ export default function ContractsPage() {
     return contracts.filter((contract) => {
       const haystack = [
         `CNT-${String(contract.id || "").padStart(5, "0")}`,
-        contract.order_id ? `#${String(contract.order_id).padStart(5, "0")}` : "",
+        contract.order_id
+          ? `#${String(contract.order_id).padStart(5, "0")}`
+          : "",
         contract.order_number,
         contract.blueprint_id
           ? `BP-${String(contract.blueprint_id).padStart(5, "0")}`
@@ -456,18 +538,11 @@ export default function ContractsPage() {
       const validIssuedDate = !Number.isNaN(issuedAt.getTime());
       const matchesStart =
         !rangeStart || (validIssuedDate && issuedAt >= rangeStart);
-      const matchesEnd =
-        !rangeEnd || (validIssuedDate && issuedAt <= rangeEnd);
+      const matchesEnd = !rangeEnd || (validIssuedDate && issuedAt <= rangeEnd);
 
       return matchesSearch && matchesStart && matchesEnd;
     });
-  }, [
-    contractSearch,
-    contractDateFilter,
-    contractFrom,
-    contractTo,
-    contracts,
-  ]);
+  }, [contractSearch, contractDateFilter, contractFrom, contractTo, contracts]);
 
   const contractedOrderIds = new Set(
     contracts.map((c) => String(c.order_id || "")),
@@ -565,9 +640,8 @@ export default function ContractsPage() {
           (item) => item?.customization || item?.requested_base_blueprint_title,
         ) || selectedOrderInfo.items[0]
       : null);
-  const agreementPreviewItems = (Array.isArray(estimationResponse?.items)
-    ? estimationResponse.items
-    : []
+  const agreementPreviewItems = (
+    Array.isArray(estimationResponse?.items) ? estimationResponse.items : []
   ).filter(
     (item) =>
       !item?.raw_material_id &&
@@ -682,7 +756,8 @@ export default function ContractsPage() {
       label: "Customer",
       ok: hasCustomerId,
       value: hasCustomerId
-        ? formatPersonName(selectedOrderInfo?.customer_name) || "Linked customer"
+        ? formatPersonName(selectedOrderInfo?.customer_name) ||
+          "Linked customer"
         : "Customer account required",
     },
     {
@@ -691,9 +766,10 @@ export default function ContractsPage() {
         Boolean(canonicalBlueprintId) &&
         canonicalBlueprintValid &&
         !manualBlueprintMismatch,
-      value: canonicalBlueprintId && canonicalBlueprintValid
-        ? `BP-${String(canonicalBlueprintId).padStart(5, "0")}`
-        : "Linked blueprint required",
+      value:
+        canonicalBlueprintId && canonicalBlueprintValid
+          ? `BP-${String(canonicalBlueprintId).padStart(5, "0")}`
+          : "Linked blueprint required",
     },
     {
       label: "Approved Estimation",
@@ -721,7 +797,9 @@ export default function ContractsPage() {
     {
       label: "Existing Contract",
       ok: !hasExistingContract,
-      value: hasExistingContract ? "Contract already exists" : "No existing contract",
+      value: hasExistingContract
+        ? "Contract already exists"
+        : "No existing contract",
     },
   ];
 
@@ -776,7 +854,9 @@ export default function ContractsPage() {
     }
 
     if (!orderTypeValid) {
-      toast.error("Project Agreements can only be created for blueprint orders.");
+      toast.error(
+        "Project Agreements can only be created for blueprint orders.",
+      );
       return;
     }
 
@@ -913,7 +993,10 @@ export default function ContractsPage() {
       <header className="contracts-page-header">
         <div>
           <h1>Project Agreements</h1>
-          <p>Create and review Project Agreements after the customer approves the quotation.</p>
+          <p>
+            Create and review Project Agreements after the customer approves the
+            quotation.
+          </p>
         </div>
         <button
           type="button"
@@ -932,7 +1015,8 @@ export default function ContractsPage() {
       {duplicateOrderIds.length > 0 && (
         <div className="contracts-alert contracts-alert-warning">
           Some older records contain more than one contract for the same order.
-          Existing records remain available, but the system will prevent new duplicate contracts.
+          Existing records remain available, but the system will prevent new
+          duplicate contracts.
         </div>
       )}
 
@@ -944,7 +1028,9 @@ export default function ContractsPage() {
           </div>
           <div className="contracts-records-controls">
             <div className="contracts-search-wrap">
-              <span className="contracts-search-icon" aria-hidden="true">⌕</span>
+              <span className="contracts-search-icon" aria-hidden="true">
+                ⌕
+              </span>
               <input
                 type="search"
                 value={contractSearch}
@@ -997,7 +1083,7 @@ export default function ContractsPage() {
                 </label>
               </>
             )}
-</div>
+          </div>
         </div>
 
         <div className="contracts-table-scroll">
@@ -1017,7 +1103,9 @@ export default function ContractsPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="contracts-empty-cell">Loading contracts...</td>
+                  <td colSpan={8} className="contracts-empty-cell">
+                    Loading contracts...
+                  </td>
                 </tr>
               ) : filteredContracts.length === 0 ? (
                 <tr>
@@ -1038,14 +1126,18 @@ export default function ContractsPage() {
                         {formatPersonName(contract.customer_name) || "—"}
                       </div>
                       {contract.customer_email ? (
-                        <div className="contracts-secondary-text">{contract.customer_email}</div>
+                        <div className="contracts-secondary-text">
+                          {contract.customer_email}
+                        </div>
                       ) : null}
                     </td>
                     <td>
                       <button
                         type="button"
                         className="contracts-text-link"
-                        onClick={() => navigate(`/admin/orders/${contract.order_id}`)}
+                        onClick={() =>
+                          navigate(`/admin/orders/${contract.order_id}`)
+                        }
                       >
                         {contract.order_number ||
                           `#${String(contract.order_id).padStart(5, "0")}`}
@@ -1057,13 +1149,17 @@ export default function ContractsPage() {
                           type="button"
                           className="contracts-text-link"
                           onClick={() =>
-                            navigate(`/admin/blueprints/${contract.blueprint_id}/design`)
+                            navigate(
+                              `/admin/blueprints/${contract.blueprint_id}/design`,
+                            )
                           }
                         >
                           BP-{String(contract.blueprint_id).padStart(5, "0")}
                         </button>
                       ) : (
-                        <span className="contracts-secondary-text">Not available</span>
+                        <span className="contracts-secondary-text">
+                          Not available
+                        </span>
                       )}
                     </td>
                     <td className="contracts-amount-col contracts-amount">
@@ -1071,8 +1167,14 @@ export default function ContractsPage() {
                         ? formatCurrencyUI(contract.total_amount)
                         : "—"}
                     </td>
-                    <td>{formatPersonName(contract.issued_by_name || "System Administrator")}</td>
-                    <td className="contracts-issued-date">{formatDate(contract.created_at)}</td>
+                    <td>
+                      {formatPersonName(
+                        contract.issued_by_name || "System Administrator",
+                      )}
+                    </td>
+                    <td className="contracts-issued-date">
+                      {formatDate(contract.created_at)}
+                    </td>
                     <td>
                       <div className="contracts-row-actions">
                         <button
@@ -1085,7 +1187,9 @@ export default function ContractsPage() {
                         <button
                           type="button"
                           className="contracts-btn contracts-btn-secondary contracts-btn-sm"
-                          onClick={() => navigate(`/admin/orders/${contract.order_id}`)}
+                          onClick={() =>
+                            navigate(`/admin/orders/${contract.order_id}`)
+                          }
                         >
                           Order Details
                         </button>
@@ -1101,13 +1205,19 @@ export default function ContractsPage() {
 
       {modal && (
         <div className="contracts-modal-overlay" role="presentation">
-          <div className="contracts-modal" role="dialog" aria-modal="true" aria-labelledby="create-contract-title">
+          <div
+            className="contracts-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="create-contract-title"
+          >
             <div className="contracts-modal-header">
               <div>
                 <h2 id="create-contract-title">Create Project Agreement</h2>
                 <p>
-                  Select an eligible blueprint order. The system will confirm the customer,
-                  approved quotation and order total before the Project Agreement is created.
+                  Select an eligible blueprint order. The system will confirm
+                  the customer, approved quotation and order total before the
+                  Project Agreement is created.
                 </p>
               </div>
               <button
@@ -1129,7 +1239,10 @@ export default function ContractsPage() {
                   <span>1</span>
                   <div>
                     <h3>Order Details</h3>
-                    <p>Choose the confirmed blueprint order covered by this agreement.</p>
+                    <p>
+                      Choose the confirmed blueprint order covered by this
+                      agreement.
+                    </p>
                   </div>
                 </div>
 
@@ -1143,16 +1256,23 @@ export default function ContractsPage() {
                     <option value="">Select an order</option>
                     {availableOrders.map((order) => (
                       <option key={order.id} value={order.id}>
-                        {order.order_number || `#${String(order.id).padStart(5, "0")}`} · {formatPersonName(order.customer_name) || "Customer"} · {formatCurrencyUI(order.total_amount || 0)}
+                        {order.order_number ||
+                          `#${String(order.id).padStart(5, "0")}`}{" "}
+                        · {formatPersonName(order.customer_name) || "Customer"}{" "}
+                        · {formatCurrencyUI(order.total_amount || 0)}
                       </option>
                     ))}
                   </select>
-                  <small>Only confirmed blueprint orders with a customer-approved quotation and no existing Project Agreement are listed.</small>
+                  <small>
+                    Only confirmed blueprint orders with a customer-approved
+                    quotation and no existing Project Agreement are listed.
+                  </small>
                 </label>
 
                 {availableOrders.length === 0 && (
                   <div className="contracts-alert contracts-alert-neutral">
-                    There are no eligible approved blueprint orders available for a new Project Agreement.
+                    There are no eligible approved blueprint orders available
+                    for a new Project Agreement.
                   </div>
                 )}
 
@@ -1169,23 +1289,29 @@ export default function ContractsPage() {
                           : "Select an order first"
                     }
                   />
-                  <small>The blueprint is taken directly from the selected order.</small>
+                  <small>
+                    The blueprint is taken directly from the selected order.
+                  </small>
                 </label>
 
                 {manualBlueprintMismatch && (
                   <div className="contracts-alert contracts-alert-error">
-                    The blueprint reference from the previous page does not match the selected order.
-                    Reopen the contract from the correct order before continuing.
+                    The blueprint reference from the previous page does not
+                    match the selected order. Reopen the contract from the
+                    correct order before continuing.
                   </div>
                 )}
 
                 {orderInfoError && (
-                  <div className="contracts-alert contracts-alert-error">{orderInfoError}</div>
+                  <div className="contracts-alert contracts-alert-error">
+                    {orderInfoError}
+                  </div>
                 )}
 
                 {lifecycleIntegrityWarning && (
                   <div className="contracts-alert contracts-alert-error">
-                    This order has a blueprint workflow conflict and requires review before a Project Agreement can be created.
+                    This order has a blueprint workflow conflict and requires
+                    review before a Project Agreement can be created.
                   </div>
                 )}
               </section>
@@ -1196,7 +1322,9 @@ export default function ContractsPage() {
                     <span>2</span>
                     <div>
                       <h3>Project Agreement Readiness</h3>
-                      <p>All required checks must be complete before generation.</p>
+                      <p>
+                        All required checks must be complete before generation.
+                      </p>
                     </div>
                   </div>
 
@@ -1214,7 +1342,9 @@ export default function ContractsPage() {
                     <span>3</span>
                     <div>
                       <h3>Contract Preview</h3>
-                      <p>Confirm the main details before creating the contract.</p>
+                      <p>
+                        Confirm the main details before creating the contract.
+                      </p>
                     </div>
                   </div>
 
@@ -1253,16 +1383,40 @@ export default function ContractsPage() {
 
                   {agreementPreviewItems.length > 0 && (
                     <div style={{ marginTop: 14 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 7 }}>Scope of Work</div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          marginBottom: 7,
+                        }}
+                      >
+                        Scope of Work
+                      </div>
                       <div style={{ border: "1px solid #e4e4e7" }}>
                         {agreementPreviewItems.map((item, index) => (
                           <div
                             key={item.id || "agreement-item-" + index}
-                            style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 12, padding: "9px 11px", borderBottom: index === agreementPreviewItems.length - 1 ? 0 : "1px solid #eeeeef", fontSize: 11 }}
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "1fr auto auto",
+                              gap: 12,
+                              padding: "9px 11px",
+                              borderBottom:
+                                index === agreementPreviewItems.length - 1
+                                  ? 0
+                                  : "1px solid #eeeeef",
+                              fontSize: 11,
+                            }}
                           >
-                            <span>{item.description || item.name || "Item " + (index + 1)}</span>
+                            <span>
+                              {item.description ||
+                                item.name ||
+                                "Item " + (index + 1)}
+                            </span>
                             <span>Qty {Number(item.quantity || 0) || "—"}</span>
-                            <strong>{formatCurrencyUI(item.subtotal || 0)}</strong>
+                            <strong>
+                              {formatCurrencyUI(item.subtotal || 0)}
+                            </strong>
                           </div>
                         ))}
                       </div>
@@ -1276,7 +1430,10 @@ export default function ContractsPage() {
                   <span>4</span>
                   <div>
                     <h3>Agreement Content</h3>
-                    <p>Review the contract terms and warranty before creating the contract.</p>
+                    <p>
+                      Review the contract terms and warranty before creating the
+                      contract.
+                    </p>
                   </div>
                 </div>
 
@@ -1293,7 +1450,9 @@ export default function ContractsPage() {
                   <span>Warranty Coverage</span>
                   <textarea
                     value={form.warranty_terms}
-                    onChange={(event) => setF("warranty_terms", event.target.value)}
+                    onChange={(event) =>
+                      setF("warranty_terms", event.target.value)
+                    }
                     rows={6}
                   />
                 </label>

@@ -171,6 +171,21 @@ export default function RiderDashboard() {
       loadDeliveries({ silent: true });
     };
 
+    const handleDeliveryUpdated = () => {
+      loadDeliveries({ silent: true });
+    };
+
+    const handleOrderStatusUpdated = () => {
+      loadDeliveries({ silent: true });
+    };
+
+    const handlePageShow = (event) => {
+      // Reload when the browser restores this page from Back-Forward Cache.
+      if (event.persisted) {
+        loadDeliveries({ silent: true });
+      }
+    };
+
     const attachListener = (socket) => {
       if (!socket) return;
 
@@ -179,9 +194,16 @@ export default function RiderDashboard() {
 
       socket.off("delivery:unassigned", handleAssignmentChanged);
       socket.on("delivery:unassigned", handleAssignmentChanged);
+
+      socket.off("delivery:updated", handleDeliveryUpdated);
+      socket.on("delivery:updated", handleDeliveryUpdated);
+
+      socket.off("order:status_updated", handleOrderStatusUpdated);
+      socket.on("order:status_updated", handleOrderStatusUpdated);
     };
 
     const socket = getSocket();
+
     if (socket) {
       attachListener(socket);
     }
@@ -190,13 +212,19 @@ export default function RiderDashboard() {
       attachListener(readySocket);
     });
 
+    window.addEventListener("pageshow", handlePageShow);
+
     return () => {
       const currentSocket = getSocket();
 
       if (currentSocket) {
         currentSocket.off("delivery:assigned", handleAssignmentChanged);
         currentSocket.off("delivery:unassigned", handleAssignmentChanged);
+        currentSocket.off("delivery:updated", handleDeliveryUpdated);
+        currentSocket.off("order:status_updated", handleOrderStatusUpdated);
       }
+
+      window.removeEventListener("pageshow", handlePageShow);
 
       unsubscribeReady();
     };

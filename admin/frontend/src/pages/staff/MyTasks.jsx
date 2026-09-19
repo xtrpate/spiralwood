@@ -1,8 +1,9 @@
 // WISDOM INDOOR MY TASKS UI V1
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import api from "../../services/api";
+import { getSocket, subscribeSocketReady } from "../../services/socket";
 import {
   formatPHDateTime,
   formatPHWallClockDate,
@@ -172,8 +173,8 @@ export default function MyTasks() {
   const [holdReason, setHoldReason] = useState("");
   const [holdSaving, setHoldSaving] = useState(false);
 
-  const loadTasks = async () => {
-    setLoading(true);
+  const loadTasks = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
 
     try {
       const { data } = await api.get("/tasks");
@@ -188,13 +189,72 @@ export default function MyTasks() {
         err?.response?.data?.message || "Failed to load production work.",
       );
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadTasks();
-  }, []); // eslint-disable-line
+  }, [loadTasks]);
+
+  useEffect(() => {
+    const handleTaskUpdated = (payload) => {
+      const taskId = Number(payload?.task_id);
+      const orderId = Number(payload?.order_id);
+      const assignedTo = Number(payload?.assigned_to);
+      const previousAssigneeIds = Array.isArray(payload?.previous_assignee_ids)
+        ? payload.previous_assignee_ids.map(Number)
+        : [];
+
+      const currentUserId = Number(user?.id);
+
+      const affectsCurrentUser =
+        assignedTo === currentUserId ||
+        previousAssigneeIds.includes(currentUserId);
+
+      if (
+        !affectsCurrentUser &&
+        Number.isInteger(taskId) &&
+        !Number.isInteger(orderId)
+      ) {
+        return;
+      }
+
+      loadTasks({ silent: true }).catch((err) => {
+        console.error(
+          "Failed to refresh production work after realtime task update:",
+          err,
+        );
+      });
+    };
+
+    const attachListener = (socket) => {
+      if (!socket) return;
+
+      socket.off("task:updated", handleTaskUpdated);
+      socket.on("task:updated", handleTaskUpdated);
+    };
+
+    const socket = getSocket();
+
+    if (socket) {
+      attachListener(socket);
+    }
+
+    const unsubscribeReady = subscribeSocketReady((readySocket) => {
+      attachListener(readySocket);
+    });
+
+    return () => {
+      const currentSocket = getSocket();
+
+      if (currentSocket) {
+        currentSocket.off("task:updated", handleTaskUpdated);
+      }
+
+      unsubscribeReady();
+    };
+  }, [loadTasks, user?.id]);
 
   const updateTaskStatus = async (taskId, status, options = {}) => {
     try {

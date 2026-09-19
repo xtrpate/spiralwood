@@ -4,6 +4,10 @@ const crypto = require("crypto");
 const db = require("../../config/db");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const {
+  emitOrderStatusUpdate,
+  emitOrderPaymentUpdate,
+} = require("../../utils/orderStatusSocket");
+const {
   createStandardOnlineReceipt,
 } = require("../../services/receiptService");
 
@@ -371,6 +375,36 @@ exports.handlePaymongoWebhook = async (req, res) => {
       );
 
       await conn.commit();
+
+      const paymentStatusChanged =
+        String(order.payment_status || "")
+          .trim()
+          .toLowerCase() !== "paid";
+
+      const orderStatusChanged =
+        String(order.status || "")
+          .trim()
+          .toLowerCase() !== "confirmed";
+
+      const io = req.app.get("io");
+
+      if (orderStatusChanged) {
+        emitOrderStatusUpdate(io, {
+          orderId: order.id,
+          orderNumber: order.order_number,
+          status: "confirmed",
+          customerId: order.customer_id,
+        });
+      } else if (paymentStatusChanged) {
+        emitOrderPaymentUpdate(io, {
+          orderId: order.id,
+          orderNumber: order.order_number,
+          paymentStatus: "paid",
+          paymentMethod: "paymongo",
+          paymentTransactionId: paymentTransaction.id,
+          customerId: order.customer_id,
+        });
+      }
 
       await writeAuditLogSafe({
         userId: null,

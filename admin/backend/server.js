@@ -38,6 +38,7 @@ const io = new SocketIOServer(httpServer, {
 });
 
 app.set("io", io);
+global.io = io;
 
 const jwt = require("jsonwebtoken");
 
@@ -506,7 +507,7 @@ cron.schedule(
     console.log(
       "Running scheduled task: Checking for expired PayMongo orders...",
     );
-    autoCancelExpiredOrders();
+    autoCancelExpiredOrders(io);
   },
   { timezone: "Asia/Manila" },
 );
@@ -516,7 +517,7 @@ app.use(errorHandler);
 httpServer.listen(PORT, () => {
   console.log(`\n🚀  WISDOM Unified API running on http://localhost:${PORT}`);
   console.log(`    Environment: ${process.env.NODE_ENV || "development"}\n`);
-  startCronJobs();
+  startCronJobs(io);
 });
 
 module.exports = app;

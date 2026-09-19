@@ -1,13 +1,12 @@
 "use strict";
 
 const db = require("../../config/db");
-const {
-  createNotificationSafe,
-} = require("../../utils/notificationHelper");
+const { createNotificationSafe } = require("../../utils/notificationHelper");
 const {
   releaseBlueprintMaterialsForCancellation,
   BlueprintMaterialReleaseError,
 } = require("../../services/blueprintMaterialReleaseService");
+const { emitOrderStatusUpdate } = require("../../utils/orderStatusSocket");
 
 const APPROVABLE_ORDER_STATUSES = new Set([
   "confirmed",
@@ -219,7 +218,9 @@ exports.approveRequest = async (req, res) => {
   const reviewNote = cleanNote(req.body?.review_note);
 
   if (!requestId) {
-    return res.status(400).json({ message: "Invalid cancellation request ID." });
+    return res
+      .status(400)
+      .json({ message: "Invalid cancellation request ID." });
   }
 
   if (reviewNote.length > 500) {
@@ -278,7 +279,9 @@ exports.approveRequest = async (req, res) => {
     if (!request) {
       await conn.rollback();
       transactionActive = false;
-      return res.status(404).json({ message: "Cancellation request not found." });
+      return res
+        .status(404)
+        .json({ message: "Cancellation request not found." });
     }
 
     if (normalize(request.status) !== "pending") {
@@ -293,7 +296,8 @@ exports.approveRequest = async (req, res) => {
       await conn.rollback();
       transactionActive = false;
       return res.status(400).json({
-        message: "Only custom furniture cancellation requests can be approved here.",
+        message:
+          "Only custom furniture cancellation requests can be approved here.",
       });
     }
 
@@ -467,6 +471,14 @@ exports.approveRequest = async (req, res) => {
     await conn.commit();
     transactionActive = false;
 
+    const io = req.app.get("io");
+    emitOrderStatusUpdate(io, {
+      orderId: order.id,
+      orderNumber: order.order_number,
+      status: "cancelled",
+      customerId: order.customer_id,
+    });
+
     req.auditRecord = {
       id: requestId,
       old: {
@@ -482,8 +494,7 @@ exports.approveRequest = async (req, res) => {
           verifiedPaymentTotal.toFixed(2),
         ),
         material_release_reason: materialReleaseResult.reason,
-        material_reservation_ids:
-          materialReleaseResult.reservation_ids || [],
+        material_reservation_ids: materialReleaseResult.reservation_ids || [],
         active_delivery_ids_cancelled: activeDeliveries.map((row) => row.id),
       },
     };
@@ -534,12 +545,15 @@ exports.declineRequest = async (req, res) => {
   const reviewNote = cleanNote(req.body?.review_note);
 
   if (!requestId) {
-    return res.status(400).json({ message: "Invalid cancellation request ID." });
+    return res
+      .status(400)
+      .json({ message: "Invalid cancellation request ID." });
   }
 
   if (!reviewNote) {
     return res.status(400).json({
-      message: "Please provide a reason for declining the cancellation request.",
+      message:
+        "Please provide a reason for declining the cancellation request.",
     });
   }
 
@@ -590,7 +604,9 @@ exports.declineRequest = async (req, res) => {
     if (!request) {
       await conn.rollback();
       transactionActive = false;
-      return res.status(404).json({ message: "Cancellation request not found." });
+      return res
+        .status(404)
+        .json({ message: "Cancellation request not found." });
     }
 
     if (normalize(request.status) !== "pending") {
@@ -651,8 +667,7 @@ exports.declineRequest = async (req, res) => {
     };
 
     return res.json({
-      message:
-        "Cancellation request declined. The order remains active.",
+      message: "Cancellation request declined. The order remains active.",
       request_id: requestId,
       order_id: orderId,
       order_status: order.status,

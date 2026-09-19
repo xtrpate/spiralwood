@@ -3,6 +3,7 @@ import toast from "react-hot-toast";
 import { RefreshCw, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
+import { getSocket, subscribeSocketReady } from "../../services/socket";
 import CustomerBlueprintViewer from "../customer/CustomerBlueprintViewer";
 import { downloadPickupAcknowledgementPdf } from "../../utils/pickupAcknowledgementPdf";
 import "./BlueprintPayments.css";
@@ -82,7 +83,10 @@ const parseTrustedDisplayCents = (value) => {
   return cents;
 };
 
-const normalize = (value) => String(value || "").trim().toLowerCase();
+const normalize = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
 
 const getPaymentStatus = (order) => {
   if (Number(order?.pending_payment_count || 0) > 0) return "pending";
@@ -120,7 +124,9 @@ function BlueprintPreview({ blueprint, title, size = "list" }) {
     ? draftEditorSnapshot.components
     : [];
   const hasDraftScene = draftComponents.length > 0;
-  const hasSavedSceneSource = Boolean(designData || view3dData || hasDraftScene);
+  const hasSavedSceneSource = Boolean(
+    designData || view3dData || hasDraftScene,
+  );
   const compactHeight = size === "detail" ? 64 : 56;
 
   if (!hasSavedSceneSource) {
@@ -267,9 +273,23 @@ function PickupSignaturePad({ value, onChange, disabled = false }) {
         }}
         aria-label="Recipient signature area"
       />
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 8 }}>
-        <small style={{ color: "#71717a" }}>Sign using a mouse, finger, or stylus.</small>
-        <button type="button" className="bp-secondary-button" disabled={disabled} onClick={clear}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 10,
+          marginTop: 8,
+        }}
+      >
+        <small style={{ color: "#71717a" }}>
+          Sign using a mouse, finger, or stylus.
+        </small>
+        <button
+          type="button"
+          className="bp-secondary-button"
+          disabled={disabled}
+          onClick={clear}
+        >
           Clear signature
         </button>
       </div>
@@ -280,7 +300,9 @@ function PickupSignaturePad({ value, onChange, disabled = false }) {
 function OrderStatusBadge({ status }) {
   const key = normalize(status);
   return (
-    <span className={`bp-order-status-badge bp-order-status-${key || "unknown"}`}>
+    <span
+      className={`bp-order-status-badge bp-order-status-${key || "unknown"}`}
+    >
       {ORDER_STATUS_TEXT[key] || status || "-"}
     </span>
   );
@@ -379,10 +401,9 @@ export default function BlueprintPayments() {
     setLastPaymentResult(null);
 
     try {
-      const { data } = await api.get(
-        "/pos/blueprint-cash-payments/lookup",
-        { params: { order_number: trimmed } },
-      );
+      const { data } = await api.get("/pos/blueprint-cash-payments/lookup", {
+        params: { order_number: trimmed },
+      });
       setSummary(data);
     } catch (err) {
       setSummary(null);
@@ -399,10 +420,9 @@ export default function BlueprintPayments() {
     if (!orderNumber) return;
 
     try {
-      const { data } = await api.get(
-        "/pos/blueprint-cash-payments/lookup",
-        { params: { order_number: orderNumber } },
-      );
+      const { data } = await api.get("/pos/blueprint-cash-payments/lookup", {
+        params: { order_number: orderNumber },
+      });
       setSummary(data);
     } catch (err) {
       setRecordError(
@@ -410,6 +430,65 @@ export default function BlueprintPayments() {
       );
     }
   }, [selectedOrderNumber, summary?.order_number]);
+
+  useEffect(() => {
+    const handleRealtimeUpdate = (payload) => {
+      const updatedOrderId = Number(payload?.order_id);
+
+      if (!Number.isInteger(updatedOrderId)) {
+        return;
+      }
+
+      const isRelevant =
+        Number(summary?.order_id) === updatedOrderId ||
+        orders.some((order) => Number(order?.order_id) === updatedOrderId);
+
+      if (!isRelevant) {
+        return;
+      }
+
+      loadOrders({ quiet: true });
+
+      if (Number(summary?.order_id) === updatedOrderId) {
+        refreshSummary();
+      }
+    };
+
+    const attachListener = (socket) => {
+      if (!socket) return;
+
+      socket.off("order:payment_updated", handleRealtimeUpdate);
+      socket.on("order:payment_updated", handleRealtimeUpdate);
+
+      socket.off("order:status_updated", handleRealtimeUpdate);
+      socket.on("order:status_updated", handleRealtimeUpdate);
+
+      socket.off("blueprint:updated", handleRealtimeUpdate);
+      socket.on("blueprint:updated", handleRealtimeUpdate);
+    };
+
+    const socket = getSocket();
+
+    if (socket) {
+      attachListener(socket);
+    }
+
+    const unsubscribeReady = subscribeSocketReady((readySocket) => {
+      attachListener(readySocket);
+    });
+
+    return () => {
+      const currentSocket = getSocket();
+
+      if (currentSocket) {
+        currentSocket.off("order:payment_updated", handleRealtimeUpdate);
+        currentSocket.off("order:status_updated", handleRealtimeUpdate);
+        currentSocket.off("blueprint:updated", handleRealtimeUpdate);
+      }
+
+      unsubscribeReady();
+    };
+  }, [orders, summary?.order_id, loadOrders, refreshSummary]);
 
   const recordPayment = async (amountRaw) => {
     if (recording) return;
@@ -429,10 +508,7 @@ export default function BlueprintPayments() {
       return;
     }
 
-    const remainingAfterCents = Math.max(
-      0,
-      remainingBeforeCents - amountCents,
-    );
+    const remainingAfterCents = Math.max(0, remainingBeforeCents - amountCents);
 
     let previewStatus = "Partial";
     if (amountCents === remainingBeforeCents) {
@@ -464,10 +540,7 @@ export default function BlueprintPayments() {
       setCustomAmount("");
       setLastPaymentResult(data);
 
-      await Promise.all([
-        refreshSummary(),
-        loadOrders({ quiet: true }),
-      ]);
+      await Promise.all([refreshSummary(), loadOrders({ quiet: true })]);
     } catch (err) {
       setRecordError(
         err?.response?.data?.message ||
@@ -496,7 +569,9 @@ export default function BlueprintPayments() {
       return;
     }
     if (!pickupSignature) {
-      setRecordError("The customer or recipient must sign before pickup can be confirmed.");
+      setRecordError(
+        "The customer or recipient must sign before pickup can be confirmed.",
+      );
       return;
     }
 
@@ -517,7 +592,8 @@ export default function BlueprintPayments() {
       setPickupSignature("");
       await Promise.all([refreshSummary(), loadOrders({ quiet: true })]);
     } catch (err) {
-      const message = err.response?.data?.message || "Failed to confirm pickup.";
+      const message =
+        err.response?.data?.message || "Failed to confirm pickup.";
       setRecordError(message);
       toast.error(message);
     } finally {
@@ -623,7 +699,9 @@ export default function BlueprintPayments() {
         </span>
       </section>
 
-      {listError ? <div className="bp-notice bp-notice-error">{listError}</div> : null}
+      {listError ? (
+        <div className="bp-notice bp-notice-error">{listError}</div>
+      ) : null}
 
       <div className="bp-workspace">
         <section className="bp-list-panel" aria-label="Blueprint orders">
@@ -687,7 +765,6 @@ export default function BlueprintPayments() {
                         Balance {formatMoney(order.remaining_balance)}
                       </span>
                     </div>
-
                   </button>
                 );
               })
@@ -735,8 +812,7 @@ export default function BlueprintPayments() {
                   status={
                     Number(
                       orders.find(
-                        (order) =>
-                          order.order_number === summary.order_number,
+                        (order) => order.order_number === summary.order_number,
                       )?.pending_payment_count || 0,
                     ) > 0
                       ? "pending"
@@ -830,7 +906,10 @@ export default function BlueprintPayments() {
                       </div>
                     ) : null}
 
-                    <label className="bp-field-label" htmlFor="bp-custom-amount">
+                    <label
+                      className="bp-field-label"
+                      htmlFor="bp-custom-amount"
+                    >
                       Custom amount
                     </label>
                     <div className="bp-custom-payment">
@@ -874,19 +953,31 @@ export default function BlueprintPayments() {
                     <div className="bp-notice bp-notice-success">
                       <strong>Pickup completed</strong>
                       <span>
-                        Received by {summary.pickup_acknowledgement.received_by_name || "Recipient"}
+                        Received by{" "}
+                        {summary.pickup_acknowledgement.received_by_name ||
+                          "Recipient"}
                         {summary.pickup_acknowledgement.acknowledged_at
-                          ? " on " + new Date(summary.pickup_acknowledgement.acknowledged_at).toLocaleString("en-PH")
-                          : ""}.
+                          ? " on " +
+                            new Date(
+                              summary.pickup_acknowledgement.acknowledged_at,
+                            ).toLocaleString("en-PH")
+                          : ""}
+                        .
                       </span>
-                      <button type="button" className="bp-secondary-button" onClick={downloadPickupProof}>
+                      <button
+                        type="button"
+                        className="bp-secondary-button"
+                        onClick={downloadPickupProof}
+                      >
                         Pickup Acknowledgement
                       </button>
                     </div>
                   ) : (
                     <>
                       <p className="bp-help-text">
-                        The customer or authorized representative must be present, fully paid, and sign the pickup acknowledgement before release.
+                        The customer or authorized representative must be
+                        present, fully paid, and sign the pickup acknowledgement
+                        before release.
                       </p>
                       <button
                         type="button"
@@ -903,11 +994,19 @@ export default function BlueprintPayments() {
                         Proceed to Pickup
                       </button>
                       {summary.order_status !== "ready_for_pickup" ? (
-                        <p className="bp-help-text">Production must be complete before pickup release.</p>
+                        <p className="bp-help-text">
+                          Production must be complete before pickup release.
+                        </p>
                       ) : Boolean(summary.has_pending_payment) ? (
-                        <p className="bp-help-text">Resolve the pending payment before pickup release.</p>
-                      ) : Number(summary.remaining_balance || 0) > 0.009 || summary.payment_status !== "paid" ? (
-                        <p className="bp-help-text">Full verified payment is required before pickup release.</p>
+                        <p className="bp-help-text">
+                          Resolve the pending payment before pickup release.
+                        </p>
+                      ) : Number(summary.remaining_balance || 0) > 0.009 ||
+                        summary.payment_status !== "paid" ? (
+                        <p className="bp-help-text">
+                          Full verified payment is required before pickup
+                          release.
+                        </p>
                       ) : null}
                     </>
                   )}
@@ -986,7 +1085,9 @@ export default function BlueprintPayments() {
                     })}
                   </div>
                 ) : (
-                  <div className="bp-empty-history">No payments recorded yet.</div>
+                  <div className="bp-empty-history">
+                    No payments recorded yet.
+                  </div>
                 )}
               </section>
             </>
@@ -1026,10 +1127,17 @@ export default function BlueprintPayments() {
               boxSizing: "border-box",
             }}
           >
-            <p className="bp-eyebrow" style={{ marginTop: 0 }}>Store pickup</p>
-            <h2 id="pickup-ack-title" style={{ margin: "0 0 8px" }}>Pickup Acknowledgement</h2>
-            <p style={{ margin: "0 0 18px", lineHeight: 1.6, color: "#52525b" }}>
-              Complete this only while the customer or authorized representative is physically receiving the furniture.
+            <p className="bp-eyebrow" style={{ marginTop: 0 }}>
+              Store pickup
+            </p>
+            <h2 id="pickup-ack-title" style={{ margin: "0 0 8px" }}>
+              Pickup Acknowledgement
+            </h2>
+            <p
+              style={{ margin: "0 0 18px", lineHeight: 1.6, color: "#52525b" }}
+            >
+              Complete this only while the customer or authorized representative
+              is physically receiving the furniture.
             </p>
 
             <div style={{ display: "grid", gap: 16 }}>
@@ -1041,7 +1149,9 @@ export default function BlueprintPayments() {
                     const next = event.target.value;
                     setPickupRecipientType(next);
                     if (next === "customer") {
-                      setPickupRecipientName(String(summary?.customer_name || "").trim());
+                      setPickupRecipientName(
+                        String(summary?.customer_name || "").trim(),
+                      );
                     } else {
                       setPickupRecipientName("");
                     }
@@ -1050,28 +1160,46 @@ export default function BlueprintPayments() {
                   style={{ width: "100%", minHeight: 40 }}
                 >
                   <option value="customer">Customer</option>
-                  <option value="authorized_representative">Authorized Representative</option>
+                  <option value="authorized_representative">
+                    Authorized Representative
+                  </option>
                 </select>
               </div>
 
               <div>
-                <label className="bp-field-label" htmlFor="pickup-received-by">Received by</label>
+                <label className="bp-field-label" htmlFor="pickup-received-by">
+                  Received by
+                </label>
                 <input
                   id="pickup-received-by"
                   type="text"
                   maxLength={150}
                   value={pickupRecipientName}
-                  onChange={(event) => setPickupRecipientName(event.target.value)}
+                  onChange={(event) =>
+                    setPickupRecipientName(event.target.value)
+                  }
                   disabled={releasingPickup}
                   placeholder="Full name of recipient"
-                  style={{ width: "100%", minHeight: 40, boxSizing: "border-box" }}
+                  style={{
+                    width: "100%",
+                    minHeight: 40,
+                    boxSizing: "border-box",
+                  }}
                 />
               </div>
 
-              <div style={{ padding: 14, background: "#fafafa", border: "1px solid #e4e4e7", lineHeight: 1.6 }}>
+              <div
+                style={{
+                  padding: 14,
+                  background: "#fafafa",
+                  border: "1px solid #e4e4e7",
+                  lineHeight: 1.6,
+                }}
+              >
                 <strong>Acknowledgement</strong>
                 <p style={{ margin: "6px 0 0" }}>
-                  I confirm that I received the furniture listed for this order from Spiral Wood Services.
+                  I confirm that I received the furniture listed for this order
+                  from Spiral Wood Services.
                 </p>
               </div>
 
@@ -1085,7 +1213,9 @@ export default function BlueprintPayments() {
               </div>
 
               <div>
-                <label className="bp-field-label" htmlFor="pickup-note">Pickup note (optional)</label>
+                <label className="bp-field-label" htmlFor="pickup-note">
+                  Pickup note (optional)
+                </label>
                 <textarea
                   id="pickup-note"
                   rows={3}
@@ -1094,12 +1224,23 @@ export default function BlueprintPayments() {
                   onChange={(event) => setPickupNote(event.target.value)}
                   disabled={releasingPickup}
                   placeholder="Add a short handoff note if needed"
-                  style={{ width: "100%", boxSizing: "border-box", resize: "vertical" }}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    resize: "vertical",
+                  }}
                 />
               </div>
             </div>
 
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 20 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 10,
+                marginTop: 20,
+              }}
+            >
               <button
                 type="button"
                 className="bp-secondary-button"
@@ -1111,7 +1252,11 @@ export default function BlueprintPayments() {
               <button
                 type="button"
                 className="bp-primary-button"
-                disabled={releasingPickup || !pickupRecipientName.trim() || !pickupSignature}
+                disabled={
+                  releasingPickup ||
+                  !pickupRecipientName.trim() ||
+                  !pickupSignature
+                }
                 onClick={confirmPickup}
               >
                 {releasingPickup ? "Confirming Pickup..." : "Confirm Pickup"}

@@ -2,9 +2,7 @@
 const fs = require("fs");
 const db = require("../../config/db");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
-const {
-  getPhilippineDateBoundsUtc,
-} = require("../../utils/philippineTime");
+const { getPhilippineDateBoundsUtc } = require("../../utils/philippineTime");
 const { signUploadPath } = require("../../utils/signedUrl");
 const {
   storeUploadBuffer,
@@ -22,72 +20,12 @@ const {
 const {
   sendCustomerMilestoneNotificationSafe,
 } = require("../../services/customerMilestoneNotificationService");
-const { emitOrderStatusUpdate } = require("../../utils/orderStatusSocket");
-
-const emitDeliveryAssigned = ({
-  io,
-  deliveryId,
-  orderId,
-  orderNumber,
-  driverId,
-  scheduledDate,
-  status = "scheduled",
-}) => {
-  if (!io || !driverId) return;
-
-  try {
-    const payload = {
-      delivery_id: Number(deliveryId),
-      order_id: Number(orderId),
-      order_number: orderNumber || `#${orderId}`,
-      driver_id: Number(driverId),
-      status,
-      scheduled_date: scheduledDate || null,
-    };
-
-    io.to(`user:${driverId}`).emit("delivery:assigned", payload);
-
-    console.log("[SOCKET EMIT] Delivery assigned:", payload);
-  } catch (socketErr) {
-    console.error(
-      "[DELIVERY ASSIGNMENT SOCKET EMIT]",
-      socketErr?.message || socketErr,
-    );
-  }
-};
-
-const emitDeliveryUnassigned = ({
-  io,
-  deliveryId,
-  orderId,
-  orderNumber,
-  previousDriverId,
-  newDriverId,
-  scheduledDate,
-}) => {
-  if (!io || !previousDriverId) return;
-
-  try {
-    const payload = {
-      delivery_id: Number(deliveryId),
-      order_id: Number(orderId),
-      order_number: orderNumber || `#${orderId}`,
-      previous_driver_id: Number(previousDriverId),
-      new_driver_id: Number(newDriverId),
-      status: "scheduled",
-      scheduled_date: scheduledDate || null,
-    };
-
-    io.to(`user:${previousDriverId}`).emit("delivery:unassigned", payload);
-
-    console.log("[SOCKET EMIT] Delivery unassigned:", payload);
-  } catch (socketErr) {
-    console.error(
-      "[DELIVERY UNASSIGNMENT SOCKET EMIT]",
-      socketErr?.message || socketErr,
-    );
-  }
-};
+const {
+  emitOrderStatusUpdate,
+  emitDeliveryUpdate,
+  emitDeliveryAssigned,
+  emitDeliveryUnassigned,
+} = require("../../utils/orderStatusSocket");
 
 const {
   resolveLifecycleByOrder,
@@ -1042,6 +980,7 @@ exports.createDelivery = async (req, res) => {
     let result;
     let delivery;
     let scheduleConn;
+    let nextOrderStatus = null;
 
     try {
       scheduleConn = await db.getConnection();
@@ -1156,48 +1095,9 @@ exports.createDelivery = async (req, res) => {
         [orderId, driverId, req.user.id, scheduledDate, address, finalNotes],
       );
 
-      if (lockedIsBlueprintOrder) {
-        const [orderStatusUpdate] = await scheduleConn.query(
-          `
-          UPDATE orders
-          SET status = 'shipping'
-          WHERE id = ?
-            AND status = 'production'
-          `,
-          [orderId],
-        );
-
-        if (Number(orderStatusUpdate.affectedRows || 0) !== 1) {
-          await scheduleConn.rollback();
-          return res.status(409).json({
-            message:
-              "The order changed while the delivery was being scheduled. Please refresh and try again.",
-          });
-        }
-      } else if (
-        lockedIsOnlineStandardOrder &&
-        lockedOrderStatus === "confirmed"
-      ) {
-        const [orderStatusUpdate] = await scheduleConn.query(
-          `
-          UPDATE orders
-          SET status = 'shipping'
-          WHERE id = ?
-            AND status = 'confirmed'
-            AND LOWER(COALESCE(order_type, '')) = 'standard'
-            AND LOWER(COALESCE(type, '')) = 'online'
-          `,
-          [orderId],
-        );
-
-        if (Number(orderStatusUpdate.affectedRows || 0) !== 1) {
-          await scheduleConn.rollback();
-          return res.status(409).json({
-            message:
-              "The Ready-Made order changed while the delivery was being scheduled. Please refresh and try again.",
-          });
-        }
-      }
+      // Creating or assigning a delivery does not start the delivery itself.
+      // The delivery record remains "scheduled" until the assigned rider
+      // explicitly starts the trip and changes it to "in_transit".
 
       [[delivery]] = await scheduleConn.query(
         `
@@ -1239,6 +1139,26 @@ exports.createDelivery = async (req, res) => {
       await scheduleConn.commit();
 
       const io = req.app.get("io");
+
+      const orderStatusChanged = false;
+
+      emitDeliveryUpdate(io, {
+        deliveryId: delivery?.id ?? result.insertId,
+        orderId,
+        orderNumber: order.order_number,
+        status: delivery?.status ?? "scheduled",
+        driverId,
+        scheduledDate: delivery?.scheduled_date ?? scheduledDate,
+        customerId: order.customer_id,
+        changeType: "created",
+        orderStatusChanged,
+        notifyCustomer: !orderStatusChanged,
+        notifyDriver: false,
+      });
+
+      // Order status remains unchanged while the delivery is only scheduled.
+      // The assigned rider will emit the order status change when the trip
+      // actually starts.
 
       emitDeliveryAssigned({
         io,
@@ -1535,8 +1455,11 @@ exports.reassignDeliveryRider = async (req, res) => {
         driver_name: rider.name || null,
         assigned_by: req.user.id,
         assigned_at: delivery?.assigned_at || null,
-        scheduled_date: delivery?.scheduled_date || existing.scheduled_date || null,
-        status: normalizeText(delivery?.status || existing.status).toLowerCase(),
+        scheduled_date:
+          delivery?.scheduled_date || existing.scheduled_date || null,
+        status: normalizeText(
+          delivery?.status || existing.status,
+        ).toLowerCase(),
         reassignment_reason: reassignmentReason,
       },
     };
@@ -1547,6 +1470,20 @@ exports.reassignDeliveryRider = async (req, res) => {
     req.auditRecord = auditRecord;
 
     const io = req.app.get("io");
+
+    emitDeliveryUpdate(io, {
+      deliveryId,
+      orderId: existing.order_id,
+      orderNumber: order.order_number,
+      status: delivery?.status || existing.status || "scheduled",
+      driverId,
+      scheduledDate: delivery?.scheduled_date || existing.scheduled_date,
+      customerId: order.customer_id,
+      changeType: "reassigned",
+      orderStatusChanged: false,
+      notifyCustomer: true,
+      notifyDriver: false,
+    });
 
     emitDeliveryUnassigned({
       io,
@@ -1612,10 +1549,7 @@ exports.reassignDeliveryRider = async (req, res) => {
       transactionActive = false;
     }
 
-    console.error(
-      "PATCH /api/pos/deliveries/:id/assignment error:",
-      err,
-    );
+    console.error("PATCH /api/pos/deliveries/:id/assignment error:", err);
     return res.status(500).json({
       message: "Failed to reassign delivery rider.",
     });
@@ -1833,6 +1767,20 @@ exports.rescheduleDelivery = async (req, res) => {
     await conn.commit();
 
     const io = req.app.get("io");
+
+    emitDeliveryUpdate(io, {
+      deliveryId: delivery?.id ?? insertResult.insertId,
+      orderId: sourceDelivery.order_id,
+      orderNumber: order.order_number,
+      status: delivery?.status ?? "scheduled",
+      driverId,
+      scheduledDate: delivery?.scheduled_date ?? scheduledDate,
+      customerId: order.customer_id,
+      changeType: "rescheduled",
+      orderStatusChanged: false,
+      notifyCustomer: true,
+      notifyDriver: false,
+    });
 
     emitDeliveryAssigned({
       io,
@@ -3119,7 +3067,6 @@ exports.updateDeliveryStatus = async (req, res) => {
 
     const externalMilestoneEvent = isFailureUpdate;
 
-
     req.auditRecord = {
       id: deliveryId,
       old: {
@@ -3203,9 +3150,7 @@ exports.updateDeliveryStatus = async (req, res) => {
           order_id: existing.order_id,
           delivery_id: deliveryId,
           payment_transaction_id: blueprintPaymentTransactionId,
-          amount_collected: centsToAmount(
-            blueprintCashCollection.amountCents,
-          ),
+          amount_collected: centsToAmount(blueprintCashCollection.amountCents),
           previous_verified_total: centsToAmount(
             blueprintCashCollection.verifiedCentsBefore,
           ),
@@ -3220,9 +3165,25 @@ exports.updateDeliveryStatus = async (req, res) => {
       });
     }
 
-    if (nextOrderStatus) {
-      const io = req.app.get("io");
+    const io = req.app.get("io");
 
+    const orderStatusChanged = Boolean(nextOrderStatus);
+
+    emitDeliveryUpdate(io, {
+      deliveryId,
+      orderId: existing.order_id,
+      orderNumber: order.order_number,
+      status: updated?.status ?? requestedStatus,
+      driverId: existing.driver_id,
+      scheduledDate: updated?.scheduled_date ?? existing.scheduled_date,
+      customerId: order.customer_id,
+      changeType: "status_changed",
+      orderStatusChanged,
+      notifyCustomer: !orderStatusChanged,
+      notifyDriver: true,
+    });
+
+    if (orderStatusChanged) {
       emitOrderStatusUpdate(io, {
         orderId: existing.order_id,
         orderNumber: order.order_number,

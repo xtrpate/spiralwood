@@ -1,11 +1,15 @@
 const db = require("../config/db");
 const { createPosSaleReceipt } = require("./receiptService");
+const { emitOrderCreated } = require("../utils/orderStatusSocket");
 const { generateWalkInOrderNumber } = require("../utils/posOrderNumber");
 const {
   parseDecimalToCentsStrict,
   centsToDecimalString,
 } = require("../utils/paymentAmounts");
-const { parseStrictPositiveInt, isNonEmptyString } = require("../utils/validators");
+const {
+  parseStrictPositiveInt,
+  isNonEmptyString,
+} = require("../utils/validators");
 const { computeSnapshotHash } = require("../utils/posQrRecoveryToken");
 
 const MAX_DECIMAL_10_2_CENTS = 9999999999;
@@ -225,7 +229,11 @@ const reservationsMatchSnapshot = (reservations, snapshotItems) => {
   );
 };
 
-const analyzeCheckoutSession = ({ session, expectedSessionId, expectedTotalCents }) => {
+const analyzeCheckoutSession = ({
+  session,
+  expectedSessionId,
+  expectedTotalCents,
+}) => {
   if (
     !session ||
     typeof session !== "object" ||
@@ -346,6 +354,7 @@ const finalizePaidAttempt = async ({
   attemptId,
   matchedPayment,
   actorUserId,
+  io = null,
   requireOwner = true,
 }) => {
   let conn;
@@ -583,6 +592,13 @@ const finalizePaidAttempt = async ({
 
     await conn.commit();
 
+    emitOrderCreated(io, {
+      orderId,
+      orderNumber,
+      status: orderStatus,
+      orderType: "standard",
+    });
+
     const payload = {
       attempt_id: attempt.id,
       status: "consumed",
@@ -687,7 +703,11 @@ const releaseExpiredAttempt = async ({
     }
     if (!allowedStatuses.includes(attempt.status)) {
       await conn.rollback();
-      return { changed: false, reason: "status_changed", status: attempt.status };
+      return {
+        changed: false,
+        reason: "status_changed",
+        status: attempt.status,
+      };
     }
     if (Number(attempt.is_locally_expired) !== 1) {
       await conn.rollback();
@@ -828,7 +848,11 @@ const releaseExpiredAttempt = async ({
   }
 };
 
-const markAttemptProviderUnknown = async ({ attemptId, failureCode, failureMessage }) => {
+const markAttemptProviderUnknown = async ({
+  attemptId,
+  failureCode,
+  failureMessage,
+}) => {
   const [updateResult] = await db.query(
     `UPDATE pos_qr_payment_attempts
      SET status = 'provider_unknown', failure_code = ?, failure_message = ?
@@ -935,7 +959,10 @@ const loadProviderUnknownAttemptForRecovery = async (attemptId) => {
         await conn.rollback();
       } catch {}
     }
-    console.error("[posQrLifecycle loadProviderUnknownAttemptForRecovery]", err);
+    console.error(
+      "[posQrLifecycle loadProviderUnknownAttemptForRecovery]",
+      err,
+    );
     return { ok: false, reason: "error", error: err };
   } finally {
     if (conn) conn.release();
@@ -990,7 +1017,11 @@ const attachVerifiedProviderSession = async ({
 
     if (attempt.status !== "provider_unknown") {
       await conn.rollback();
-      return { changed: false, reason: "status_changed", status: attempt.status };
+      return {
+        changed: false,
+        reason: "status_changed",
+        status: attempt.status,
+      };
     }
     if (
       attempt.provider_session_id ||
@@ -1167,7 +1198,11 @@ const confirmManualRelease = async ({
     }
     if (attempt.status !== "provider_unknown") {
       await conn.rollback();
-      return { changed: false, reason: "status_changed", status: attempt.status };
+      return {
+        changed: false,
+        reason: "status_changed",
+        status: attempt.status,
+      };
     }
     if (
       attempt.provider_session_id ||

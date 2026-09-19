@@ -33,6 +33,8 @@ const {
   purgeExpiredArchivedBlueprints,
 } = require("./blueprintController.helpers");
 
+const { emitBlueprintUpdate } = require("../../utils/orderStatusSocket");
+
 const checkQuotationInventoryReadiness = async (
   conn,
   { estimation, orderId } = {},
@@ -117,9 +119,7 @@ const checkQuotationInventoryReadiness = async (
     [...materialIds, Number(orderId)],
   );
 
-  const materialMap = new Map(
-    materialRows.map((row) => [Number(row.id), row]),
-  );
+  const materialMap = new Map(materialRows.map((row) => [Number(row.id), row]));
   const reservedElsewhere = new Map();
 
   reservationRows.forEach((row) => {
@@ -157,7 +157,10 @@ const checkQuotationInventoryReadiness = async (
     }
 
     const onHand = Math.max(0, Number(material.quantity) || 0);
-    const reserved = Math.max(0, Number(reservedElsewhere.get(materialId)) || 0);
+    const reserved = Math.max(
+      0,
+      Number(reservedElsewhere.get(materialId)) || 0,
+    );
     const available = Math.max(0, onHand - reserved);
 
     if (available + 1e-9 < required) {
@@ -236,8 +239,7 @@ exports.getEstimation = async (req, res) => {
             inventory_pricing_mode: "tracking_only",
             labor_cost: autoDraft.labor_cost || 0,
             overhead_cost: autoDraft.overhead_cost || 0,
-            additional_delivery_fee:
-              autoDraft.additional_delivery_fee || 0,
+            additional_delivery_fee: autoDraft.additional_delivery_fee || 0,
             tax_rate: autoDraft.tax_rate ?? 12,
             discount: autoDraft.discount || 0,
             notes: autoDraft.notes || "",
@@ -275,8 +277,7 @@ exports.getEstimation = async (req, res) => {
         inventory_pricing_mode: "tracking_only",
         labor_cost: autoDraft.labor_cost || 0,
         overhead_cost: autoDraft.overhead_cost || 0,
-        additional_delivery_fee:
-          autoDraft.additional_delivery_fee || 0,
+        additional_delivery_fee: autoDraft.additional_delivery_fee || 0,
         tax_rate: autoDraft.tax_rate ?? 12,
         discount: autoDraft.discount || 0,
         notes: autoDraft.notes || "",
@@ -353,10 +354,7 @@ exports.getEstimation = async (req, res) => {
     );
     const tax_rate = Number(meta.tax_rate ?? 12);
     const subtotal =
-      material_cost +
-      labor_cost +
-      overhead_cost +
-      additional_delivery_fee;
+      material_cost + labor_cost + overhead_cost + additional_delivery_fee;
 
     const storedDiscountAmount = Number.isFinite(storedDiscountAmountRaw)
       ? storedDiscountAmountRaw
@@ -708,10 +706,7 @@ exports.saveEstimation = async (req, res) => {
     }
 
     const existingEstimationMeta =
-      safeJsonParse(
-        lifecycle.estimation?.estimation_data,
-        {},
-      ) || {};
+      safeJsonParse(lifecycle.estimation?.estimation_data, {}) || {};
 
     const existingDeliveryDecision = String(
       existingEstimationMeta.oversized_delivery_decision || "",
@@ -724,9 +719,7 @@ exports.saveEstimation = async (req, res) => {
       : existingDeliveryDecision === "fee_required"
         ? Math.max(
             0,
-            Number(
-              existingEstimationMeta.additional_delivery_fee,
-            ) || 0,
+            Number(existingEstimationMeta.additional_delivery_fee) || 0,
           )
         : 0;
 
@@ -743,14 +736,8 @@ exports.saveEstimation = async (req, res) => {
       "oversized_delivery_decided_at",
       "delivery_requirement",
     ].forEach((key) => {
-      if (
-        Object.prototype.hasOwnProperty.call(
-          existingEstimationMeta,
-          key,
-        )
-      ) {
-        preservedDeliveryMeta[key] =
-          existingEstimationMeta[key];
+      if (Object.prototype.hasOwnProperty.call(existingEstimationMeta, key)) {
+        preservedDeliveryMeta[key] = existingEstimationMeta[key];
       }
     });
 
@@ -758,8 +745,7 @@ exports.saveEstimation = async (req, res) => {
       items: normalizedItems,
       labor_cost: laborCostInput,
       overhead_cost: overheadCostInput,
-      additional_delivery_fee:
-        preservedAdditionalDeliveryFee,
+      additional_delivery_fee: preservedAdditionalDeliveryFee,
       tax_rate: taxRateInput,
       discount: discountInput,
       inventory_pricing_mode: "tracking_only",
@@ -778,8 +764,7 @@ exports.saveEstimation = async (req, res) => {
       items: normalizedItems,
       labor_cost: totals.labor_cost,
       overhead_cost: totals.overhead_cost,
-      additional_delivery_fee:
-        totals.additional_delivery_fee,
+      additional_delivery_fee: totals.additional_delivery_fee,
       tax_rate: totals.tax_rate,
       discount_mode: "percentage",
       discount: totals.discount_rate,
@@ -873,6 +858,15 @@ exports.saveEstimation = async (req, res) => {
 
     await conn.commit();
 
+    const io = req.app.get("io");
+
+    emitBlueprintUpdate(io, {
+      blueprintId,
+      orderId: order?.id || null,
+      orderNumber: order?.order_number || null,
+      changeType: "estimation_saved",
+    });
+
     req.auditRecord = {
       id: insertResult.insertId,
       old: null,
@@ -898,8 +892,7 @@ exports.saveEstimation = async (req, res) => {
         inventory_pricing_mode: "tracking_only",
         labor_cost: totals.labor_cost,
         overhead_cost: totals.overhead_cost,
-        additional_delivery_fee:
-          totals.additional_delivery_fee,
+        additional_delivery_fee: totals.additional_delivery_fee,
         tax_rate: totals.tax_rate,
         discount: totals.discount_rate,
         discount_amount: totals.discount_amount,
@@ -1132,7 +1125,9 @@ exports.approveEstimation = async (req, res) => {
       await conn.rollback();
 
       if (!freshEstimation) {
-        return res.status(404).json({ message: "No estimation found to send." });
+        return res
+          .status(404)
+          .json({ message: "No estimation found to send." });
       }
 
       const freshStatus = String(freshEstimation.status || "")
@@ -1196,6 +1191,17 @@ exports.approveEstimation = async (req, res) => {
     );
 
     await conn.commit();
+
+    const io = req.app.get("io");
+
+    emitBlueprintUpdate(io, {
+      blueprintId,
+      orderId: order?.id || null,
+      orderNumber: order?.order_number || null,
+      customerId: order?.customer_id || null,
+      changeType: "quotation_sent",
+      notifyCustomer: true,
+    });
 
     req.auditRecord = {
       id: parseInt(latestEstimation.id),

@@ -216,6 +216,24 @@ export default function DeliveryManagement() {
       loadDeliveries({ silent: true });
     };
 
+    const handleOrderPaymentUpdated = (payload) => {
+      const updatedOrderId = Number(payload?.order_id);
+
+      if (!Number.isInteger(updatedOrderId)) {
+        return;
+      }
+
+      const ownsUpdatedOrder = deliveriesRef.current.some(
+        (delivery) => Number(delivery?.order_id) === updatedOrderId,
+      );
+
+      if (!ownsUpdatedOrder) {
+        return;
+      }
+
+      loadDeliveries({ silent: true });
+    };
+
     const handleDeliveryAssigned = (payload) => {
       const assignedDriverId = Number(payload?.driver_id);
       const currentUserId = Number(user?.id);
@@ -244,17 +262,41 @@ export default function DeliveryManagement() {
       loadDeliveries({ silent: true });
     };
 
+    const handleDeliveryUpdated = (payload) => {
+      if (payload?.order_status_changed) {
+        return;
+      }
+
+      const updatedDeliveryId = Number(payload?.delivery_id);
+      const updatedOrderId = Number(payload?.order_id);
+
+      if (
+        !Number.isInteger(updatedDeliveryId) &&
+        !Number.isInteger(updatedOrderId)
+      ) {
+        return;
+      }
+
+      loadDeliveries({ silent: true });
+    };
+
     const attachListener = (socket) => {
       if (!socket) return;
 
       socket.off("order:status_updated", handleOrderStatusUpdated);
       socket.on("order:status_updated", handleOrderStatusUpdated);
 
+      socket.off("order:payment_updated", handleOrderPaymentUpdated);
+      socket.on("order:payment_updated", handleOrderPaymentUpdated);
+
       socket.off("delivery:assigned", handleDeliveryAssigned);
       socket.on("delivery:assigned", handleDeliveryAssigned);
 
       socket.off("delivery:unassigned", handleDeliveryUnassigned);
       socket.on("delivery:unassigned", handleDeliveryUnassigned);
+
+      socket.off("delivery:updated", handleDeliveryUpdated);
+      socket.on("delivery:updated", handleDeliveryUpdated);
     };
 
     const socket = getSocket();
@@ -272,8 +314,10 @@ export default function DeliveryManagement() {
 
       if (currentSocket) {
         currentSocket.off("order:status_updated", handleOrderStatusUpdated);
+        currentSocket.off("order:payment_updated", handleOrderPaymentUpdated);
         currentSocket.off("delivery:assigned", handleDeliveryAssigned);
         currentSocket.off("delivery:unassigned", handleDeliveryUnassigned);
+        currentSocket.off("delivery:updated", handleDeliveryUpdated);
       }
 
       unsubscribeReady();
@@ -760,7 +804,7 @@ export default function DeliveryManagement() {
             : "Delivery updated successfully."),
       );
 
-      await loadDeliveries();
+      await loadDeliveries({ silent: true });
 
       if (onSuccess) onSuccess();
     } catch (err) {
@@ -1130,7 +1174,9 @@ export default function DeliveryManagement() {
                     label="Scheduled"
                     value={
                       <div>
-                        <div>{formatScheduledDateOnly(delivery.scheduled_date)}</div>
+                        <div>
+                          {formatScheduledDateOnly(delivery.scheduled_date)}
+                        </div>
                         {isDeliveryRider && isRiderOverdueDelivery(delivery) ? (
                           <span style={overdueScheduleText}>Overdue</span>
                         ) : null}

@@ -54,6 +54,29 @@ const STATUS_STYLE = {
   cancelled: { bg: "#fef2f2", color: "#b91c1c", border: "#fecaca" },
 };
 
+const DELIVERY_STATUS_STYLE = {
+  scheduled: {
+    bg: "#eff6ff",
+    color: "#1d4ed8",
+    border: "#bfdbfe",
+  },
+  in_transit: {
+    bg: "#fff7ed",
+    color: "#c2410c",
+    border: "#fed7aa",
+  },
+  delivered: {
+    bg: "#ecfdf5",
+    color: "#047857",
+    border: "#a7f3d0",
+  },
+  failed: {
+    bg: "#fef2f2",
+    color: "#b91c1c",
+    border: "#fecaca",
+  },
+};
+
 const STATUS_LABELS = {
   pending: "Pending",
   confirmed: "Confirmed",
@@ -537,11 +560,24 @@ export default function OrderDetailPage() {
       load({ silent: true });
     };
 
+    const handleOrderPaymentUpdated = (payload) => {
+      const updatedOrderId = Number(payload?.order_id);
+
+      if (!Number.isInteger(updatedOrderId) || updatedOrderId !== Number(id)) {
+        return;
+      }
+
+      load({ silent: true });
+    };
+
     const attachListener = (socket) => {
       if (!socket) return;
 
       socket.off("order:status_updated", handleOrderStatusUpdated);
       socket.on("order:status_updated", handleOrderStatusUpdated);
+
+      socket.off("order:payment_updated", handleOrderPaymentUpdated);
+      socket.on("order:payment_updated", handleOrderPaymentUpdated);
     };
 
     const socket = getSocket();
@@ -559,6 +595,7 @@ export default function OrderDetailPage() {
 
       if (currentSocket) {
         currentSocket.off("order:status_updated", handleOrderStatusUpdated);
+        currentSocket.off("order:payment_updated", handleOrderPaymentUpdated);
       }
 
       unsubscribeReady();
@@ -700,7 +737,7 @@ export default function OrderDetailPage() {
       toast.success(`Status updated to "${titleCase(nextStatus)}".`);
       setStatusModal(false);
       setStatusModalMode("general");
-      load();
+      await load({ silent: true });
     } catch (err) {
       toast.error(
         err?.response?.data?.message || "Failed to update order status.",
@@ -714,7 +751,7 @@ export default function OrderDetailPage() {
     try {
       await api.post(`/orders/${id}/accept`);
       toast.success("Order accepted.");
-      load();
+      await load({ silent: true });
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to accept order.");
     }
@@ -727,7 +764,7 @@ export default function OrderDetailPage() {
     try {
       await api.post(`/orders/${id}/decline`, { reason });
       toast.success("Order declined.");
-      load();
+      await load({ silent: true });
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to decline order.");
     }
@@ -754,7 +791,7 @@ export default function OrderDetailPage() {
       }
 
       toast.success(data?.message || `Payment ${action}.`);
-      await load();
+      await load({ silent: true });
     } catch (err) {
       // api.js's shared interceptor already toasts status 400 (generic
       // message block), 403, 422, 500, and network/no-response errors. It
@@ -859,7 +896,7 @@ export default function OrderDetailPage() {
       setCashPaymentError("");
       toast.success(data?.message || "Cash payment recorded successfully.");
       setCustomCashAmount("");
-      await load();
+      await load({ silent: true });
     } catch (err) {
       setCashPaymentError(
         err?.response?.data?.message ||
@@ -932,7 +969,7 @@ export default function OrderDetailPage() {
       );
 
       toast.success(data?.message || "Custom request updated.");
-      load();
+      await load({ silent: true });
     } catch (err) {
       toast.error(
         err?.response?.data?.message || "Failed to update custom request.",
@@ -999,7 +1036,7 @@ export default function OrderDetailPage() {
         data?.message || "Production staff reassigned successfully.",
       );
       setReassignModal(false);
-      load();
+      await load({ silent: true });
     } catch (err) {
       if (err.response?.status === 404) {
         toast.error(err.response?.data?.message || "Order not found.");
@@ -1020,6 +1057,7 @@ export default function OrderDetailPage() {
       toast.success(
         data?.message || `Task marked as "${titleCase(nextStatus)}".`,
       );
+      await load({ silent: true });
       load();
     } catch (err) {
       toast.error(
@@ -1036,6 +1074,12 @@ export default function OrderDetailPage() {
   const normalizedOrderStatus = normalize(order?.status);
   const statusTone = getTone(STATUS_STYLE, normalizedOrderStatus);
   const channelMeta = getChannelMeta(order?.channel || order?.type);
+
+  const normalizedDeliveryStatus = normalize(order?.delivery?.status);
+  const deliveryStatusTone = getTone(
+    DELIVERY_STATUS_STYLE,
+    normalizedDeliveryStatus,
+  );
   const normalizedPaymentStatus = normalize(
     order?.payment_status_display || order?.payment_status || "unpaid",
   );
@@ -1297,12 +1341,17 @@ export default function OrderDetailPage() {
       normalizedStatus === "production" &&
       !hasRequiredBlueprintDownPayment;
 
+    const blockedByManagedDelivery =
+      hasDeliveryRequirement &&
+      ["shipping", "delivered"].includes(normalizedStatus);
+
     return !(
       blockedByIncompleteTasks ||
       blockedByMissingReceipt ||
       blockedByUnsettledPayment ||
       blockedByStandardFullPayment ||
-      blockedByBlueprintDownPayment
+      blockedByBlueprintDownPayment ||
+      blockedByManagedDelivery
     );
   });
 
@@ -1575,6 +1624,30 @@ export default function OrderDetailPage() {
               >
                 {channelMeta.label}
               </span>
+
+              {order?.delivery ? (
+                <span
+                  style={{
+                    ...pill,
+                    background: deliveryStatusTone.bg,
+                    color: deliveryStatusTone.color,
+                    border: `1px solid ${deliveryStatusTone.border}`,
+                  }}
+                >
+                  Delivery: {titleCase(order.delivery.status)}
+                </span>
+              ) : hasDeliveryRequirement ? (
+                <span
+                  style={{
+                    ...pill,
+                    background: "#fafafa",
+                    color: "#52525b",
+                    border: "1px solid #d4d4d8",
+                  }}
+                >
+                  Delivery: Not Scheduled
+                </span>
+              ) : null}
             </div>
 
             <p style={pageSubtitle}>
