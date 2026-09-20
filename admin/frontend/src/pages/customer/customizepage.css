@@ -2307,7 +2307,7 @@
     but they interfere with the mobile layout.
   */
   .customer-3d-floating-label {
-    display: none !important;
+    display: none;
   }
 }
 
@@ -2360,7 +2360,7 @@
   }
 
   .customer-3d-floating-label {
-    display: none !important;
+    display: none;
   }
 }
 
@@ -4174,4 +4174,25 @@
 
 .cust-mini-tools-v21 .cust-mini-tool-gap-v21 {
   display: none !important;
+}
+
+/* WISDOM MOBILE CUSTOMIZER PC R2
+   Portrait phones use the real Customize workspace instead of the rotate
+   blocker. Dimension label visibility remains controlled by the viewer. */
+@media (max-width: 900px) {
+  .cust-modal-customize .rotate-device-overlay {
+    display: none !important;
+  }
+
+  .cust-modal-customize .cust-modal-inner-content {
+    display: block !important;
+    height: auto !important;
+  }
+}
+
+/* Preserve the previous short desktop landscape behavior. */
+@media (min-width: 901px) and (max-height: 560px) and (orientation: landscape) {
+  .customer-3d-floating-label {
+    display: none !important;
+  }
 }
