@@ -2602,3 +2602,106 @@
     box-sizing: border-box;
   }
 }
+
+/* =========================================================
+   WISDOM DELIVERY SPACING + HISTORY BUTTON R1
+
+   Small phone-only follow-up:
+   - add breathing room between Deliveries search and filters
+   - slightly separate filter buttons
+   - make History View Details a clear full-width action
+
+   No JSX, business logic, API, backend, database, or workflow changes.
+   ========================================================= */
+
+@media (max-width: 767px) {
+  /* Deliveries: search and filter controls should not feel glued together. */
+  .rider-work-status-filters {
+    margin-top: 14px !important;
+    gap: 8px !important;
+  }
+
+  .rider-work-status-filters > button {
+    min-height: 36px !important;
+  }
+
+  /* History: give View Details the full action row instead of a small control. */
+  .rider-history-action-cell {
+    grid-template-columns: 1fr !important;
+    padding-top: 9px !important;
+  }
+
+  .rider-history-action-cell::before {
+    display: none !important;
+  }
+
+  .rider-history-action-cell .rider-v2-row-action {
+    grid-column: 1 / -1;
+    width: 100% !important;
+    min-height: 42px !important;
+    padding: 9px 12px !important;
+    font-size: 11px !important;
+    font-weight: 650 !important;
+  }
+}
+
+/* =========================================================
+   WISDOM DELIVERY SPACING + HISTORY BUTTON R2
+
+   Phone-only correction:
+   - create a clear visual gap below the Deliveries search field
+   - keep the six status filters comfortably separated
+   - let History View Details consume the entire action row
+
+   CSS only. No workflow/business behavior changes.
+   ========================================================= */
+
+@media (max-width: 767px) {
+  /* Deliveries search + filters: use actual spacing on the search itself. */
+  .rider-work-search {
+    display: block !important;
+    margin: 0 0 18px 0 !important;
+  }
+
+  .rider-work-status-filters {
+    margin-top: 0 !important;
+    column-gap: 8px !important;
+    row-gap: 8px !important;
+  }
+
+  .rider-work-status-filters > button {
+    min-height: 36px !important;
+  }
+
+  /* History: remove the mobile label column for the action row completely. */
+  .rider-history-table td.rider-history-action-cell {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    padding: 10px 0 2px !important;
+    box-sizing: border-box;
+  }
+
+  .rider-history-table td.rider-history-action-cell::before {
+    display: none !important;
+    content: none !important;
+  }
+
+  .rider-history-table td.rider-history-action-cell .rider-v2-row-action {
+    display: flex !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    min-height: 44px !important;
+    margin: 0 !important;
+    padding: 10px 14px !important;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: center;
+    justify-self: stretch !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
+    font-size: 11px !important;
+    font-weight: 650 !important;
+  }
+}
