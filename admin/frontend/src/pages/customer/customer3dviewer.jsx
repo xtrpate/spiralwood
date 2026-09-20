@@ -981,7 +981,14 @@ export default function Customer3DViewer({
     readOnly ? 0 : 1,
   );
   const [customizeFeedback, setCustomizeFeedback] = useState("");
-  const [showCustomizeGuide, setShowCustomizeGuide] = useState(() => !readOnly);
+  // WISDOM MOBILE CUSTOMIZER PC R2
+  const [showCustomizeGuide, setShowCustomizeGuide] = useState(() => {
+    if (readOnly) return false;
+    if (typeof window !== "undefined" && window.innerWidth <= 900) {
+      return false;
+    }
+    return true;
+  });
 
   const [quantity, setQuantity] = useState(() => {
     const parsed = Number(initialQuantity);
@@ -1158,7 +1165,7 @@ export default function Customer3DViewer({
 
   const formatUnitLabel = useCallback(
     (mmVal) => {
-      return `${convertMmToUnit(mmVal, unit)} ${unit}`;
+      return `${convertMmToUnit(mmVal, unit)} ${unit === "inches" ? "in" : unit}`;
     },
     [unit, convertMmToUnit],
   );
@@ -1536,8 +1543,16 @@ export default function Customer3DViewer({
             return;
           }
 
-          const targetX = (projected.x * 0.5 + 0.5) * cWidth;
-          const targetY = (-projected.y * 0.5 + 0.5) * cHeight;
+          const rawTargetX = (projected.x * 0.5 + 0.5) * cWidth;
+          const rawTargetY = (-projected.y * 0.5 + 0.5) * cHeight;
+          const isMobileMeasurementViewport =
+            typeof window !== "undefined" && window.innerWidth <= 900;
+          const targetX = isMobileMeasurementViewport
+            ? clampNumber(rawTargetX, 44, Math.max(44, cWidth - 44))
+            : rawTargetX;
+          const targetY = isMobileMeasurementViewport
+            ? clampNumber(rawTargetY, 22, Math.max(22, cHeight - 68))
+            : rawTargetY;
 
           if (!screenState) return;
 
@@ -4045,16 +4060,16 @@ export default function Customer3DViewer({
                       }
                       data-tooltip={
                         showMeasurements
-                          ? "Hide measurements"
-                          : "Show measurements"
+                          ? "Hide size"
+                          : "Show size"
                       }
                       onClick={() =>
                         setShowMeasurements((visible) => !visible)
                       }
                       aria-label={
                         showMeasurements
-                          ? "Hide measurements"
-                          : "Show measurements"
+                          ? "Hide size"
+                          : "Show size"
                       }
                       aria-pressed={showMeasurements}
                     >
@@ -4069,12 +4084,12 @@ export default function Customer3DViewer({
                         "wisdom-roomle-tool wisdom-roomle-unit-tool" +
                         (unitMenuOpen ? " is-active" : "")
                       }
-                      data-tooltip="Measurement unit"
+                      data-tooltip="Unit"
                       onClick={() => {
                         setUnitMenuOpen((open) => !open);
                         setViewMenuOpen(false);
                       }}
-                      aria-label="Measurement unit"
+                      aria-label="Unit"
                       aria-expanded={unitMenuOpen}
                     >
                       {unit === "inches" ? "in" : unit}
@@ -4084,7 +4099,7 @@ export default function Customer3DViewer({
                       <div
                         className="wisdom-roomle-popover wisdom-roomle-unit-menu"
                         role="menu"
-                        aria-label="Measurement unit"
+                        aria-label="Unit"
                       >
                         {["mm", "cm", "m", "inches", "ft", "yd"].map(
                           (unitOption) => (
@@ -4115,12 +4130,12 @@ export default function Customer3DViewer({
                         "wisdom-roomle-tool" +
                         (viewMenuOpen ? " is-active" : "")
                       }
-                      data-tooltip="Camera views"
+                      data-tooltip="View"
                       onClick={() => {
                         setViewMenuOpen((open) => !open);
                         setUnitMenuOpen(false);
                       }}
-                      aria-label="Camera views"
+                      aria-label="View"
                       aria-expanded={viewMenuOpen}
                     >
                       <Box size={18} strokeWidth={1.65} />
@@ -4130,7 +4145,7 @@ export default function Customer3DViewer({
                       <div
                         className="wisdom-roomle-popover wisdom-roomle-view-menu"
                         role="menu"
-                        aria-label="Camera views"
+                        aria-label="View"
                       >
                         {["3D", "Front", "Back", "Side", "Top", "Bottom"].map(
                           (view) => (
@@ -4158,9 +4173,9 @@ export default function Customer3DViewer({
                     <button
                       type="button"
                       className="wisdom-roomle-tool"
-                      data-tooltip="Reset camera"
+                      data-tooltip="Reset view"
                       onClick={resetCameraView}
-                      aria-label="Reset camera"
+                      aria-label="Reset view"
                     >
                       <RotateCcw size={18} strokeWidth={1.65} />
                     </button>
@@ -4812,7 +4827,7 @@ export default function Customer3DViewer({
                     </button>
                   </div>
 
-                  <div style={styles.dimensionGrid}>
+                  <div className="wisdom-size-grid" style={styles.dimensionGrid}>
                     <div style={styles.inputGroup}>
                       <span style={styles.dimLabel}>
                         {getPartAxisLabels(sampleSelectedPart).width}
@@ -4901,11 +4916,11 @@ export default function Customer3DViewer({
                   }}
                 >
                   <div style={styles.sectionRow}>
-                    <label style={styles.label}>Furniture Size ({unit})</label>
+                    <label style={styles.label}>Furniture Size ({unit === "inches" ? "in" : unit})</label>
                     <span style={styles.pill}>Keeps proportions</span>
                   </div>
 
-                  <div style={styles.dimensionGrid}>
+                  <div className="wisdom-size-grid" style={styles.dimensionGrid}>
                     <div style={styles.inputGroup}>
                       <span style={styles.dimLabel}>Width</span>
                       <input
@@ -5113,7 +5128,7 @@ export default function Customer3DViewer({
 
                 {showPerson ? (
                   <div style={styles.inputGroup}>
-                    <span style={styles.dimLabel}>Height ({unit})</span>
+                    <span style={styles.dimLabel}>Height ({unit === "inches" ? "in" : unit})</span>
                     <input
                       type="number"
                       step="0.1"
@@ -5174,7 +5189,7 @@ export default function Customer3DViewer({
                   aria-expanded={requestDetailsOpen}
                 >
                   <span style={styles.requestDetailsToggleTitle}>
-                    Request Details
+                    Order Details
                   </span>
 
                   <span
