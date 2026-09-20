@@ -312,8 +312,10 @@ export default function DeliverySignaturePad({
   };
 
   return (
-    <div>
+    <div className="rider-signature-field">
+      {/* WISDOM DELIVERY MOBILE D1-D4 R1 */}
       <div
+        className="rider-signature-summary"
         style={{
           display: "flex",
           alignItems: "center",
@@ -326,7 +328,7 @@ export default function DeliverySignaturePad({
           boxSizing: "border-box",
         }}
       >
-        <div style={{ minWidth: 0 }}>
+        <div className="rider-signature-copy" style={{ minWidth: 0 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: "#18181b" }}>
             {value ? "E-signature captured" : "No e-signature captured"}
           </div>
@@ -344,7 +346,7 @@ export default function DeliverySignaturePad({
 
         <button
           type="button"
-          className="rider-btn rider-btn-secondary"
+          className="rider-btn rider-btn-secondary rider-signature-open"
           disabled={disabled}
           onClick={() => setOpen(true)}
           style={{ minHeight: 34, padding: "0 12px", flex: "0 0 auto" }}
@@ -355,6 +357,7 @@ export default function DeliverySignaturePad({
 
       {value ? (
         <div
+          className="rider-signature-preview"
           style={{
             marginTop: 8,
             padding: 10,
@@ -379,6 +382,7 @@ export default function DeliverySignaturePad({
 
       {open ? (
         <div
+          className="rider-signature-modal"
           role="dialog"
           aria-modal="true"
           aria-label="Recipient signature pad"
@@ -393,7 +397,9 @@ export default function DeliverySignaturePad({
             boxSizing: "border-box",
           }}
         >
+          {/* WISDOM DELIVERY FINAL MOBILE POLISH R1 */}
           <div
+            className="rider-signature-modal-head"
             style={{
               display: "flex",
               alignItems: "flex-start",
@@ -402,7 +408,7 @@ export default function DeliverySignaturePad({
               padding: "4px 2px 10px",
             }}
           >
-            <div>
+            <div className="rider-signature-modal-title-group">
               <div style={{ fontSize: 16, fontWeight: 800, color: "#18181b" }}>
                 Recipient E-Signature (optional)
               </div>
@@ -410,13 +416,17 @@ export default function DeliverySignaturePad({
                 Sign anywhere inside the entire white area. Landscape gives the widest space.
               </div>
             </div>
-            <div style={{ fontSize: 11, color: "#71717a", textAlign: "right" }}>
+            <div
+              className="rider-signature-modal-note"
+              style={{ fontSize: 11, color: "#71717a", textAlign: "right" }}
+            >
               Clear removes this draft. Cancel keeps the previously saved signature.
             </div>
           </div>
 
           <div
             ref={surfaceRef}
+            className="rider-signature-modal-surface"
             style={{
               flex: "1 1 auto",
               minHeight: 140,
@@ -446,6 +456,7 @@ export default function DeliverySignaturePad({
           </div>
 
           <div
+            className="rider-signature-modal-actions"
             style={{
               display: "flex",
               justifyContent: "flex-end",

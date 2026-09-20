@@ -348,9 +348,15 @@ export default function RiderHistory() {
         </div>
 
         <div className="rider-history-filter-grid rider-history-filter-grid-v22">
-          <label className="rider-history-search-field">
+          {/* WISDOM DELIVERY D5 FORM SEMANTICS R1 */}
+          <label
+            className="rider-history-search-field"
+            htmlFor="rider-history-search"
+          >
             <span>Search</span>
             <input
+              id="rider-history-search"
+              name="rider_history_search"
               type="text"
               placeholder="Order, customer, or address"
               value={search}
@@ -361,9 +367,11 @@ export default function RiderHistory() {
             />
           </label>
 
-          <label>
+          <label htmlFor="rider-history-from-date">
             <span>From</span>
             <input
+              id="rider-history-from-date"
+              name="rider_history_from_date"
               type="date"
               value={startDate}
               onChange={(event) => {
@@ -373,9 +381,11 @@ export default function RiderHistory() {
             />
           </label>
 
-          <label>
+          <label htmlFor="rider-history-to-date">
             <span>To</span>
             <input
+              id="rider-history-to-date"
+              name="rider_history_to_date"
               type="date"
               value={endDate}
               onChange={(event) => {

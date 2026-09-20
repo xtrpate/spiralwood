@@ -1918,3 +1918,687 @@
     min-height: 180px;
   }
 }
+
+/* =========================================================
+   WISDOM DELIVERY MOBILE D1-D4 R1
+
+   D1 Home:
+   - compact current-delivery hero
+   - compact Today summary
+   - denser Up Next
+
+   D2 Deliveries:
+   - compact header/search
+   - one horizontal status-chip row
+   - denser two-column information cards
+   - primary actions visible sooner
+
+   D3 Expanded delivery:
+   - cleaner proof/acknowledgement spacing
+   - signature summary stacks correctly on phone
+   - delivery action buttons remain easy to tap
+
+   D4 History:
+   - compact filters
+   - From / To side-by-side
+   - denser records
+   - app-like bottom detail sheet
+
+   UI only. Delivery/payment/socket/business logic is unchanged.
+   ========================================================= */
+
+@media (max-width: 767px) {
+  /* Shared rider page spacing + bottom-nav clearance */
+  .rider-page-shell {
+    padding: 14px 12px calc(86px + env(safe-area-inset-bottom, 0px)) !important;
+    gap: 12px !important;
+  }
+
+  /* ---------------- D1: HOME ---------------- */
+
+  .rider-dashboard-v2 .rider-v2-page-header {
+    margin-bottom: 0;
+  }
+
+  .rider-dashboard-v2 .rider-header-title {
+    font-size: 22px;
+  }
+
+  .rider-dashboard-v2 .rider-header-subtitle {
+    margin-top: 4px;
+    font-size: 11.5px;
+  }
+
+  .rider-dashboard-v2 .rider-v2-date {
+    margin-top: 4px;
+    font-size: 9.5px;
+  }
+
+  .rider-dashboard-v2 .rider-v2-hero-grid {
+    gap: 10px;
+  }
+
+  .rider-dashboard-v2 .rider-v2-current {
+    padding: 12px !important;
+  }
+
+  .rider-dashboard-v2 .rider-v2-current-top {
+    flex-direction: row !important;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .rider-dashboard-v2 .rider-v2-order-number {
+    font-size: 17px;
+  }
+
+  .rider-dashboard-v2 .rider-v2-customer {
+    margin-top: 3px;
+    font-size: 11.5px;
+  }
+
+  .rider-dashboard-v2 .rider-v2-status {
+    min-height: 22px;
+    padding: 4px 7px;
+    font-size: 8px;
+  }
+
+  .rider-dashboard-v2 .rider-v2-current-details {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    margin-top: 12px;
+  }
+
+  .rider-dashboard-v2 .rider-v2-detail {
+    gap: 7px;
+    padding: 9px;
+  }
+
+  .rider-dashboard-v2 .rider-v2-detail:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .rider-dashboard-v2 .rider-v2-detail span {
+    font-size: 8px;
+  }
+
+  .rider-dashboard-v2 .rider-v2-detail strong {
+    margin-top: 3px;
+    font-size: 10.5px;
+    line-height: 1.35;
+  }
+
+  .rider-dashboard-v2 .rider-v2-current-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .rider-dashboard-v2 .rider-v2-current-actions > * {
+    width: 100% !important;
+    min-width: 0;
+    min-height: 38px;
+    box-sizing: border-box;
+  }
+
+  .rider-dashboard-v2 .rider-v2-current-actions > :only-child {
+    grid-column: 1 / -1;
+  }
+
+  .rider-dashboard-v2 .rider-v2-today {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding: 0 !important;
+  }
+
+  .rider-dashboard-v2 .rider-v2-today .rider-v2-section-kicker {
+    grid-column: 1 / -1;
+    padding: 11px 11px 7px;
+  }
+
+  .rider-dashboard-v2 .rider-v2-today-row {
+    grid-template-columns: 16px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    gap: 4px 5px;
+    min-height: 58px;
+    padding: 9px 10px;
+    border-right: 1px solid #ececee;
+    border-bottom: 0;
+  }
+
+  .rider-dashboard-v2 .rider-v2-today-row:last-child {
+    border-right: 0;
+  }
+
+  .rider-dashboard-v2 .rider-v2-today-row svg {
+    grid-column: 1;
+    grid-row: 1;
+    width: 15px;
+    height: 15px;
+  }
+
+  .rider-dashboard-v2 .rider-v2-today-row strong {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    font-size: 17px;
+  }
+
+  .rider-dashboard-v2 .rider-v2-today-row span {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    font-size: 9px;
+    white-space: nowrap;
+  }
+
+  .rider-dashboard-v2 .rider-v2-queue-header {
+    padding: 10px 12px;
+  }
+
+  .rider-dashboard-v2 .rider-v2-queue-header p {
+    max-width: 190px;
+    line-height: 1.35;
+  }
+
+  .rider-dashboard-v2 .rider-v3-queue-row {
+    gap: 5px 8px !important;
+    padding: 10px 12px !important;
+  }
+
+  .rider-dashboard-v2 .rider-v2-queue-main strong {
+    font-size: 11px;
+  }
+
+  .rider-dashboard-v2 .rider-v2-queue-destination,
+  .rider-dashboard-v2 .rider-v2-queue-date {
+    font-size: 9.5px;
+    line-height: 1.35;
+  }
+
+  /* ---------------- D2: DELIVERIES LIST ---------------- */
+
+  .rider-work-header {
+    padding: 13px 14px !important;
+  }
+
+  .rider-work-header h2 {
+    font-size: 22px !important;
+  }
+
+  .rider-work-header p {
+    margin-top: 5px !important;
+    font-size: 11.5px !important;
+    line-height: 1.45 !important;
+  }
+
+  .rider-work-filter-card {
+    display: block !important;
+    padding: 10px !important;
+    margin-bottom: 0 !important;
+  }
+
+  .rider-work-search {
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 42px !important;
+    padding: 10px 11px !important;
+    font-size: 13px !important;
+  }
+
+  .rider-work-status-filters {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+    width: 100%;
+    margin-top: 9px !important;
+    padding: 0 0 2px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .rider-work-status-filters::-webkit-scrollbar {
+    display: none;
+  }
+
+  .rider-work-status-filters > button {
+    flex: 0 0 auto;
+    min-height: 34px;
+    padding: 6px 10px !important;
+    white-space: nowrap;
+  }
+
+  .rider-delivery-card {
+    padding: 12px !important;
+  }
+
+  .rider-delivery-card > div:first-child {
+    margin-bottom: 10px !important;
+  }
+
+  .rider-delivery-card .rider-details-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+  }
+
+  .rider-delivery-card .rider-delivery-info-card:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .rider-delivery-info-card {
+    min-width: 0;
+    padding: 9px 10px !important;
+  }
+
+  .rider-delivery-info-label {
+    margin-bottom: 5px !important;
+    font-size: 8px !important;
+  }
+
+  .rider-delivery-info-value {
+    font-size: 10.5px !important;
+    line-height: 1.35 !important;
+    overflow-wrap: anywhere;
+  }
+
+  .rider-delivery-address-value {
+    gap: 4px;
+  }
+
+  .rider-delivery-card-actions,
+  .rider-delivery-card-actions.is-scheduled {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch !important;
+    gap: 8px;
+    width: 100%;
+    padding-top: 10px;
+  }
+
+  .rider-delivery-card-actions > *,
+  .rider-delivery-card-actions.is-scheduled > * {
+    width: 100% !important;
+    min-width: 0;
+    min-height: 40px;
+    box-sizing: border-box;
+    justify-content: center;
+  }
+
+  .rider-delivery-card-actions > :only-child,
+  .rider-delivery-card-actions.is-scheduled > :only-child {
+    grid-column: 1 / -1;
+  }
+
+  /* ---------------- D3: EXPANDED DELIVERY ---------------- */
+
+  .rider-delivery-expanded {
+    margin-top: 10px !important;
+    padding-top: 0;
+  }
+
+  .rider-delivery-expanded > div:first-child {
+    margin-top: 10px !important;
+  }
+
+  .rider-delivery-expanded input,
+  .rider-delivery-expanded select,
+  .rider-delivery-expanded textarea {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .rider-delivery-expanded input:not([type="checkbox"]):not([type="file"]),
+  .rider-delivery-expanded select {
+    min-height: 42px;
+  }
+
+  .rider-proof-upload {
+    min-height: 0;
+    grid-template-columns: 34px minmax(0, 1fr) !important;
+    gap: 9px;
+    padding: 10px;
+  }
+
+  .rider-proof-upload-icon {
+    width: 34px;
+    height: 34px;
+  }
+
+  .rider-proof-upload-copy > strong {
+    font-size: 10.5px;
+  }
+
+  .rider-proof-upload-copy > span {
+    font-size: 9px;
+  }
+
+  .rider-proof-upload-action {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-height: 36px;
+    box-sizing: border-box;
+  }
+
+  .rider-signature-summary {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    min-height: 0 !important;
+    gap: 9px !important;
+    padding: 10px !important;
+  }
+
+  .rider-signature-copy {
+    width: 100%;
+    min-width: 0 !important;
+  }
+
+  .rider-signature-copy > div:first-child {
+    font-size: 11px !important;
+  }
+
+  .rider-signature-copy > div:last-child {
+    font-size: 9.5px !important;
+    line-height: 1.4 !important;
+  }
+
+  .rider-signature-open {
+    width: 100% !important;
+    min-height: 40px !important;
+    flex: none !important;
+  }
+
+  .rider-signature-preview {
+    padding: 8px !important;
+  }
+
+  .rider-delivery-expanded .rider-button-row {
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .rider-delivery-expanded .rider-button-row .rider-btn {
+    min-height: 44px;
+  }
+
+  /* ---------------- D4: HISTORY ---------------- */
+
+  .rider-history-v2 .rider-v2-page-header {
+    margin-bottom: 0;
+  }
+
+  .rider-history-v2 .rider-header-title {
+    font-size: 22px;
+  }
+
+  .rider-history-v2 .rider-header-subtitle {
+    margin-top: 4px;
+    font-size: 11.5px;
+  }
+
+  .rider-history-filters {
+    padding: 11px !important;
+  }
+
+  .rider-history-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+    margin-bottom: 10px;
+  }
+
+  .rider-history-tab {
+    width: 100%;
+    min-width: 0;
+    padding: 7px 6px;
+    border: 1px solid #d1d2d5 !important;
+    margin-left: -1px;
+    font-size: 10px;
+  }
+
+  .rider-history-tab:first-child {
+    margin-left: 0;
+  }
+
+  .rider-history-filter-grid-v22 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .rider-history-search-field {
+    grid-column: 1 / -1 !important;
+  }
+
+  .rider-history-filter-grid input {
+    width: 100%;
+    min-width: 0;
+    min-height: 40px;
+    box-sizing: border-box;
+  }
+
+  .rider-history-records-head {
+    padding: 10px 12px;
+  }
+
+  .rider-history-records-head p {
+    line-height: 1.35;
+  }
+
+  .rider-history-table tbody {
+    padding: 8px !important;
+  }
+
+  .rider-history-table tr {
+    margin-bottom: 8px !important;
+    padding: 9px 11px !important;
+  }
+
+  .rider-history-table td {
+    display: grid !important;
+    grid-template-columns: 78px minmax(0, 1fr);
+    gap: 8px;
+    align-items: start !important;
+    padding: 7px 0 !important;
+    text-align: left !important;
+    line-height: 1.35;
+  }
+
+  .rider-history-table td::before {
+    margin: 0 !important;
+    padding-top: 1px;
+    font-size: 8px;
+  }
+
+  .rider-history-destination {
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+  }
+
+  .rider-history-action-cell .rider-v2-row-action {
+    width: 100%;
+    min-height: 36px;
+  }
+
+  .rider-history-detail-overlay {
+    align-items: flex-end;
+    justify-content: center;
+    padding: 8px 0 0;
+  }
+
+  .rider-history-detail-panel {
+    width: 100%;
+    height: auto;
+    max-height: calc(100dvh - 8px);
+    padding: 14px;
+    border-top: 1px solid #18181b;
+    border-left: 0;
+  }
+
+  .rider-history-detail-head {
+    position: sticky;
+    top: -14px;
+    z-index: 2;
+    margin: -14px -14px 0;
+    padding: 14px;
+    background: #ffffff;
+  }
+
+  .rider-history-detail-head h3 {
+    font-size: 16px;
+  }
+
+  .rider-history-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    margin-top: 10px;
+  }
+
+  .rider-history-detail-item {
+    min-height: 68px;
+    padding: 10px;
+  }
+
+  .rider-history-detail-item:first-child,
+  .rider-history-detail-item:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .rider-history-handoff-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .rider-history-handoff-grid > div {
+    min-height: 60px;
+    padding: 9px;
+  }
+
+  .rider-history-detail-section {
+    margin-top: 12px;
+    padding-top: 12px;
+  }
+
+  .rider-history-detail-actions {
+    gap: 7px;
+    margin-top: 8px;
+  }
+
+  .rider-history-detail-actions > *,
+  .rider-history-detail-actions > span,
+  .rider-history-detail-actions button,
+  .rider-history-detail-actions a {
+    min-height: 40px;
+  }
+
+  .rider-history-item-row {
+    gap: 8px;
+    padding: 9px;
+  }
+
+  .rider-history-pagination {
+    padding: 10px;
+  }
+}
+
+/* =========================================================
+   WISDOM DELIVERY FINAL MOBILE POLISH R1
+
+   Final minimal phone polish only:
+   - all six delivery status filters visible in a 3 x 2 grid
+   - signature modal header no longer squeezes the title
+   - compact History result badge and easier View Details tap target
+   - extra bottom clearance above the fixed mobile navigation
+
+   No delivery/payment/signature/business behavior changes.
+   ========================================================= */
+
+@media (max-width: 767px) {
+  /* Keep the last record/action comfortably above the fixed bottom nav. */
+  .rider-page-shell {
+    padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  /* Deliveries: all primary filters stay visible without horizontal scrolling. */
+  .rider-work-status-filters {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+    width: 100%;
+    overflow: visible !important;
+    padding-bottom: 0 !important;
+  }
+
+  .rider-work-status-filters > button {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 34px;
+    padding: 6px 5px !important;
+    justify-content: center;
+    font-size: 9.5px !important;
+  }
+
+  /* Signature modal: stack the helper copy below the title on phones. */
+  .rider-signature-modal {
+    padding: 10px !important;
+  }
+
+  .rider-signature-modal-head {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 6px !important;
+    padding: 2px 0 9px !important;
+  }
+
+  .rider-signature-modal-title-group {
+    min-width: 0;
+  }
+
+  .rider-signature-modal-title-group > div:first-child {
+    font-size: 15px !important;
+    line-height: 1.25;
+  }
+
+  .rider-signature-modal-note {
+    text-align: left !important;
+    font-size: 9.5px !important;
+    line-height: 1.35;
+  }
+
+  .rider-signature-modal-surface {
+    min-height: 180px !important;
+  }
+
+  .rider-signature-modal-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px !important;
+  }
+
+  .rider-signature-modal-actions > button {
+    width: 100%;
+    min-width: 0;
+    min-height: 40px;
+  }
+
+  .rider-signature-modal-actions > button:last-child {
+    grid-column: 1 / -1;
+  }
+
+  /* History: status should read like a badge, not a full-width bar. */
+  .rider-history-result {
+    width: max-content !important;
+    max-width: 100%;
+    justify-self: start;
+  }
+
+  .rider-history-action-cell .rider-v2-row-action {
+    display: flex !important;
+    width: 100% !important;
+    min-width: 0;
+    min-height: 38px;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+  }
+}

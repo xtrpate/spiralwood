@@ -851,7 +851,11 @@ export default function DeliveryManagement() {
 
   return (
     <div className="rider-page-shell">
-      <div className="rider-card" style={{ padding: "16px" }}>
+      {/* WISDOM DELIVERY MOBILE D1-D4 R1 */}
+      <div
+        className="rider-card rider-work-header"
+        style={{ padding: "16px" }}
+      >
         <div>
           <h2 style={pageTitle}>
             {isDeliveryRider ? "Deliveries" : "Delivery Management"}
@@ -868,7 +872,26 @@ export default function DeliveryManagement() {
         className="rider-card rider-work-filter-card"
         style={{ padding: "16px", marginBottom: "16px" }}
       >
+        {/* WISDOM DELIVERY D5 FORM SEMANTICS R1 */}
+        <label
+          htmlFor="delivery-search"
+          style={{
+            position: "absolute",
+            width: 1,
+            height: 1,
+            padding: 0,
+            margin: -1,
+            overflow: "hidden",
+            clip: "rect(0, 0, 0, 0)",
+            whiteSpace: "nowrap",
+            border: 0,
+          }}
+        >
+          Search deliveries
+        </label>
         <input
+          id="delivery-search"
+          name="delivery_search"
           type="text"
           className="rider-work-search"
           placeholder="Search order, customer, address, or status"
@@ -877,7 +900,7 @@ export default function DeliveryManagement() {
           style={searchInput}
         />
         {isDeliveryRider && (
-          <div style={statusFilterRow}>
+          <div className="rider-work-status-filters" style={statusFilterRow}>
             {STATUS_FILTERS.map((option) => (
               <button
                 key={option.value}
@@ -1330,10 +1353,15 @@ export default function DeliveryManagement() {
                                   }}
                                 >
                                   <div>
-                                    <label style={infoLabel}>
+                                    <label
+                                      htmlFor={`delivery-blueprint-cash-to-collect-${delivery.id}`}
+                                      style={infoLabel}
+                                    >
                                       Cash to Collect
                                     </label>
                                     <input
+                                      id={`delivery-blueprint-cash-to-collect-${delivery.id}`}
+                                      name={`blueprint_cash_to_collect_${delivery.id}`}
                                       type="text"
                                       value="₱0.00"
                                       readOnly
@@ -1371,10 +1399,15 @@ export default function DeliveryManagement() {
                                   }}
                                 >
                                   <div>
-                                    <label style={infoLabel}>
+                                    <label
+                                      htmlFor={`delivery-blueprint-amount-${delivery.id}`}
+                                      style={infoLabel}
+                                    >
                                       Amount to Collect
                                     </label>
                                     <input
+                                      id={`delivery-blueprint-amount-${delivery.id}`}
+                                      name={`blueprint_amount_to_collect_${delivery.id}`}
                                       type="text"
                                       value={`₱${paymentBalance.toLocaleString(
                                         "en-PH",
@@ -1391,10 +1424,15 @@ export default function DeliveryManagement() {
                                     />
                                   </div>
                                   <div>
-                                    <label style={infoLabel}>
+                                    <label
+                                      htmlFor={`delivery-blueprint-payment-method-${delivery.id}`}
+                                      style={infoLabel}
+                                    >
                                       Payment Method
                                     </label>
                                     <input
+                                      id={`delivery-blueprint-payment-method-${delivery.id}`}
+                                      name={`blueprint_payment_method_${delivery.id}`}
                                       type="text"
                                       value="Cash"
                                       readOnly
@@ -1441,7 +1479,10 @@ export default function DeliveryManagement() {
                                 }}
                               >
                                 <div>
-                                  <label style={infoLabel}>
+                                  <label
+                                    htmlFor={`delivery-collection-amount-${delivery.id}`}
+                                    style={infoLabel}
+                                  >
                                     {isCorrectedStandardCodWithReusablePendingCollection
                                       ? "Pending Cash Collection"
                                       : isStandardCodDelivery
@@ -1450,6 +1491,8 @@ export default function DeliveryManagement() {
                                   </label>
                                   {isStandardCodDelivery ? (
                                     <input
+                                      id={`delivery-collection-amount-${delivery.id}`}
+                                      name={`collection_amount_${delivery.id}`}
                                       type="text"
                                       value={`₱${paymentBalance.toLocaleString(
                                         "en-PH",
@@ -1466,6 +1509,8 @@ export default function DeliveryManagement() {
                                     />
                                   ) : (
                                     <input
+                                      id={`delivery-collection-amount-${delivery.id}`}
+                                      name={`collection_amount_${delivery.id}`}
                                       type="number"
                                       min="0"
                                       max={paymentBalance.toFixed(2)}
@@ -1507,10 +1552,15 @@ export default function DeliveryManagement() {
                                 </div>
 
                                 <div>
-                                  <label style={infoLabel}>
+                                  <label
+                                    htmlFor={`delivery-collection-payment-method-${delivery.id}`}
+                                    style={infoLabel}
+                                  >
                                     Payment Method
                                   </label>
                                   <input
+                                    id={`delivery-collection-payment-method-${delivery.id}`}
+                                    name={`collection_payment_method_${delivery.id}`}
                                     type="text"
                                     value="Cash"
                                     readOnly
@@ -1525,10 +1575,15 @@ export default function DeliveryManagement() {
                                 </div>
 
                                 <div style={{ gridColumn: "1 / -1" }}>
-                                  <label style={infoLabel}>
+                                  <label
+                                    htmlFor={`delivery-collection-note-${delivery.id}`}
+                                    style={infoLabel}
+                                  >
                                     Collection Note
                                   </label>
                                   <textarea
+                                    id={`delivery-collection-note-${delivery.id}`}
+                                    name={`collection_note_${delivery.id}`}
                                     rows={2}
                                     value={collectionForm.collection_notes}
                                     onChange={(e) =>
@@ -1655,8 +1710,15 @@ export default function DeliveryManagement() {
                             }}
                           >
                             <div>
-                              <label style={infoLabel}>Received By</label>
+                              <label
+                                htmlFor={`delivery-recipient-name-${delivery.id}`}
+                                style={infoLabel}
+                              >
+                                Received By
+                              </label>
                               <input
+                                id={`delivery-recipient-name-${delivery.id}`}
+                                name={`recipient_name_${delivery.id}`}
                                 type="text"
                                 maxLength={150}
                                 value={acknowledgementForm.received_by_name}
@@ -1674,8 +1736,15 @@ export default function DeliveryManagement() {
                             </div>
 
                             <div>
-                              <label style={infoLabel}>Recipient</label>
+                              <label
+                                htmlFor={`delivery-recipient-type-${delivery.id}`}
+                                style={infoLabel}
+                              >
+                                Recipient
+                              </label>
                               <select
+                                id={`delivery-recipient-type-${delivery.id}`}
+                                name={`recipient_type_${delivery.id}`}
                                 value={acknowledgementForm.recipient_type}
                                 onChange={(event) =>
                                   updateAcknowledgementForm(
@@ -1695,10 +1764,15 @@ export default function DeliveryManagement() {
                             </div>
 
                             <div style={{ gridColumn: "1 / -1" }}>
-                              <label style={infoLabel}>
+                              <label
+                                htmlFor={`delivery-recipient-note-${delivery.id}`}
+                                style={infoLabel}
+                              >
                                 Delivery Note (optional)
                               </label>
                               <textarea
+                                id={`delivery-recipient-note-${delivery.id}`}
+                                name={`recipient_note_${delivery.id}`}
                                 rows={2}
                                 maxLength={500}
                                 value={acknowledgementForm.note}
@@ -1722,9 +1796,9 @@ export default function DeliveryManagement() {
                           </div>
 
                           <div style={{ marginTop: "14px" }}>
-                            <label style={infoLabel}>
+                            <div style={infoLabel}>
                               Recipient Signature (optional)
-                            </label>
+                            </div>
                             <DeliverySignaturePad
                               value={acknowledgementForm.signature_data}
                               disabled={savingId === delivery.id}
@@ -1739,6 +1813,7 @@ export default function DeliveryManagement() {
                           </div>
 
                           <label
+                            htmlFor={`delivery-acknowledgement-${delivery.id}`}
                             style={{
                               display: "flex",
                               alignItems: "flex-start",
@@ -1754,6 +1829,8 @@ export default function DeliveryManagement() {
                             }}
                           >
                             <input
+                              id={`delivery-acknowledgement-${delivery.id}`}
+                              name={`delivery_acknowledgement_${delivery.id}`}
                               type="checkbox"
                               checked={
                                 acknowledgementForm.acknowledgement_accepted
@@ -2231,6 +2308,7 @@ export default function DeliveryManagement() {
               {failureModal.order_number || "—"}
             </div>
             <label
+              htmlFor="delivery-failure-reason"
               style={{
                 fontSize: "12px",
                 fontWeight: 600,
@@ -2242,6 +2320,8 @@ export default function DeliveryManagement() {
               Reason (required)
             </label>
             <textarea
+              id="delivery-failure-reason"
+              name="failure_reason"
               value={failureReasonInput}
               onChange={(e) => setFailureReasonInput(e.target.value)}
               maxLength={500}
