@@ -353,7 +353,7 @@ const cleanIndoorWorkNote = (value) =>
 
 function IndoorSummaryCard({ label, count, hint, emphasized = false }) {
   return (
-    <div style={indoorSummaryCardStyle}>
+    <div className="indoor-appointments-summary-card" style={indoorSummaryCardStyle}>
       <div
         style={{
           fontSize: 25,
@@ -416,8 +416,8 @@ function IndoorInfo({ label, value, important = false }) {
 
 function IndoorAppointmentSection({ title, subtitle, children }) {
   return (
-    <section style={indoorSectionStyle}>
-      <div style={indoorSectionHeaderStyle}>
+    <section className="indoor-appointments-section" style={indoorSectionStyle}>
+      <div className="indoor-appointments-section-header" style={indoorSectionHeaderStyle}>
         <div>
           <h3 style={indoorSectionTitleStyle}>{title}</h3>
           <p style={indoorSectionSubtitleStyle}>{subtitle}</p>
@@ -1360,6 +1360,7 @@ export default function AppointmentScheduling() {
 
   return (
     <div
+      className={isIndoorStaff ? "indoor-appointments-page" : undefined}
       style={
         canManageAppointments
           ? adminPageStyle
@@ -1455,6 +1456,8 @@ export default function AppointmentScheduling() {
                   aria-hidden="true"
                 />
                 <input
+                  id="appointment-admin-search"
+                  name="appointment_admin_search"
                   type="search"
                   value={adminSearch}
                   onChange={(event) => setAdminSearch(event.target.value)}
@@ -1465,6 +1468,8 @@ export default function AppointmentScheduling() {
               </div>
 
               <select
+                id="appointment-service-filter"
+                name="appointment_service_filter"
                 value={adminServiceFilter}
                 onChange={(event) => setAdminServiceFilter(event.target.value)}
                 style={adminFilterSelectStyle}
@@ -1477,6 +1482,8 @@ export default function AppointmentScheduling() {
               </select>
 
               <input
+                id="appointment-date-filter"
+                name="appointment_date_filter"
                 type="date"
                 value={adminDateFilter}
                 onChange={(event) => setAdminDateFilter(event.target.value)}
@@ -1970,6 +1977,8 @@ export default function AppointmentScheduling() {
                   <div>
                     <label style={labelStyle}>Order ID (optional)</label>
                     <input
+                      id="appointment-order-id"
+                      name="order_id"
                       style={inputStyle}
                       type="number"
                       min="1"
@@ -1986,6 +1995,8 @@ export default function AppointmentScheduling() {
                   <div>
                     <label style={labelStyle}>Customer ID (optional)</label>
                     <input
+                      id="appointment-customer-id"
+                      name="customer_id"
                       style={inputStyle}
                       type="number"
                       min="1"
@@ -2002,6 +2013,8 @@ export default function AppointmentScheduling() {
                   <div>
                     <label style={labelStyle}>Staff (optional)</label>
                     <select
+                      id="appointment-assigned-staff"
+                      name="assigned_staff_id"
                       style={inputStyle}
                       value={form.assigned_staff_id}
                       onChange={(e) =>
@@ -2025,6 +2038,8 @@ export default function AppointmentScheduling() {
                       Service <span style={{ color: "#ef4444" }}>*</span>
                     </label>
                     <select
+                      id="appointment-purpose"
+                      name="purpose"
                       style={inputStyle}
                       value={form.purpose}
                       onChange={(e) =>
@@ -2046,6 +2061,8 @@ export default function AppointmentScheduling() {
                       Date <span style={{ color: "#ef4444" }}>*</span>
                     </label>
                     <input
+                      id="appointment-scheduled-date"
+                      name="scheduled_date"
                       style={inputStyle}
                       type="date"
                       min={getMinDateYMD()}
@@ -2087,6 +2104,8 @@ export default function AppointmentScheduling() {
                         color: form.scheduled_date ? "#18181b" : "#a1a1aa",
                         cursor: form.scheduled_date ? "pointer" : "not-allowed",
                       }}
+                      id="appointment-scheduled-time"
+                      name="scheduled_time"
                       value={
                         form.scheduled_date
                           ? form.scheduled_date.split("T")[1]?.substring(0, 5)
@@ -2156,6 +2175,8 @@ export default function AppointmentScheduling() {
                     Notes <span style={{ color: "#ef4444" }}>*</span>
                   </label>
                   <textarea
+                    id="appointment-notes"
+                    name="notes"
                     style={{
                       ...inputStyle,
                       minHeight: 120,
@@ -2342,6 +2363,8 @@ export default function AppointmentScheduling() {
                       )}
                     </label>
                     <select
+                      id="appointment-reschedule-staff"
+                      name="reschedule_staff_id"
                       style={inputStyle}
                       value={rescheduleStaffId}
                       onChange={(e) => setRescheduleStaffId(e.target.value)}
@@ -2385,6 +2408,8 @@ export default function AppointmentScheduling() {
                       Date <span style={{ color: "#ef4444" }}>*</span>
                     </label>
                     <input
+                      id="appointment-reschedule-date"
+                      name="reschedule_date"
                       style={inputStyle}
                       type="date"
                       min={getMinDateYMD()}
@@ -2411,6 +2436,8 @@ export default function AppointmentScheduling() {
                         color: rescheduleDate ? "#18181b" : "#a1a1aa",
                         cursor: rescheduleDate ? "pointer" : "not-allowed",
                       }}
+                      id="appointment-reschedule-time"
+                      name="reschedule_time"
                       value={rescheduleTime}
                       onChange={(e) => setRescheduleTime(e.target.value)}
                       disabled={
@@ -2790,14 +2817,14 @@ export default function AppointmentScheduling() {
 
       {isIndoorStaff && (
         <>
-          <header style={indoorPageHeaderStyle}>
+          <header className="indoor-appointments-header" style={indoorPageHeaderStyle}>
             <h1 style={indoorPageTitleStyle}>My Appointments</h1>
             <p style={indoorPageSubtitleStyle}>
               Review assigned appointments and update work status.
             </p>
           </header>
 
-          <div style={indoorSummaryGridStyle}>
+          <div className="indoor-appointments-summary" style={indoorSummaryGridStyle}>
             {staffSummary.map((item, index) => (
               <IndoorSummaryCard
                 key={item.label}
@@ -2858,6 +2885,7 @@ export default function AppointmentScheduling() {
                     <article
                       key={a.id}
                       id={`appointment-row-${a.id}`}
+                      className="indoor-appointment-card"
                       style={{
                         ...indoorAppointmentCardStyle,
                         ...(focusedAppointmentId === a.id
@@ -2867,7 +2895,7 @@ export default function AppointmentScheduling() {
                           : {}),
                       }}
                     >
-                      <div style={indoorAppointmentHeaderStyle}>
+                      <div className="indoor-appointment-card-header" style={indoorAppointmentHeaderStyle}>
                         <div>
                           <div style={indoorAppointmentRefStyle}>
                             {formatRequestNumber(a.id)}
@@ -2880,7 +2908,7 @@ export default function AppointmentScheduling() {
                         <IndoorStatusBadge status={a.status} />
                       </div>
 
-                      <div style={indoorInfoGridStyle}>
+                      <div className="indoor-appointment-info-grid" style={indoorInfoGridStyle}>
                         <IndoorInfo
                           label="Service"
                           value={humanizePurpose(a.purpose)}
@@ -2898,7 +2926,7 @@ export default function AppointmentScheduling() {
                       </div>
 
                       {scope && scope !== "No additional scope details" ? (
-                        <div style={indoorScopeStyle}>
+                        <div className="indoor-appointment-scope" style={indoorScopeStyle}>
                           <strong style={{ fontWeight: 650, color: "#303034" }}>
                             Work note:
                           </strong>{" "}
@@ -2906,7 +2934,7 @@ export default function AppointmentScheduling() {
                         </div>
                       ) : null}
 
-                      <div style={indoorActionsStyle}>
+                      <div className="indoor-appointment-actions" style={indoorActionsStyle}>
                         <button
                           type="button"
                           style={
@@ -2972,6 +3000,7 @@ export default function AppointmentScheduling() {
                     <article
                       key={a.id}
                       id={`appointment-row-${a.id}`}
+                      className="indoor-appointment-card"
                       style={{
                         ...indoorAppointmentCardStyle,
                         ...(focusedAppointmentId === a.id
@@ -2981,7 +3010,7 @@ export default function AppointmentScheduling() {
                           : {}),
                       }}
                     >
-                      <div style={indoorAppointmentHeaderStyle}>
+                      <div className="indoor-appointment-card-header" style={indoorAppointmentHeaderStyle}>
                         <div>
                           <div style={indoorAppointmentRefStyle}>
                             {formatRequestNumber(a.id)}
@@ -2994,7 +3023,7 @@ export default function AppointmentScheduling() {
                         <IndoorStatusBadge status={a.status} />
                       </div>
 
-                      <div style={indoorInfoGridStyle}>
+                      <div className="indoor-appointment-info-grid" style={indoorInfoGridStyle}>
                         <IndoorInfo
                           label="Service"
                           value={humanizePurpose(a.purpose)}
@@ -3012,7 +3041,7 @@ export default function AppointmentScheduling() {
                       </div>
 
                       {scope && scope !== "No additional scope details" ? (
-                        <div style={indoorScopeStyle}>
+                        <div className="indoor-appointment-scope" style={indoorScopeStyle}>
                           <strong style={{ fontWeight: 650, color: "#303034" }}>
                             Work note:
                           </strong>{" "}
@@ -3020,7 +3049,7 @@ export default function AppointmentScheduling() {
                         </div>
                       ) : null}
 
-                      <div style={indoorActionsStyle}>
+                      <div className="indoor-appointment-actions" style={indoorActionsStyle}>
                         <button
                           type="button"
                           style={
@@ -3075,8 +3104,8 @@ export default function AppointmentScheduling() {
             {staffClosedAppointments.length === 0 ? (
               <div style={indoorEmptyStyle}>No appointment history yet.</div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={indoorHistoryTableStyle}>
+              <div className="indoor-appointment-history-wrap" style={{ overflowX: "auto" }}>
+                <table className="indoor-appointment-history-table" style={indoorHistoryTableStyle}>
                   <thead>
                     <tr style={indoorHistoryHeadStyle}>
                       <th style={indoorHistoryThStyle}>Appointment</th>
@@ -3152,6 +3181,208 @@ export default function AppointmentScheduling() {
               </div>
             )}
           </IndoorAppointmentSection>
+
+          <style>{`
+            /* WISDOM FURNITURE SPECIALIST APPOINTMENTS MOBILE B3A */
+            @media (max-width: 767px) {
+              .indoor-appointments-page {
+                width: 100%;
+                min-width: 0;
+              }
+
+              .indoor-appointments-header {
+                margin-bottom: 15px !important;
+              }
+
+              .indoor-appointments-header h1 {
+                font-size: 22px !important;
+                line-height: 1.12 !important;
+              }
+
+              .indoor-appointments-header p {
+                margin-top: 5px !important;
+                font-size: 12px !important;
+              }
+
+              .indoor-appointments-summary {
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+                gap: 8px !important;
+                margin-bottom: 12px !important;
+              }
+
+              .indoor-appointments-summary > :last-child {
+                grid-column: 1 / -1;
+              }
+
+              .indoor-appointments-summary-card {
+                min-height: 92px !important;
+                padding: 13px !important;
+              }
+
+              .indoor-appointments-summary > :last-child {
+                min-height: 78px !important;
+              }
+
+              .indoor-appointments-section {
+                margin-bottom: 12px !important;
+              }
+
+              .indoor-appointments-section-header {
+                min-height: 0 !important;
+                padding: 13px 14px !important;
+              }
+
+              .indoor-appointments-section-header h3 {
+                font-size: 13.5px !important;
+              }
+
+              .indoor-appointments-section-header p {
+                margin-top: 3px !important;
+                font-size: 9.5px !important;
+                line-height: 1.35 !important;
+              }
+
+              .indoor-appointment-card {
+                overflow: hidden;
+              }
+
+              .indoor-appointment-card-header {
+                padding: 13px 14px 0 !important;
+                gap: 10px !important;
+              }
+
+              .indoor-appointment-card-header > div:first-child {
+                min-width: 0;
+              }
+
+              .indoor-appointment-info-grid {
+                margin-top: 12px !important;
+                padding: 0 14px 13px !important;
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+                gap: 11px 14px !important;
+              }
+
+              .indoor-appointment-scope {
+                margin: 0 14px 12px !important;
+                padding: 9px 10px !important;
+              }
+
+              .indoor-appointment-actions {
+                padding: 10px 14px !important;
+                display: grid !important;
+                grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)) !important;
+                justify-content: stretch !important;
+                gap: 7px !important;
+              }
+
+              .indoor-appointment-actions button {
+                width: 100%;
+                min-height: 40px !important;
+                white-space: normal !important;
+              }
+
+              /* History becomes true mobile records; desktop table is untouched. */
+              .indoor-appointment-history-wrap {
+                overflow: visible !important;
+              }
+
+              .indoor-appointment-history-table {
+                display: block;
+                width: 100% !important;
+                min-width: 0 !important;
+                border-collapse: separate !important;
+              }
+
+              .indoor-appointment-history-table thead {
+                display: none;
+              }
+
+              .indoor-appointment-history-table tbody {
+                display: grid;
+                gap: 8px;
+                padding: 8px;
+                background: #f7f7f8;
+              }
+
+              .indoor-appointment-history-table tr {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 11px 14px;
+                padding: 13px;
+                background: #ffffff;
+                border: 1px solid #dcdde1;
+              }
+
+              .indoor-appointment-history-table td {
+                min-width: 0;
+                padding: 0 !important;
+                border: 0 !important;
+                overflow-wrap: anywhere;
+              }
+
+              .indoor-appointment-history-table td:nth-child(1),
+              .indoor-appointment-history-table td:nth-child(2),
+              .indoor-appointment-history-table td:nth-child(4),
+              .indoor-appointment-history-table td:nth-child(5),
+              .indoor-appointment-history-table td:nth-child(7) {
+                grid-column: 1 / -1;
+              }
+
+              .indoor-appointment-history-table td::before {
+                display: block;
+                margin-bottom: 4px;
+                color: #85868b;
+                font-size: 8px;
+                font-weight: 700;
+                letter-spacing: 0.07em;
+                text-transform: uppercase;
+              }
+
+              .indoor-appointment-history-table td:nth-child(1)::before {
+                content: "Appointment";
+              }
+
+              .indoor-appointment-history-table td:nth-child(2)::before {
+                content: "Customer";
+              }
+
+              .indoor-appointment-history-table td:nth-child(3)::before {
+                content: "Service";
+              }
+
+              .indoor-appointment-history-table td:nth-child(4)::before {
+                content: "Schedule";
+              }
+
+              .indoor-appointment-history-table td:nth-child(5)::before {
+                content: "Location";
+              }
+
+              .indoor-appointment-history-table td:nth-child(6)::before {
+                content: "Status";
+              }
+
+              .indoor-appointment-history-table td:nth-child(7)::before {
+                content: "Updated";
+              }
+            }
+
+            @media (max-width: 360px) {
+              .indoor-appointment-info-grid,
+              .indoor-appointment-history-table tr {
+                grid-template-columns: 1fr !important;
+              }
+
+              .indoor-appointment-history-table td {
+                grid-column: 1 !important;
+              }
+
+              .indoor-appointment-actions {
+                grid-template-columns: 1fr !important;
+              }
+            }
+          `}</style>
+
         </>
       )}
     </div>

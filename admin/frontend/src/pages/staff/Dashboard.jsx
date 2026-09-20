@@ -4,10 +4,10 @@ import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowRight,
-  CalendarClock,
-  ClipboardList,
+  CalendarCheck2,
+  ClipboardCheck,
   Clock3,
-  PackageCheck,
+  Wrench,
 } from "lucide-react";
 import api from "../../services/api";
 import useAuthStore from "../../store/authStore";
@@ -294,9 +294,15 @@ const valueStyle = {
   letterSpacing: "-0.02em",
 };
 
-function SummaryCard({ icon: Icon, label, value, emphasis = false }) {
+function SummaryCard({
+  icon: Icon,
+  label,
+  value,
+  danger = false,
+}) {
   return (
     <div
+      className="indoor-dashboard-summary-card"
       style={{
         ...card,
         minHeight: 82,
@@ -307,6 +313,7 @@ function SummaryCard({ icon: Icon, label, value, emphasis = false }) {
       }}
     >
       <div
+        className="indoor-dashboard-summary-icon"
         style={{
           width: 38,
           height: 38,
@@ -314,18 +321,25 @@ function SummaryCard({ icon: Icon, label, value, emphasis = false }) {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          border: "1px solid #dedee1",
-          borderRadius: 0,
-          background: emphasis ? "#18181b" : "#fafafa",
-          color: emphasis ? "#ffffff" : "#18181b",
+          border: 0,
+          background: "transparent",
+          color: danger ? "#dc2626" : "#18181b",
         }}
+        aria-hidden="true"
       >
-        <Icon size={18} strokeWidth={1.8} />
+        <Icon size={24} strokeWidth={1.9} />
       </div>
 
-      <div>
-        <div style={valueStyle}>{value}</div>
-        <div style={{ ...labelStyle, marginTop: 7 }}>{label}</div>
+      <div className="indoor-dashboard-summary-meta">
+        <div className="indoor-dashboard-summary-value" style={valueStyle}>
+          {value}
+        </div>
+        <div
+          className="indoor-dashboard-summary-label"
+          style={{ ...labelStyle, marginTop: 7 }}
+        >
+          {label}
+        </div>
       </div>
     </div>
   );
@@ -466,6 +480,7 @@ export default function Dashboard() {
 
   return (
     <div
+      className="indoor-dashboard-page"
       style={{
         width: "100%",
         boxSizing: "border-box",
@@ -474,6 +489,7 @@ export default function Dashboard() {
       }}
     >
       <header
+        className="indoor-dashboard-header"
         style={{
           marginBottom: 20,
           display: "flex",
@@ -521,27 +537,19 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <section
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-          gap: 10,
-          marginBottom: 16,
-        }}
-      >
+      <section className="indoor-dashboard-summary">
         <SummaryCard
-          icon={ClipboardList}
+          icon={ClipboardCheck}
           label="Assigned Work"
           value={loading ? "—" : work.length}
         />
         <SummaryCard
-          icon={PackageCheck}
+          icon={Wrench}
           label="In Production"
           value={loading ? "—" : inProductionCount}
-          emphasis
         />
         <SummaryCard
-          icon={CalendarClock}
+          icon={CalendarCheck2}
           label="Appointments Today"
           value={loading ? "—" : todaysAppointments.length}
         />
@@ -549,10 +557,11 @@ export default function Dashboard() {
           icon={AlertTriangle}
           label="Inventory Alerts"
           value={loading ? "—" : inventoryAlerts.length}
+          danger
         />
       </section>
 
-      <section style={{ ...card, marginBottom: 16 }}>
+      <section className="indoor-dashboard-work-panel" style={{ ...card, marginBottom: 16 }}>
         <div
           style={{
             minHeight: 60,
@@ -620,8 +629,9 @@ export default function Dashboard() {
             No production work is assigned to you.
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div className="indoor-dashboard-work-scroll" style={{ overflowX: "auto" }}>
             <table
+              className="indoor-dashboard-work-table"
               style={{
                 width: "100%",
                 borderCollapse: "collapse",
@@ -742,14 +752,8 @@ export default function Dashboard() {
         )}
       </section>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-          gap: 16,
-        }}
-      >
-        <section style={card}>
+      <div className="indoor-dashboard-lower-grid">
+        <section className="indoor-dashboard-panel" style={card}>
           <div
             style={{
               minHeight: 60,
@@ -824,6 +828,7 @@ export default function Dashboard() {
               {visibleAppointments.map((appointment) => (
                 <div
                   key={appointment.id}
+                  className="indoor-dashboard-appointment-row"
                   style={{
                     minHeight: 66,
                     padding: "12px 16px",
@@ -893,7 +898,7 @@ export default function Dashboard() {
           )}
         </section>
 
-        <section style={card}>
+        <section className="indoor-dashboard-panel" style={card}>
           <div
             style={{
               minHeight: 60,
@@ -972,6 +977,7 @@ export default function Dashboard() {
                 return (
                   <div
                     key={item.id || `${getInventoryName(item)}-${index}`}
+                    className="indoor-dashboard-inventory-row"
                     style={{
                       minHeight: 66,
                       padding: "12px 16px",
@@ -1029,15 +1035,346 @@ export default function Dashboard() {
       </div>
 
       <style>{`
+        /* WISDOM FURNITURE SPECIALIST DASHBOARD MOBILE-FIRST B1 */
+        .indoor-dashboard-page {
+          width: min(100%, 1440px) !important;
+          max-width: 1440px;
+          margin: 0 auto;
+        }
+
+        .indoor-dashboard-header {
+          margin-bottom: 20px;
+        }
+
+        .indoor-dashboard-summary {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
+          margin-bottom: 16px;
+        }
+
+        .indoor-dashboard-summary-card {
+          min-width: 0;
+          transition:
+            border-color 140ms ease,
+            background-color 140ms ease;
+        }
+
+        .indoor-dashboard-summary-icon {
+          flex-shrink: 0;
+          border: 0 !important;
+          background: transparent !important;
+        }
+        .indoor-dashboard-summary-meta {
+          min-width: 0;
+        }
+
+        .indoor-dashboard-summary-value {
+          font-variant-numeric: tabular-nums;
+        }
+
+        .indoor-dashboard-summary-label {
+          overflow-wrap: anywhere;
+        }
+
+        .indoor-dashboard-work-panel,
+        .indoor-dashboard-panel {
+          overflow: hidden;
+        }
+
+        .indoor-dashboard-work-scroll {
+          width: 100%;
+          overflow-x: auto;
+        }
+
+        .indoor-dashboard-work-table tbody tr {
+          transition: background-color 120ms ease;
+        }
+
+        .indoor-dashboard-work-table tbody tr:hover {
+          background: #fcfcfc;
+        }
+
+        .indoor-dashboard-lower-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+          gap: 16px;
+        }
+
         @media (max-width: 1050px) {
-          .pos-main > div > section:first-of-type {
+          .indoor-dashboard-summary {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
         }
 
-        @media (max-width: 760px) {
-          .pos-main > div > header {
-            flex-direction: column;
+        @media (max-width: 900px) {
+          .indoor-dashboard-lower-grid {
+            grid-template-columns: minmax(0, 1fr);
+          }
+        }
+
+        @media (max-width: 767px) {
+          .indoor-dashboard-page {
+            padding-bottom: 12px !important;
+          }
+
+          .indoor-dashboard-header {
+            margin-bottom: 16px !important;
+            flex-direction: column !important;
+            gap: 7px !important;
+          }
+
+          .indoor-dashboard-header h1 {
+            font-size: 22px !important;
+            line-height: 1.12 !important;
+          }
+
+          .indoor-dashboard-header p {
+            margin-top: 5px !important;
+            font-size: 12px !important;
+          }
+
+          .indoor-dashboard-header > div:last-child {
+            padding-top: 0 !important;
+            font-size: 9.5px !important;
+            white-space: normal !important;
+          }
+
+          .indoor-dashboard-summary {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+            margin-bottom: 12px;
+          }
+
+          .indoor-dashboard-summary-card {
+            min-height: 108px !important;
+            padding: 13px !important;
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            justify-content: space-between !important;
+            gap: 10px !important;
+          }
+
+          .indoor-dashboard-summary-icon {
+            width: 34px !important;
+            height: 34px !important;
+            flex-basis: 34px !important;
+          }
+
+          .indoor-dashboard-summary-icon svg {
+            width: 17px;
+            height: 17px;
+          }
+
+          .indoor-dashboard-summary-meta {
+            width: 100%;
+          }
+
+          .indoor-dashboard-summary-value {
+            font-size: 21px !important;
+          }
+
+          .indoor-dashboard-summary-label {
+            margin-top: 5px !important;
+            font-size: 8px !important;
+            line-height: 1.28;
+            letter-spacing: 0.065em !important;
+          }
+
+          .indoor-dashboard-work-panel {
+            margin-bottom: 12px !important;
+          }
+
+          .indoor-dashboard-work-panel > div:first-child,
+          .indoor-dashboard-panel > div:first-child {
+            min-height: 0 !important;
+            padding: 13px 14px !important;
+            gap: 10px !important;
+          }
+
+          .indoor-dashboard-work-panel > div:first-child h2,
+          .indoor-dashboard-panel > div:first-child h2 {
+            font-size: 13.5px !important;
+          }
+
+          .indoor-dashboard-work-panel > div:first-child p,
+          .indoor-dashboard-panel > div:first-child p {
+            margin-top: 3px !important;
+            font-size: 9.5px !important;
+            line-height: 1.35 !important;
+          }
+
+          .indoor-dashboard-work-panel > div:first-child button,
+          .indoor-dashboard-panel > div:first-child button {
+            min-height: 36px !important;
+            padding: 6px 10px !important;
+            flex-shrink: 0;
+          }
+
+          /* Mobile work list: desktop table becomes readable job cards. */
+          .indoor-dashboard-work-scroll {
+            overflow: visible !important;
+          }
+
+          .indoor-dashboard-work-table {
+            display: block;
+            width: 100% !important;
+            table-layout: auto !important;
+          }
+
+          .indoor-dashboard-work-table thead {
+            display: none;
+          }
+
+          .indoor-dashboard-work-table tbody {
+            display: block;
+          }
+
+          .indoor-dashboard-work-table tbody tr {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 10px 12px;
+            padding: 14px;
+            border-bottom: 1px solid #e7e7ea;
+            background: #ffffff;
+          }
+
+          .indoor-dashboard-work-table tbody tr:last-child {
+            border-bottom: 0;
+          }
+
+          .indoor-dashboard-work-table td {
+            width: auto !important;
+            padding: 0 !important;
+            border-bottom: 0 !important;
+            min-width: 0;
+          }
+
+          .indoor-dashboard-work-table td:nth-child(1) {
+            grid-column: 1;
+            grid-row: 1;
+            align-self: center;
+            font-size: 12.5px !important;
+            line-height: 1.3;
+            overflow-wrap: anywhere;
+          }
+
+          .indoor-dashboard-work-table td:nth-child(4) {
+            grid-column: 2;
+            grid-row: 1;
+            justify-self: end;
+            align-self: start;
+          }
+
+          .indoor-dashboard-work-table td:nth-child(2),
+          .indoor-dashboard-work-table td:nth-child(3) {
+            grid-column: 1 / -1;
+            display: grid;
+            grid-template-columns: 92px minmax(0, 1fr);
+            align-items: baseline;
+            gap: 10px;
+            color: #3f3f46 !important;
+            font-size: 11px !important;
+          }
+
+          .indoor-dashboard-work-table td:nth-child(2)::before,
+          .indoor-dashboard-work-table td:nth-child(3)::before {
+            color: #85868b;
+            font-size: 8px;
+            font-weight: 700;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+          }
+
+          .indoor-dashboard-work-table td:nth-child(2)::before {
+            content: "Current step";
+          }
+
+          .indoor-dashboard-work-table td:nth-child(3)::before {
+            content: "Due date";
+          }
+
+          .indoor-dashboard-work-table td:nth-child(5) {
+            grid-column: 1 / -1;
+            text-align: left !important;
+          }
+
+          .indoor-dashboard-work-table td:nth-child(5) button {
+            width: 100%;
+            min-height: 40px !important;
+            padding: 8px 12px !important;
+            font-size: 10.5px !important;
+          }
+
+          .indoor-dashboard-lower-grid {
+            grid-template-columns: minmax(0, 1fr);
+            gap: 12px;
+          }
+
+          .indoor-dashboard-appointment-row {
+            min-height: 0 !important;
+            padding: 13px 14px !important;
+            grid-template-columns: 64px minmax(0, 1fr) !important;
+            align-items: start !important;
+            gap: 7px 10px !important;
+          }
+
+          .indoor-dashboard-appointment-row > :nth-child(3) {
+            grid-column: 2;
+            justify-self: start;
+          }
+
+          .indoor-dashboard-inventory-row {
+            min-height: 0 !important;
+            padding: 13px 14px !important;
+            grid-template-columns: minmax(0, 1fr) auto !important;
+            align-items: start !important;
+            gap: 7px 10px !important;
+          }
+
+          .indoor-dashboard-inventory-row > :nth-child(1) {
+            grid-column: 1;
+            grid-row: 1;
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            overflow-wrap: anywhere;
+          }
+
+          .indoor-dashboard-inventory-row > :nth-child(3) {
+            grid-column: 2;
+            grid-row: 1;
+            justify-self: end;
+          }
+
+          .indoor-dashboard-inventory-row > :nth-child(2) {
+            grid-column: 1 / -1;
+            grid-row: 2;
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+          }
+
+          .indoor-dashboard-inventory-row > :nth-child(2) > div:last-child {
+            margin-top: 0 !important;
+          }
+        }
+
+        @media (max-width: 360px) {
+          .indoor-dashboard-summary-card {
+            padding: 11px !important;
+          }
+
+          .indoor-dashboard-work-table td:nth-child(2),
+          .indoor-dashboard-work-table td:nth-child(3) {
+            grid-template-columns: 82px minmax(0, 1fr);
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .indoor-dashboard-summary-card,
+          .indoor-dashboard-work-table tbody tr {
+            transition: none !important;
           }
         }
       `}</style>

@@ -1,5 +1,6 @@
 import { Outlet, NavLink } from "react-router-dom";
 import {
+  Home,
   LayoutDashboard,
   Search,
   ShoppingCart,
@@ -14,7 +15,7 @@ import {
   ChevronRight,
   ClipboardList,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "./POSLayout.css";
 import useAuthStore from "../../store/authStore";
 import { useCart } from "../../pages/customer/cartcontext";
@@ -26,7 +27,19 @@ import {
 
 export default function POSLayout() {
   const { user, logout, hasPermission } = useAuthStore();
-  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
+
+  // WISDOM STAFF MOBILE SHELL PHASE A R3
+  // WISDOM STAFF SHELL FINALIZATION PHASE A4 R1
+  // Only operational staff roles use the adaptive phone/tablet shell.
+  // Admin preserves the existing sidebar behavior.
+  const hasStaffMobileShell =
+    user?.role === "staff" &&
+    ["cashier", "indoor", "delivery_rider"].includes(user?.staff_type);
+
+  const [sidebarOpen, setSidebarOpen] = useState(() =>
+    hasStaffMobileShell ? window.innerWidth >= 900 : window.innerWidth > 768,
+  );
+  const [mobileAccountOpen, setMobileAccountOpen] = useState(false);
   const [showMiniLogout, setShowMiniLogout] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -217,7 +230,7 @@ export default function POSLayout() {
       ];
     } else if (isIndoorStaff) {
       baseItems = [
-        { to: "/staff/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+        { to: "/staff/dashboard", icon: Home, label: "Dashboard" },
         { to: "/staff/tasks", icon: ClipboardList, label: "My Tasks" },
         {
           to: "/staff/appointment",
@@ -230,7 +243,7 @@ export default function POSLayout() {
       baseItems = [
         {
           to: "/staff/rider-dashboard",
-          icon: LayoutDashboard,
+          icon: Home,
           label: "Dashboard",
         },
         { to: "/staff/deliveries", icon: Truck, label: "Deliveries" },
@@ -266,6 +279,48 @@ export default function POSLayout() {
     user?.authority_level,
   ]);
 
+  const mobileNavItems = useMemo(() => {
+    if (!hasStaffMobileShell) return [];
+
+    const managerDividerIndex = navItems.findIndex((item) => item.isHeader);
+    const coreItems =
+      managerDividerIndex >= 0
+        ? navItems.slice(0, managerDividerIndex)
+        : navItems;
+
+    return coreItems.filter((item) => !item.isHeader);
+  }, [hasStaffMobileShell, navItems]);
+
+  const mobileManagerItems = useMemo(() => {
+    if (!hasStaffMobileShell) return [];
+
+    const managerDividerIndex = navItems.findIndex((item) => item.isHeader);
+    if (managerDividerIndex < 0) return [];
+
+    return navItems
+      .slice(managerDividerIndex + 1)
+      .filter((item) => !item.isHeader);
+  }, [hasStaffMobileShell, navItems]);
+
+  const mobileNavLabel = (item) => {
+    const labels = {
+      "/staff/products": "Products",
+      "/staff/order": "Order",
+      "/staff/history": "History",
+      "/staff/blueprint-payments": "Payments",
+      "/staff/reports": "Reports",
+      "/staff/dashboard": "Home",
+      "/staff/tasks": "Tasks",
+      "/staff/appointment": "Appointments",
+      "/staff/inventory": "Inventory",
+      "/staff/rider-dashboard": "Home",
+      "/staff/deliveries": "Deliveries",
+      "/staff/rider-history": "History",
+    };
+
+    return labels[item?.to] || item?.label || "Page";
+  };
+
   // WISDOM ROLE BASED SIDEBAR IDENTITY V1
   const roleLabel = isAdmin
     ? "Administrator"
@@ -291,6 +346,52 @@ export default function POSLayout() {
             ? "Staff Portal"
             : "System";
 
+  useEffect(() => {
+    if (!hasStaffMobileShell) return undefined;
+
+    const compactQuery = window.matchMedia("(max-width: 899px)");
+
+    const syncStaffNavigation = (event) => {
+      setSidebarOpen(!event.matches);
+      setMobileAccountOpen(false);
+      setShowMiniLogout(false);
+    };
+
+    syncStaffNavigation(compactQuery);
+
+    if (typeof compactQuery.addEventListener === "function") {
+      compactQuery.addEventListener("change", syncStaffNavigation);
+
+      return () =>
+        compactQuery.removeEventListener("change", syncStaffNavigation);
+    }
+
+    compactQuery.addListener(syncStaffNavigation);
+    return () => compactQuery.removeListener(syncStaffNavigation);
+  }, [hasStaffMobileShell]);
+
+  useEffect(() => {
+    if (!hasStaffMobileShell) return undefined;
+
+    const phoneQuery = window.matchMedia("(max-width: 767px)");
+
+    const closeMobileAccountOffPhone = (event) => {
+      if (!event.matches) setMobileAccountOpen(false);
+    };
+
+    closeMobileAccountOffPhone(phoneQuery);
+
+    if (typeof phoneQuery.addEventListener === "function") {
+      phoneQuery.addEventListener("change", closeMobileAccountOffPhone);
+
+      return () =>
+        phoneQuery.removeEventListener("change", closeMobileAccountOffPhone);
+    }
+
+    phoneQuery.addListener(closeMobileAccountOffPhone);
+    return () => phoneQuery.removeListener(closeMobileAccountOffPhone);
+  }, [hasStaffMobileShell]);
+
   const handleLogout = () => {
     if (signingOut) return;
 
@@ -314,6 +415,7 @@ export default function POSLayout() {
   };
 
   const openLogoutConfirm = () => {
+    setMobileAccountOpen(false);
     setLogoutConfirmOpen(true);
   };
 
@@ -323,8 +425,109 @@ export default function POSLayout() {
 
   return (
     <div
-      className={`pos-root ${sidebarOpen ? "sidebar-open" : "sidebar-closed"}`}
+      className={`pos-root ${hasStaffMobileShell ? "pos-staff-workspace " : ""}${sidebarOpen ? "sidebar-open" : "sidebar-closed"}`}
     >
+      {hasStaffMobileShell && (
+        <header className="pos-mobile-staff-topbar">
+          <div className="pos-mobile-staff-brand">
+            <strong>WISDOM</strong>
+            <span>{workspaceLabel}</span>
+          </div>
+
+          <div className="pos-mobile-staff-actions">
+            <NotificationBell compact />
+            <button
+              type="button"
+              className="pos-mobile-staff-account"
+              onClick={() => setMobileAccountOpen(true)}
+              aria-label="Open account"
+              title="Account"
+            >
+              {user?.name?.charAt(0)?.toUpperCase() || "U"}
+            </button>
+          </div>
+        </header>
+      )}
+
+      {hasStaffMobileShell && mobileAccountOpen && (
+        <div
+          className="pos-mobile-account-layer"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setMobileAccountOpen(false);
+            }
+          }}
+        >
+          <section
+            className="pos-mobile-account-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="mobile-staff-account-title"
+          >
+            <div className="pos-mobile-account-handle" aria-hidden="true" />
+
+            <div className="pos-mobile-account-header">
+              <div className="pos-mobile-account-avatar" aria-hidden="true">
+                {user?.name?.charAt(0)?.toUpperCase() || "U"}
+              </div>
+
+              <div className="pos-mobile-account-identity">
+                <strong id="mobile-staff-account-title">
+                  {user?.name || "Staff"}
+                </strong>
+                <span>{roleLabel}</span>
+              </div>
+
+              <button
+                type="button"
+                className="pos-mobile-account-close"
+                onClick={() => setMobileAccountOpen(false)}
+                aria-label="Close account"
+                title="Close"
+              >
+                <X size={20} strokeWidth={2} />
+              </button>
+            </div>
+
+            {mobileManagerItems.length > 0 && (
+              <div className="pos-mobile-manager-tools">
+                <div className="pos-mobile-account-section-label">
+                  Manager Tools
+                </div>
+
+                <nav aria-label="Manager tools">
+                  {mobileManagerItems.map((item) => (
+                    <NavLink
+                      key={`mobile-manager-${item.to}`}
+                      to={item.to}
+                      className="pos-mobile-manager-link"
+                      onClick={() => setMobileAccountOpen(false)}
+                    >
+                      <item.icon
+                        size={20}
+                        strokeWidth={1.9}
+                        aria-hidden="true"
+                      />
+                      <span>{item.label}</span>
+                      <ChevronRight size={16} strokeWidth={1.8} aria-hidden="true" />
+                    </NavLink>
+                  ))}
+                </nav>
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="pos-mobile-account-logout"
+              onClick={openLogoutConfirm}
+            >
+              <LogOut size={19} strokeWidth={1.9} aria-hidden="true" />
+              <span>Logout</span>
+            </button>
+          </section>
+        </div>
+      )}
+
       <div
         className="sidebar-overlay"
         onClick={() => setSidebarOpen(false)}
@@ -355,7 +558,7 @@ export default function POSLayout() {
 
         <nav className="sidebar-nav">
           {navItems.map((item, index) => {
-            // 👉 If the item is a header, render a title text or a divider line
+            // ðŸ‘‰ If the item is a header, render a title text or a divider line
             if (item.isHeader) {
               return sidebarOpen ? (
                 <div key={`header-${index}`} className="sidebar-section-header">
@@ -380,7 +583,7 @@ export default function POSLayout() {
                   }
                 }}
               >
-                <item.icon size={20} />
+                <item.icon size={20} strokeWidth={1.9} />
                 {sidebarOpen && <span>{item.label}</span>}
                 {sidebarOpen && (
                   <ChevronRight size={14} className="nav-arrow" />
@@ -493,6 +696,31 @@ export default function POSLayout() {
       <main className="pos-main">
         <Outlet />
       </main>
+
+      {hasStaffMobileShell && mobileNavItems.length > 0 && (
+        <nav
+          className={`pos-mobile-bottom-nav pos-mobile-bottom-nav-${mobileNavItems.length}`}
+          aria-label={`${workspaceLabel} primary navigation`}
+        >
+          {mobileNavItems.map((item) => (
+            <NavLink
+              key={`mobile-${item.to}`}
+              to={item.to}
+              className={({ isActive }) =>
+                `pos-mobile-bottom-item ${isActive ? "active" : ""}`
+              }
+              onClick={() => {
+                setSidebarOpen(false);
+                setMobileAccountOpen(false);
+                setShowMiniLogout(false);
+              }}
+            >
+              <item.icon size={22} strokeWidth={2.05} aria-hidden="true" />
+              <span>{mobileNavLabel(item)}</span>
+            </NavLink>
+          ))}
+        </nav>
+      )}
 
       {logoutConfirmOpen && (
         <div

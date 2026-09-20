@@ -1,7 +1,7 @@
 // WISDOM INDOOR INVENTORY LOOKUP UI V1.0.1
 import { useEffect, useMemo, useState } from "react";
 import api from "../../services/api";
-import { AlertTriangle, Package, Search } from "lucide-react";
+import { AlertTriangle, Boxes, PackageCheck, PackageSearch, Search } from "lucide-react";
 
 const FILTERS = [
   ["all", "All"],
@@ -98,26 +98,31 @@ export default function InventoryLookup() {
       </header>
 
       <section className="indoor-inventory-summary">
-        <SummaryCard icon={Package} value={counts.in_stock} label="In Stock" />
-        <SummaryCard icon={Package} value={counts.low_stock} label="Low Stock" />
+        <SummaryCard
+          icon={PackageCheck}
+          value={counts.in_stock}
+          label="In Stock"
+        />
+        <SummaryCard
+          icon={PackageSearch}
+          value={counts.low_stock}
+          label="Low Stock"
+        />
         <SummaryCard
           icon={AlertTriangle}
           value={counts.out_of_stock}
           label="Out of Stock"
           danger={counts.out_of_stock > 0}
         />
-        <SummaryCard
-          icon={Package}
-          value={counts.total}
-          label="Total Items"
-          emphasized
-        />
+        <SummaryCard icon={Boxes} value={counts.total} label="Total Items" />
       </section>
 
       <section className="indoor-inventory-toolbar">
         <label className="indoor-inventory-search">
           <Search size={15} strokeWidth={1.8} />
           <input
+            id="staff-inventory-search"
+            name="staff_inventory_search"
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -271,20 +276,13 @@ export default function InventoryLookup() {
           display: flex;
           align-items: center;
           justify-content: center;
-          border: 1px solid #dedee2;
-          border-radius: 0;
-          background: #fafafa;
+          border: 0;
+          background: transparent;
           color: #18181b;
         }
 
-        .indoor-inventory-summary-icon.is-emphasized {
-          background: #18181b;
-          color: #ffffff;
-        }
-
         .indoor-inventory-summary-icon.is-danger {
-          border-color: #d8a3a3;
-          color: #991b1b;
+          color: #dc2626;
         }
 
         .indoor-inventory-summary-value {
@@ -504,23 +502,180 @@ export default function InventoryLookup() {
           }
         }
 
-        @media (max-width: 640px) {
+        @media (max-width: 767px) {
+          .indoor-inventory-page {
+            padding-bottom: 10px;
+          }
+
+          .indoor-inventory-header {
+            margin-bottom: 15px;
+          }
+
+          .indoor-inventory-header h1 {
+            font-size: 22px;
+          }
+
+          .indoor-inventory-header p {
+            margin-top: 5px;
+            font-size: 12px;
+          }
+
           .indoor-inventory-summary {
-            grid-template-columns: 1fr;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+            margin-bottom: 12px;
+          }
+
+          .indoor-inventory-summary-card {
+            min-height: 92px;
+            padding: 13px;
+            flex-direction: column;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 9px;
+          }
+
+          .indoor-inventory-summary-icon {
+            width: 30px;
+            height: 30px;
+            flex-basis: 30px;
+          }
+
+          .indoor-inventory-summary-icon svg {
+            width: 21px;
+            height: 21px;
+          }
+
+          .indoor-inventory-summary-value {
+            font-size: 21px;
           }
 
           .indoor-inventory-toolbar {
+            margin-bottom: 12px;
+            padding: 10px;
             flex-direction: column;
             align-items: stretch;
+            gap: 9px;
           }
 
           .indoor-inventory-search {
+            width: 100%;
             flex-basis: auto;
             min-width: 0;
           }
 
+          .indoor-inventory-search input {
+            height: 40px;
+          }
+
+          .indoor-inventory-filters {
+            width: 100%;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            padding-bottom: 2px;
+            scrollbar-width: none;
+          }
+
+          .indoor-inventory-filters::-webkit-scrollbar {
+            display: none;
+          }
+
+          .indoor-inventory-filters button {
+            flex: 0 0 auto;
+            min-height: 36px;
+          }
+
           .indoor-inventory-count {
             margin-left: 0;
+          }
+
+          .indoor-inventory-table-panel {
+            border: 0;
+            background: transparent;
+            overflow: visible;
+          }
+
+          .indoor-inventory-table-wrap {
+            overflow: visible;
+          }
+
+          .indoor-inventory-table-panel table {
+            min-width: 0;
+            display: block;
+            background: transparent;
+          }
+
+          .indoor-inventory-table-panel thead {
+            display: none;
+          }
+
+          .indoor-inventory-table-panel tbody {
+            display: grid;
+            gap: 8px;
+          }
+
+          .indoor-inventory-table-panel tr {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 11px 14px;
+            padding: 13px;
+            background: #ffffff;
+            border: 1px solid #dcdde1;
+          }
+
+          .indoor-inventory-table-panel td {
+            min-width: 0;
+            padding: 0;
+            border: 0;
+            overflow-wrap: anywhere;
+          }
+
+          .indoor-inventory-table-panel td:nth-child(1),
+          .indoor-inventory-table-panel td:nth-child(6) {
+            grid-column: 1 / -1;
+          }
+
+          .indoor-inventory-table-panel td:nth-child(2)::before,
+          .indoor-inventory-table-panel td:nth-child(3)::before,
+          .indoor-inventory-table-panel td:nth-child(4)::before,
+          .indoor-inventory-table-panel td:nth-child(5)::before {
+            display: block;
+            margin-bottom: 4px;
+            color: #85868b;
+            font-size: 8px;
+            font-weight: 700;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+          }
+
+          .indoor-inventory-table-panel td:nth-child(2)::before {
+            content: "Category";
+          }
+
+          .indoor-inventory-table-panel td:nth-child(3)::before {
+            content: "Type";
+          }
+
+          .indoor-inventory-table-panel td:nth-child(4)::before {
+            content: "Stock";
+          }
+
+          .indoor-inventory-table-panel td:nth-child(5)::before {
+            content: "Reorder Level";
+          }
+
+          .indoor-inventory-product {
+            font-size: 12px;
+          }
+
+          .indoor-inventory-status {
+            min-height: 26px;
+          }
+        }
+
+        @media (max-width: 360px) {
+          .indoor-inventory-summary-card {
+            padding: 11px;
           }
         }
       `}</style>
@@ -528,25 +683,18 @@ export default function InventoryLookup() {
   );
 }
 
-function SummaryCard({
-  icon: Icon,
-  value,
-  label,
-  emphasized = false,
-  danger = false,
-}) {
+function SummaryCard({ icon: Icon, value, label, danger = false }) {
   return (
     <div className="indoor-inventory-summary-card">
       <div
         className={[
           "indoor-inventory-summary-icon",
-          emphasized ? "is-emphasized" : "",
           danger ? "is-danger" : "",
         ]
           .filter(Boolean)
           .join(" ")}
       >
-        <Icon size={18} strokeWidth={1.8} />
+        <Icon size={21} strokeWidth={1.9} />
       </div>
 
       <div>

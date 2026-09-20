@@ -540,8 +540,8 @@ export default function MyTasks() {
   }, [groupedOrders, filter, search]);
 
   return (
-    <div style={pageShell}>
-      <header style={pageHeader}>
+    <div className="indoor-tasks-page" style={pageShell}>
+      <header className="indoor-tasks-header" style={pageHeader}>
         <div>
           <h1 style={pageTitle}>My Production Work</h1>
           <p style={pageSubtitle}>
@@ -550,7 +550,7 @@ export default function MyTasks() {
         </div>
       </header>
 
-      <section style={summaryGrid}>
+      <section className="indoor-tasks-summary" style={summaryGrid}>
         <SummaryCard label="New Assignments" value={summary.assigned} />
         <SummaryCard
           label="In Production"
@@ -565,17 +565,20 @@ export default function MyTasks() {
         <SummaryCard label="Ready" value={summary.ready} />
       </section>
 
-      <section style={toolbar}>
+      <section className="indoor-tasks-toolbar" style={toolbar}>
         <input
+          id="staff-production-search"
+          name="staff_production_search"
           type="search"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Search order or production step"
           aria-label="Search production work"
+          className="indoor-tasks-search"
           style={searchInput}
         />
 
-        <div style={filterRow}>
+        <div className="indoor-tasks-filter-row" style={filterRow}>
           {FILTERS.map((item) => {
             const active = filter === item.key;
 
@@ -593,8 +596,8 @@ export default function MyTasks() {
         </div>
       </section>
 
-      <section style={listPanel}>
-        <div style={listHeader}>
+      <section className="indoor-tasks-list-panel" style={listPanel}>
+        <div className="indoor-tasks-list-header" style={listHeader}>
           <div>
             <h2 style={sectionTitle}>Production Orders</h2>
             <p style={sectionSubtitle}>Newest assignments first.</p>
@@ -613,7 +616,7 @@ export default function MyTasks() {
         ) : visibleOrders.length === 0 ? (
           <div style={emptyState}>No production work matches this view.</div>
         ) : (
-          <div style={orderList}>
+          <div className="indoor-task-order-list" style={orderList}>
             {visibleOrders.map((order) => {
               const orderMeta =
                 ORDER_STATUS_META[order.overallStatus] ||
@@ -628,11 +631,12 @@ export default function MyTasks() {
                 <article
                   key={order.key}
                   id={`order-group-${order.orderId || order.key}`}
+                  className="indoor-task-order-card"
                   style={orderCard}
                 >
-                  <div style={orderSummary}>
-                    <div style={orderPrimary}>
-                      <div style={orderHeadingRow}>
+                  <div className="indoor-task-order-summary" style={orderSummary}>
+                    <div className="indoor-task-order-primary" style={orderPrimary}>
+                      <div className="indoor-task-order-heading" style={orderHeadingRow}>
                         <div>
                           <div style={orderNumber}>{order.orderNumber}</div>
                           <div style={currentStepText}>{currentStep}</div>
@@ -650,7 +654,7 @@ export default function MyTasks() {
                         </span>
                       </div>
 
-                      <div style={metaGrid}>
+                      <div className="indoor-task-meta-grid" style={metaGrid}>
                         <Info
                           label="Due Date"
                           value={formatDueDate(order.dueDate)}
@@ -667,8 +671,8 @@ export default function MyTasks() {
                       </div>
                     </div>
 
-                    <div style={orderActionColumn}>
-                      <div style={progressArea}>
+                    <div className="indoor-task-action-column" style={orderActionColumn}>
+                      <div className="indoor-task-progress-area" style={progressArea}>
                         <div style={progressTrack}>
                           <div
                             style={{
@@ -697,7 +701,7 @@ export default function MyTasks() {
                   </div>
 
                   {isExpanded ? (
-                    <div style={expandedArea}>
+                    <div className="indoor-task-expanded" style={expandedArea}>
                       <ProductionBlueprintPanel
                         orderId={order.orderId}
                         orderNumber={order.orderNumber}
@@ -752,6 +756,7 @@ export default function MyTasks() {
                           return (
                             <div
                               key={step.stepLabel}
+                              className="indoor-task-step-row"
                               id={
                                 step.task
                                   ? `task-step-${step.task.id}`
@@ -811,7 +816,7 @@ export default function MyTasks() {
                                 ) : null}
                               </div>
 
-                              <div style={stepRight}>
+                              <div className="indoor-task-step-right" style={stepRight}>
                                 <span
                                   style={{
                                     ...statusBadge,
@@ -824,7 +829,7 @@ export default function MyTasks() {
                                 </span>
 
                                 {step.task && isOwnedByCurrentUser ? (
-                                  <div style={stepActions}>
+                                  <div className="indoor-task-step-actions" style={stepActions}>
                                     {step.status === "pending" &&
                                     canStartThisStep ? (
                                       <button
@@ -932,6 +937,279 @@ export default function MyTasks() {
         )}
       </section>
 
+      <style>{`
+        /* WISDOM FURNITURE SPECIALIST TASKS MOBILE FLOW B2 */
+        .indoor-tasks-page {
+          width: min(100%, 1440px);
+          max-width: 1440px;
+          margin: 0 auto;
+        }
+
+        @media (max-width: 767px) {
+          .indoor-tasks-page {
+            padding-bottom: 10px !important;
+          }
+
+          .indoor-tasks-header {
+            margin-bottom: 15px !important;
+          }
+
+          .indoor-tasks-header h1 {
+            font-size: 22px !important;
+            line-height: 1.12 !important;
+          }
+
+          .indoor-tasks-header p {
+            margin-top: 5px !important;
+            font-size: 12px !important;
+          }
+
+          .indoor-tasks-summary {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 8px !important;
+            margin-bottom: 12px !important;
+          }
+
+          .indoor-tasks-summary-card {
+            min-height: 86px !important;
+            padding: 13px !important;
+          }
+
+          .indoor-tasks-toolbar {
+            padding: 10px !important;
+            margin-bottom: 12px !important;
+            display: block !important;
+          }
+
+          .indoor-tasks-search {
+            width: 100% !important;
+            min-width: 0 !important;
+            height: 40px !important;
+          }
+
+          .indoor-tasks-filter-row {
+            width: 100%;
+            margin-top: 9px;
+            display: flex !important;
+            flex-wrap: nowrap !important;
+            gap: 6px !important;
+            overflow-x: auto;
+            padding-bottom: 2px;
+            scrollbar-width: none;
+          }
+
+          .indoor-tasks-filter-row::-webkit-scrollbar {
+            display: none;
+          }
+
+          .indoor-tasks-filter-row button {
+            flex: 0 0 auto;
+            min-height: 36px !important;
+          }
+
+          .indoor-tasks-list-panel {
+            overflow: hidden;
+          }
+
+          .indoor-tasks-list-header {
+            min-height: 0 !important;
+            padding: 13px 14px !important;
+          }
+
+          .indoor-task-order-card {
+            overflow: hidden;
+          }
+
+          .indoor-task-order-summary {
+            padding: 14px !important;
+            display: block !important;
+          }
+
+          .indoor-task-order-primary {
+            width: 100%;
+            min-width: 0;
+          }
+
+          .indoor-task-order-heading {
+            align-items: flex-start !important;
+            gap: 10px !important;
+          }
+
+          .indoor-task-order-heading > div:first-child {
+            min-width: 0;
+          }
+
+          .indoor-task-order-heading > span {
+            flex: 0 0 auto;
+          }
+
+          .indoor-task-meta-grid {
+            margin-top: 13px !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 11px 14px !important;
+          }
+
+          .indoor-task-meta-grid > div:nth-child(3) {
+            grid-column: 1 / -1;
+          }
+
+          .indoor-task-action-column {
+            width: 100% !important;
+            flex: 0 0 auto !important;
+            margin-top: 14px;
+            gap: 9px !important;
+          }
+
+          .indoor-task-progress-area {
+            width: 100%;
+          }
+
+          .indoor-task-action-column > button {
+            width: 100%;
+            min-height: 40px !important;
+          }
+
+          .indoor-task-expanded {
+            padding: 0 12px 14px !important;
+          }
+
+          .indoor-task-blueprint-panel {
+            padding: 12px !important;
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 12px !important;
+          }
+
+          .indoor-task-blueprint-preview {
+            width: 100% !important;
+            height: 180px !important;
+            flex: 0 0 auto !important;
+          }
+
+          .indoor-task-blueprint-content {
+            width: 100% !important;
+            min-width: 0 !important;
+            flex: 0 0 auto !important;
+          }
+
+          .indoor-task-blueprint-action {
+            width: 100%;
+            align-self: auto !important;
+          }
+
+          .indoor-task-blueprint-action button {
+            width: 100%;
+            min-height: 40px !important;
+          }
+
+          .indoor-task-materials-panel {
+            margin-top: 12px !important;
+          }
+
+          .indoor-task-materials-header {
+            min-height: 0 !important;
+            padding: 12px !important;
+            align-items: flex-start !important;
+          }
+
+          .indoor-task-materials-table-wrap {
+            overflow: visible !important;
+          }
+
+          .indoor-task-materials-table {
+            min-width: 0 !important;
+          }
+
+          .indoor-task-materials-header-row {
+            display: none !important;
+          }
+
+          .indoor-task-material-row {
+            min-height: 0 !important;
+            padding: 12px !important;
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 10px 14px !important;
+          }
+
+          .indoor-task-material-row > div:first-child {
+            grid-column: 1 / -1;
+          }
+
+          .indoor-task-material-row > div:nth-child(2),
+          .indoor-task-material-row > div:nth-child(3) {
+            min-width: 0;
+          }
+
+          .indoor-task-material-row > div:nth-child(2)::before,
+          .indoor-task-material-row > div:nth-child(3)::before {
+            display: block;
+            margin-bottom: 4px;
+            color: #85868b;
+            font-size: 8px;
+            font-weight: 700;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+          }
+
+          .indoor-task-material-row > div:nth-child(2)::before {
+            content: "Required Qty";
+          }
+
+          .indoor-task-material-row > div:nth-child(3)::before {
+            content: "Unit";
+          }
+
+          .indoor-task-step-row {
+            min-height: 0 !important;
+            padding: 12px !important;
+            grid-template-columns: 28px minmax(0, 1fr) !important;
+            align-items: start !important;
+            gap: 10px !important;
+          }
+
+          .indoor-task-step-right {
+            grid-column: 1 / -1;
+            margin-left: 38px;
+            width: calc(100% - 38px);
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: stretch !important;
+            justify-content: flex-start !important;
+            gap: 8px !important;
+          }
+
+          .indoor-task-step-right > span {
+            align-self: flex-start;
+          }
+
+          .indoor-task-step-actions {
+            width: 100%;
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 7px !important;
+          }
+
+          .indoor-task-step-actions button {
+            width: 100%;
+            min-height: 40px !important;
+          }
+        }
+
+        @media (max-width: 380px) {
+          .indoor-task-meta-grid {
+            grid-template-columns: 1fr !important;
+          }
+
+          .indoor-task-meta-grid > div:nth-child(3) {
+            grid-column: auto;
+          }
+
+          .indoor-task-step-actions {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
       {holdTarget ? (
         <div
           style={{
@@ -1062,8 +1340,8 @@ function ProductionMaterialsPanel({ materials = [] }) {
   const rows = Array.isArray(materials) ? materials : [];
 
   return (
-    <div style={materialsPanel}>
-      <div style={materialsHeader}>
+    <div className="indoor-task-materials-panel" style={materialsPanel}>
+      <div className="indoor-task-materials-header" style={materialsHeader}>
         <div>
           <div style={materialsTitle}>Required Materials</div>
           <div style={materialsSubtitle}>
@@ -1078,9 +1356,9 @@ function ProductionMaterialsPanel({ materials = [] }) {
           No recorded required inventory materials for this order.
         </div>
       ) : (
-        <div style={materialsTableWrap}>
-          <div style={materialsTable}>
-            <div style={{ ...materialsRow, ...materialsTableHeader }}>
+        <div className="indoor-task-materials-table-wrap" style={materialsTableWrap}>
+          <div className="indoor-task-materials-table" style={materialsTable}>
+            <div className="indoor-task-materials-header-row" style={{ ...materialsRow, ...materialsTableHeader }}>
               <div>Material</div>
               <div>Required Qty</div>
               <div>Unit</div>
@@ -1093,6 +1371,7 @@ function ProductionMaterialsPanel({ materials = [] }) {
                     ? `material-${material.material_id}`
                     : `material-row-${index}`
                 }
+                className="indoor-task-material-row"
                 style={materialsRow}
               >
                 <div style={materialsName}>
@@ -1182,8 +1461,8 @@ function ProductionBlueprintPanel({ orderId, orderNumber }) {
     : "";
 
   return (
-    <div style={productionBlueprintPanel}>
-      <div style={productionBlueprintPreview}>
+    <div className="indoor-task-blueprint-panel" style={productionBlueprintPanel}>
+      <div className="indoor-task-blueprint-preview" style={productionBlueprintPreview}>
         {loading ? (
           <div style={productionPreviewState}>Loading design...</div>
         ) : blueprint && has3D ? (
@@ -1199,7 +1478,7 @@ function ProductionBlueprintPanel({ orderId, orderNumber }) {
         )}
       </div>
 
-      <div style={productionBlueprintContent}>
+      <div className="indoor-task-blueprint-content" style={productionBlueprintContent}>
         <div style={productionBlueprintKicker}>Production Blueprint</div>
         <div style={productionBlueprintTitle}>
           {loading
@@ -1222,7 +1501,7 @@ function ProductionBlueprintPanel({ orderId, orderNumber }) {
         <span style={productionReadOnlyBadge}>Read Only</span>
       </div>
 
-      <div style={productionBlueprintAction}>
+      <div className="indoor-task-blueprint-action" style={productionBlueprintAction}>
         <button
           type="button"
           onClick={() => navigate(`/staff/tasks/${Number(orderId)}/blueprint`)}
@@ -1240,7 +1519,7 @@ function ProductionBlueprintPanel({ orderId, orderNumber }) {
 
 function SummaryCard({ label, value, emphasized = false, danger = false }) {
   return (
-    <div style={summaryCard}>
+    <div className="indoor-tasks-summary-card" style={summaryCard}>
       <div
         style={{
           fontSize: 24,
@@ -1388,7 +1667,7 @@ const filterButton = {
 
 const activeFilterButton = {
   ...filterButton,
-  borderColor: "#18181b",
+  border: "1px solid #18181b",
   background: "#18181b",
   color: "#ffffff",
 };
@@ -1915,7 +2194,7 @@ const productionOpenButton = {
 
 const productionOpenButtonDisabled = {
   ...productionOpenButton,
-  borderColor: "#dedee2",
+  border: "1px solid #dedee2",
   background: "#f0f0f2",
   color: "#a0a1a6",
   cursor: "not-allowed",
