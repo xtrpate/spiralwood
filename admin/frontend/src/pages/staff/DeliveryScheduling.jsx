@@ -613,7 +613,7 @@ export default function DeliveryScheduling() {
   useEffect(() => {
     const preselectOrderId = searchParams.get("schedule_order_id");
 
-    if (!preselectOrderId || listLoading || showForm) {
+    if (!preselectOrderId || showForm) {
       return;
     }
 
@@ -667,7 +667,6 @@ export default function DeliveryScheduling() {
     };
   }, [
     searchParams,
-    listLoading,
     showForm,
     fetchEligibleOrders,
     fetchRiders,
@@ -2093,7 +2092,7 @@ export default function DeliveryScheduling() {
       </div>
 
       <div style={cardStyle}>
-        {listLoading ? (
+        {listLoading && deliveries.length === 0 ? (
           <p style={emptyStateStyle}>Loading deliveries...</p>
         ) : deliveries.length === 0 ? (
           <p style={emptyStateStyle}>No deliveries scheduled.</p>

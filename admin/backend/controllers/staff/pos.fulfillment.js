@@ -491,24 +491,19 @@ exports.getDeliverableOrders = async (req, res) => {
       [], // Added this safety parameter
     );
 
-    const deliverableRows = [];
-
-    for (const row of rows) {
+    const readinessPromises = rows.map(async (row) => {
       const isBlueprint =
         normalizeText(row.order_type).toLowerCase() === "blueprint";
 
-      if (!isBlueprint) {
-        deliverableRows.push(row);
-        continue;
-      }
-
-      if (normalizeText(row.status).toLowerCase() !== "production") {
-        continue;
-      }
+      if (!isBlueprint) return row;
+      if (normalizeText(row.status).toLowerCase() !== "production") return null;
 
       const readiness = await getBlueprintDeliveryReadiness(db, row.id);
-      if (readiness.ok) deliverableRows.push(row);
-    }
+      return readiness.ok ? row : null;
+    });
+
+    const resolvedRows = await Promise.all(readinessPromises);
+    const deliverableRows = resolvedRows.filter((row) => row !== null);
 
     res.json(deliverableRows);
   } catch (err) {
@@ -552,116 +547,11 @@ exports.getDeliveries = async (req, res) => {
             AND dav.voided_at IS NOT NULL
         ) AS delivery_has_voided_acknowledgement,
 
-        EXISTS(
-          SELECT 1
-          FROM payment_transactions ptr
-          WHERE ptr.order_id = o.id
-            AND LOWER(ptr.status) = 'pending'
-            AND LOWER(ptr.payment_method) = 'cash'
-            AND ptr.proof_url IS NOT NULL
-            AND (
-              LOWER(TRIM(COALESCE(ptr.notes, ''))) = 'collected on delivery.'
-              OR LOWER(TRIM(COALESCE(ptr.notes, ''))) LIKE 'collected on delivery by %'
-            )
-            AND ABS(
-              ptr.amount - GREATEST(
-                o.total - COALESCE(
-                  (
-                    SELECT SUM(
-                      CASE
-                        WHEN LOWER(pt_reuse.status) = 'verified' THEN pt_reuse.amount
-                        ELSE 0
-                      END
-                    )
-                    FROM payment_transactions pt_reuse
-                    WHERE pt_reuse.order_id = o.id
-                  ),
-                  0
-                ),
-                0
-              )
-            ) <= 0.01
-        ) AS delivery_has_reusable_pending_collection,
-
-        o.order_number,
-        o.total,
-        o.payment_method,
-        o.payment_status,
+       o.order_number,
         o.order_type,
-        o.remaining_payment_method,
-
-        (
-          SELECT CASE
-            WHEN JSON_VALID(oi_assembly.customization_json) = 1 THEN
-              LOWER(
-                JSON_UNQUOTE(
-                  JSON_EXTRACT(
-                    oi_assembly.customization_json,
-                    '$.assembly_choice'
-                  )
-                )
-              )
-            ELSE NULL
-          END
-          FROM order_items oi_assembly
-          WHERE oi_assembly.order_id = o.id
-            AND CASE
-              WHEN JSON_VALID(oi_assembly.customization_json) = 1 THEN
-                LOWER(
-                  JSON_UNQUOTE(
-                    JSON_EXTRACT(
-                      oi_assembly.customization_json,
-                      '$.assembly_choice'
-                    )
-                  )
-                )
-              ELSE NULL
-            END IN ('included', 'none')
-          ORDER BY oi_assembly.id ASC
-          LIMIT 1
-        ) AS requested_assembly_choice,
-
         o.delivery_lat,
         o.delivery_lng,
         o.created_at AS order_created_at,
-
-        COALESCE(
-          (
-            SELECT SUM(
-              CASE
-                WHEN LOWER(pt.status) = 'verified' THEN pt.amount
-                ELSE 0
-              END
-            )
-            FROM payment_transactions pt
-            WHERE pt.order_id = o.id
-          ),
-          0
-        ) AS payment_verified_total,
-
-        GREATEST(
-          o.total - COALESCE(
-            (
-              SELECT SUM(
-                CASE
-                  WHEN LOWER(pt.status) = 'verified' THEN pt.amount
-                  ELSE 0
-                END
-              )
-              FROM payment_transactions pt
-              WHERE pt.order_id = o.id
-            ),
-            0
-          ),
-          0
-        ) AS payment_balance,
-
-        (
-          SELECT COUNT(*)
-          FROM payment_transactions pt
-          WHERE pt.order_id = o.id
-            AND LOWER(pt.status) = 'pending'
-        ) AS pending_payment_count,
 
         COALESCE(o.walkin_customer_name, customer.name, 'Walk-in Customer') AS customer_name,
         COALESCE(o.walkin_customer_phone, customer.phone, '') AS customer_phone,
