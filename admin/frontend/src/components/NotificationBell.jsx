@@ -683,7 +683,7 @@ export default function NotificationBell({
                         : undefined
                     }
                     style={{
-                      ...S.notifItem(!n.is_read),
+                      ...S.notifItem(Boolean(n.is_read)),
                       padding: "11px 12px",
                       borderRadius: 5,
                       marginBottom: 8,
@@ -691,15 +691,15 @@ export default function NotificationBell({
                     }}
                     onClick={() => handleNotificationClick(n)}
                   >
-                    {!n.is_read && !useMonochromeNotification && (
+                    {!n.is_read && (
                       <span
                         aria-hidden="true"
                         style={{
                           position: "absolute",
-                          top: 13,
-                          right: 13,
-                          width: 7,
-                          height: 7,
+                          top: useMonochromeNotification ? 14 : 13,
+                          right: useMonochromeNotification ? 14 : 13,
+                          width: useMonochromeNotification ? 8 : 7,
+                          height: useMonochromeNotification ? 8 : 7,
                           borderRadius: "50%",
                           background: "#ef4444",
                         }}
