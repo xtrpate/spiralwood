@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import { getSocket, subscribeSocketReady } from "../../services/socket";
@@ -20,6 +20,12 @@ const STATUS_META = {
     title: "Confirmed",
     short: "Preparing your order",
     desc: "Your order has been confirmed and is being prepared.",
+  },
+  contract_released: {
+    badge: "Contract Sent",
+    title: "Contract Sent",
+    short: "Your contract is ready for review",
+    desc: "Your contract has been sent and is ready for your review.",
   },
   production: {
     badge: "In Production",
@@ -80,6 +86,11 @@ const TRACKING_STEPS = [
     desc: "Your order has been reviewed and confirmed.",
   },
   {
+    key: "contract_released",
+    label: "Contract Sent",
+    desc: "Your contract has been sent and is ready for your review.",
+  },
+  {
     key: "production",
     label: "In production",
     desc: "Your furniture is now being prepared or built.",
@@ -101,17 +112,15 @@ const TRACKING_STEPS = [
   },
 ];
 
-const STEP_ORDER = [
-  "pending",
-  "confirmed",
-  "production",
-  "shipping",
-  "delivered",
-  "completed",
-];
+function getTrackingSteps(order) {
+  const isBlueprintOrder =
+    String(order?.order_type || "")
+      .trim()
+      .toLowerCase() === "blueprint";
 
-function getStepIndex(status) {
-  return STEP_ORDER.indexOf(status);
+  return isBlueprintOrder
+    ? TRACKING_STEPS
+    : TRACKING_STEPS.filter((step) => step.key !== "production");
 }
 
 function fmt(n) {
@@ -207,11 +216,14 @@ function TrackingList({ order }) {
     );
   }
 
-  const currentIdx = getStepIndex(order.status);
+  const trackingSteps = getTrackingSteps(order);
+  const currentIdx = trackingSteps.findIndex(
+    (step) => step.key === order.status,
+  );
 
   return (
     <div className="tl-clean">
-      {TRACKING_STEPS.map((step, i) => {
+      {trackingSteps.map((step, i) => {
         const isDone = i < currentIdx;
         const isActive = i === currentIdx;
         const isFuture = i > currentIdx;
@@ -231,7 +243,7 @@ function TrackingList({ order }) {
                   ""
                 )}
               </div>
-              {i < TRACKING_STEPS.length - 1 && (
+              {i < trackingSteps.length - 1 && (
                 <div className={`tl-clean-line ${isDone ? "done" : ""}`} />
               )}
             </div>
@@ -252,23 +264,57 @@ function TrackingList({ order }) {
   );
 }
 
-function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
+function OrderModal({
+  orderId,
+  initialOrder = null,
+  onClose,
+  onConfirmOrder,
+  onCancelOrder,
+}) {
   const navigate = useNavigate();
-  const [order, setOrder] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [order, setOrder] = useState(initialOrder);
+  const [loading, setLoading] = useState(!initialOrder);
+  const orderRequestRef = useRef(0);
 
   useEffect(() => {
+    let active = true;
+    const requestId = ++orderRequestRef.current;
+
+    setOrder(initialOrder || null);
+    setLoading(!initialOrder);
+
     api
       .get(`/customer/orders/${orderId}`)
-      .then((r) => setOrder(r.data))
+      .then((response) => {
+        if (!active || requestId !== orderRequestRef.current) {
+          return;
+        }
+
+        setOrder(response.data || null);
+      })
       .catch((err) => {
+        if (!active || requestId !== orderRequestRef.current) {
+          return;
+        }
+
         console.error(
           "Failed to load customer order detail:",
           err?.response?.data || err,
         );
-        setOrder(null);
+
+        if (!initialOrder) {
+          setOrder(null);
+        }
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (active && requestId === orderRequestRef.current) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
   }, [orderId]);
 
   useEffect(() => {
@@ -283,14 +329,24 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
         return;
       }
 
+      const requestId = ++orderRequestRef.current;
+
       api
         .get(`/customer/orders/${orderId}`)
         .then((response) => {
-          setOrder(response.data);
+          if (requestId !== orderRequestRef.current) {
+            return;
+          }
+
+          setOrder(response.data || null);
         })
         .catch((err) => {
+          if (requestId !== orderRequestRef.current) {
+            return;
+          }
+
           console.error(
-            "Failed to refresh customer order after realtime status update:",
+            "Failed to refresh customer order after realtime update:",
             err?.response?.data || err,
           );
         });
@@ -308,14 +364,24 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
         return;
       }
 
+      const requestId = ++orderRequestRef.current;
+
       api
         .get(`/customer/orders/${orderId}`)
         .then((response) => {
-          setOrder(response.data);
+          if (requestId !== orderRequestRef.current) {
+            return;
+          }
+
+          setOrder(response.data || null);
         })
         .catch((err) => {
+          if (requestId !== orderRequestRef.current) {
+            return;
+          }
+
           console.error(
-            "Failed to refresh customer order after payment update:",
+            "Failed to refresh customer order after realtime update:",
             err?.response?.data || err,
           );
         });
@@ -556,91 +622,99 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
                 <div className="om-section">
                   <div className="om-section-title">Items</div>
                   <div className="om-items">
-                    {(order.items || []).map((item, i) => (
-                      <div key={i} className="om-item">
-                        <div className="om-item-img">
-                          {order.blueprint_id &&
-                          i === 0 &&
-                          order.blueprint_detail_preview ? (
-                            <div className="wisdom-order-blueprint-detail-live">
-                              <CustomerBlueprintViewer
-                                blueprint={{
-                                  ...order.blueprint_detail_preview,
-                                  thumbnail_url: null,
-                                }}
-                                readOnly
-                                showHumanControls={false}
-                                compact
-                                compactHeight={96}
-                                defaultPreset="isometric"
-                                defaultShowHuman={false}
+                    {(order.items || order.items_preview || []).map(
+                      (item, i) => (
+                        <div key={i} className="om-item">
+                          <div className="om-item-img">
+                            {order.blueprint_id &&
+                            i === 0 &&
+                            order.blueprint_detail_preview ? (
+                              <div className="wisdom-order-blueprint-detail-live">
+                                <CustomerBlueprintViewer
+                                  blueprint={{
+                                    ...order.blueprint_detail_preview,
+                                    thumbnail_url: null,
+                                  }}
+                                  readOnly
+                                  showHumanControls={false}
+                                  compact
+                                  compactHeight={96}
+                                  defaultPreset="isometric"
+                                  defaultShowHuman={false}
+                                />
+                              </div>
+                            ) : item.image_url ? (
+                              <img
+                                src={buildAssetUrl(item.image_url)}
+                                alt={item.product_name || "Order item"}
                               />
-                            </div>
-                          ) : item.image_url ? (
-                            <img
-                              src={buildAssetUrl(item.image_url)}
-                              alt={item.product_name || "Order item"}
-                            />
-                          ) : order.blueprint_detail_preview?.thumbnail_url ? (
-                            <img
-                              src={buildAssetUrl(
-                                order.blueprint_detail_preview.thumbnail_url,
-                              )}
-                              alt={
-                                order.blueprint_detail_preview.title ||
-                                "Blueprint preview"
-                              }
-                            />
-                          ) : order.blueprint_detail_preview?.file_url &&
-                            ["jpg", "jpeg", "png", "webp"].includes(
-                              String(
-                                order.blueprint_detail_preview.file_type || "",
-                              ).toLowerCase(),
-                            ) ? (
-                            <img
-                              src={buildAssetUrl(
-                                order.blueprint_detail_preview.file_url,
-                              )}
-                              alt={
-                                order.blueprint_detail_preview.title ||
-                                "Imported blueprint preview"
-                              }
-                            />
-                          ) : order.blueprint_id ? (
-                            <div className="om-blueprint-placeholder">
-                              <svg
-                                viewBox="0 0 48 48"
-                                aria-hidden="true"
-                                focusable="false"
-                              >
-                                <rect x="8" y="5" width="32" height="38" />
-                                <path d="M14 14h20M14 20h20M14 26h9M27 26h7M14 32h20M18 10v28M31 10v28" />
-                              </svg>
-                              <span>Blueprint</span>
-                            </div>
-                          ) : (
-                            <div className="om-item-img-placeholder">Item</div>
-                          )}
-                        </div>
-
-                        <div className="om-item-info">
-                          <div className="om-item-name">
-                            {order.blueprint_id
-                              ? order.blueprint_detail_preview?.title
-                                ? `Custom Blueprint – ${order.blueprint_detail_preview.title}`
-                                : "Custom Blueprint Order"
-                              : item.product_name}
+                            ) : order.blueprint_detail_preview
+                                ?.thumbnail_url ? (
+                              <img
+                                src={buildAssetUrl(
+                                  order.blueprint_detail_preview.thumbnail_url,
+                                )}
+                                alt={
+                                  order.blueprint_detail_preview.title ||
+                                  "Blueprint preview"
+                                }
+                              />
+                            ) : order.blueprint_detail_preview?.file_url &&
+                              ["jpg", "jpeg", "png", "webp"].includes(
+                                String(
+                                  order.blueprint_detail_preview.file_type ||
+                                    "",
+                                ).toLowerCase(),
+                              ) ? (
+                              <img
+                                src={buildAssetUrl(
+                                  order.blueprint_detail_preview.file_url,
+                                )}
+                                alt={
+                                  order.blueprint_detail_preview.title ||
+                                  "Imported blueprint preview"
+                                }
+                              />
+                            ) : order.blueprint_id ? (
+                              <div className="om-blueprint-placeholder">
+                                <svg
+                                  viewBox="0 0 48 48"
+                                  aria-hidden="true"
+                                  focusable="false"
+                                >
+                                  <rect x="8" y="5" width="32" height="38" />
+                                  <path d="M14 14h20M14 20h20M14 26h9M27 26h7M14 32h20M18 10v28M31 10v28" />
+                                </svg>
+                                <span>Blueprint</span>
+                              </div>
+                            ) : (
+                              <div className="om-item-img-placeholder">
+                                Item
+                              </div>
+                            )}
                           </div>
-                          <div className="om-item-qty">Qty {item.quantity}</div>
-                        </div>
 
-                        <div className="om-item-price">
-                          <div className="om-item-subtotal">
-                            {fmt(getItemSubtotal(item))}
+                          <div className="om-item-info">
+                            <div className="om-item-name">
+                              {order.blueprint_id
+                                ? order.blueprint_detail_preview?.title
+                                  ? `Custom Blueprint – ${order.blueprint_detail_preview.title}`
+                                  : "Custom Blueprint Order"
+                                : item.product_name}
+                            </div>
+                            <div className="om-item-qty">
+                              Qty {item.quantity}
+                            </div>
+                          </div>
+
+                          <div className="om-item-price">
+                            <div className="om-item-subtotal">
+                              {fmt(getItemSubtotal(item))}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      ),
+                    )}
                   </div>
                 </div>
               </div>
@@ -858,6 +932,7 @@ export default function OrdersPage() {
   }, []);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const ordersRequestRef = useRef(0);
   const [selectedId, setSelectedId] = useState(null);
   const [filter, setFilter] = useState("all");
 
@@ -1003,25 +1078,38 @@ export default function OrdersPage() {
   }, []);
 
   const fetchOrders = () => {
+    const requestId = ++ordersRequestRef.current;
+
     setLoading(true);
 
-    // WISDOM CUSTOMER ORDERS FAST LOAD V1
-    // The main orders endpoint already includes order_type and order id,
-    // so the page no longer waits for a second custom-orders request.
     api
       .get("/customer/orders")
       .then((ordersRes) => {
+        if (requestId !== ordersRequestRef.current) {
+          return;
+        }
+
         const nextOrders = Array.isArray(ordersRes.data) ? ordersRes.data : [];
+
         setOrders(nextOrders);
       })
       .catch((err) => {
+        if (requestId !== ordersRequestRef.current) {
+          return;
+        }
+
         console.error(
           "Failed to load customer orders:",
           err?.response?.data || err,
         );
+
         setOrders([]);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (requestId === ordersRequestRef.current) {
+          setLoading(false);
+        }
+      });
   };
 
   useEffect(() => {
@@ -1551,6 +1639,9 @@ export default function OrdersPage() {
       {selectedId && (
         <OrderModal
           orderId={selectedId}
+          initialOrder={orders.find(
+            (order) => Number(order?.id) === Number(selectedId),
+          )}
           onClose={() => setSelectedId(null)}
           onConfirmOrder={confirmOrderById}
           onCancelOrder={cancelOrderById}

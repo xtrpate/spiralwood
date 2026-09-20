@@ -284,6 +284,8 @@ const emitDeliveryAssigned = ({
       driver_id: Number(driverId),
       status,
       scheduled_date: scheduledDate || null,
+      change_type: "assigned",
+      updated_at: new Date().toISOString(),
     };
 
     io.to(`user:${driverId}`).emit("delivery:assigned", payload);
@@ -313,10 +315,13 @@ const emitDeliveryUnassigned = ({
       delivery_id: Number(deliveryId),
       order_id: Number(orderId),
       order_number: orderNumber || `#${orderId}`,
+      driver_id: null,
       previous_driver_id: Number(previousDriverId),
-      new_driver_id: Number(newDriverId),
+      new_driver_id: newDriverId ? Number(newDriverId) : null,
       status: "scheduled",
       scheduled_date: scheduledDate || null,
+      change_type: "unassigned",
+      updated_at: new Date().toISOString(),
     };
 
     io.to(`user:${previousDriverId}`).emit("delivery:unassigned", payload);

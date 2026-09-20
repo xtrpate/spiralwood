@@ -1,4 +1,10 @@
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, {
+  useEffect,
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import { formatPHDate } from "../../utils/dateTime";
@@ -369,6 +375,8 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState([]);
   const [total, setTotal] = useState(0);
   const [summary, setSummary] = useState(null);
+
+  const ordersRequestRef = useRef(0);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
     search: "",
@@ -395,16 +403,29 @@ export default function OrdersPage() {
 
   const load = useCallback(
     async ({ silent = false } = {}) => {
-      if (!silent) setLoading(true);
+      const requestId = ++ordersRequestRef.current;
+
+      if (!silent) {
+        setLoading(true);
+      }
+
       try {
         const { data } = await api.get("/orders", {
           params: { ...filters, limit: 20 },
         });
 
+        if (requestId !== ordersRequestRef.current) {
+          return;
+        }
+
         setOrders(Array.isArray(data?.orders) ? data.orders : []);
         setTotal(Number(data?.total || 0));
         setSummary(data?.summary || null);
       } catch (err) {
+        if (requestId !== ordersRequestRef.current) {
+          return;
+        }
+
         if (silent) {
           console.error(
             "Background orders refresh failed:",
@@ -414,7 +435,9 @@ export default function OrdersPage() {
           toast.error(err?.response?.data?.message || "Failed to load orders.");
         }
       } finally {
-        if (!silent) setLoading(false);
+        if (requestId === ordersRequestRef.current && !silent) {
+          setLoading(false);
+        }
       }
     },
     [filters],

@@ -1,5 +1,5 @@
 // WISDOM RIDER DASHBOARD DELIVERIES FINAL V1
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   CheckCircle,
@@ -133,6 +133,8 @@ export default function RiderDashboard() {
   const [deliveries, setDeliveries] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const deliveriesRequestRef = useRef(0);
+
   const todayKey = getTodayKey();
   const todayLabel = new Date().toLocaleDateString("en-PH", {
     timeZone: "Asia/Manila",
@@ -143,20 +145,32 @@ export default function RiderDashboard() {
   });
 
   const loadDeliveries = useCallback(async ({ silent = false } = {}) => {
+    const requestId = ++deliveriesRequestRef.current;
+
     if (!silent) {
       setLoading(true);
     }
 
     try {
       const res = await api.get("/pos/deliveries");
+
+      if (requestId !== deliveriesRequestRef.current) {
+        return;
+      }
+
       setDeliveries(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
+      if (requestId !== deliveriesRequestRef.current) {
+        return;
+      }
+
       console.error("Failed to load rider dashboard data", err);
+
       if (!silent) {
         setDeliveries([]);
       }
     } finally {
-      if (!silent) {
+      if (requestId === deliveriesRequestRef.current && !silent) {
         setLoading(false);
       }
     }
@@ -171,7 +185,11 @@ export default function RiderDashboard() {
       loadDeliveries({ silent: true });
     };
 
-    const handleDeliveryUpdated = () => {
+    const handleDeliveryUpdated = (payload) => {
+      if (payload?.order_status_changed) {
+        return;
+      }
+
       loadDeliveries({ silent: true });
     };
 

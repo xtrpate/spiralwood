@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../services/api";
 import { getSocket, subscribeSocketReady } from "../../services/socket";
@@ -247,8 +247,16 @@ export default function DeliveryScheduling() {
   const todayLocal = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   const [deliveries, setDeliveries] = useState([]);
   const [eligibleOrders, setEligibleOrders] = useState([]);
+  const [eligibleOrdersLoading, setEligibleOrdersLoading] = useState(false);
   const [riders, setRiders] = useState([]);
+  const [ridersLoading, setRidersLoading] = useState(false);
+
+  const eligibleOrdersRequestRef = useRef(0);
+  const ridersRequestRef = useRef(0);
+  const deliveriesRequestRef = useRef(0);
+
   const [showForm, setShowForm] = useState(false);
+  const [openingScheduleForm, setOpeningScheduleForm] = useState(false);
   const [form, setForm] = useState({
     order_id: "",
     driver_id: "",
@@ -406,52 +414,116 @@ export default function DeliveryScheduling() {
   };
 
   const fetchDeliveries = useCallback(async () => {
+    const requestId = ++deliveriesRequestRef.current;
+
     setListLoading(true);
 
     try {
       const res = await api.get("/pos/deliveries");
+
+      if (requestId !== deliveriesRequestRef.current) {
+        return;
+      }
+
       setDeliveries(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
+      if (requestId !== deliveriesRequestRef.current) {
+        return;
+      }
+
       setError(err.response?.data?.message || "Failed to load deliveries.");
       setDeliveries([]);
     } finally {
-      setListLoading(false);
+      if (requestId === deliveriesRequestRef.current) {
+        setListLoading(false);
+      }
     }
   }, []);
 
   const fetchEligibleOrders = useCallback(async () => {
+    const requestId = ++eligibleOrdersRequestRef.current;
+
+    setEligibleOrdersLoading(true);
+
     try {
       const res = await api.get("/pos/deliverable-orders");
-      setEligibleOrders(Array.isArray(res.data) ? res.data : []);
+      const nextOrders = Array.isArray(res.data) ? res.data : [];
+
+      if (requestId !== eligibleOrdersRequestRef.current) {
+        return [];
+      }
+
+      setEligibleOrders(nextOrders);
+      return nextOrders;
     } catch (err) {
+      if (requestId !== eligibleOrdersRequestRef.current) {
+        return [];
+      }
+
       console.error("Failed to load deliverable orders:", err);
       setEligibleOrders([]);
+      return [];
+    } finally {
+      if (requestId === eligibleOrdersRequestRef.current) {
+        setEligibleOrdersLoading(false);
+      }
     }
   }, []);
 
   const fetchRiders = useCallback(async () => {
+    const requestId = ++ridersRequestRef.current;
+
+    setRidersLoading(true);
+
     try {
       const res = await api.get("/users");
       const list = Array.isArray(res.data) ? res.data : [];
-      setRiders(
-        list.filter(
-          (u) =>
-            u.role === "staff" &&
-            u.staff_type === "delivery_rider" &&
-            u.is_active,
-        ),
+
+      const nextRiders = list.filter(
+        (u) =>
+          u.role === "staff" &&
+          u.staff_type === "delivery_rider" &&
+          u.is_active,
       );
+
+      if (requestId !== ridersRequestRef.current) {
+        return [];
+      }
+
+      setRiders(nextRiders);
+      return nextRiders;
     } catch (err) {
+      if (requestId !== ridersRequestRef.current) {
+        return [];
+      }
+
       console.error("Failed to load riders:", err);
       setRiders([]);
+      return [];
+    } finally {
+      if (requestId === ridersRequestRef.current) {
+        setRidersLoading(false);
+      }
     }
   }, []);
 
+  const openScheduleForm = useCallback(async () => {
+    setError("");
+    setSuccess("");
+    setOpeningScheduleForm(true);
+
+    try {
+      await Promise.all([fetchEligibleOrders(), fetchRiders()]);
+
+      setShowForm(true);
+    } finally {
+      setOpeningScheduleForm(false);
+    }
+  }, [fetchEligibleOrders, fetchRiders]);
+
   useEffect(() => {
     fetchDeliveries();
-    fetchEligibleOrders();
-    fetchRiders();
-  }, [fetchDeliveries, fetchEligibleOrders, fetchRiders]);
+  }, [fetchDeliveries]);
 
   useEffect(() => {
     const handleDeliveryUpdated = (payload) => {
@@ -462,12 +534,21 @@ export default function DeliveryScheduling() {
         return;
       }
 
-      Promise.all([fetchDeliveries(), fetchEligibleOrders()]).catch((err) => {
+      fetchDeliveries().catch((err) => {
         console.error(
           "Failed to refresh delivery scheduling data after realtime update:",
           err,
         );
       });
+
+      if (showForm) {
+        fetchEligibleOrders().catch((err) => {
+          console.error(
+            "Failed to refresh eligible delivery orders after realtime update:",
+            err,
+          );
+        });
+      }
     };
 
     const handleOrderStatusUpdated = (payload) => {
@@ -487,12 +568,14 @@ export default function DeliveryScheduling() {
         return;
       }
 
-      fetchEligibleOrders().catch((err) => {
-        console.error(
-          "Failed to refresh eligible delivery orders after realtime order status update:",
-          err,
-        );
-      });
+      if (showForm) {
+        fetchEligibleOrders().catch((err) => {
+          console.error(
+            "Failed to refresh eligible delivery orders after realtime order status update:",
+            err,
+          );
+        });
+      }
     };
 
     const attachListener = (socket) => {
@@ -525,40 +608,71 @@ export default function DeliveryScheduling() {
 
       unsubscribeReady();
     };
-  }, [fetchDeliveries, fetchEligibleOrders]);
+  }, [fetchDeliveries, fetchEligibleOrders, showForm]);
 
-  // 👉 NEW: Auto-open modal from Assign Delivery button shortcut
   useEffect(() => {
     const preselectOrderId = searchParams.get("schedule_order_id");
 
-    if (preselectOrderId && eligibleOrders.length > 0) {
-      const selectedOrder = eligibleOrders.find(
+    if (!preselectOrderId || listLoading || showForm) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const prepareScheduleForm = async () => {
+      setError("");
+      setSuccess("");
+
+      const [nextOrders] = await Promise.all([
+        fetchEligibleOrders(),
+        fetchRiders(),
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      const selectedOrder = nextOrders.find(
         (order) => String(order.id) === String(preselectOrderId),
       );
 
-      if (selectedOrder) {
-        const requestedDate = normalizeDateTimeInput(
-          getRequestedScheduleFromOrder(selectedOrder),
-        );
-        const requestedDateOnly = requestedDate
-          ? requestedDate.slice(0, 10)
-          : "";
-
-        setForm((prev) => ({
-          ...prev,
-          order_id: String(preselectOrderId),
-          address: selectedOrder.delivery_address || prev.address,
-          scheduled_date: requestedDateOnly || prev.scheduled_date,
-        }));
-
-        setShowForm(true);
-
-        const nextParams = new URLSearchParams(searchParams);
-        nextParams.delete("schedule_order_id");
-        setSearchParams(nextParams, { replace: true });
+      if (!selectedOrder) {
+        return;
       }
-    }
-  }, [searchParams, eligibleOrders, setSearchParams]);
+
+      const requestedDate = normalizeDateTimeInput(
+        getRequestedScheduleFromOrder(selectedOrder),
+      );
+
+      const requestedDateOnly = requestedDate ? requestedDate.slice(0, 10) : "";
+
+      setForm((prev) => ({
+        ...prev,
+        order_id: String(preselectOrderId),
+        address: selectedOrder.delivery_address || prev.address,
+        scheduled_date: requestedDateOnly || prev.scheduled_date,
+      }));
+
+      setShowForm(true);
+
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete("schedule_order_id");
+      setSearchParams(nextParams, { replace: true });
+    };
+
+    prepareScheduleForm();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    searchParams,
+    listLoading,
+    showForm,
+    fetchEligibleOrders,
+    fetchRiders,
+    setSearchParams,
+  ]);
 
   // Notification double-click focus support. Clear presentation
   // filters first so the requested delivery is guaranteed to be visible,
@@ -960,15 +1074,16 @@ export default function DeliveryScheduling() {
 
           <button
             type="button"
-            onClick={() => {
-              setError("");
-              setSuccess("");
-              setShowForm(true);
-            }}
-            style={btnPrimary}
+            onClick={openScheduleForm}
+            disabled={openingScheduleForm}
+            style={
+              openingScheduleForm
+                ? { ...btnPrimary, opacity: 0.6, cursor: "not-allowed" }
+                : btnPrimary
+            }
           >
             <Plus size={16} />
-            Schedule delivery
+            {openingScheduleForm ? "Loading..." : "Schedule delivery"}
           </button>
         </div>
       </div>
@@ -1072,6 +1187,7 @@ export default function DeliveryScheduling() {
                   </label>
                   <select
                     value={form.order_id}
+                    disabled={eligibleOrdersLoading}
                     title={
                       form.order_id
                         ? (() => {
@@ -1141,7 +1257,18 @@ export default function DeliveryScheduling() {
                     </p>
                   )}
 
-                  {eligibleOrders.length === 0 && (
+                  {eligibleOrdersLoading ? (
+                    <p
+                      style={{
+                        color: "#71717a",
+                        fontSize: 12,
+                        marginTop: 8,
+                        fontWeight: 500,
+                      }}
+                    >
+                      Loading eligible orders...
+                    </p>
+                  ) : eligibleOrders.length === 0 ? (
                     <p
                       style={{
                         color: "#71717a",
@@ -1152,7 +1279,7 @@ export default function DeliveryScheduling() {
                     >
                       No eligible orders available for delivery scheduling.
                     </p>
-                  )}
+                  ) : null}
                 </div>
 
                 <div
