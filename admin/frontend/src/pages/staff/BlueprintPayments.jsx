@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { RefreshCw, Search } from "lucide-react";
+import { ArrowLeft, RefreshCw, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import { getSocket, subscribeSocketReady } from "../../services/socket";
@@ -332,6 +332,7 @@ export default function BlueprintPayments() {
   const [pickupNote, setPickupNote] = useState("");
   const [recordError, setRecordError] = useState("");
   const [lastPaymentResult, setLastPaymentResult] = useState(null);
+  const detailPanelRef = useRef(null);
 
   const loadOrders = useCallback(async ({ quiet = false } = {}) => {
     if (!quiet) setListLoading(true);
@@ -414,6 +415,27 @@ export default function BlueprintPayments() {
       setDetailLoading(false);
     }
   }, []);
+
+  // WISDOM CASHIER CLEAN R5
+  // On phone, selecting an order changes the list into a dedicated detail view.
+  useEffect(() => {
+    if (!selectedOrderNumber) return undefined;
+    if (
+      typeof window === "undefined" ||
+      !window.matchMedia("(max-width: 700px)").matches
+    ) {
+      return undefined;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      detailPanelRef.current?.scrollIntoView({
+        block: "start",
+        behavior: "auto",
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedOrderNumber]);
 
   const refreshSummary = useCallback(async () => {
     const orderNumber = summary?.order_number || selectedOrderNumber;
@@ -631,7 +653,12 @@ export default function BlueprintPayments() {
     verifiedTotal < minimumRequiredTotal;
 
   return (
-    <div className="bp-payments-page">
+    <div
+      className={
+        "bp-payments-page" +
+        (selectedOrderNumber ? " has-mobile-detail" : "")
+      }
+    >
       <header className="bp-page-header">
         <div>
           <h1>Blueprint Payments</h1>
@@ -665,6 +692,8 @@ export default function BlueprintPayments() {
         <div className="bp-search">
           <Search size={16} />
           <input
+            id="bp-payment-search"
+            name="blueprint_payment_search"
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -673,6 +702,8 @@ export default function BlueprintPayments() {
         </div>
 
         <select
+          id="bp-payment-filter"
+          name="blueprint_payment_filter"
           value={paymentFilter}
           onChange={(e) => setPaymentFilter(e.target.value)}
           aria-label="Payment status"
@@ -772,7 +803,32 @@ export default function BlueprintPayments() {
           </div>
         </section>
 
-        <aside className="bp-detail-panel" aria-label="Payment details">
+        <aside
+          ref={detailPanelRef}
+          className="bp-detail-panel"
+          aria-label="Payment details"
+        >
+          <button
+            type="button"
+            className="bp-mobile-detail-back"
+            onClick={() => {
+              setSelectedOrderNumber("");
+              setSummary(null);
+              setDetailError("");
+              setRecordError("");
+              setLastPaymentResult(null);
+
+              if (typeof window !== "undefined") {
+                window.requestAnimationFrame(() => {
+                  window.scrollTo({ top: 0, behavior: "auto" });
+                });
+              }
+            }}
+          >
+            <ArrowLeft size={16} />
+            Back to Blueprint Orders
+          </button>
+
           {!selectedOrderNumber ? (
             <div className="bp-detail-empty">
               <strong>Select a blueprint order</strong>
@@ -915,6 +971,7 @@ export default function BlueprintPayments() {
                     <div className="bp-custom-payment">
                       <input
                         id="bp-custom-amount"
+                        name="blueprint_payment_amount"
                         type="text"
                         inputMode="decimal"
                         placeholder="0.00"
@@ -1142,8 +1199,15 @@ export default function BlueprintPayments() {
 
             <div style={{ display: "grid", gap: 16 }}>
               <div>
-                <label className="bp-field-label">Recipient type</label>
+                <label
+                  className="bp-field-label"
+                  htmlFor="bp-pickup-recipient-type"
+                >
+                  Recipient type
+                </label>
                 <select
+                  id="bp-pickup-recipient-type"
+                  name="pickup_recipient_type"
                   value={pickupRecipientType}
                   onChange={(event) => {
                     const next = event.target.value;
@@ -1172,6 +1236,7 @@ export default function BlueprintPayments() {
                 </label>
                 <input
                   id="pickup-received-by"
+                  name="pickup_received_by"
                   type="text"
                   maxLength={150}
                   value={pickupRecipientName}
@@ -1204,7 +1269,7 @@ export default function BlueprintPayments() {
               </div>
 
               <div>
-                <label className="bp-field-label">Recipient signature</label>
+                <div className="bp-field-label">Recipient signature</div>
                 <PickupSignaturePad
                   value={pickupSignature}
                   onChange={setPickupSignature}
@@ -1218,6 +1283,7 @@ export default function BlueprintPayments() {
                 </label>
                 <textarea
                   id="pickup-note"
+                  name="pickup_note"
                   rows={3}
                   maxLength={500}
                   value={pickupNote}

@@ -128,8 +128,27 @@ export default function OrderHistory() {
         </div>
 
         <div style={historySearchStyle}>
+          {/* WISDOM CASHIER C3 FORM SEMANTICS R3 */}
+          <label
+            htmlFor="pos-history-search"
+            style={{
+              position: "absolute",
+              width: 1,
+              height: 1,
+              padding: 0,
+              margin: -1,
+              overflow: "hidden",
+              clip: "rect(0, 0, 0, 0)",
+              whiteSpace: "nowrap",
+              border: 0,
+            }}
+          >
+            Search transaction history
+          </label>
           <Search size={16} color="#71717a" />
           <input
+            id="pos-history-search"
+            name="transaction_history_search"
             type="search"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
@@ -168,7 +187,25 @@ export default function OrderHistory() {
         >
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Calendar size={16} color="#71717a" />
+            <label
+              htmlFor="pos-history-from-date"
+              style={{
+                position: "absolute",
+                width: 1,
+                height: 1,
+                padding: 0,
+                margin: -1,
+                overflow: "hidden",
+                clip: "rect(0, 0, 0, 0)",
+                whiteSpace: "nowrap",
+                border: 0,
+              }}
+            >
+              From date
+            </label>
             <input
+              id="pos-history-from-date"
+              name="transaction_history_from_date"
               type="date"
               value={dateFrom}
               onChange={(e) => {
@@ -180,7 +217,25 @@ export default function OrderHistory() {
             <span style={{ color: "#71717a", fontSize: 13, fontWeight: 600 }}>
               to
             </span>
+            <label
+              htmlFor="pos-history-to-date"
+              style={{
+                position: "absolute",
+                width: 1,
+                height: 1,
+                padding: 0,
+                margin: -1,
+                overflow: "hidden",
+                clip: "rect(0, 0, 0, 0)",
+                whiteSpace: "nowrap",
+                border: 0,
+              }}
+            >
+              To date
+            </label>
             <input
+              id="pos-history-to-date"
+              name="transaction_history_to_date"
               type="date"
               value={dateTo}
               onChange={(e) => {

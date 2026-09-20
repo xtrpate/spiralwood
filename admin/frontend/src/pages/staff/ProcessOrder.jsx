@@ -1119,8 +1119,13 @@ export default function ProcessOrder() {
                   className="pos-form-field pos-field-customer"
                   style={formField}
                 >
-                  <label style={labelStyle}>Customer Name *</label>
+                  {/* WISDOM CASHIER C3 FORM SEMANTICS R3 */}
+                  <label htmlFor="pos-customer-name" style={labelStyle}>
+                    Customer Name *
+                  </label>
                   <input
+                    id="pos-customer-name"
+                    name="customer_name"
                     type="text"
                     placeholder="Walk-in Customer"
                     value={form.customer_name}
@@ -1136,10 +1141,12 @@ export default function ProcessOrder() {
                   className="pos-form-field pos-field-phone"
                   style={formField}
                 >
-                  <label style={labelStyle}>
+                  <label htmlFor="pos-customer-phone" style={labelStyle}>
                     Phone Number{phoneIsRequired ? " *" : ""}
                   </label>
                   <input
+                    id="pos-customer-phone"
+                    name="customer_phone"
                     type="tel"
                     placeholder="09XXXXXXXXX"
                     value={form.customer_phone}
@@ -1178,8 +1185,12 @@ export default function ProcessOrder() {
                   className="pos-form-field pos-field-payment"
                   style={formField}
                 >
-                  <label style={labelStyle}>Payment Method *</label>
+                  <label htmlFor="pos-payment-method" style={labelStyle}>
+                    Payment Method *
+                  </label>
                   <select
+                    id="pos-payment-method"
+                    name="payment_method"
                     value={effectivePaymentMethod}
                     disabled={Boolean(qrAttempt) || !POS_QR_ENABLED}
                     onChange={(e) =>
@@ -1218,9 +1229,29 @@ export default function ProcessOrder() {
                   className="pos-form-field pos-field-discount"
                   style={formField}
                 >
-                  <label style={labelStyle}>Discount</label>
+                  <label htmlFor="pos-discount-value" style={labelStyle}>
+                    Discount
+                  </label>
                   <div style={{ display: "flex", gap: "8px" }}>
+                    <label
+                      htmlFor="pos-discount-type"
+                      style={{
+                        position: "absolute",
+                        width: 1,
+                        height: 1,
+                        padding: 0,
+                        margin: -1,
+                        overflow: "hidden",
+                        clip: "rect(0, 0, 0, 0)",
+                        whiteSpace: "nowrap",
+                        border: 0,
+                      }}
+                    >
+                      Discount type
+                    </label>
                     <select
+                      id="pos-discount-type"
+                      name="discount_type"
                       value={form.discount_type}
                       onChange={(e) =>
                         setForm({
@@ -1244,6 +1275,8 @@ export default function ProcessOrder() {
                       <option value="percent">%</option>
                     </select>
                     <input
+                      id="pos-discount-value"
+                      name="discount"
                       type="number"
                       min="0"
                       step="0.01"
@@ -1266,8 +1299,12 @@ export default function ProcessOrder() {
                     className="pos-form-field pos-field-cash"
                     style={formField}
                   >
-                    <label style={labelStyle}>Cash Received (₱) *</label>
+                    <label htmlFor="pos-cash-received" style={labelStyle}>
+                      Cash Received (₱) *
+                    </label>
                     <input
+                      id="pos-cash-received"
+                      name="cash_received"
                       type="number"
                       min="0"
                       step="0.01"
@@ -1310,7 +1347,7 @@ export default function ProcessOrder() {
                       gap: 16,
                     }}
                   >
-                    <label
+                    <div
                       style={{
                         display: "flex",
                         alignItems: "center",
@@ -1318,7 +1355,6 @@ export default function ProcessOrder() {
                         fontSize: 13,
                         fontWeight: 600,
                         color: "#18181b",
-                        cursor: "pointer",
                       }}
                     >
                       <div
@@ -1360,7 +1396,7 @@ export default function ProcessOrder() {
                         />
                       </div>
                       Add delivery
-                    </label>
+                    </div>
 
                     {form.need_delivery && (
                       <div
@@ -1385,8 +1421,12 @@ export default function ProcessOrder() {
                         </div>
 
                         <div>
-                          <label style={labelStyle}>Delivery Fee (₱)</label>
+                          <label htmlFor="pos-delivery-fee" style={labelStyle}>
+                            Delivery Fee (₱)
+                          </label>
                           <input
+                            id="pos-delivery-fee"
+                            name="delivery_fee"
                             type="number"
                             min="0"
                             step="0.01"
@@ -1400,8 +1440,12 @@ export default function ProcessOrder() {
                         </div>
 
                         <div>
-                          <label style={labelStyle}>Delivery Date *</label>
+                          <label htmlFor="pos-delivery-date" style={labelStyle}>
+                            Delivery Date *
+                          </label>
                           <input
+                            id="pos-delivery-date"
+                            name="delivery_requested_date"
                             type="datetime-local"
                             value={form.delivery_requested_date}
                             onChange={(e) =>
@@ -1416,8 +1460,12 @@ export default function ProcessOrder() {
                         </div>
 
                         <div style={{ gridColumn: "1 / -1" }}>
-                          <label style={labelStyle}>Delivery Notes</label>
+                          <label htmlFor="pos-delivery-notes" style={labelStyle}>
+                            Delivery Notes
+                          </label>
                           <input
+                            id="pos-delivery-notes"
+                            name="delivery_notes"
                             type="text"
                             placeholder="Optional delivery notes"
                             value={form.delivery_notes}
@@ -1439,8 +1487,12 @@ export default function ProcessOrder() {
                   className="pos-form-field pos-field-notes"
                   style={formField}
                 >
-                  <label style={labelStyle}>Order Notes</label>
+                  <label htmlFor="pos-order-notes" style={labelStyle}>
+                    Order Notes
+                  </label>
                   <textarea
+                    id="pos-order-notes"
+                    name="notes"
                     rows={3}
                     placeholder="Add optional notes for this order"
                     value={form.notes}

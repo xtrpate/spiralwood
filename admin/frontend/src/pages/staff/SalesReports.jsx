@@ -206,8 +206,11 @@ export default function SalesReports() {
 
       <div style={filterCard}>
         <div style={filterGrid}>
-          <FilterField label="Order Source">
+          {/* WISDOM CASHIER C3 FORM SEMANTICS R3 */}
+          <FilterField label="Order Source" htmlFor="sales-report-source">
             <select
+              id="sales-report-source"
+              name="sales_report_source"
               style={input}
               value={filters.source}
               onChange={(event) =>
@@ -223,8 +226,13 @@ export default function SalesReports() {
             </select>
           </FilterField>
 
-          <FilterField label="Payment Type">
+          <FilterField
+            label="Payment Type"
+            htmlFor="sales-report-payment-type"
+          >
             <select
+              id="sales-report-payment-type"
+              name="sales_report_payment_type"
               style={input}
               value={filters.payment}
               onChange={(event) =>
@@ -240,8 +248,10 @@ export default function SalesReports() {
             </select>
           </FilterField>
 
-          <FilterField label="Period">
+          <FilterField label="Period" htmlFor="sales-report-period">
             <select
+              id="sales-report-period"
+              name="sales_report_period"
               style={input}
               value={filters.period}
               onChange={(event) =>
@@ -258,8 +268,10 @@ export default function SalesReports() {
             </select>
           </FilterField>
 
-          <FilterField label="From Date">
+          <FilterField label="From Date" htmlFor="sales-report-from-date">
             <input
+              id="sales-report-from-date"
+              name="sales_report_from_date"
               style={input}
               type="date"
               value={filters.from}
@@ -272,8 +284,10 @@ export default function SalesReports() {
             />
           </FilterField>
 
-          <FilterField label="To Date">
+          <FilterField label="To Date" htmlFor="sales-report-to-date">
             <input
+              id="sales-report-to-date"
+              name="sales_report_to_date"
               style={input}
               type="date"
               value={filters.to}
@@ -576,9 +590,9 @@ export default function SalesReports() {
   );
 }
 
-function FilterField({ label, children }) {
+function FilterField({ label, htmlFor, children }) {
   return (
-    <label style={fieldWrap}>
+    <label htmlFor={htmlFor} style={fieldWrap}>
       <span style={fieldLabel}>{label}</span>
       {children}
     </label>

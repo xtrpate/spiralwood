@@ -1,13 +1,13 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import api, { buildAssetUrl } from "../../services/api";
 import {
   Search,
-  ScanLine,
   ShoppingCart,
   Plus,
   Minus,
   Trash2,
   ArrowRight,
+  X,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import "./ProductSearch.css";
@@ -37,7 +37,6 @@ const readStoredQrAttempt = () => {
 
 export default function ProductSearch() {
   const [query, setQuery] = useState("");
-  const [barcode, setBarcode] = useState("");
   const [allProducts, setAllProducts] = useState([]);
   const [products, setProducts] = useState([]);
   const [cart, setCart] = useState(() => {
@@ -51,22 +50,21 @@ export default function ProductSearch() {
   const [activeQrAttempt] = useState(() => readStoredQrAttempt());
   const cartLocked = Boolean(activeQrAttempt?.checkout_token);
   const [searching, setSearching] = useState(true);
-  const [barcodeLoading, setBarcodeLoading] = useState(false);
-  const [barcodeMessage, setBarcodeMessage] = useState("");
-  const [barcodeMessageType, setBarcodeMessageType] = useState("info");
+  const [searchMessage, setSearchMessage] = useState("");
+  const [searchMessageType, setSearchMessageType] = useState("info");
   const [brokenImages, setBrokenImages] = useState({});
+  const [mobileCartOpen, setMobileCartOpen] = useState(false);
 
   const navigate = useNavigate();
-  const barcodeRef = useRef(null);
 
   const showMessage = useCallback((message, type = "info") => {
-    setBarcodeMessage(message);
-    setBarcodeMessageType(type);
+    setSearchMessage(message);
+    setSearchMessageType(type);
   }, []);
 
   const clearMessage = useCallback(() => {
-    setBarcodeMessage("");
-    setBarcodeMessageType("info");
+    setSearchMessage("");
+    setSearchMessageType("info");
   }, []);
 
   const normalizeProduct = useCallback((product) => {
@@ -162,6 +160,27 @@ export default function ProductSearch() {
     sessionStorage.setItem("pos_cart", JSON.stringify(cart));
   }, [cart]);
 
+  // WISDOM CASHIER CLEAN R5
+  // Mobile cart presentation only. Existing cart data and checkout stay intact.
+  useEffect(() => {
+    if (cart.length === 0 && mobileCartOpen) {
+      setMobileCartOpen(false);
+    }
+  }, [cart.length, mobileCartOpen]);
+
+  useEffect(() => {
+    if (!mobileCartOpen) return undefined;
+
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setMobileCartOpen(false);
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [mobileCartOpen]);
+
   useEffect(() => {
     const trimmed = query.trim().toLowerCase();
 
@@ -177,7 +196,6 @@ export default function ProductSearch() {
       const filtered = allProducts.filter((product) => {
         const haystacks = [
           product.name,
-          product.barcode,
           product.category,
           product.material, // 👉 Let them search by wood type too!
         ];
@@ -266,81 +284,6 @@ export default function ProductSearch() {
       return added;
     },
     [cartLocked, showMessage],
-  );
-
-  const searchByBarcode = useCallback(
-    async (rawCode) => {
-      const code = String(rawCode || "").trim();
-
-      if (!code) {
-        showMessage("Please enter or scan a barcode first.", "info");
-        setProducts(allProducts);
-        barcodeRef.current?.focus();
-        return;
-      }
-
-      setBarcodeLoading(true);
-
-      try {
-        let product =
-          allProducts.find(
-            (item) =>
-              String(item.barcode || "").toLowerCase() === code.toLowerCase(),
-          ) || null;
-
-        if (!product) {
-          const res = await api.get(
-            `/pos/products?barcode=${encodeURIComponent(code)}`,
-          );
-
-          const results = Array.isArray(res.data)
-            ? res.data
-                .map(normalizeProduct)
-                .filter(
-                  (item) =>
-                    String(item?.type || "standard").toLowerCase() ===
-                    "standard",
-                )
-            : [];
-
-          product =
-            results.find(
-              (item) =>
-                String(item.barcode || "").toLowerCase() === code.toLowerCase(),
-            ) || null;
-        }
-
-        if (!product) {
-          setProducts([]);
-          showMessage(`No product found for barcode "${code}".`, "error");
-          return;
-        }
-
-        setProducts([product]);
-
-        if (product.stock <= 0) {
-          showMessage(`${product.name} is currently out of stock.`, "error");
-          return;
-        }
-
-        const added = addToCart(product);
-
-        if (added) {
-          setBarcode("");
-        }
-      } catch (error) {
-        console.error("BARCODE SEARCH ERROR:", error);
-        setProducts([]);
-        showMessage(
-          "Barcode search could not be completed. Please try again.",
-          "error",
-        );
-      } finally {
-        setBarcodeLoading(false);
-        barcodeRef.current?.focus();
-      }
-    },
-    [addToCart, allProducts, normalizeProduct, showMessage],
   );
 
   const updateQty = useCallback(
@@ -452,11 +395,13 @@ export default function ProductSearch() {
   }, [cart, cartLocked, navigate, showMessage]);
 
   return (
-    <div className="search-layout">
+    <div
+      className={"search-layout" + (cart.length > 0 ? " has-mobile-cart" : "")}
+    >
       <div className="search-panel">
         <div className="page-header">
           <h1>Product Search & Cart</h1>
-          <p>Search, scan, and add products to the current sale.</p>
+          <p>Search and add products to the current sale.</p>
         </div>
 
         {cartLocked && (
@@ -503,52 +448,42 @@ export default function ProductSearch() {
           <div className="search-bar">
             <Search size={18} className="search-icon" />
             <input
+              id="cashier-product-search"
+              name="cashier_product_search"
               type="text"
-              placeholder="Search products, categories, materials, or barcode"
+              placeholder="Search products, categories, or materials"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onFocus={() => {
-                if (barcodeMessageType !== "error") {
+                if (searchMessageType !== "error") {
                   clearMessage();
                 }
               }}
             />
           </div>
-
-          <div className="barcode-bar">
-            <ScanLine size={18} className="search-icon" />
-            <input
-              ref={barcodeRef}
-              type="text"
-              placeholder="Scan or enter barcode"
-              value={barcode}
-              onChange={(e) => setBarcode(e.target.value)}
-              onFocus={() => {
-                if (barcodeMessage) clearMessage();
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  searchByBarcode(barcode);
-                }
-              }}
-            />
-          </div>
-
-          <button
-            type="button"
-            className="barcode-btn"
-            onClick={() => searchByBarcode(barcode)}
-            disabled={barcodeLoading}
-          >
-            {barcodeLoading ? "Searching..." : "Scan"}
-          </button>
         </div>
 
-        {barcodeMessage && (
-          <div className={`barcode-message ${barcodeMessageType}`}>
-            {barcodeMessage}
+        {searchMessage && (
+          <div className={`pos-search-message ${searchMessageType}`}>
+            {searchMessage}
           </div>
+        )}
+
+        {cart.length > 0 && (
+          <button
+            type="button"
+            className="mobile-cart-trigger"
+            onClick={() => setMobileCartOpen(true)}
+            aria-expanded={mobileCartOpen}
+            aria-controls="cashier-cart-panel"
+          >
+            <span className="mobile-cart-trigger-label">
+              <ShoppingCart size={17} />
+              Cart ({cartItemCount})
+            </span>
+            <strong>₱{formatCurrency(cartTotal)}</strong>
+            <span className="mobile-cart-trigger-action">View</span>
+          </button>
         )}
 
         <div className="search-results">
@@ -558,20 +493,14 @@ export default function ProductSearch() {
             <p className="search-hint">No products found for "{query}".</p>
           )}
 
-          {!searching &&
-            !query.trim() &&
-            !barcode.trim() &&
-            products.length > 0 && (
+          {!searching && !query.trim() && products.length > 0 && (
               <p className="search-hint">
                 {products.length} available product
                 {products.length !== 1 ? "s" : ""}
               </p>
             )}
 
-          {!searching &&
-            !query.trim() &&
-            !barcode.trim() &&
-            products.length === 0 && (
+          {!searching && !query.trim() && products.length === 0 && (
               <p className="search-hint">No available products found.</p>
             )}
 
@@ -641,19 +570,39 @@ export default function ProductSearch() {
         </div>
       </div>
 
-      <div className="cart-panel">
+      {mobileCartOpen && (
+        <button
+          type="button"
+          className="mobile-cart-backdrop"
+          onClick={() => setMobileCartOpen(false)}
+          aria-label="Close cart"
+        />
+      )}
+
+      <div
+        id="cashier-cart-panel"
+        className={"cart-panel" + (mobileCartOpen ? " is-mobile-open" : "")}
+      >
         <div className="cart-header">
           <ShoppingCart size={18} />
           <span>
             Cart ({cartItemCount} item{cartItemCount !== 1 ? "s" : ""})
           </span>
+          <button
+            type="button"
+            className="mobile-cart-close"
+            onClick={() => setMobileCartOpen(false)}
+            aria-label="Close cart"
+          >
+            <X size={18} />
+          </button>
         </div>
 
         {cart.length === 0 ? (
           <div className="cart-empty">
             <ShoppingCart size={28} strokeWidth={1.6} />
             <strong>No items in cart</strong>
-            <span>Search or scan a product to begin this sale.</span>
+            <span>Search for a product to begin this sale.</span>
           </div>
         ) : (
           <>
@@ -685,6 +634,31 @@ export default function ProductSearch() {
                       <div className="cart-item-name">{item.product_name}</div>
                       <div className="cart-item-price">
                         ₱{formatCurrency(item.unit_price)}
+                      </div>
+
+                      <div
+                        className="mobile-cart-item-controls"
+                        aria-label={`Quantity for ${item.product_name}`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => updateQty(item.key, -1)}
+                          disabled={cartLocked}
+                          aria-label={`Decrease ${item.product_name} quantity`}
+                        >
+                          <Minus size={14} />
+                        </button>
+                        <span>{item.quantity}</span>
+                        <button
+                          type="button"
+                          onClick={() => updateQty(item.key, 1)}
+                          disabled={
+                            cartLocked || item.quantity >= item.max_stock
+                          }
+                          aria-label={`Increase ${item.product_name} quantity`}
+                        >
+                          <Plus size={14} />
+                        </button>
                       </div>
                     </div>
 

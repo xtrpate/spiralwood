@@ -912,3 +912,133 @@
   color: #52525b !important;
   border-color: #d4d4d8;
 }
+/* =========================================================
+   WISDOM CASHIER CLEAN R5 - PAYMENTS
+
+   Desktop: keep list-left / detail-right.
+   Phone: tap an order -> dedicated Payment Details screen.
+   ========================================================= */
+
+.bp-mobile-detail-back {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .bp-payments-page {
+    padding-bottom: 92px;
+  }
+
+  .bp-payments-page.has-mobile-detail {
+    padding-top: 12px;
+  }
+
+  .bp-payments-page.has-mobile-detail > .bp-page-header,
+  .bp-payments-page.has-mobile-detail > .bp-stats-grid,
+  .bp-payments-page.has-mobile-detail > .bp-toolbar,
+  .bp-payments-page.has-mobile-detail > .bp-notice,
+  .bp-payments-page.has-mobile-detail .bp-list-panel {
+    display: none;
+  }
+
+  .bp-payments-page:not(.has-mobile-detail) .bp-detail-panel {
+    display: none;
+  }
+
+  .bp-payments-page.has-mobile-detail .bp-workspace {
+    display: block;
+  }
+
+  .bp-payments-page.has-mobile-detail .bp-detail-panel {
+    display: block;
+    position: static;
+    width: 100%;
+    max-height: none;
+    padding: 14px;
+    overflow: visible;
+  }
+
+  .bp-mobile-detail-back {
+    width: 100%;
+    min-height: 42px;
+    margin: 0 0 14px;
+    padding: 0 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    border: 1px solid #111111;
+    border-radius: 0;
+    background: #ffffff;
+    color: #111111;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 650;
+    cursor: pointer;
+  }
+
+  .bp-payments-page.has-mobile-detail .bp-detail-header {
+    align-items: flex-start;
+  }
+
+  .bp-payments-page.has-mobile-detail .bp-detail-header > div:last-child {
+    min-width: 0;
+  }
+
+  .bp-payments-page.has-mobile-detail .bp-detail-header h2,
+  .bp-payments-page.has-mobile-detail .bp-detail-order-number {
+    overflow-wrap: anywhere;
+  }
+
+  .bp-payments-page.has-mobile-detail .bp-money-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .bp-payments-page.has-mobile-detail .bp-money-summary > div {
+    padding: 10px 7px;
+    border-right: 1px solid #e1e1e4;
+    border-bottom: 0;
+  }
+
+  .bp-payments-page.has-mobile-detail .bp-money-summary > div:last-child {
+    border-right: 0;
+  }
+
+  .bp-payments-page.has-mobile-detail .bp-money-summary strong {
+    font-size: 11px;
+    overflow-wrap: anywhere;
+  }
+
+  .bp-payments-page.has-mobile-detail
+    .bp-money-summary
+    .bp-balance-block
+    strong {
+    font-size: 12px;
+  }
+
+  .bp-payments-page.has-mobile-detail .bp-quick-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .bp-payments-page.has-mobile-detail .bp-quick-actions .bp-primary-button,
+  .bp-payments-page.has-mobile-detail .bp-custom-payment .bp-primary-button {
+    width: 100%;
+    min-height: 42px;
+  }
+
+  .bp-payments-page.has-mobile-detail .bp-custom-payment input {
+    min-height: 42px;
+    font-size: 16px;
+  }
+
+  .bp-payments-page.has-mobile-detail .bp-history-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .bp-payments-page.has-mobile-detail
+    .bp-history-row
+    .bp-secondary-button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}
