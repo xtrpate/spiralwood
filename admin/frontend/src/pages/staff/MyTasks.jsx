@@ -172,6 +172,8 @@ export default function MyTasks() {
   const [holdTarget, setHoldTarget] = useState(null);
   const [holdReason, setHoldReason] = useState("");
   const [holdSaving, setHoldSaving] = useState(false);
+  const [taskActionTarget, setTaskActionTarget] = useState(null);
+  const [taskActionMode, setTaskActionMode] = useState(null);
 
   const loadTasks = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -329,6 +331,74 @@ export default function MyTasks() {
       setHoldReason("");
     }
     setHoldSaving(false);
+  };
+
+  const openTaskActionDialog = (task, mode) => {
+    if (!task || !["complete", "undo"].includes(mode)) return;
+
+    setTaskActionTarget(task);
+    setTaskActionMode(mode);
+  };
+
+  const closeTaskActionDialog = () => {
+    if (
+      taskActionTarget &&
+      Number(busyId) === Number(taskActionTarget.id)
+    ) {
+      return;
+    }
+
+    setTaskActionTarget(null);
+    setTaskActionMode(null);
+  };
+
+  const undoTaskCompletion = async (taskId) => {
+    try {
+      setBusyId(taskId);
+
+      const { data } = await api.post(
+        `/tasks/${taskId}/undo-completion`,
+      );
+
+      setTasks((previous) =>
+        previous.map((task) =>
+          Number(task.id) === Number(taskId)
+            ? {
+                ...task,
+                ...(data?.task || {}),
+                status: "in_progress",
+                completed_at: null,
+                hold_reason: null,
+              }
+            : task,
+        ),
+      );
+
+      if (data?.message) toast.success(data.message);
+      return true;
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message ||
+          "Failed to undo production step completion.",
+      );
+      return false;
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const submitTaskAction = async () => {
+    if (!taskActionTarget || !taskActionMode) return;
+
+    const saved =
+      taskActionMode === "complete"
+        ? await updateTaskStatus(taskActionTarget.id, "completed")
+        : await undoTaskCompletion(taskActionTarget.id);
+
+    if (saved) {
+      setTaskActionTarget(null);
+      setTaskActionMode(null);
+    }
   };
 
   const groupedOrders = useMemo(() => {
@@ -738,6 +808,12 @@ export default function MyTasks() {
                             stepIndex,
                           );
 
+                          const canUndoThisStep = order.steps
+                            .slice(stepIndex + 1)
+                            .every(
+                              (candidate) => candidate.status === "pending",
+                            );
+
                           const previousStep = getPreviousRequiredStepLabel(
                             order.steps,
                             stepIndex,
@@ -858,9 +934,9 @@ export default function MyTasks() {
                                         <button
                                           type="button"
                                           onClick={() =>
-                                            updateTaskStatus(
-                                              step.task.id,
-                                              "completed",
+                                            openTaskActionDialog(
+                                              step.task,
+                                              "complete",
                                             )
                                           }
                                           disabled={busyId === step.task.id}
@@ -892,6 +968,29 @@ export default function MyTasks() {
                                             : "Put on Hold"}
                                         </button>
                                       </>
+                                    ) : null}
+
+                                    {step.status === "completed" &&
+                                    canUndoThisStep ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          openTaskActionDialog(
+                                            step.task,
+                                            "undo",
+                                          )
+                                        }
+                                        disabled={busyId === step.task.id}
+                                        style={
+                                          busyId === step.task.id
+                                            ? disabledButton
+                                            : secondaryButton
+                                        }
+                                      >
+                                        {busyId === step.task.id
+                                          ? "Saving..."
+                                          : "Undo Done"}
+                                      </button>
                                     ) : null}
 
                                     {step.status === "blocked" ? (
@@ -1210,6 +1309,95 @@ export default function MyTasks() {
           }
         }
       `}</style>
+      {taskActionTarget ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1200,
+            background: "rgba(0, 0, 0, 0.48)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
+          onClick={closeTaskActionDialog}
+        >
+          <div
+            style={{
+              width: 500,
+              maxWidth: "100%",
+              background: "#ffffff",
+              border: "1px solid #d4d4d8",
+              padding: 22,
+              boxSizing: "border-box",
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3
+              style={{
+                margin: 0,
+                fontSize: 19,
+                color: "#18181b",
+                lineHeight: 1.25,
+              }}
+            >
+              {taskActionMode === "complete"
+                ? "Mark production step as done?"
+                : "Undo completed production step?"}
+            </h3>
+
+            <p
+              style={{
+                margin: "8px 0 0",
+                color: "#71717a",
+                fontSize: 12.5,
+                lineHeight: 1.55,
+              }}
+            >
+              {taskActionMode === "complete"
+                ? `Mark ${taskActionTarget.task_role || taskActionTarget.title || "this production step"} as completed? This will unlock the next production step.`
+                : `Return ${taskActionTarget.task_role || taskActionTarget.title || "this production step"} to In Progress? Undo is blocked if a later production step has already started or the order has already moved forward to delivery or completion.`}
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 8,
+                marginTop: 20,
+              }}
+            >
+              <button
+                type="button"
+                onClick={closeTaskActionDialog}
+                disabled={busyId === taskActionTarget.id}
+                style={secondaryButton}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={submitTaskAction}
+                disabled={busyId === taskActionTarget.id}
+                style={
+                  busyId === taskActionTarget.id
+                    ? disabledButton
+                    : primaryButton
+                }
+              >
+                {busyId === taskActionTarget.id
+                  ? "Saving..."
+                  : taskActionMode === "complete"
+                    ? "Mark Done"
+                    : "Undo Done"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {holdTarget ? (
         <div
           style={{

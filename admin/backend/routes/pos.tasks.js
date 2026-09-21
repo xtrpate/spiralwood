@@ -106,6 +106,13 @@ router.put("/:id/accept", indoorOnlyOrAdmin, (req, res) => {
       "This endpoint is no longer supported. Use PUT /api/tasks/:id/status to start a task.",
   });
 });
+router.post(
+  "/:id/undo-completion",
+  taskStatusAccess,
+  logAction("undo_project_task_completion", "project_tasks"),
+  posTasksController.undoTaskCompletion,
+);
+
 router.put(
   "/:id/status",
   taskStatusAccess,
