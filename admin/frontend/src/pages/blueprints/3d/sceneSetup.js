@@ -4,11 +4,6 @@ import { TransformControls } from "three/examples/jsm/controls/TransformControls
 
 const BACKGROUND_COLOR = 0x16263d;
 
-export const BLUEPRINT_GRID = {
-  w: 6000,
-  d: 6000,
-};
-
 function createAxisLine(start, end, material, renderOrder = 3) {
   const line = new THREE.Line(
     new THREE.BufferGeometry().setFromPoints([

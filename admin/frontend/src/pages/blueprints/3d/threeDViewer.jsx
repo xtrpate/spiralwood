@@ -30,7 +30,6 @@ import { QuickControlsBar } from "./components/QuickControlsBar";
 import {
   createBlueprintSceneFoundation,
   disposeObject3DResources,
-  BLUEPRINT_GRID,
 } from "./sceneSetup";
 import {
   captureCameraView as captureCameraSnapshot,
@@ -718,36 +717,6 @@ function ThreeDViewer({
     keysRef.current = {};
   }, []);
 
-  const getBoundsOffset = useCallback((box, floorY) => {
-    const offset = new THREE.Vector3(0, 0, 0);
-    if (!box || box.isEmpty()) return offset;
-
-    // 1. Floor Clamp (Y-Axis)
-    if (box.min.y < floorY) {
-      offset.y = floorY - box.min.y;
-    }
-
-    // 2. Wall Clamps (X and Z Axes)
-    const limitMinX = -BLUEPRINT_GRID.w / 2;
-    const limitMaxX = BLUEPRINT_GRID.w / 2;
-    const limitMinZ = -BLUEPRINT_GRID.d / 2;
-    const limitMaxZ = BLUEPRINT_GRID.d / 2;
-
-    if (box.min.x < limitMinX) {
-      offset.x = limitMinX - box.min.x;
-    } else if (box.max.x > limitMaxX) {
-      offset.x = limitMaxX - box.max.x;
-    }
-
-    if (box.min.z < limitMinZ) {
-      offset.z = limitMinZ - box.min.z;
-    } else if (box.max.z > limitMaxZ) {
-      offset.z = limitMaxZ - box.max.z;
-    }
-
-    return offset; // Returns (0,0,0) if perfectly inside bounds
-  }, []);
-
   const getPlacementDims = useCallback(
     (typeDef = {}) => ({
       width: Math.max(
@@ -961,14 +930,6 @@ function ThreeDViewer({
         0,
       );
       preview.updateMatrixWorld(true);
-
-      // Enforce physical boundary collision on the visual spawn ghost
-      const box = new THREE.Box3().setFromObject(preview);
-      const offset = getBoundsOffset(box, -canvasH / 2);
-      if (offset.lengthSq() > 0) {
-        preview.position.add(offset);
-        preview.updateMatrixWorld(true);
-      }
     },
     [
       canvasH,
@@ -976,7 +937,6 @@ function ThreeDViewer({
       ensurePlacementPreview,
       getPlacementDims,
       isTemplatePlacementType,
-      getBoundsOffset, // Added dependency
     ],
   );
 
@@ -2990,55 +2950,6 @@ function ThreeDViewer({
     entryMapRef.current = entryMap;
     selectableMeshesRef.current = selectableMeshes;
 
-    // Global Pass: Keep assemblies together while clamping them inside the grid bounds
-    const floorLimit = -canvasH / 2;
-    const outOfBoundsUpdates = {};
-    const groups = new Map();
-    const singletons = [];
-
-    selectableMeshes.forEach((mesh) => {
-      const rootId = mesh.userData.rootId;
-      const entry = entryMap.get(rootId);
-      if (entry && entry.comp) {
-        const groupId = entry.comp.groupId || entry.comp.assemblyId;
-        if (groupId) {
-          if (!groups.has(groupId)) groups.set(groupId, []);
-          groups.get(groupId).push({ mesh, comp: entry.comp });
-        } else {
-          singletons.push({ mesh, comp: entry.comp });
-        }
-      }
-    });
-
-    const clampGroup = (items) => {
-      const groupBox = new THREE.Box3();
-      items.forEach((item) => {
-        item.mesh.updateMatrixWorld(true);
-        groupBox.expandByObject(item.mesh);
-      });
-
-      const offset = getBoundsOffset(groupBox, floorLimit);
-      if (offset.lengthSq() > 0) {
-        items.forEach((item) => {
-          item.mesh.position.add(offset);
-          item.mesh.updateMatrixWorld(true);
-          outOfBoundsUpdates[item.comp.id] = compFromWorld(
-            item.mesh,
-            item.comp,
-          );
-        });
-      }
-    };
-
-    groups.forEach((items) => clampGroup(items));
-    singletons.forEach((item) => clampGroup([item]));
-
-    if (Object.keys(outOfBoundsUpdates).length > 0) {
-      onBatchUpdateCompsRef.current?.(outOfBoundsUpdates, {
-        skipHistory: true,
-      });
-    }
-
     attachSelectedRaw();
     syncSelectionOutlines();
 
@@ -3302,29 +3213,9 @@ function ThreeDViewer({
 
     const onTransformObjectChange = () => {
       if (!transform.dragging || !transform.enabled) return;
-      const floorLimit = -canvasH / 2;
 
       if (transform.object === selectionPivotRef.current) {
         previewMultiTransform();
-
-        // Measure all moving parts together to get the combined group bounds
-        const state = multiTransformStateRef.current;
-        if (state && state.items) {
-          const groupBox = new THREE.Box3();
-          state.items.forEach((item) => {
-            item.obj.updateMatrixWorld(true);
-            groupBox.expandByObject(item.obj);
-          });
-
-          // If the group hits the wall, push the pivot back and resync the parts
-          const offset = getBoundsOffset(groupBox, floorLimit);
-          if (offset.lengthSq() > 0) {
-            selectionPivotRef.current.position.add(offset);
-            selectionPivotRef.current.updateMatrixWorld(true);
-            previewMultiTransform();
-          }
-        }
-
         syncSelectionOutlines();
 
         const currentId = selectedIdRef.current;
@@ -3343,18 +3234,9 @@ function ThreeDViewer({
       const entry = entryMapRef.current.get(currentId);
       if (!entry?.obj || !entry?.comp) return;
 
-      // Handle single-object scaling/rotating/translating collisions
-      if (transform.object) {
-        transform.object.updateMatrixWorld(true);
-        const box = new THREE.Box3().setFromObject(transform.object);
-        const offset = getBoundsOffset(box, floorLimit);
-
-        if (offset.lengthSq() > 0) {
-          transform.object.position.add(offset);
-          transform.object.updateMatrixWorld(true);
-        }
-      }
-
+      // Restore the original editor behavior: TransformControls owns the
+      // in-progress object transform. Commit only on release; do not rewrite
+      // or clamp the object against the visual floor/grid while dragging.
       syncLiveSelectedCompFromObject(currentId, entry.obj, entry.comp);
       syncSelectionOutlines();
     };
