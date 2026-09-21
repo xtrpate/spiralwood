@@ -582,7 +582,68 @@ exports.getDeliveries = async (req, res) => {
     sql += ` ORDER BY d.updated_at DESC, d.id DESC LIMIT 200`;
 
     const [rows] = await db.query(sql, params);
+    // Rider needs the saved customer assembly choice from order_items.
+    // If any item requests included assembly, the rider must be prepared
+    // to assemble at least that item. If all specified items decline it,
+    // the delivery is treated as no assembly required.
+    const orderAssemblyChoices = new Map();
+    const orderIds = [
+      ...new Set(
+        rows
+          .map((row) => Number(row.order_id))
+          .filter((orderId) => Number.isInteger(orderId) && orderId > 0),
+      ),
+    ];
+
+    if (orderIds.length > 0) {
+      const placeholders = orderIds.map(() => "?").join(",");
+      const [assemblyRows] = await db.query(
+        `SELECT order_id, customization_json
+         FROM order_items
+         WHERE order_id IN (${placeholders})
+           AND customization_json IS NOT NULL
+         ORDER BY order_id ASC, id ASC`,
+        orderIds,
+      );
+
+      assemblyRows.forEach((itemRow) => {
+        let customization = itemRow.customization_json;
+
+        if (typeof customization === "string") {
+          try {
+            customization = JSON.parse(customization);
+          } catch {
+            customization = null;
+          }
+        }
+
+        const choice = normalizeText(
+          customization?.assembly_choice,
+        ).toLowerCase();
+
+        if (!["included", "none"].includes(choice)) {
+          return;
+        }
+
+        const orderId = Number(itemRow.order_id);
+        if (!orderAssemblyChoices.has(orderId)) {
+          orderAssemblyChoices.set(orderId, new Set());
+        }
+
+        orderAssemblyChoices.get(orderId).add(choice);
+      });
+    }
+
     rows.forEach((row) => {
+      const choices =
+        orderAssemblyChoices.get(Number(row.order_id)) || new Set();
+
+      row.requested_assembly_choice = choices.has("included")
+        ? "included"
+        : choices.has("none")
+          ? "none"
+          : "";
+
       if (row.signed_receipt)
         row.signed_receipt = signUploadPath(row.signed_receipt);
     });

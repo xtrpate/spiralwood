@@ -2111,7 +2111,7 @@ exports.acceptProjectAgreement = async (req, res) => {
 
     if (!alreadyAccepted) {
       emitBlueprintUpdate(io, {
-        blueprintId: blueprint.id,
+        blueprintId: lifecycle.blueprint.id,
         orderId: order.id,
         orderNumber: order.order_number,
         customerId: order.customer_id,
