@@ -23,6 +23,13 @@ const {
 const ALLOWED_PAYMENT_METHODS = ["cod", "cop", "paymongo"];
 const MAX_ITEM_QUANTITY = 1000; // sanity ceiling, not a business limit
 
+const normalizeIdempotencyKey = (value) => {
+  const key = String(value || "").trim();
+  if (!key) return null;
+  if (key.length > 128) return null;
+  return key;
+};
+
 const roundMoney = (value) =>
   Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 
@@ -129,6 +136,17 @@ const ensureStandardPaymongoReceipt = async (
 /* ── Place a New Order ── */
 exports.createOrder = async (req, res) => {
   const conn = await db.getConnection();
+  const checkoutIdempotencyKey = normalizeIdempotencyKey(
+    req.get("Idempotency-Key"),
+  );
+
+  if (req.get("Idempotency-Key") && !checkoutIdempotencyKey) {
+    conn.release();
+    return res.status(400).json({
+      message: "Invalid Idempotency-Key.",
+    });
+  }
+
   try {
     await conn.beginTransaction();
 
@@ -391,8 +409,8 @@ exports.createOrder = async (req, res) => {
         payment_method, payment_status, payment_proof,
         delivery_address, delivery_lat, delivery_lng,
         walkin_customer_name, walkin_customer_phone,
-        notes, subtotal, total, created_at)
-      VALUES (?,?,'online','standard','pending',?,?,?,?,?,?,?,?,?,?,?,NOW())`,
+        notes, subtotal, total, checkout_idempotency_key, created_at)
+      VALUES (?,?,'online','standard','pending',?,?,?,?,?,?,?,?,?,?,?,?,NOW())`,
       [
         order_number,
         req.user.id,
@@ -407,6 +425,7 @@ exports.createOrder = async (req, res) => {
         notes || "",
         subtotal,
         total,
+        checkoutIdempotencyKey,
       ],
     );
 
@@ -589,7 +608,11 @@ exports.createOrder = async (req, res) => {
           metadata: {
             order_id: order_id,
             order_type: "standard",
+            idempotency_key: checkoutIdempotencyKey || undefined,
           },
+          idempotencyKey: checkoutIdempotencyKey
+            ? `wisdom-order-${checkoutIdempotencyKey}`
+            : undefined,
         });
 
         const checkoutUrl = checkout.checkoutUrl;
@@ -633,8 +656,44 @@ exports.createOrder = async (req, res) => {
     });
   } catch (err) {
     if (!conn.connection._fatalError) await conn.rollback();
+
+    if (err?.code === "ER_DUP_ENTRY" && checkoutIdempotencyKey) {
+      try {
+        const [[existingOrder]] = await db.query(
+          `SELECT id, order_number, status, payment_status, payment_method,
+                  total, payment_url, customer_id
+           FROM orders
+           WHERE checkout_idempotency_key = ?
+             AND customer_id = ?
+           LIMIT 1`,
+          [checkoutIdempotencyKey, req.user.id],
+        );
+
+        if (existingOrder) {
+          return res.status(200).json({
+            message:
+              existingOrder.payment_method === "paymongo" &&
+              existingOrder.payment_url
+                ? "This order was already created. Continue to payment."
+                : "This order was already created.",
+            idempotent_replay: true,
+            order_id: existingOrder.id,
+            order_number: existingOrder.order_number,
+            total: parseFloat(existingOrder.total),
+            payment_status: existingOrder.payment_status,
+            payment_url: existingOrder.payment_url || null,
+          });
+        }
+      } catch (replayErr) {
+        console.error(
+          "[customer.orders POST] idempotency replay lookup failed",
+          replayErr,
+        );
+      }
+    }
+
     console.error("[customer.orders POST]", err);
-    res.status(500).json({ message: "Server error.", error: err.message });
+    res.status(500).json({ message: "Server error." });
   } finally {
     conn.release();
   }
