@@ -2,6 +2,7 @@
 // controllers/customer/customer.auth.js
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 // const nodemailer = require("nodemailer");
 const db = require("../../config/db"); // Uses the unified db config
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
@@ -22,17 +23,16 @@ const OTP_EXPIRY_MINUTES = 15;
 const RESET_OTP_EXPIRY_MINUTES = 15;
 const RESET_TOKEN_EXPIRY = "10m";
 
-const generateOtp = () =>
-  Math.floor(100000 + Math.random() * 900000).toString();
+const generateOtp = () => crypto.randomInt(100000, 1000000).toString();
 
 /* ── Helper: Fetch Global Email Footer ── */
 const getGlobalEmailFooter = async () => {
   try {
     const [rows] = await db.query(
-      "SELECT setting_value FROM website_settings WHERE setting_key = 'email_footer' LIMIT 1",
+      "SELECT content FROM website_content WHERE content_type = 'setting' AND content_key = 'email_footer' LIMIT 1",
     );
-    return rows.length > 0 && rows[0].setting_value
-      ? rows[0].setting_value
+    return rows.length > 0 && rows[0].content
+      ? rows[0].content
       : "";
   } catch (err) {
     console.error("Failed to fetch email footer:", err.message);
@@ -778,11 +778,8 @@ exports.verifyOtp = async (req, res) => {
     );
 
     // Now send the SMS!
-    console.log("[OTP SOURCE] verifyOtp -> sending phone OTP", {
-      email: normalizedEmail,
+    console.log("[OTP] Sending registration phone verification SMS.", {
       userId: user.id,
-      otp: phoneOtp,
-      time: new Date().toISOString(),
     });
 
     await sendSms({
@@ -817,8 +814,7 @@ exports.verifyOtp = async (req, res) => {
   } catch (err) {
     console.error("[verify-otp]", err);
     return res.status(500).json({
-      message: "Server error",
-      error: err.message,
+      message: "Server error. Please try again.",
     });
   }
 };
@@ -923,11 +919,8 @@ exports.changeRegistrationPhone = async (req, res) => {
       [normalizedPhone, phoneOtpHash, phoneOtpExpires, user.id],
     );
 
-    console.log("[OTP SOURCE] changeRegistrationPhone -> sending phone OTP", {
-      email: normalizedEmail,
+    console.log("[OTP] Sending replacement registration phone verification SMS.", {
       userId: user.id,
-      otp: phoneOtp,
-      time: new Date().toISOString(),
     });
 
     // Send the new OTP to the new phone number.
@@ -1346,11 +1339,8 @@ exports.resendPhoneOtp = async (req, res) => {
       [phoneOtpHash, phoneOtpExpires, user.id],
     );
 
-    console.log("[OTP SOURCE] resendPhoneOtp -> sending phone OTP", {
-      email: normalizedEmail,
+    console.log("[OTP] Sending registration phone verification SMS.", {
       userId: user.id,
-      otp: phoneOtp,
-      time: new Date().toISOString(),
     });
 
     await sendSms({
@@ -1553,8 +1543,7 @@ exports.resetPassword = async (req, res) => {
     console.error("[reset-password]", err);
 
     return res.status(500).json({
-      message: "Server error",
-      error: err.message,
+      message: "Server error. Please try again.",
     });
   }
 };
@@ -1721,11 +1710,8 @@ exports.login = async (req, res) => {
         [phoneOtpHash, phoneOtpExpires, user.id],
       );
 
-      console.log("[OTP SOURCE] login -> sending phone OTP", {
-        email: normalizedEmail,
+      console.log("[OTP] Sending login phone verification SMS.", {
         userId: user.id,
-        otp: phoneOtp,
-        time: new Date().toISOString(),
       });
 
       await sendSms({
