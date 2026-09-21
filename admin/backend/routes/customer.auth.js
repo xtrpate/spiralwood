@@ -11,6 +11,7 @@ const {
   registerLimiter,
   otpLimiter,
   otpRequestLimiter,
+  availabilityLimiter,
 } = require("../middleware/authRateLimit");
 
 /* ══════════════════════════════════════════════════════════════
@@ -62,7 +63,7 @@ router.post(
 router.post("/verify-reset-otp", otpLimiter, authController.verifyResetOtp);
 router.post("/reset-password", otpLimiter, authController.resetPassword);
 router.post("/login", loginLimiter, authController.login);
-router.post("/check-availability", authController.checkAvailability);
+router.post("/check-availability", availabilityLimiter, authController.checkAvailability);
 
 /* ══════════════════════════════════════════════════════════════
    CLOUD CART OMNICHANNEL ROUTES (Protected)
