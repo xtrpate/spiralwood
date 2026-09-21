@@ -492,7 +492,7 @@ exports.register = async (req, res) => {
         address,
         parsedLat,
         parsedLng,
-        emailOtp,
+        emailOtpHash,
         emailOtpExpiry,
         phoneOtpHash,
         phoneOtpExpires,
