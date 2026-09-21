@@ -68,3 +68,10 @@ exports.otpRequestLimiter = buildLimiter(
   5,
   "Too many requests. Please wait before requesting another code.",
 );
+// Availability checks are intentionally stricter because the endpoint can
+// otherwise be abused for account/email/phone enumeration.
+exports.availabilityLimiter = buildLimiter(
+  15 * 60 * 1000,
+  30,
+  "Too many availability checks. Please try again later.",
+);
