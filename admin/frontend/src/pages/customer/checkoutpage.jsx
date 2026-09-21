@@ -119,6 +119,7 @@ export default function CheckoutPage() {
   const [checkoutItems, setCheckoutItems] = useState([]);
   const [selectionReady, setSelectionReady] = useState(false);
   const [loading, setLoading] = useState(false);
+  const orderIdempotencyKeyRef = useRef(null);
   const [checkoutFeedbackStatus, setCheckoutFeedbackStatus] =
     useState("loading");
   const [assemblyChoice, setAssemblyChoice] = useState("");
@@ -436,12 +437,22 @@ export default function CheckoutPage() {
 
     const feedbackDurations = getMotionFeedbackDurations();
     const feedbackStartedAt = Date.now();
+
+    if (!orderIdempotencyKeyRef.current) {
+      orderIdempotencyKeyRef.current =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
     setCheckoutFeedbackStatus("loading");
     setLoading(true);
 
     try {
       const res = await api.post("/customer/orders", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
+        headers: {
+          "Content-Type": "multipart/form-data",
+          "Idempotency-Key": orderIdempotencyKeyRef.current,
+        },
       });
 
       /* WISDOM ORDER CONFIRMATION SNAPSHOT START */
@@ -518,6 +529,8 @@ export default function CheckoutPage() {
       await new Promise((resolve) =>
         window.setTimeout(resolve, visibleSuccessMs),
       );
+
+      orderIdempotencyKeyRef.current = null;
 
       if (res?.data?.payment_url) {
         window.location.assign(res.data.payment_url);
