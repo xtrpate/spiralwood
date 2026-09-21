@@ -528,7 +528,6 @@ export default function OrderDetailPage() {
     try {
       const { data } = await api.get(`/orders/${id}`);
       setOrder(data);
-      setNewStatus(data.status);
     } catch (err) {
       if (silent) {
         console.error(
@@ -555,6 +554,29 @@ export default function OrderDetailPage() {
 
       if (!Number.isInteger(updatedOrderId) || updatedOrderId !== Number(id)) {
         return;
+      }
+
+      const committedStatus = normalize(payload?.status);
+
+      // Background order refreshes must never overwrite the status selected
+      // inside an open modal. The socket event is emitted only after the
+      // backend transaction commits, so it is safe to reflect Completed here
+      // while the original PATCH response finishes its post-commit work.
+      if (committedStatus === "completed") {
+        setOrder((currentOrder) => {
+          if (!currentOrder) return currentOrder;
+
+          return {
+            ...currentOrder,
+            status: "completed",
+            delivery: currentOrder.delivery
+              ? { ...currentOrder.delivery, status: "completed" }
+              : currentOrder.delivery,
+          };
+        });
+        setNewStatus("completed");
+        setStatusModal(false);
+        setStatusModalMode("general");
       }
 
       load({ silent: true });
