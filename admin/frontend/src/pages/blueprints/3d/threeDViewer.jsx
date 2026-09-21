@@ -14,6 +14,7 @@ import {
 import { createFurnitureObject } from "./createFurnitureObjects";
 import { FURNITURE_TEMPLATE_SET } from "../data/furnitureTypes";
 import { normalizeComponent } from "../data/componentUtils";
+import { getRotatedComponentBounds3D } from "../data/rotationBounds";
 import { isWoodworkingProfileComponent } from "../data/woodworkingProfile";
 import {
   snap,
@@ -594,6 +595,11 @@ function ThreeDViewer({
   const drawerPreviewAnimationRef = useRef(0);
   const clearDrawerPreviewRef = useRef(null);
 
+  // Blueprint component coordinates use a 40 mm floor offset. Keep the 3D
+  // visual floor and all floor guards on that same baseline.
+  const floorWorldY = -canvasH / 2 + FLOOR_OFFSET;
+  const floorComponentY = canvasH - FLOOR_OFFSET;
+
   useEffect(() => {
     if (!showLibraryPanel && activeLeftPanel === "library") {
       setActiveLeftPanel(null);
@@ -921,7 +927,7 @@ function ThreeDViewer({
       preview.visible = true;
       preview.position.set(
         snap(placement.worldX + (templateLike ? width / 2 : 0)),
-        templateLike ? 0 : -canvasH / 2 + height / 2,
+        templateLike ? 0 : floorWorldY + height / 2,
         snap(placement.worldZ + (templateLike ? depth / 2 : 0)),
       );
       preview.rotation.set(
@@ -932,9 +938,9 @@ function ThreeDViewer({
       preview.updateMatrixWorld(true);
     },
     [
-      canvasH,
       disposePlacementPreview,
       ensurePlacementPreview,
+      floorWorldY,
       getPlacementDims,
       isTemplatePlacementType,
     ],
@@ -1458,6 +1464,55 @@ function ThreeDViewer({
     isLocked3DRef.current = isLocked3D;
   }, [isLocked3D]);
 
+  const getComponentWorldMinY = useCallback(
+    (comp) => {
+      const bounds = getRotatedComponentBounds3D(comp);
+      if (!bounds) return null;
+      return canvasH / 2 - bounds.maxY;
+    },
+    [canvasH],
+  );
+
+  const clampComponentUpdatesToFloor = useCallback(
+    (comp, updates) => {
+      if (!comp || !updates) return updates;
+
+      const nextComp = normalizeComponent({
+        ...comp,
+        ...updates,
+      });
+      const bounds = getRotatedComponentBounds3D(nextComp);
+
+      if (!bounds || bounds.maxY <= floorComponentY + 0.001) {
+        return updates;
+      }
+
+      return {
+        ...updates,
+        y: roundToPrecision(
+          Number(nextComp.y || 0) - (bounds.maxY - floorComponentY),
+        ),
+      };
+    },
+    [floorComponentY],
+  );
+
+  const clampObjectToBlueprintFloor = useCallback(
+    (obj) => {
+      if (!obj) return 0;
+
+      obj.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(obj);
+      if (box.isEmpty() || box.min.y >= floorWorldY - 0.001) return 0;
+
+      const correctionY = floorWorldY - box.min.y;
+      obj.position.y += correctionY;
+      obj.updateMatrixWorld(true);
+      return correctionY;
+    },
+    [floorWorldY],
+  );
+
   const worldFromComp = useCallback(
     (comp) => ({
       x: comp.x + comp.width / 2 - canvasW / 2,
@@ -1565,15 +1620,16 @@ function ThreeDViewer({
     (obj, comp) => {
       if (!obj || !comp) return null;
 
-      const updates =
-        getAnchoredScaleUpdates(obj, comp) || compFromWorld(obj, comp, "scale");
-
-      if (!updates) return null;
-
       const scaleState = singleScaleStateRef.current;
       const baseComp =
         scaleState?.id === comp.id && scaleState?.comp ? scaleState.comp : comp;
 
+      const rawUpdates =
+        getAnchoredScaleUpdates(obj, comp) || compFromWorld(obj, comp, "scale");
+
+      if (!rawUpdates) return null;
+
+      const updates = clampComponentUpdatesToFloor(baseComp, rawUpdates);
       const previewComp = normalizeComponent({
         ...baseComp,
         ...updates,
@@ -1582,13 +1638,19 @@ function ThreeDViewer({
 
       // TransformControls scales around the object's center. Reposition that
       // center during the drag so the selected resize face stays fixed in
-      // world space instead of correcting only after pointer release.
+      // world space. The floor-safe updates also keep the resized object above
+      // the Blueprint design floor before anything is committed.
       obj.position.set(previewWorld.x, previewWorld.y, previewWorld.z);
       obj.updateMatrixWorld(true);
 
       return updates;
     },
-    [compFromWorld, getAnchoredScaleUpdates, worldFromComp],
+    [
+      clampComponentUpdatesToFloor,
+      compFromWorld,
+      getAnchoredScaleUpdates,
+      worldFromComp,
+    ],
   );
 
   const handleResizeDimensionChange = useCallback(
@@ -1617,10 +1679,13 @@ function ThreeDViewer({
       });
 
       if (updates) {
-        onUpdateCompRef.current?.(id, updates);
+        onUpdateCompRef.current?.(
+          id,
+          clampComponentUpdatesToFloor(comp, updates),
+        );
       }
     },
-    [canvasW, canvasH, canvasD],
+    [canvasW, canvasH, canvasD, clampComponentUpdatesToFloor],
   );
 
   const clearLiveSelectedComp = useCallback(() => {
@@ -2492,12 +2557,16 @@ function ThreeDViewer({
       selectedIds: activeSelectionIds3D,
       strength: explodeStrength,
       worldFromComponent: worldFromComp,
+      floorY: floorWorldY,
+      worldMinYFromComponent: getComponentWorldMinY,
     });
   }, [
     components,
     activeSelectionIds3D,
     isExploded3D,
     explodeStrength,
+    floorWorldY,
+    getComponentWorldMinY,
     worldFromComp,
   ]);
 
@@ -2729,33 +2798,46 @@ function ThreeDViewer({
     // anchored assembly-resize engine is used.
     if (state.mode === "scale") return;
 
-    pivot.updateMatrixWorld(true);
-
-    const deltaMatrix = pivot.matrixWorld
-      .clone()
-      .multiply(state.startPivotInverse);
-
     const nextMatrix = new THREE.Matrix4();
     const position = new THREE.Vector3();
     const quaternion = new THREE.Quaternion();
     const scale = new THREE.Vector3();
 
-    state.items.forEach((item) => {
-      const baseMatrix = new THREE.Matrix4().compose(
-        item.position.clone(),
-        item.quaternion.clone(),
-        item.scale.clone(),
-      );
+    const applyPreviewFromPivot = () => {
+      pivot.updateMatrixWorld(true);
+      const deltaMatrix = pivot.matrixWorld
+        .clone()
+        .multiply(state.startPivotInverse);
 
-      nextMatrix.copy(deltaMatrix).multiply(baseMatrix);
-      nextMatrix.decompose(position, quaternion, scale);
+      state.items.forEach((item) => {
+        const baseMatrix = new THREE.Matrix4().compose(
+          item.position.clone(),
+          item.quaternion.clone(),
+          item.scale.clone(),
+        );
 
-      item.obj.position.copy(position);
-      item.obj.quaternion.copy(quaternion);
-      item.obj.scale.copy(scale);
-      item.obj.updateMatrixWorld(true);
-    });
-  }, []);
+        nextMatrix.copy(deltaMatrix).multiply(baseMatrix);
+        nextMatrix.decompose(position, quaternion, scale);
+
+        item.obj.position.copy(position);
+        item.obj.quaternion.copy(quaternion);
+        item.obj.scale.copy(scale);
+        item.obj.updateMatrixWorld(true);
+      });
+    };
+
+    applyPreviewFromPivot();
+
+    // Clamp the whole selection as one unit. This follows the user's active
+    // transform only; it never runs during ordinary scene rebuilds.
+    const selectionBox = new THREE.Box3();
+    state.items.forEach((item) => selectionBox.expandByObject(item.obj));
+
+    if (!selectionBox.isEmpty() && selectionBox.min.y < floorWorldY - 0.001) {
+      pivot.position.y += floorWorldY - selectionBox.min.y;
+      applyPreviewFromPivot();
+    }
+  }, [floorWorldY]);
 
   const commitMultiTransform = useCallback(() => {
     const state = multiTransformStateRef.current;
@@ -2770,7 +2852,8 @@ function ThreeDViewer({
     const updatesById = {};
 
     state.items.forEach((item) => {
-      updatesById[item.id] = compFromWorld(item.obj, item.comp, state.mode);
+      const updates = compFromWorld(item.obj, item.comp, state.mode);
+      updatesById[item.id] = clampComponentUpdatesToFloor(item.comp, updates);
     });
 
     if (onBeforeDragRef.current) {
@@ -2780,7 +2863,7 @@ function ThreeDViewer({
 
     onBatchUpdateCompsRef.current?.(updatesById, { skipHistory: true });
     resetMultiTransformState();
-  }, [compFromWorld, resetMultiTransformState]);
+  }, [clampComponentUpdatesToFloor, compFromWorld, resetMultiTransformState]);
 
   const captureCameraView = useCallback(
     () => captureCameraSnapshot(cameraRef.current, orbitRef.current),
@@ -3000,6 +3083,7 @@ function ThreeDViewer({
       width: w,
       height: h,
       canvasHeight: canvasH,
+      floorOffset: FLOOR_OFFSET,
       gridSize: GRID_SIZE,
       rotationSnapDegrees: ROTATION_SNAP_DEGREES,
     });
@@ -3052,7 +3136,7 @@ function ThreeDViewer({
 
       const floorPlane = new THREE.Plane(
         new THREE.Vector3(0, 1, 0),
-        canvasH / 2,
+        -FLOOR_Y,
       );
       const hitPoint = new THREE.Vector3();
       const hasFloorHit = raycasterRef.current.ray.intersectPlane(
@@ -3184,13 +3268,18 @@ function ThreeDViewer({
           return;
         }
 
+        // Keep the final transform preview above the design floor before
+        // converting it back into Blueprint component coordinates.
+        clampObjectToBlueprintFloor(entry.obj);
+
         const scaleState = singleScaleStateRef.current;
         const isScaleCommit =
           transformModeRef.current === "scale" && scaleState?.id === currentId;
 
-        const updates = isScaleCommit
+        const rawUpdates = isScaleCommit
           ? getAnchoredScaleUpdates(entry.obj, entry.comp, scaleState)
           : compFromWorld(entry.obj, entry.comp, transformModeRef.current);
+        const updates = clampComponentUpdatesToFloor(entry.comp, rawUpdates);
 
         if (onBeforeDragRef.current) {
           onPushHistoryRef.current?.(onBeforeDragRef.current);
@@ -3234,9 +3323,9 @@ function ThreeDViewer({
       const entry = entryMapRef.current.get(currentId);
       if (!entry?.obj || !entry?.comp) return;
 
-      // Restore the original editor behavior: TransformControls owns the
-      // in-progress object transform. Commit only on release; do not rewrite
-      // or clamp the object against the visual floor/grid while dragging.
+      // Guard only the user's active transform. Unlike the removed global
+      // collision pass, this does not mutate component data during rebuilds.
+      clampObjectToBlueprintFloor(entry.obj);
       syncLiveSelectedCompFromObject(currentId, entry.obj, entry.comp);
       syncSelectionOutlines();
     };

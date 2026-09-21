@@ -35,36 +35,69 @@ function normalizeDirection(vector) {
   };
 }
 
-function fallbackDirection(component = {}) {
-  const text = `${compactText(component.partCode)} ${compactText(
-    component.label,
-  )}`.toLowerCase();
+function getSemanticDirection(component = {}) {
+  const code = compactText(component.partCode).toUpperCase();
+  const label = compactText(component.label).toLowerCase();
+  const type = compactText(component.type).toLowerCase();
+  const text = `${label} ${type}`;
+  const codeTokens = new Set(code.split(/[^A-Z0-9]+/).filter(Boolean));
 
+  const front = /\bfront\b/.test(text) || codeTokens.has("FL") || codeTokens.has("FR");
+  const rear =
+    /\b(back|rear)\b/.test(text) || codeTokens.has("BL") || codeTokens.has("BR");
+  const left = /\bleft\b/.test(text) || codeTokens.has("FL") || codeTokens.has("BL");
+  const right = /\bright\b/.test(text) || codeTokens.has("FR") || codeTokens.has("BR");
+
+  // Vertical assembly layers get priority over generic side wording.
   if (/\b(top|upper)\b/.test(text)) {
     return { x: 0, y: 1, z: 0 };
   }
 
-  if (/\b(lower|bottom|shelf)\b/.test(text)) {
+  if (/\b(lower|bottom)\b/.test(text)) {
     return { x: 0, y: -1, z: 0 };
   }
 
-  if (/\bleft\b/.test(text)) {
-    return { x: -1, y: 0, z: 0 };
+  // Common furniture corner parts (legs/posts) separate diagonally in plan.
+  if (front && left) return normalizeDirection({ x: -1, y: 0, z: -1 });
+  if (front && right) return normalizeDirection({ x: 1, y: 0, z: -1 });
+  if (rear && left) return normalizeDirection({ x: -1, y: 0, z: 1 });
+  if (rear && right) return normalizeDirection({ x: 1, y: 0, z: 1 });
+
+  // Head/foot wording is useful for bed assemblies even without front/rear labels.
+  if (/\bhead(board)?\b/.test(text)) return { x: 0, y: 0, z: 1 };
+  if (/\bfoot(board)?\b/.test(text)) return { x: 0, y: 0, z: -1 };
+
+  if (front) return { x: 0, y: 0, z: -1 };
+  if (rear) return { x: 0, y: 0, z: 1 };
+  if (left) return { x: -1, y: 0, z: 0 };
+  if (right) return { x: 1, y: 0, z: 0 };
+
+  return null;
+}
+
+function clampExplodedOffsetToFloor(
+  component,
+  offset,
+  floorY,
+  worldMinYFromComponent,
+) {
+  if (!Number.isFinite(floorY) || typeof worldMinYFromComponent !== "function") {
+    return offset;
   }
 
-  if (/\bright\b/.test(text)) {
-    return { x: 1, y: 0, z: 0 };
-  }
+  const rawMinY = worldMinYFromComponent(component);
+  if (rawMinY == null) return offset;
 
-  if (/\b(front)\b/.test(text)) {
-    return { x: 0, y: 0, z: -1 };
-  }
+  const minY = Number(rawMinY);
+  if (!Number.isFinite(minY)) return offset;
 
-  if (/\b(back|rear)\b/.test(text)) {
-    return { x: 0, y: 0, z: 1 };
-  }
+  const displayedMinY = minY + offset.y;
+  if (displayedMinY >= floorY) return offset;
 
-  return { x: 0, y: 1, z: 0 };
+  return {
+    ...offset,
+    y: offset.y + (floorY - displayedMinY),
+  };
 }
 
 function getTargetAssemblyKeys(components = [], selectedIds = []) {
@@ -95,6 +128,8 @@ function buildExplodedAssemblyOffsets({
   selectedIds = [],
   strength = 55,
   worldFromComponent,
+  floorY = null,
+  worldMinYFromComponent = null,
 } = {}) {
   const offsets = new Map();
   const source = Array.isArray(components) ? components.filter(Boolean) : [];
@@ -185,10 +220,11 @@ function buildExplodedAssemblyOffsets({
       1,
     );
 
+    // Keep the exploded drawing readable without the old over-wide star burst.
     const fullDistance = clampNumber(
-      Math.max(largestPartDimension * 0.32, spread * 0.45, 180),
-      180,
-      900,
+      Math.max(largestPartDimension * 0.24, spread * 0.3, 160),
+      160,
+      650,
     );
 
     const distance = fullDistance * strengthRatio;
@@ -201,13 +237,25 @@ function buildExplodedAssemblyOffsets({
       };
 
       const direction =
-        normalizeDirection(relative) || fallbackDirection(component);
+        getSemanticDirection(component) ||
+        normalizeDirection(relative) ||
+        { x: 0, y: 1, z: 0 };
 
-      offsets.set(component.id, {
+      const rawOffset = {
         x: direction.x * distance,
         y: direction.y * distance,
         z: direction.z * distance,
-      });
+      };
+
+      offsets.set(
+        component.id,
+        clampExplodedOffsetToFloor(
+          component,
+          rawOffset,
+          floorY,
+          worldMinYFromComponent,
+        ),
+      );
     });
   });
 

@@ -134,6 +134,7 @@ export function createBlueprintSceneFoundation({
   width,
   height,
   canvasHeight,
+  floorOffset = 0,
   gridSize,
   rotationSnapDegrees,
 }) {
@@ -168,7 +169,9 @@ export function createBlueprintSceneFoundation({
 
   addBlueprintLights(scene);
 
-  const floorY = -canvasHeight / 2;
+  // Match the visible 3D floor to the Blueprint design floor used by
+  // templates and manual component placement.
+  const floorY = -canvasHeight / 2 + floorOffset;
   addBlueprintFloor(scene, floorY);
 
   const orbit = new OrbitControls(camera, canvas);
