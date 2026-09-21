@@ -1274,8 +1274,7 @@ exports.resendOtp = async (req, res) => {
   } catch (err) {
     console.error("[resend-otp]", err);
     return res.status(500).json({
-      message: "Server error",
-      error: err.message,
+      message: "Server error. Please try again.",
     });
   }
 };
@@ -1819,8 +1818,7 @@ exports.login = async (req, res) => {
     });
 
     return res.status(500).json({
-      message: "Server error",
-      error: err.message,
+      message: "Server error. Please try again.",
     });
   }
 };
