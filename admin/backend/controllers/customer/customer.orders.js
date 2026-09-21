@@ -1184,18 +1184,33 @@ exports.verifyPayment = async (req, res) => {
     // Provider lookup intentionally occurs before taking a DB lock.
     const session = await retrieveCheckoutSession(order.paymongo_session_id);
     const payments = session.attributes.payments || [];
-    const hasSuccessfulPayment = payments.some(
+    const successfulPayment = payments.find(
       (payment) => payment.attributes.status === "paid",
     );
 
-    if (!hasSuccessfulPayment) {
+    if (!successfulPayment) {
       return res.json({
         success: false,
         message: "Payment has not been completed yet. Order remains unpaid.",
       });
     }
 
-    // PayMongo says paid. Serialize finalization on the order row. This second
+    const providerAmountCents = Number(
+      successfulPayment?.attributes?.amount,
+    );
+    const expectedAmountCents = Math.round(Number(order.total || 0) * 100);
+
+    if (
+      !Number.isSafeInteger(providerAmountCents) ||
+      providerAmountCents !== expectedAmountCents
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment amount does not match the order total.",
+      });
+    }
+
+    // PayMongo says paid and the amount matches. Serialize finalization on the order row. This second
     // check is the critical race fix: two simultaneous browser verification
     // calls can no longer both insert a verified payment transaction.
     const conn = await db.getConnection();
