@@ -661,7 +661,8 @@ exports.createOrder = async (req, res) => {
       try {
         const [[existingOrder]] = await db.query(
           `SELECT id, order_number, status, payment_status, payment_method,
-                  total, payment_url, customer_id
+                  total, payment_url, customer_id,
+                  walkin_customer_name, walkin_customer_phone
            FROM orders
            WHERE checkout_idempotency_key = ?
              AND customer_id = ?
@@ -670,10 +671,69 @@ exports.createOrder = async (req, res) => {
         );
 
         if (existingOrder) {
+          let paymentUrl = existingOrder.payment_url || null;
+
+          // If the original request timed out after the order was committed
+          // but before PayMongo returned, safely resume checkout creation.
+          if (
+            String(existingOrder.payment_method || "").toLowerCase() ===
+              "paymongo" &&
+            !paymentUrl &&
+            String(existingOrder.payment_status || "").toLowerCase() !== "paid"
+          ) {
+            try {
+              const [[userRecord]] = await db.query(
+                `SELECT email FROM users WHERE id = ? LIMIT 1`,
+                [req.user.id],
+              );
+
+              const frontendUrl =
+                process.env.FRONTEND_URL || req.headers.origin;
+
+              const checkout = await createCheckoutSession({
+                customer: {
+                  name: existingOrder.walkin_customer_name || "",
+                  phone: existingOrder.walkin_customer_phone || "",
+                  email: userRecord?.email || "",
+                },
+                amount: Number(existingOrder.total || 0),
+                description: `Order ${existingOrder.order_number} - Spiral Wood`,
+                successUrl: `${frontendUrl}/orders?verify_success=true&order=${existingOrder.order_number}`,
+                cancelUrl: `${frontendUrl}/cart`,
+                metadata: {
+                  order_id: existingOrder.id,
+                  order_type: "standard",
+                  idempotency_key: checkoutIdempotencyKey,
+                },
+                idempotencyKey: `wisdom-order-${checkoutIdempotencyKey}`,
+              });
+
+              paymentUrl = checkout.checkoutUrl;
+
+              await db.query(
+                `UPDATE orders
+                 SET payment_status = 'unpaid',
+                     payment_url = ?,
+                     paymongo_session_id = ?
+                 WHERE id = ? AND customer_id = ?`,
+                [
+                  checkout.checkoutUrl,
+                  checkout.sessionId,
+                  existingOrder.id,
+                  req.user.id,
+                ],
+              );
+            } catch (resumeError) {
+              console.error(
+                "[customer.orders POST] idempotent PayMongo resume failed",
+                resumeError.response?.data || resumeError.message,
+              );
+            }
+          }
+
           return res.status(200).json({
             message:
-              existingOrder.payment_method === "paymongo" &&
-              existingOrder.payment_url
+              paymentUrl
                 ? "This order was already created. Continue to payment."
                 : "This order was already created.",
             idempotent_replay: true,
@@ -681,7 +741,7 @@ exports.createOrder = async (req, res) => {
             order_number: existingOrder.order_number,
             total: parseFloat(existingOrder.total),
             payment_status: existingOrder.payment_status,
-            payment_url: existingOrder.payment_url || null,
+            payment_url: paymentUrl,
           });
         }
       } catch (replayErr) {
