@@ -105,6 +105,17 @@ const verifyPaymongoSignature = (rawBody, signatureHeader, secret) => {
   return safeCompare(expectedSignature, receivedSignature);
 };
 
+const getPaymongoAmountCents = (session) => {
+  const amount = Number(session?.attributes?.payments?.[0]?.attributes?.amount);
+  return Number.isSafeInteger(amount) && amount > 0 ? amount : null;
+};
+
+const amountsMatchOrderTotal = (providerAmountCents, orderTotal) => {
+  if (!Number.isSafeInteger(providerAmountCents)) return false;
+  const expectedCents = Math.round(Number(orderTotal || 0) * 100);
+  return providerAmountCents === expectedCents;
+};
+
 const createReceiptIfNeeded = async (conn, order, paymentTransactionId) => {
   const [[existingReceipt]] = await conn.query(
     `SELECT id
@@ -255,7 +266,8 @@ exports.handlePaymongoWebhook = async (req, res) => {
           `SELECT *
            FROM orders
            WHERE id = ?
-           LIMIT 1`,
+           LIMIT 1
+           FOR UPDATE`,
           [metadataOrderId],
         );
 
@@ -316,14 +328,34 @@ exports.handlePaymongoWebhook = async (req, res) => {
            AND LOWER(payment_method) = 'paymongo'
            AND LOWER(status) = 'verified'
          ORDER BY id ASC
-         LIMIT 1`,
+         LIMIT 1
+         FOR UPDATE`,
         [order.id],
       );
 
+      const providerAmountCents = getPaymongoAmountCents(session);
+
+      if (!amountsMatchOrderTotal(providerAmountCents, order.total)) {
+        await conn.rollback();
+
+        console.warn(
+          "[PayMongo Webhook] Amount mismatch.",
+          JSON.stringify({
+            orderId: order.id,
+            orderNumber: order.order_number,
+            expectedCents: Math.round(Number(order.total || 0) * 100),
+            receivedCents: providerAmountCents,
+            sessionId,
+          }),
+        );
+
+        return res.status(400).json({
+          message: "Payment amount does not match the order total.",
+        });
+      }
+
       if (!paymentTransaction) {
-        const amountFromWebhook =
-          Number(session?.attributes?.payments?.[0]?.attributes?.amount) ||
-          Number(order.total);
+        const amountFromWebhook = providerAmountCents / 100;
 
         /*
          * Store the Checkout Session ID as the provider reference.
