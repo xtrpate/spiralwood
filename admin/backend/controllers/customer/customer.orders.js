@@ -496,15 +496,17 @@ exports.createOrder = async (req, res) => {
 
     await conn.commit();
 
-    // const io = req.app.get("io");
+    const io = req.app.get("io");
 
-    emitOrderCreated(io, {
-      orderId: order_id,
-      orderNumber: order_number,
-      status: "pending",
-      orderType: "standard",
-      customerId: req.user.id,
-    });
+    if (io) {
+      emitOrderCreated(io, {
+        orderId: order_id,
+        orderNumber: order_number,
+        status: "pending",
+        orderType: "standard",
+        customerId: req.user.id,
+      });
+    }
 
     await writeAuditLogSafe({
       userId: req.user.id,
@@ -732,10 +734,9 @@ exports.createOrder = async (req, res) => {
           }
 
           return res.status(200).json({
-            message:
-              paymentUrl
-                ? "This order was already created. Continue to payment."
-                : "This order was already created.",
+            message: paymentUrl
+              ? "This order was already created. Continue to payment."
+              : "This order was already created.",
             idempotent_replay: true,
             order_id: existingOrder.id,
             order_number: existingOrder.order_number,
@@ -1255,9 +1256,7 @@ exports.verifyPayment = async (req, res) => {
       });
     }
 
-    const providerAmountCents = Number(
-      successfulPayment?.attributes?.amount,
-    );
+    const providerAmountCents = Number(successfulPayment?.attributes?.amount);
     const expectedAmountCents = Math.round(Number(order.total || 0) * 100);
 
     if (
