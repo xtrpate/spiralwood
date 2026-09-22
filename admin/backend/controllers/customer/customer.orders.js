@@ -23,6 +23,13 @@ const {
 const ALLOWED_PAYMENT_METHODS = ["cod", "cop", "paymongo"];
 const MAX_ITEM_QUANTITY = 1000; // sanity ceiling, not a business limit
 
+const normalizeIdempotencyKey = (value) => {
+  const key = String(value || "").trim();
+  if (!key) return null;
+  if (key.length > 128) return null;
+  return key;
+};
+
 const roundMoney = (value) =>
   Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 
@@ -129,6 +136,17 @@ const ensureStandardPaymongoReceipt = async (
 /* ── Place a New Order ── */
 exports.createOrder = async (req, res) => {
   const conn = await db.getConnection();
+  const checkoutIdempotencyKey = normalizeIdempotencyKey(
+    req.get("Idempotency-Key"),
+  );
+
+  if (req.get("Idempotency-Key") && !checkoutIdempotencyKey) {
+    conn.release();
+    return res.status(400).json({
+      message: "Invalid Idempotency-Key.",
+    });
+  }
+
   try {
     await conn.beginTransaction();
 
@@ -391,8 +409,8 @@ exports.createOrder = async (req, res) => {
         payment_method, payment_status, payment_proof,
         delivery_address, delivery_lat, delivery_lng,
         walkin_customer_name, walkin_customer_phone,
-        notes, subtotal, total, created_at)
-      VALUES (?,?,'online','standard','pending',?,?,?,?,?,?,?,?,?,?,?,NOW())`,
+        notes, subtotal, total, checkout_idempotency_key, created_at)
+      VALUES (?,?,'online','standard','pending',?,?,?,?,?,?,?,?,?,?,?,?,NOW())`,
       [
         order_number,
         req.user.id,
@@ -407,6 +425,7 @@ exports.createOrder = async (req, res) => {
         notes || "",
         subtotal,
         total,
+        checkoutIdempotencyKey,
       ],
     );
 
@@ -477,15 +496,17 @@ exports.createOrder = async (req, res) => {
 
     await conn.commit();
 
-    // const io = req.app.get("io");
+    const io = req.app.get("io");
 
-    emitOrderCreated(io, {
-      orderId: order_id,
-      orderNumber: order_number,
-      status: "pending",
-      orderType: "standard",
-      customerId: req.user.id,
-    });
+    if (io) {
+      emitOrderCreated(io, {
+        orderId: order_id,
+        orderNumber: order_number,
+        status: "pending",
+        orderType: "standard",
+        customerId: req.user.id,
+      });
+    }
 
     await writeAuditLogSafe({
       userId: req.user.id,
@@ -589,7 +610,11 @@ exports.createOrder = async (req, res) => {
           metadata: {
             order_id: order_id,
             order_type: "standard",
+            idempotency_key: checkoutIdempotencyKey || undefined,
           },
+          idempotencyKey: checkoutIdempotencyKey
+            ? `wisdom-order-${checkoutIdempotencyKey}`
+            : undefined,
         });
 
         const checkoutUrl = checkout.checkoutUrl;
@@ -633,8 +658,103 @@ exports.createOrder = async (req, res) => {
     });
   } catch (err) {
     if (!conn.connection._fatalError) await conn.rollback();
+
+    if (err?.code === "ER_DUP_ENTRY" && checkoutIdempotencyKey) {
+      try {
+        const [[existingOrder]] = await db.query(
+          `SELECT id, order_number, status, payment_status, payment_method,
+                  total, payment_url, customer_id,
+                  walkin_customer_name, walkin_customer_phone
+           FROM orders
+           WHERE checkout_idempotency_key = ?
+             AND customer_id = ?
+           LIMIT 1`,
+          [checkoutIdempotencyKey, req.user.id],
+        );
+
+        if (existingOrder) {
+          let paymentUrl = existingOrder.payment_url || null;
+
+          // If the original request timed out after the order was committed
+          // but before PayMongo returned, safely resume checkout creation.
+          if (
+            String(existingOrder.payment_method || "").toLowerCase() ===
+              "paymongo" &&
+            !paymentUrl &&
+            String(existingOrder.payment_status || "").toLowerCase() !== "paid"
+          ) {
+            try {
+              const [[userRecord]] = await db.query(
+                `SELECT email FROM users WHERE id = ? LIMIT 1`,
+                [req.user.id],
+              );
+
+              const frontendUrl =
+                process.env.FRONTEND_URL || req.headers.origin;
+
+              const checkout = await createCheckoutSession({
+                customer: {
+                  name: existingOrder.walkin_customer_name || "",
+                  phone: existingOrder.walkin_customer_phone || "",
+                  email: userRecord?.email || "",
+                },
+                amount: Number(existingOrder.total || 0),
+                description: `Order ${existingOrder.order_number} - Spiral Wood`,
+                successUrl: `${frontendUrl}/orders?verify_success=true&order=${existingOrder.order_number}`,
+                cancelUrl: `${frontendUrl}/cart`,
+                metadata: {
+                  order_id: existingOrder.id,
+                  order_type: "standard",
+                  idempotency_key: checkoutIdempotencyKey,
+                },
+                idempotencyKey: `wisdom-order-${checkoutIdempotencyKey}`,
+              });
+
+              paymentUrl = checkout.checkoutUrl;
+
+              await db.query(
+                `UPDATE orders
+                 SET payment_status = 'unpaid',
+                     payment_url = ?,
+                     paymongo_session_id = ?
+                 WHERE id = ? AND customer_id = ?`,
+                [
+                  checkout.checkoutUrl,
+                  checkout.sessionId,
+                  existingOrder.id,
+                  req.user.id,
+                ],
+              );
+            } catch (resumeError) {
+              console.error(
+                "[customer.orders POST] idempotent PayMongo resume failed",
+                resumeError.response?.data || resumeError.message,
+              );
+            }
+          }
+
+          return res.status(200).json({
+            message: paymentUrl
+              ? "This order was already created. Continue to payment."
+              : "This order was already created.",
+            idempotent_replay: true,
+            order_id: existingOrder.id,
+            order_number: existingOrder.order_number,
+            total: parseFloat(existingOrder.total),
+            payment_status: existingOrder.payment_status,
+            payment_url: paymentUrl,
+          });
+        }
+      } catch (replayErr) {
+        console.error(
+          "[customer.orders POST] idempotency replay lookup failed",
+          replayErr,
+        );
+      }
+    }
+
     console.error("[customer.orders POST]", err);
-    res.status(500).json({ message: "Server error.", error: err.message });
+    res.status(500).json({ message: "Server error." });
   } finally {
     conn.release();
   }
@@ -1125,18 +1245,31 @@ exports.verifyPayment = async (req, res) => {
     // Provider lookup intentionally occurs before taking a DB lock.
     const session = await retrieveCheckoutSession(order.paymongo_session_id);
     const payments = session.attributes.payments || [];
-    const hasSuccessfulPayment = payments.some(
+    const successfulPayment = payments.find(
       (payment) => payment.attributes.status === "paid",
     );
 
-    if (!hasSuccessfulPayment) {
+    if (!successfulPayment) {
       return res.json({
         success: false,
         message: "Payment has not been completed yet. Order remains unpaid.",
       });
     }
 
-    // PayMongo says paid. Serialize finalization on the order row. This second
+    const providerAmountCents = Number(successfulPayment?.attributes?.amount);
+    const expectedAmountCents = Math.round(Number(order.total || 0) * 100);
+
+    if (
+      !Number.isSafeInteger(providerAmountCents) ||
+      providerAmountCents !== expectedAmountCents
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment amount does not match the order total.",
+      });
+    }
+
+    // PayMongo says paid and the amount matches. Serialize finalization on the order row. This second
     // check is the critical race fix: two simultaneous browser verification
     // calls can no longer both insert a verified payment transaction.
     const conn = await db.getConnection();

@@ -2,6 +2,7 @@
 // controllers/customer/customer.auth.js
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 // const nodemailer = require("nodemailer");
 const db = require("../../config/db"); // Uses the unified db config
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
@@ -22,17 +23,32 @@ const OTP_EXPIRY_MINUTES = 15;
 const RESET_OTP_EXPIRY_MINUTES = 15;
 const RESET_TOKEN_EXPIRY = "10m";
 
-const generateOtp = () =>
-  Math.floor(100000 + Math.random() * 900000).toString();
+const generateOtp = () => crypto.randomInt(100000, 1000000).toString();
+
+const hashOtp = (otp) => bcrypt.hash(String(otp), 10);
+
+const verifyOtpValue = async (storedValue, suppliedOtp) => {
+  if (!storedValue) return false;
+
+  const stored = String(storedValue);
+  const supplied = String(suppliedOtp || "").trim();
+
+  if (stored.startsWith("$2a$") || stored.startsWith("$2b$") || stored.startsWith("$2y$")) {
+    return bcrypt.compare(supplied, stored);
+  }
+
+  // Backward compatibility for short-lived legacy plaintext OTPs.
+  return stored === supplied;
+};
 
 /* ── Helper: Fetch Global Email Footer ── */
 const getGlobalEmailFooter = async () => {
   try {
     const [rows] = await db.query(
-      "SELECT setting_value FROM website_settings WHERE setting_key = 'email_footer' LIMIT 1",
+      "SELECT content FROM website_content WHERE content_type = 'setting' AND content_key = 'email_footer' LIMIT 1",
     );
-    return rows.length > 0 && rows[0].setting_value
-      ? rows[0].setting_value
+    return rows.length > 0 && rows[0].content
+      ? rows[0].content
       : "";
   } catch (err) {
     console.error("Failed to fetch email footer:", err.message);
@@ -428,8 +444,9 @@ exports.register = async (req, res) => {
     );
 
     // Phone OTP
+    const emailOtpHash = await hashOtp(emailOtp);
     const phoneOtp = generateOtp();
-    const phoneOtpHash = await bcrypt.hash(phoneOtp, 10);
+    const phoneOtpHash = await hashOtp(phoneOtp);
     const phoneOtpExpires = new Date(
       Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000,
     );
@@ -475,7 +492,7 @@ exports.register = async (req, res) => {
         address,
         parsedLat,
         parsedLng,
-        emailOtp,
+        emailOtpHash,
         emailOtpExpiry,
         phoneOtpHash,
         phoneOtpExpires,
@@ -601,6 +618,7 @@ exports.changeRegistrationEmail = async (req, res) => {
 
     // Generate a new email OTP
     const emailOtp = generateOtp();
+    const emailOtpHash = await hashOtp(emailOtp);
 
     const emailOtpExpiry = new Date(
       Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000,
@@ -617,7 +635,7 @@ exports.changeRegistrationEmail = async (req, res) => {
         otp_expires = ?
       WHERE id = ?
       `,
-      [normalizedNewEmail, emailOtp, emailOtpExpiry, user.id],
+      [normalizedNewEmail, emailOtpHash, emailOtpExpiry, user.id],
     );
 
     // Send the new OTP to the new email
@@ -742,7 +760,8 @@ exports.verifyOtp = async (req, res) => {
       });
     }
 
-    if (user.otp_code != otp) {
+    const otpMatches = await verifyOtpValue(user.otp_code, normalizedOtp);
+    if (!otpMatches) {
       return res.status(400).json({
         message: "Invalid verification code.",
       });
@@ -778,11 +797,8 @@ exports.verifyOtp = async (req, res) => {
     );
 
     // Now send the SMS!
-    console.log("[OTP SOURCE] verifyOtp -> sending phone OTP", {
-      email: normalizedEmail,
+    console.log("[OTP] Sending registration phone verification SMS.", {
       userId: user.id,
-      otp: phoneOtp,
-      time: new Date().toISOString(),
     });
 
     await sendSms({
@@ -817,8 +833,7 @@ exports.verifyOtp = async (req, res) => {
   } catch (err) {
     console.error("[verify-otp]", err);
     return res.status(500).json({
-      message: "Server error",
-      error: err.message,
+      message: "Server error. Please try again.",
     });
   }
 };
@@ -923,11 +938,8 @@ exports.changeRegistrationPhone = async (req, res) => {
       [normalizedPhone, phoneOtpHash, phoneOtpExpires, user.id],
     );
 
-    console.log("[OTP SOURCE] changeRegistrationPhone -> sending phone OTP", {
-      email: normalizedEmail,
+    console.log("[OTP] Sending replacement registration phone verification SMS.", {
       userId: user.id,
-      otp: phoneOtp,
-      time: new Date().toISOString(),
     });
 
     // Send the new OTP to the new phone number.
@@ -1178,7 +1190,11 @@ exports.verifyResetOtp = async (req, res) => {
       });
     }
 
-    if (String(user.otp_code) !== String(otp).trim()) {
+    const resetOtpMatches = await verifyOtpValue(
+      user.otp_code,
+      String(otp).trim(),
+    );
+    if (!resetOtpMatches) {
       return res.status(400).json({
         message: "Invalid reset code.",
       });
@@ -1244,6 +1260,7 @@ exports.resendOtp = async (req, res) => {
     }
 
     const otp = generateOtp();
+    const otpHash = await hashOtp(otp);
     const expiry = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
     await db.query(
@@ -1252,7 +1269,7 @@ exports.resendOtp = async (req, res) => {
       SET otp_code = ?, otp_purpose = 'verify_email', otp_expires = ?
       WHERE id = ?
       `,
-      [otp, expiry, rows[0].id],
+      [otpHash, expiry, rows[0].id],
     );
 
     const firstName = rows[0].name.split(" ")[0];
@@ -1281,8 +1298,7 @@ exports.resendOtp = async (req, res) => {
   } catch (err) {
     console.error("[resend-otp]", err);
     return res.status(500).json({
-      message: "Server error",
-      error: err.message,
+      message: "Server error. Please try again.",
     });
   }
 };
@@ -1346,11 +1362,8 @@ exports.resendPhoneOtp = async (req, res) => {
       [phoneOtpHash, phoneOtpExpires, user.id],
     );
 
-    console.log("[OTP SOURCE] resendPhoneOtp -> sending phone OTP", {
-      email: normalizedEmail,
+    console.log("[OTP] Sending registration phone verification SMS.", {
       userId: user.id,
-      otp: phoneOtp,
-      time: new Date().toISOString(),
     });
 
     await sendSms({
@@ -1432,6 +1445,7 @@ exports.forgotPassword = async (req, res) => {
     }
 
     const resetOtp = generateOtp();
+    const resetOtpHash = await hashOtp(resetOtp);
     const resetExpiry = new Date(
       Date.now() + RESET_OTP_EXPIRY_MINUTES * 60 * 1000,
     );
@@ -1445,7 +1459,7 @@ exports.forgotPassword = async (req, res) => {
     otp_expires = ?
   WHERE id = ?
   `,
-      [resetOtp, resetExpiry, user.id],
+      [resetOtpHash, resetExpiry, user.id],
     );
 
     const firstName = user.name ? user.name.split(" ")[0] : "Customer";
@@ -1553,8 +1567,7 @@ exports.resetPassword = async (req, res) => {
     console.error("[reset-password]", err);
 
     return res.status(500).json({
-      message: "Server error",
-      error: err.message,
+      message: "Server error. Please try again.",
     });
   }
 };
@@ -1667,6 +1680,7 @@ exports.login = async (req, res) => {
     // A. Customer Recovery Flow - Email (Added .trim() just in case!)
     if (String(user.role).trim() === "customer" && !isEmailVerified) {
       const newOtp = generateOtp();
+      const newOtpHash = await hashOtp(newOtp);
       const expiry = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
       await db.query(
@@ -1678,7 +1692,7 @@ exports.login = async (req, res) => {
           otp_expires = ?
         WHERE id = ?
         `,
-        [newOtp, expiry, user.id],
+        [newOtpHash, expiry, user.id],
       );
 
       const firstName = user.name.split(" ")[0];
@@ -1721,11 +1735,8 @@ exports.login = async (req, res) => {
         [phoneOtpHash, phoneOtpExpires, user.id],
       );
 
-      console.log("[OTP SOURCE] login -> sending phone OTP", {
-        email: normalizedEmail,
+      console.log("[OTP] Sending login phone verification SMS.", {
         userId: user.id,
-        otp: phoneOtp,
-        time: new Date().toISOString(),
       });
 
       await sendSms({
@@ -1833,8 +1844,7 @@ exports.login = async (req, res) => {
     });
 
     return res.status(500).json({
-      message: "Server error",
-      error: err.message,
+      message: "Server error. Please try again.",
     });
   }
 };
