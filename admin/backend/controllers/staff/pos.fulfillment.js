@@ -547,8 +547,12 @@ exports.getDeliveries = async (req, res) => {
             AND dav.voided_at IS NOT NULL
         ) AS delivery_has_voided_acknowledgement,
 
-       o.order_number,
+        o.order_number,
+        o.total,
+        o.payment_method,
+        o.payment_status,
         o.order_type,
+        o.remaining_payment_method,
         o.delivery_lat,
         o.delivery_lng,
         o.created_at AS order_created_at,
@@ -634,7 +638,78 @@ exports.getDeliveries = async (req, res) => {
       });
     }
 
+    const orderPaymentSummaries = new Map();
+
+    if (orderIds.length > 0) {
+      const placeholders = orderIds.map(() => "?").join(",");
+      const [paymentRows] = await db.query(
+        `SELECT
+           order_id,
+           amount,
+           status,
+           payment_method,
+           proof_url,
+           notes
+         FROM payment_transactions
+         WHERE order_id IN (${placeholders})
+         ORDER BY order_id ASC, id ASC`,
+        orderIds,
+      );
+
+      paymentRows.forEach((paymentRow) => {
+        const orderId = Number(paymentRow.order_id);
+
+        if (!orderPaymentSummaries.has(orderId)) {
+          orderPaymentSummaries.set(orderId, {
+            verifiedCents: 0,
+            pendingCount: 0,
+            pendingRows: [],
+          });
+        }
+
+        const summary = orderPaymentSummaries.get(orderId);
+        const amountCents = parseDecimalToCentsStrict(paymentRow.amount);
+        const paymentStatus = normalizeText(paymentRow.status).toLowerCase();
+
+        if (paymentStatus === "verified" && amountCents !== null) {
+          summary.verifiedCents += amountCents;
+        }
+
+        if (paymentStatus === "pending") {
+          summary.pendingCount += 1;
+          summary.pendingRows.push({
+            row: paymentRow,
+            amountCents,
+          });
+        }
+      });
+    }
+
     rows.forEach((row) => {
+      const paymentSummary = orderPaymentSummaries.get(Number(row.order_id)) || {
+        verifiedCents: 0,
+        pendingCount: 0,
+        pendingRows: [],
+      };
+
+      const orderTotalCents = parseDecimalToCentsStrict(row.total);
+      const verifiedCents = paymentSummary.verifiedCents;
+      const remainingCents =
+        orderTotalCents === null
+          ? 0
+          : Math.max(0, orderTotalCents - verifiedCents);
+
+      row.payment_verified_total = centsToAmount(verifiedCents);
+      row.payment_balance = centsToAmount(remainingCents);
+      row.pending_payment_count = paymentSummary.pendingCount;
+      row.delivery_has_reusable_pending_collection = paymentSummary.pendingRows.some(
+        ({ row: pendingRow, amountCents }) =>
+          amountCents !== null &&
+          amountCents === remainingCents &&
+          isRiderDeliveryCollectionPayment(pendingRow),
+      )
+        ? 1
+        : 0;
       const choices =
         orderAssemblyChoices.get(Number(row.order_id)) || new Set();
 
