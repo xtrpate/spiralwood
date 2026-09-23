@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import api, { buildAssetUrl } from "./services/api";
 
 import {
@@ -15,96 +15,113 @@ import { Toaster } from "react-hot-toast";
 import useAuthStore from "./store/authStore";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { SessionLoginFeedback } from "./components/MotionFeedbackOverlay";
-import TasksPage from "./pages/tasks/TasksPage";
 
-import MyTasks from "./pages/staff/MyTasks";
-import ProductionBlueprintView from "./pages/staff/ProductionBlueprintView";
 
-import AdminLayout from "./components/layout/AdminLayout";
-import DashboardPage from "./pages/dashboard/DashboardPage";
-import ProductsPage from "./pages/products/ProductsPage";
-import ProductFormPage from "./pages/products/ProductFormPage";
-import RawMaterialsPage from "./pages/inventory/RawMaterialsPage";
-import BuildMaterialsPage from "./pages/inventory/BuildMaterialsPage";
-import BuildMaterialFormPage from "./pages/inventory/BuildMaterialFormPage";
-import StockMovementPage from "./pages/inventory/StockMovementPage";
-import PhysicalInventoryPage from "./pages/inventory/PhysicalInventoryPage";
-import StockTransferPage from "./pages/inventory/StockTransferPage";
-import SuppliersPage from "./pages/inventory/SuppliersPage";
-import BlueprintsPage from "./pages/blueprints/BlueprintsPage";
-import BlueprintDesign from "./pages/blueprints/BlueprintDesign.jsx";
-import EstimationPage from "./pages/blueprints/EstimationPage";
-import ContractsPage from "./pages/blueprints/ContractsPage";
-import OrdersPage from "./pages/orders/OrdersPage";
-import OrderDetailPage from "./pages/orders/OrderDetailPage";
-import CancellationsPage from "./pages/orders/CancellationsPage";
-import SalesReportPage from "./pages/sales/SalesReportPage";
-import CurrentInventoryReportPage from "./pages/reports/CurrentInventoryReportPage";
-import DailyStockInReportPage from "./pages/reports/DailyStockInReportPage";
-import DeliveryReportPage from "./pages/reports/DeliveryReportPage";
-import OperationsReportPage from "./pages/reports/OperationsReportPage";
-import StockReportPage from "./pages/reports/StockReportPage";
-import TransactionReportPage from "./pages/reports/TransactionReportPage";
-import SalesProfitabilityReportPage from "./pages/reports/SalesProfitabilityReportPage";
-import WarrantyPage from "./pages/warranty/WarrantyPage";
-import CustomersPage from "./pages/customers/CustomersPage";
-import UsersPage from "./pages/users/UsersPage";
-import WebsiteSettingsPage from "./pages/website/WebsiteSettingsPage";
-import FaqsPage from "./pages/website/FaqsPage";
-import StaticPagesPage from "./pages/website/StaticPagesPage";
-import BackupPage from "./pages/backup/BackupPage";
-import AuditLogsPage from "./pages/audit/AuditLogsPage";
-import PosQrRecoveryPage from "./pages/posQr/PosQrRecoveryPage";
 
 import { CartProvider } from "./pages/customer/cartcontext";
 import { CustomCartProvider } from "./pages/customer/customcartcontext";
-import CustomerLayout from "./pages/customer/customerlayout.jsx";
-import LoginPage from "./pages/LoginPage.jsx";
-import ForcePasswordChangePage from "./pages/ForcePasswordChangePage.jsx";
-import RegisterPage from "./pages/customer/registerpage";
-import ForgotPasswordPage from "./pages/customer/forgotpasswordpage";
-import ProductCatalog from "./pages/customer/productcatalog";
-import CartPage from "./pages/customer/cartpage";
-import CustomCartPage from "./pages/customer/customcartpage";
-import CheckoutPage from "./pages/customer/checkoutpage";
-import OrderCompletePage from "./pages/customer/OrderCompletePage.jsx";
-import CustomizePage from "./pages/customer/customizepage";
-import CustomCheckoutPage from "./pages/customer/customcheckoutpage";
-import CustomRequestDetailPage from "./pages/customer/customrequestdetailpage";
-import CustomerBlueprintReceiptPage from "./pages/customer/CustomerBlueprintReceiptPage";
-import CustomerStandardReceiptPage from "./pages/customer/CustomerStandardReceiptPage";
-import AppointmentPage from "./pages/customer/appointmentpage";
-import OrdersPageCustomer from "./pages/customer/orderspage";
-import WarrantyPageCustomer from "./pages/customer/warrantypage";
-import ProfileSettings from "./pages/customer/profilesettings";
-import LandingPage from "./pages/customer/LandingPage";
-import VerifyOtpPage from "./pages/customer/verifyotppage";
-import PhoneOtpPage from "./pages/customer/phoneotppage";
-import ResetPasswordPage from "./pages/customer/resetpasswordpage";
-import PendingApprovalPage from "./pages/customer/pendingapprovalpage";
-import TermsPage from "./pages/customer/TermsPage";
-import PrivacyPolicyPage from "./pages/customer/PrivacyPolicyPage";
-import CustomerStaticPage from "./pages/customer/customerstaticpage";
-import ARViewPage from "./pages/customer/ar/ARViewPage";
 import ProtectedRoute from "./components/ProtectedRoute";
+const TasksPage = lazy(() => import("./pages/tasks/TasksPage"));
+const MyTasks = lazy(() => import("./pages/staff/MyTasks"));
+const ProductionBlueprintView = lazy(() => import("./pages/staff/ProductionBlueprintView"));
+const AdminLayout = lazy(() => import("./components/layout/AdminLayout"));
+const DashboardPage = lazy(() => import("./pages/dashboard/DashboardPage"));
+const ProductsPage = lazy(() => import("./pages/products/ProductsPage"));
+const ProductFormPage = lazy(() => import("./pages/products/ProductFormPage"));
+const RawMaterialsPage = lazy(() => import("./pages/inventory/RawMaterialsPage"));
+const BuildMaterialsPage = lazy(() => import("./pages/inventory/BuildMaterialsPage"));
+const BuildMaterialFormPage = lazy(() => import("./pages/inventory/BuildMaterialFormPage"));
+const StockMovementPage = lazy(() => import("./pages/inventory/StockMovementPage"));
+const PhysicalInventoryPage = lazy(() => import("./pages/inventory/PhysicalInventoryPage"));
+const StockTransferPage = lazy(() => import("./pages/inventory/StockTransferPage"));
+const SuppliersPage = lazy(() => import("./pages/inventory/SuppliersPage"));
+const BlueprintsPage = lazy(() => import("./pages/blueprints/BlueprintsPage"));
+const BlueprintDesign = lazy(() => import("./pages/blueprints/BlueprintDesign.jsx"));
+const EstimationPage = lazy(() => import("./pages/blueprints/EstimationPage"));
+const ContractsPage = lazy(() => import("./pages/blueprints/ContractsPage"));
+const OrdersPage = lazy(() => import("./pages/orders/OrdersPage"));
+const OrderDetailPage = lazy(() => import("./pages/orders/OrderDetailPage"));
+const CancellationsPage = lazy(() => import("./pages/orders/CancellationsPage"));
+const SalesReportPage = lazy(() => import("./pages/sales/SalesReportPage"));
+const CurrentInventoryReportPage = lazy(() => import("./pages/reports/CurrentInventoryReportPage"));
+const DailyStockInReportPage = lazy(() => import("./pages/reports/DailyStockInReportPage"));
+const DeliveryReportPage = lazy(() => import("./pages/reports/DeliveryReportPage"));
+const OperationsReportPage = lazy(() => import("./pages/reports/OperationsReportPage"));
+const StockReportPage = lazy(() => import("./pages/reports/StockReportPage"));
+const TransactionReportPage = lazy(() => import("./pages/reports/TransactionReportPage"));
+const SalesProfitabilityReportPage = lazy(() => import("./pages/reports/SalesProfitabilityReportPage"));
+const WarrantyPage = lazy(() => import("./pages/warranty/WarrantyPage"));
+const CustomersPage = lazy(() => import("./pages/customers/CustomersPage"));
+const UsersPage = lazy(() => import("./pages/users/UsersPage"));
+const WebsiteSettingsPage = lazy(() => import("./pages/website/WebsiteSettingsPage"));
+const FaqsPage = lazy(() => import("./pages/website/FaqsPage"));
+const StaticPagesPage = lazy(() => import("./pages/website/StaticPagesPage"));
+const BackupPage = lazy(() => import("./pages/backup/BackupPage"));
+const AuditLogsPage = lazy(() => import("./pages/audit/AuditLogsPage"));
+const PosQrRecoveryPage = lazy(() => import("./pages/posQr/PosQrRecoveryPage"));
+const CustomerLayout = lazy(() => import("./pages/customer/customerlayout.jsx"));
+const LoginPage = lazy(() => import("./pages/LoginPage.jsx"));
+const ForcePasswordChangePage = lazy(() => import("./pages/ForcePasswordChangePage.jsx"));
+const RegisterPage = lazy(() => import("./pages/customer/registerpage"));
+const ForgotPasswordPage = lazy(() => import("./pages/customer/forgotpasswordpage"));
+const ProductCatalog = lazy(() => import("./pages/customer/productcatalog"));
+const CartPage = lazy(() => import("./pages/customer/cartpage"));
+const CustomCartPage = lazy(() => import("./pages/customer/customcartpage"));
+const CheckoutPage = lazy(() => import("./pages/customer/checkoutpage"));
+const OrderCompletePage = lazy(() => import("./pages/customer/OrderCompletePage.jsx"));
+const CustomizePage = lazy(() => import("./pages/customer/customizepage"));
+const CustomCheckoutPage = lazy(() => import("./pages/customer/customcheckoutpage"));
+const CustomRequestDetailPage = lazy(() => import("./pages/customer/customrequestdetailpage"));
+const CustomerBlueprintReceiptPage = lazy(() => import("./pages/customer/CustomerBlueprintReceiptPage"));
+const CustomerStandardReceiptPage = lazy(() => import("./pages/customer/CustomerStandardReceiptPage"));
+const AppointmentPage = lazy(() => import("./pages/customer/appointmentpage"));
+const OrdersPageCustomer = lazy(() => import("./pages/customer/orderspage"));
+const WarrantyPageCustomer = lazy(() => import("./pages/customer/warrantypage"));
+const ProfileSettings = lazy(() => import("./pages/customer/profilesettings"));
+const LandingPage = lazy(() => import("./pages/customer/LandingPage"));
+const VerifyOtpPage = lazy(() => import("./pages/customer/verifyotppage"));
+const PhoneOtpPage = lazy(() => import("./pages/customer/phoneotppage"));
+const ResetPasswordPage = lazy(() => import("./pages/customer/resetpasswordpage"));
+const PendingApprovalPage = lazy(() => import("./pages/customer/pendingapprovalpage"));
+const TermsPage = lazy(() => import("./pages/customer/TermsPage"));
+const PrivacyPolicyPage = lazy(() => import("./pages/customer/PrivacyPolicyPage"));
+const CustomerStaticPage = lazy(() => import("./pages/customer/customerstaticpage"));
+const ARViewPage = lazy(() => import("./pages/customer/ar/ARViewPage"));
+const POSLayout = lazy(() => import("./pages/staff/POSLayout.jsx"));
+const POSDashboard = lazy(() => import("./pages/staff/Dashboard"));
+const POSProductSearch = lazy(() => import("./pages/staff/ProductSearch"));
+const POSProcessOrder = lazy(() => import("./pages/staff/ProcessOrder"));
+const QrPaymentReturn = lazy(() => import("./pages/staff/QrPaymentReturn"));
+const POSDeliveryScheduling = lazy(() => import("./pages/staff/DeliveryScheduling"));
+const POSDeliveryManagement = lazy(() => import("./pages/staff/DeliveryManagement"));
+const POSAppointmentScheduling = lazy(() => import("./pages/staff/AppointmentScheduling"));
+const POSReceiptPage = lazy(() => import("./pages/staff/ReceiptPage"));
+const BlueprintReceiptPage = lazy(() => import("./pages/staff/BlueprintReceiptPage"));
+const POSSalesReports = lazy(() => import("./pages/staff/SalesReports"));
+const POSBlueprintView = lazy(() => import("./pages/staff/BlueprintView"));
+const BlueprintPayments = lazy(() => import("./pages/staff/BlueprintPayments"));
+const POSInventoryLookup = lazy(() => import("./pages/staff/InventoryLookup"));
+const POSOrderHistory = lazy(() => import("./pages/staff/OrderHistory"));
+const RiderDashboard = lazy(() => import("./pages/staff/RiderDashboard"));
+const RiderHistory = lazy(() => import("./pages/staff/RiderHistory"));
 
-import POSLayout from "./pages/staff/POSLayout.jsx";
-import POSDashboard from "./pages/staff/Dashboard";
-import POSProductSearch from "./pages/staff/ProductSearch";
-import POSProcessOrder from "./pages/staff/ProcessOrder";
-import QrPaymentReturn from "./pages/staff/QrPaymentReturn";
-import POSDeliveryScheduling from "./pages/staff/DeliveryScheduling";
-import POSDeliveryManagement from "./pages/staff/DeliveryManagement";
-import POSAppointmentScheduling from "./pages/staff/AppointmentScheduling";
-import POSReceiptPage from "./pages/staff/ReceiptPage";
-import BlueprintReceiptPage from "./pages/staff/BlueprintReceiptPage";
-import POSSalesReports from "./pages/staff/SalesReports";
-import POSBlueprintView from "./pages/staff/BlueprintView";
-import BlueprintPayments from "./pages/staff/BlueprintPayments";
-import POSInventoryLookup from "./pages/staff/InventoryLookup";
-import POSOrderHistory from "./pages/staff/OrderHistory";
-import RiderDashboard from "./pages/staff/RiderDashboard";
-import RiderHistory from "./pages/staff/RiderHistory";
+function RouteLoadingFallback() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      style={{
+        minHeight: "40vh",
+        display: "grid",
+        placeItems: "center",
+        padding: "32px 16px",
+      }}
+    >
+      Loading...
+    </div>
+  );
+}
+
 
 window.addEventListener("error", (e) => {
   if (
@@ -292,7 +309,8 @@ export default function App() {
             <Toaster position="top-center" toastOptions={{ duration: 4000 }} />
             <SessionLoginFeedback />
 
-            <Routes>
+            <Suspense fallback={<RouteLoadingFallback />}>
+              <Routes>
               <Route path="/ar/:sessionId" element={<ARViewPage />} />
 
               <Route
@@ -1191,7 +1209,8 @@ export default function App() {
 
               {/* Catch-all */}
               <Route path="*" element={<Navigate to="/catalog" replace />} />
-            </Routes>
+              </Routes>
+            </Suspense>
           </CustomCartProvider>
         </CartProvider>
       </BrowserRouter>
