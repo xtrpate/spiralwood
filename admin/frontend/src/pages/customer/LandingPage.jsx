@@ -1763,6 +1763,8 @@ export default function LandingPage() {
                 src={homepageWardrobeHero}
                 alt="Custom wardrobe with wood-finish customization controls"
                 className="wisdom-home-clean-hero__image"
+                loading="eager"
+                fetchPriority="high"
               />
             </div>
           </div>
@@ -2148,6 +2150,8 @@ export default function LandingPage() {
                 src={homepageFitTable}
                 alt="Light wood dining table shown as a custom furniture example"
                 className="wisdom-home-editorial__image is-wide"
+                loading="lazy"
+                decoding="async"
               />
               <div
                 className="wisdom-home-editorial__control is-dimensions"
@@ -2193,6 +2197,8 @@ export default function LandingPage() {
                 src={homepageStorageWardrobe}
                 alt="Wide custom wardrobe with shelves drawers and hanging sections"
                 className="wisdom-home-editorial__image is-wide"
+                loading="lazy"
+                decoding="async"
               />
               <div
                 className="wisdom-home-editorial__control is-storage"
@@ -2251,6 +2257,8 @@ export default function LandingPage() {
                       className={`wisdom-home-editorial__image is-tall is-finish-preview${
                         isActive ? " is-active" : ""
                       }`}
+                      loading="lazy"
+                      decoding="async"
                     />
                   );
                 })}
@@ -2358,7 +2366,13 @@ export default function LandingPage() {
                   onClick={() => handleHomeCategoryClick(card)}
                 >
                   <span className="wisdom-home-shop__card-image">
-                    <img src={card.img} alt="" aria-hidden="true" />
+                    <img
+                      src={card.img}
+                      alt=""
+                      aria-hidden="true"
+                      loading="lazy"
+                      decoding="async"
+                    />
                   </span>
                   <span className="wisdom-home-shop__card-label">
                     {card.label}
