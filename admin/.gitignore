@@ -11,8 +11,8 @@ env
 admin/backend/env
 
 # Frontend Build output
-admin/frontend/build/
-admin/frontend/dist/
+frontend/build/
+frontend/dist/
 
 # Backend Uploads (Ignore user-uploaded images/pdfs during testing)
 admin/backend/uploads/
