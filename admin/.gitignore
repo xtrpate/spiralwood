@@ -15,8 +15,8 @@ frontend/build/
 frontend/dist/
 
 # Backend Uploads (Ignore user-uploaded images/pdfs during testing)
-admin/backend/uploads/
-admin/backend/backups
+backend/uploads/
+backend/backups/
 
 # Logs
 npm-debug.log*
