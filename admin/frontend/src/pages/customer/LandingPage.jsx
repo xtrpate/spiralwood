@@ -1764,7 +1764,7 @@ export default function LandingPage() {
                 alt="Custom wardrobe with wood-finish customization controls"
                 className="wisdom-home-clean-hero__image"
                 loading="eager"
-                fetchPriority="high"
+                fetchpriority="high"
               />
             </div>
           </div>

@@ -1458,6 +1458,7 @@
 }
 
 .clear-filters {
+  border: 1px solid #111111;
   background: #f1f1ee;
   color: #111111;
 }
