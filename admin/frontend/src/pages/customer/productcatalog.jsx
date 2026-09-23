@@ -45,7 +45,7 @@ const formatTypeLabel = (type) => {
 
 const UNMATCHED_CATEGORY_FILTER = "__unmatched_home_category__";
 
-const ProductImage = ({ src, alt, className, style, imgStyle }) => {
+const ProductImage = ({ src, alt, className, style, imgStyle, loading, decoding }) => {
   const [errored, setErrored] = useState(false);
   const resolvedSrc = buildAssetUrl(src);
 
@@ -63,6 +63,8 @@ const ProductImage = ({ src, alt, className, style, imgStyle }) => {
       src={resolvedSrc}
       alt={alt}
       className={className}
+      loading={loading}
+      decoding={decoding}
       style={{
         width: "100%",
         height: "100%",
@@ -823,7 +825,7 @@ export default function ProductCatalog() {
                 <p>Try adjusting your filters or search term.</p>
               </div>
             ) : (
-              products.map((product) => (
+              products.map((product, index) => (
                 <div key={product.id} className="product-card">
                   <button
                     type="button"
@@ -855,6 +857,8 @@ export default function ProductCatalog() {
                           objectPosition: "center",
                           padding: 0,
                         }}
+                        loading={index < 3 ? "eager" : "lazy"}
+                        decoding={index < 3 ? undefined : "async"}
                       />
                     </div>
                   </button>
