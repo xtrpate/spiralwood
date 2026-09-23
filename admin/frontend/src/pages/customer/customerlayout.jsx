@@ -28,19 +28,56 @@ import {
   User,
   ChevronRight,
 } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
+import { lazy, Suspense, useState, useEffect, useRef } from "react";
 import logoImg from "../assets/logo1.png";
 import brandHeaderImg from "../assets/spiral-wood-services-header-logo.png";
-import LandingPage from "./LandingPage";
 import "./customerlayout.css";
 import "./profile.css";
 import CustomerNotificationBell from "../../components/CustomerNotificationBell";
-import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
 import {
   MotionFeedbackOverlay,
   getMotionFeedbackDurations,
 } from "../../components/MotionFeedbackOverlay";
 
+const LandingPage = lazy(() => import("./LandingPage"));
+const CustomerBlueprintViewer = lazy(() => import("./CustomerBlueprintViewer"));
+
+function DeferredBlueprintViewer(props) {
+  return (
+    <Suspense
+      fallback={
+        <div
+          aria-hidden="true"
+          style={{
+            width: "100%",
+            height: "100%",
+            background: "#f8fafc",
+          }}
+        />
+      }
+    >
+      <CustomerBlueprintViewer {...props} />
+    </Suspense>
+  );
+}
+
+function DeferredLandingPage() {
+  return (
+    <Suspense
+      fallback={
+        <div
+          aria-hidden="true"
+          style={{
+            minHeight: "100vh",
+            background: "#f8fafc",
+          }}
+        />
+      }
+    >
+      <LandingPage />
+    </Suspense>
+  );
+}
 const navItems = [
   { to: "/", icon: Home, label: "Home" },
   // WISDOM PRODUCTS MENU -> HOME SHOP CATEGORY V6
@@ -913,7 +950,7 @@ export default function CustomerLayout() {
                                 pointerEvents: "none",
                               }}
                             >
-                              <CustomerBlueprintViewer
+                              <DeferredBlueprintViewer
                                 blueprint={item.blueprintPreview}
                                 readOnly
                                 showHumanControls={false}
@@ -1320,7 +1357,7 @@ export default function CustomerLayout() {
                     <div className="cust-mini-cart-thumb">
                       {blueprint ? (
                         liveBlueprintPreview ? (
-                          <CustomerBlueprintViewer
+                          <DeferredBlueprintViewer
                             blueprint={liveBlueprintPreview}
                             readOnly
                             showHumanControls={false}
@@ -1763,7 +1800,7 @@ export default function CustomerLayout() {
         {isAuthOverlayPage ? (
           <>
             <div style={{ position: "relative", zIndex: 1 }}>
-              <LandingPage />
+              <DeferredLandingPage />
             </div>
 
             <div
