@@ -526,8 +526,8 @@
   width: 100%;
   min-width: 0;
   max-width: none;
-  background: transparent;
-  border: none;
+  background: #ffffff;
+  border: 1px solid #dedee2;
   border-radius: 0 !important;
   height: 100%;
 }

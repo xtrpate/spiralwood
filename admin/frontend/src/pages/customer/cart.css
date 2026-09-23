@@ -3130,3 +3130,80 @@
   }
 }
 /* WISDOM ORDER COMPLETE SUCCESS MOTION V1.0.3 END */
+
+/* WISDOM CHECKOUT MONOCHROME R3 START */
+
+/* Keep checkout sizing independent from Staff/POS global CSS. */
+.checkout-page,
+.checkout-page *,
+.checkout-page *::before,
+.checkout-page *::after {
+  box-sizing: border-box;
+}
+
+/* Checkout prices are monochrome; Delivery Note warning colors remain untouched. */
+.checkout-page .checkout-item-price,
+.checkout-page .checkout-summary-item-price {
+  color: #111111 !important;
+}
+
+/* Enabled Place Order: black / white and centered. */
+.checkout-page .place-order-btn {
+  min-height: 48px !important;
+  padding: 0 18px !important;
+  border: 1px solid #111111 !important;
+  border-radius: 0 !important;
+  background: #111111 !important;
+  color: #ffffff !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  line-height: 1.2 !important;
+  opacity: 1 !important;
+}
+
+.checkout-page .place-order-btn:not(:disabled):hover {
+  background: #000000 !important;
+  color: #ffffff !important;
+  opacity: 1 !important;
+}
+
+/* Disabled Place Order: neutral gray, never orange/brown. */
+.checkout-page .place-order-btn:disabled {
+  background: #efefef !important;
+  color: #8a8a8a !important;
+  border-color: #d7d7d7 !important;
+  opacity: 1 !important;
+  cursor: not-allowed !important;
+}
+
+/* WISDOM CHECKOUT MONOCHROME R3 END */
+
+/* WISDOM PLACE ORDER CENTER R4 START */
+
+/* Center the actual visible label against the full button box,
+   independent of flex gap/padding/global button styles. */
+.checkout-page .place-order-btn {
+  position: relative !important;
+}
+
+.checkout-page .place-order-btn .place-order-label {
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: translate(-50%, -50%) !important;
+  display: block !important;
+  width: max-content !important;
+  max-width: calc(100% - 36px) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  text-align: center !important;
+  line-height: 1.2 !important;
+  white-space: nowrap !important;
+  pointer-events: none !important;
+}
+
+/* WISDOM PLACE ORDER CENTER R4 END */
