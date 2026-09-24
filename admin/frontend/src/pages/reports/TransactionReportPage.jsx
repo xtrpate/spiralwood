@@ -509,6 +509,11 @@ const EMPTY_ORDER_SUMMARY = {
   in_progress: 0,
 };
 
+const EMPTY_CANCELLATION_SUMMARY = {
+  pending_review: 0,
+  approved_or_cancelled: 0,
+};
+
 const buildOrderReportParams = ({
   page,
   limit,
@@ -542,58 +547,44 @@ const buildOrderReportParams = ({
   return params;
 };
 
+const buildCancellationReportParams = ({
+  page,
+  limit,
+  search,
+  dateFilter,
+  customStart,
+  customEnd,
+  includeSummary = true,
+}) => {
+  const params = {
+    page,
+    limit,
+    transaction_report: 1,
+    date_filter: dateFilter,
+  };
+
+  const normalizedSearch = String(search || "").trim();
+  if (normalizedSearch) {
+    params.search = normalizedSearch;
+  }
+
+  if (dateFilter === "custom") {
+    if (customStart) params.from = customStart;
+    if (customEnd) params.to = customEnd;
+  }
+
+  if (!includeSummary) {
+    params.include_summary = 0;
+  }
+
+  return params;
+};
+
 const humanize = (value) =>
+
   String(value || "—")
     .replace(/_/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
-
-const getRowDate = (row, reportType) => {
-  if (reportType === "cancellations") {
-    return new Date(row.requested_at || row.created_at || row.updated_at);
-  }
-  return new Date(row.created_at || row.updated_at);
-};
-
-const isDateInRange = (dateObj, filterType, customStart, customEnd) => {
-  if (filterType === "all") return true;
-  if (!dateObj || Number.isNaN(dateObj.getTime())) return false;
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const target = new Date(dateObj);
-  target.setHours(0, 0, 0, 0);
-
-  if (filterType === "today") return target.getTime() === today.getTime();
-  if (filterType === "yesterday") {
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    return target.getTime() === yesterday.getTime();
-  }
-  if (filterType === "this_week") {
-    const start = new Date(today);
-    start.setDate(today.getDate() - today.getDay());
-    const end = new Date(start);
-    end.setDate(end.getDate() + 6);
-    return target >= start && target <= end;
-  }
-  if (filterType === "this_month") {
-    return (
-      target.getMonth() === today.getMonth() &&
-      target.getFullYear() === today.getFullYear()
-    );
-  }
-  if (filterType === "this_year") {
-    return target.getFullYear() === today.getFullYear();
-  }
-  if (filterType === "custom") {
-    if (customStart && target < new Date(`${customStart}T00:00:00`))
-      return false;
-    if (customEnd && target > new Date(`${customEnd}T00:00:00`)) return false;
-    return true;
-  }
-  return true;
-};
 
 function SummaryCard({ label, value, note }) {
   return (
@@ -634,6 +625,10 @@ export default function TransactionReportPage() {
   const [rows, setRows] = useState([]);
   const [orderTotal, setOrderTotal] = useState(0);
   const [orderSummary, setOrderSummary] = useState(EMPTY_ORDER_SUMMARY);
+  const [cancellationTotal, setCancellationTotal] = useState(0);
+  const [cancellationSummary, setCancellationSummary] = useState(
+    EMPTY_CANCELLATION_SUMMARY,
+  );
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [generatedAt, setGeneratedAt] = useState("");
@@ -651,16 +646,8 @@ export default function TransactionReportPage() {
   }, [reportType, dateFilter, customStart, customEnd]);
 
   useEffect(() => {
-    if (reportType === "orders") {
-      setPage(1);
-    }
+    setPage(1);
   }, [debouncedSearch, reportType]);
-
-  useEffect(() => {
-    if (reportType === "cancellations") {
-      setPage(1);
-    }
-  }, [search, reportType]);
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -707,17 +694,40 @@ export default function TransactionReportPage() {
 
     try {
       const { data } = await api.get("/orders/cancellations", {
-        params: { limit: 5000 },
+        params: buildCancellationReportParams({
+          page,
+          limit: PAGE_SIZE,
+          search: debouncedSearch,
+          dateFilter,
+          customStart,
+          customEnd,
+        }),
       });
-      setRows(Array.isArray(data) ? data : []);
+
+      setRows(Array.isArray(data?.records) ? data.records : []);
+      setCancellationTotal(Number(data?.total || 0));
+      setCancellationSummary({
+        ...EMPTY_CANCELLATION_SUMMARY,
+        ...(data?.summary || {}),
+      });
       setGeneratedAt(new Date().toISOString());
     } catch (err) {
-      toast.error("Failed to load cancellations.");
+      toast.error(
+        err?.response?.data?.message || "Failed to load cancellations.",
+      );
       setRows([]);
+      setCancellationTotal(0);
+      setCancellationSummary(EMPTY_CANCELLATION_SUMMARY);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [
+    page,
+    debouncedSearch,
+    dateFilter,
+    customStart,
+    customEnd,
+  ]);
 
   useEffect(() => {
     if (reportType === "orders") {
@@ -739,41 +749,10 @@ export default function TransactionReportPage() {
     loadCancellations();
   };
 
-  const filteredRows = useMemo(() => {
-    if (reportType === "orders") {
-      return rows;
-    }
-
-    return rows.filter((row) => {
-      // Cancellation Records stays on the existing local filtering flow.
-      const rowDate = getRowDate(row, reportType);
-      if (!isDateInRange(rowDate, dateFilter, customStart, customEnd))
-        return false;
-
-      const query = search.trim().toLowerCase();
-      if (query) {
-        return Object.values(row).some((val) =>
-          String(val || "")
-            .toLowerCase()
-            .includes(query),
-        );
-      }
-
-      return true;
-    });
-  }, [rows, search, reportType, dateFilter, customStart, customEnd]);
-
-  const paginatedRows = useMemo(() => {
-    if (reportType === "orders") {
-      return rows;
-    }
-
-    const start = (page - 1) * PAGE_SIZE;
-    return filteredRows.slice(start, start + PAGE_SIZE);
-  }, [filteredRows, page, reportType, rows]);
+  const paginatedRows = rows;
 
   const reportRecordCount =
-    reportType === "orders" ? orderTotal : filteredRows.length;
+    reportType === "orders" ? orderTotal : cancellationTotal;
 
   const totalPages = Math.max(
     1,
@@ -789,21 +768,24 @@ export default function TransactionReportPage() {
       };
     }
 
-    const total = filteredRows.length;
-    const metric1 = filteredRows.filter((r) =>
-      ["pending"].includes(String(r.status).toLowerCase()),
-    ).length;
-    const metric2 = filteredRows.filter((r) =>
-      ["approved", "cancelled"].includes(String(r.status).toLowerCase()),
-    ).length;
-
-    return { total, metric1, metric2 };
-  }, [filteredRows, orderSummary, orderTotal, reportType]);
+    return {
+      total: cancellationTotal,
+      metric1: Number(cancellationSummary?.pending_review || 0),
+      metric2: Number(cancellationSummary?.approved_or_cancelled || 0),
+    };
+  }, [
+    cancellationSummary,
+    cancellationTotal,
+    orderSummary,
+    orderTotal,
+    reportType,
+  ]);
 
   const exportExcel = async () => {
+
     setExporting(true);
     try {
-      let exportRows = filteredRows;
+      let exportRows = [];
 
       if (reportType === "orders") {
         const firstResponse = await api.get("/orders", {
@@ -851,9 +833,56 @@ export default function TransactionReportPage() {
             "Order records changed while the export was being prepared. Please export again.",
           );
         }
+      } else {
+        const firstResponse = await api.get("/orders/cancellations", {
+          params: buildCancellationReportParams({
+            page: 1,
+            limit: EXPORT_PAGE_SIZE,
+            search,
+            dateFilter,
+            customStart,
+            customEnd,
+          }),
+        });
+
+        exportRows = Array.isArray(firstResponse.data?.records)
+          ? [...firstResponse.data.records]
+          : [];
+
+        const exportTotal = Number(firstResponse.data?.total || 0);
+        const exportPages = Math.max(
+          1,
+          Math.ceil(exportTotal / EXPORT_PAGE_SIZE),
+        );
+
+        for (let exportPage = 2; exportPage <= exportPages; exportPage += 1) {
+          const { data } = await api.get("/orders/cancellations", {
+            params: buildCancellationReportParams({
+              page: exportPage,
+              limit: EXPORT_PAGE_SIZE,
+              search,
+              dateFilter,
+              customStart,
+              customEnd,
+              includeSummary: false,
+            }),
+          });
+
+          const batch = Array.isArray(data?.records) ? data.records : [];
+          exportRows.push(...batch);
+
+          if (batch.length === 0) break;
+        }
+
+        if (exportRows.length !== exportTotal) {
+          throw new Error(
+            "Cancellation records changed while the export was being prepared. Please export again.",
+          );
+        }
       }
 
       if (exportRows.length === 0) {
+
         toast.error("No records match the current filters.");
         return;
       }
@@ -915,7 +944,7 @@ export default function TransactionReportPage() {
           "Admin Note",
           "Status",
         ];
-        mappedData = filteredRows.map((r) => [
+        mappedData = exportRows.map((r) => [
           formatDateTime(r.requested_at || r.created_at),
           r.order_number || `#${r.order_id}`,
           r.customer_name || "—",
@@ -1234,7 +1263,7 @@ export default function TransactionReportPage() {
                     />
                   ) : (
                     paginatedRows.map((row) => (
-                      <tr key={row.id}>
+                      <tr key={row.record_key || `${reportType}:${row.id || row.order_id}`}>
                         {reportType === "orders" ? (
                           <>
                             <td className="trx-primary-text">
