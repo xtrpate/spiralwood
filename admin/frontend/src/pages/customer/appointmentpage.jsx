@@ -65,6 +65,60 @@ const PURPOSE_META = {
 // The 4 specific slots requested
 const TIME_SLOTS = ["09:00", "11:00", "13:00", "15:00"];
 
+const MAX_PROJECT_DESCRIPTION_LENGTH = 500;
+const MAX_NOTES_LENGTH = 300;
+const MAX_ADDRESS_LENGTH = 300;
+
+const isValidYMDDate = (value) => {
+  const raw = String(value || "").trim();
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return false;
+  }
+
+  const [year, month, day] = raw.split("-").map(Number);
+
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+};
+
+const getDayOfWeekFromYMD = (value) => {
+  if (!isValidYMDDate(value)) return null;
+
+  const [year, month, day] = value.split("-").map(Number);
+
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+};
+
+const isTomorrowOrLater = (value) => {
+  if (!isValidYMDDate(value)) return false;
+
+  return value >= getMinDateYMD();
+};
+
+const isAllowedTimeForDate = (date, time) => {
+  if (!TIME_SLOTS.includes(time)) {
+    return false;
+  }
+
+  const dayOfWeek = getDayOfWeekFromYMD(date);
+
+  if (dayOfWeek === null || dayOfWeek === 0) {
+    return false;
+  }
+
+  if (dayOfWeek === 6 && !["09:00", "11:00"].includes(time)) {
+    return false;
+  }
+
+  return true;
+};
+
 const getPurposeLabel = (value) => {
   const match = PURPOSE_OPTIONS.find((item) => item.value === value);
   if (match) return match.label;
@@ -122,16 +176,15 @@ const formatTimeForDisplay = (t) => {
 // A synthetic UTC Date is used only for formatting so the browser timezone
 // cannot shift the stored calendar date or time.
 const appointmentWallClockToSyntheticUtc = (value) => {
-  const raw = String(value || "").trim().replace(" ", "T");
+  const raw = String(value || "")
+    .trim()
+    .replace(" ", "T");
   const match =
-    /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(
-      raw,
-    );
+    /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(raw);
 
   if (!match) return null;
 
-  const [, year, month, day, hour = "00", minute = "00", second = "00"] =
-    match;
+  const [, year, month, day, hour = "00", minute = "00", second = "00"] = match;
 
   return new Date(
     Date.UTC(
@@ -189,9 +242,9 @@ const parseNotes = (notes) => {
     .map((line) => line.trim())
     .filter(Boolean)
     .forEach((line) => {
-      if (line.startsWith("Project description:")) {
+      if (line.startsWith("Project Description:")) {
         details.projectDescription = line
-          .replace("Project description:", "")
+          .replace("Project Description:", "")
           .trim();
       } else if (line.startsWith("Contact:")) {
         details.contact = line.replace("Contact:", "").trim();
@@ -302,21 +355,84 @@ export default function AppointmentPage() {
     e.preventDefault();
     setError("");
 
-    if (!purpose) return setError("Please select an appointment type.");
-    if (!project_description.trim())
-      return setError("Please describe your project.");
-    if (!preferred_date || !preferred_time)
-      return setError("Please select an available schedule from the calendar.");
-
+    const cleanedProjectDescription = project_description.trim();
     const cleanedContact = contact_number.trim();
+    const cleanedAddress = address.trim();
+    const cleanedNotes = notes.trim();
+
+    if (!purpose) {
+      return setError("Please select an appointment type.");
+    }
+
+    if (!cleanedProjectDescription) {
+      return setError("Please describe your project.");
+    }
+
+    if (cleanedProjectDescription.length > MAX_PROJECT_DESCRIPTION_LENGTH) {
+      return setError(
+        `Project description must not exceed ${MAX_PROJECT_DESCRIPTION_LENGTH} characters.`,
+      );
+    }
+
+    if (!preferred_date || !preferred_time) {
+      return setError("Please select an available schedule from the calendar.");
+    }
+
+    if (!isValidYMDDate(preferred_date)) {
+      return setError("Please select a valid appointment date.");
+    }
+
+    if (!isTomorrowOrLater(preferred_date)) {
+      return setError(
+        "Appointments can only be requested for tomorrow or later.",
+      );
+    }
+
+    if (!TIME_SLOTS.includes(preferred_time)) {
+      return setError(
+        "Please select one of the available appointment time slots.",
+      );
+    }
+
+    const appointmentDay = getDayOfWeekFromYMD(preferred_date);
+
+    if (appointmentDay === 0) {
+      return setError("Appointments are not available on Sundays.");
+    }
+
+    if (appointmentDay === 6 && !["09:00", "11:00"].includes(preferred_time)) {
+      return setError(
+        "Saturday appointments are only available at 9:00 AM and 11:00 AM.",
+      );
+    }
+
+    if (!isAllowedTimeForDate(preferred_date, preferred_time)) {
+      return setError("The selected appointment schedule is not available.");
+    }
+
     if (!cleanedContact) {
       return setError("Please enter a contact number.");
     }
+
     if (!/^09\d{9}$/.test(cleanedContact)) {
-      return setError("Contact number must be 11 digits and starts with '09'.");
+      return setError(
+        "Contact number must be exactly 11 digits and start with 09.",
+      );
     }
 
-    if (purpose === "site_measurement" && !address.trim()) {
+    if (cleanedNotes.length > MAX_NOTES_LENGTH) {
+      return setError(
+        `Additional notes must not exceed ${MAX_NOTES_LENGTH} characters.`,
+      );
+    }
+
+    if (cleanedAddress.length > MAX_ADDRESS_LENGTH) {
+      return setError(
+        `Address must not exceed ${MAX_ADDRESS_LENGTH} characters.`,
+      );
+    }
+
+    if (purpose === "site_measurement" && !cleanedAddress) {
       return setError("Please enter the full address for site measurement.");
     }
 
@@ -328,12 +444,12 @@ export default function AppointmentPage() {
     try {
       await api.post("/customer/appointments", {
         purpose,
-        project_description: project_description.trim(),
+        project_description: cleanedProjectDescription,
         preferred_date,
         preferred_time,
         contact_number: cleanedContact,
-        address: address.trim() || undefined,
-        notes: notes.trim() || undefined,
+        address: cleanedAddress || undefined,
+        notes: cleanedNotes || undefined,
       });
 
       setFeedbackStatus("success");
@@ -351,10 +467,39 @@ export default function AppointmentPage() {
       }, durations.success);
     } catch (err) {
       setFeedbackOpen(false);
-      setError(
+
+      const status = err.response?.status;
+      const message =
         err.response?.data?.message ||
-          "Something went wrong. Please try again.",
-      );
+        "Something went wrong. Please try again.";
+
+      setError(message);
+
+      /*
+       * If the backend rejected the request because the selected slot
+       * became unavailable after the calendar was loaded, refresh the
+       * current week's availability so the UI reflects the authoritative
+       * backend state.
+       */
+      if (status === 409) {
+        try {
+          const startDate = toYMD(weekStart);
+
+          const availabilityRes = await api.get(
+            `/customer/appointments/availability/weekly?start=${startDate}`,
+          );
+
+          setBookedSlots(availabilityRes.data || {});
+        } catch (refreshErr) {
+          console.error(
+            "Failed to refresh appointment availability after conflict",
+            refreshErr,
+          );
+        }
+
+        setPreferredDate("");
+        setPreferredTime("");
+      }
     } finally {
       setSubmitting(false);
     }

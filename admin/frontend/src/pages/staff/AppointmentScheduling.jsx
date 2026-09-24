@@ -88,9 +88,12 @@ const formatDateTime = (value) => {
 const APPOINTMENT_TIME_ZONE_OFFSET = "+08:00";
 
 const parseAppointmentWallClock = (value) => {
-  const raw = String(value || "").trim().replace(" ", "T");
-  const match =
-    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(raw);
+  const raw = String(value || "")
+    .trim()
+    .replace(" ", "T");
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(
+    raw,
+  );
 
   if (!match) return null;
 
@@ -144,13 +147,22 @@ const appointmentWallClockToEpochMs = (value) => {
 };
 
 const getMinDateYMD = () => {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
 
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
-    2,
-    "0",
-  )}-${String(d.getDate()).padStart(2, "0")}`;
+  const year = Number(parts.find((part) => part.type === "year")?.value);
+  const month = Number(parts.find((part) => part.type === "month")?.value);
+  const day = Number(parts.find((part) => part.type === "day")?.value);
+
+  const tomorrow = new Date(Date.UTC(year, month - 1, day + 1));
+
+  return `${tomorrow.getUTCFullYear()}-${String(
+    tomorrow.getUTCMonth() + 1,
+  ).padStart(2, "0")}-${String(tomorrow.getUTCDate()).padStart(2, "0")}`;
 };
 
 const toYMD = (dateObj) => {
@@ -298,6 +310,14 @@ const isPastDue = (dateString) => {
   return Number.isFinite(epochMs) ? epochMs < Date.now() : false;
 };
 
+const normalizeScheduleForComparison = (value) => {
+  const raw = String(value || "")
+    .trim()
+    .replace(" ", "T");
+
+  return raw.length >= 16 ? raw.substring(0, 16) : raw;
+};
+
 const getStatusLabel = (status) =>
   STATUS_LABELS[String(status || "").toLowerCase()] || String(status || "—");
 
@@ -353,7 +373,10 @@ const cleanIndoorWorkNote = (value) =>
 
 function IndoorSummaryCard({ label, count, hint, emphasized = false }) {
   return (
-    <div className="indoor-appointments-summary-card" style={indoorSummaryCardStyle}>
+    <div
+      className="indoor-appointments-summary-card"
+      style={indoorSummaryCardStyle}
+    >
       <div
         style={{
           fontSize: 25,
@@ -417,7 +440,10 @@ function IndoorInfo({ label, value, important = false }) {
 function IndoorAppointmentSection({ title, subtitle, children }) {
   return (
     <section className="indoor-appointments-section" style={indoorSectionStyle}>
-      <div className="indoor-appointments-section-header" style={indoorSectionHeaderStyle}>
+      <div
+        className="indoor-appointments-section-header"
+        style={indoorSectionHeaderStyle}
+      >
         <div>
           <h3 style={indoorSectionTitleStyle}>{title}</h3>
           <p style={indoorSectionSubtitleStyle}>{subtitle}</p>
@@ -695,13 +721,8 @@ export default function AppointmentScheduling() {
   }, []);
   const { user, hasPermission } = useAuthStore();
 
-  // WISDOM APPOINTMENT REASSIGNMENT FIX V1
-  // appointments.manage is also intentionally granted to indoor staff for
-  // Accept / Return / Complete / Cancel. Do not use that permission alone to
-  // decide who receives the admin appointment-management workspace.
   const isAdmin = user?.role === "admin";
-  const canManageAppointments =
-    isAdmin && hasPermission("appointments.manage");
+  const canManageAppointments = isAdmin && hasPermission("appointments.manage");
   const isIndoorStaff = user?.role === "staff" && user?.staff_type === "indoor";
 
   const [appointments, setAppointments] = useState([]);
@@ -770,6 +791,7 @@ export default function AppointmentScheduling() {
   const [bookedSlots, setBookedSlots] = useState({});
 
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const [availabilityRefreshKey, setAvailabilityRefreshKey] = useState(0);
 
   const getAssignStaffId = useCallback((appointment) => {
     return Number(
@@ -894,6 +916,8 @@ export default function AppointmentScheduling() {
   }, [searchParams, loading, appointments, canManageAppointments]);
 
   useEffect(() => {
+    let active = true;
+
     const fetchWeeklyAvailability = async () => {
       setLoadingSlots(true);
 
@@ -910,6 +934,8 @@ export default function AppointmentScheduling() {
           ),
         );
 
+        if (!active) return;
+
         const booked = {};
 
         days.forEach((date, index) => {
@@ -919,14 +945,23 @@ export default function AppointmentScheduling() {
         setBookedSlots(booked);
       } catch (err) {
         console.error(err);
-        setBookedSlots({});
+
+        if (active) {
+          setBookedSlots({});
+        }
       } finally {
-        setLoadingSlots(false);
+        if (active) {
+          setLoadingSlots(false);
+        }
       }
     };
 
     fetchWeeklyAvailability();
-  }, [weekStart]);
+
+    return () => {
+      active = false;
+    };
+  }, [weekStart, availabilityRefreshKey]);
 
   const adminNewRequests = useMemo(
     () =>
@@ -1050,6 +1085,7 @@ export default function AppointmentScheduling() {
 
       setShowForm(false);
       fetchAppointments();
+      setAvailabilityRefreshKey((value) => value + 1);
     } catch (err) {
       setError(
         err.response?.data?.message || "Failed to create appointment request.",
@@ -1069,10 +1105,16 @@ export default function AppointmentScheduling() {
         `/pos/appointments/${appointmentId}`,
         payload,
       );
+
       setSuccess(okMessage || res.data?.message || "Appointment updated.");
       fetchAppointments();
+      setAvailabilityRefreshKey((value) => value + 1);
+
+      return true;
     } catch (err) {
       setError(err.response?.data?.message || "Failed to update appointment.");
+
+      return false;
     } finally {
       setActionLoadingId(null);
     }
@@ -1723,10 +1765,12 @@ export default function AppointmentScheduling() {
                       >
                         {(() => {
                           const date = toYMD(day);
-                          const isSunday = day.getDay() === 0;
-                          const isPastSlot = isPastDue(
-                            `${date}T${slot}:00`,
-                          );
+                          const dayOfWeek = day.getDay();
+                          const isSunday = dayOfWeek === 0;
+                          const isSaturdayAfternoon =
+                            dayOfWeek === 6 &&
+                            !["09:00", "11:00"].includes(slot);
+                          const isPastSlot = isPastDue(`${date}T${slot}:00`);
                           const booking = (bookedSlots[date] || []).find(
                             (b) => b.time === slot || b === slot,
                           );
@@ -1739,7 +1783,7 @@ export default function AppointmentScheduling() {
                             );
                           }
 
-                          if (isSunday) {
+                          if (isSunday || isSaturdayAfternoon) {
                             return (
                               <div
                                 style={{
@@ -2138,13 +2182,17 @@ export default function AppointmentScheduling() {
                           const isPast = isPastDue(`${d}T${slot}:00`);
 
                           const dateObj = new Date(`${d}T00:00:00`);
-                          const isSunday = dateObj.getDay() === 0;
+                          const dayOfWeek = dateObj.getDay();
+                          const isSunday = dayOfWeek === 0;
+                          const isSaturdayAfternoon =
+                            dayOfWeek === 6 &&
+                            !["09:00", "11:00"].includes(slot);
 
                           const booking = (bookedSlots[d] || []).find(
                             (b) => b.time === slot || b === slot,
                           );
 
-                          if (isSunday) {
+                          if (isSunday || isSaturdayAfternoon) {
                             statusText = "Closed";
                           } else if (booking) {
                             statusText =
@@ -2295,21 +2343,31 @@ export default function AppointmentScheduling() {
                       return;
                     }
 
-                    await handleAction(
+                    const reassigned = await handleAction(
                       rescheduleModal.id,
                       { assigned_staff_id: Number(rescheduleStaffId) },
                       "Appointment reassigned. Waiting for the new staff member to accept.",
                     );
-                    setRescheduleModal(null);
-                    setRescheduleMode("manage");
+
+                    if (reassigned) {
+                      setRescheduleModal(null);
+                      setRescheduleMode("manage");
+                    }
+
                     return;
                   }
 
                   const newDateTime = `${rescheduleDate}T${rescheduleTime}`;
+
+                  const currentSchedule = normalizeScheduleForComparison(
+                    rescheduleModal.scheduled_date ||
+                      rescheduleModal.preferred_date,
+                  );
+
                   const isDateChanged =
-                    newDateTime !==
-                    (rescheduleModal.scheduled_date ||
-                      rescheduleModal.preferred_date);
+                    normalizeScheduleForComparison(newDateTime) !==
+                    currentSchedule;
+
                   const isStaffChanged = rescheduleStaffId !== currentStaffId;
 
                   // Smart status transitions based on what was changed
@@ -2340,14 +2398,17 @@ export default function AppointmentScheduling() {
                       : null,
                   };
 
-                  await handleAction(
+                  const saved = await handleAction(
                     rescheduleModal.id,
                     payload,
                     newStatus === "awaiting_staff_acceptance"
                       ? "Appointment updated. Staff must accept."
                       : "Appointment updated successfully.",
                   );
-                  setRescheduleModal(null);
+
+                  if (saved) {
+                    setRescheduleModal(null);
+                  }
                 }}
               >
                 <div style={{ display: "grid", gap: 16 }}>
@@ -2457,13 +2518,27 @@ export default function AppointmentScheduling() {
                           const dateObj = new Date(
                             `${rescheduleDate}T00:00:00`,
                           );
-                          const isSunday = dateObj.getDay() === 0;
+                          const dayOfWeek = dateObj.getDay();
+                          const isSunday = dayOfWeek === 0;
+                          const isSaturdayAfternoon =
+                            dayOfWeek === 6 &&
+                            !["09:00", "11:00"].includes(slot);
 
                           const booking = (
                             bookedSlots[rescheduleDate] || []
-                          ).find((b) => b.time === slot || b === slot);
+                          ).find((b) => {
+                            if (
+                              b &&
+                              typeof b === "object" &&
+                              Number(b.id) === Number(rescheduleModal.id)
+                            ) {
+                              return false;
+                            }
 
-                          if (isSunday) {
+                            return b?.time === slot || b === slot;
+                          });
+
+                          if (isSunday || isSaturdayAfternoon) {
                             statusText = "Closed";
                           } else if (booking) {
                             statusText =
@@ -2817,14 +2892,20 @@ export default function AppointmentScheduling() {
 
       {isIndoorStaff && (
         <>
-          <header className="indoor-appointments-header" style={indoorPageHeaderStyle}>
+          <header
+            className="indoor-appointments-header"
+            style={indoorPageHeaderStyle}
+          >
             <h1 style={indoorPageTitleStyle}>My Appointments</h1>
             <p style={indoorPageSubtitleStyle}>
               Review assigned appointments and update work status.
             </p>
           </header>
 
-          <div className="indoor-appointments-summary" style={indoorSummaryGridStyle}>
+          <div
+            className="indoor-appointments-summary"
+            style={indoorSummaryGridStyle}
+          >
             {staffSummary.map((item, index) => (
               <IndoorSummaryCard
                 key={item.label}
@@ -2895,7 +2976,10 @@ export default function AppointmentScheduling() {
                           : {}),
                       }}
                     >
-                      <div className="indoor-appointment-card-header" style={indoorAppointmentHeaderStyle}>
+                      <div
+                        className="indoor-appointment-card-header"
+                        style={indoorAppointmentHeaderStyle}
+                      >
                         <div>
                           <div style={indoorAppointmentRefStyle}>
                             {formatRequestNumber(a.id)}
@@ -2908,7 +2992,10 @@ export default function AppointmentScheduling() {
                         <IndoorStatusBadge status={a.status} />
                       </div>
 
-                      <div className="indoor-appointment-info-grid" style={indoorInfoGridStyle}>
+                      <div
+                        className="indoor-appointment-info-grid"
+                        style={indoorInfoGridStyle}
+                      >
                         <IndoorInfo
                           label="Service"
                           value={humanizePurpose(a.purpose)}
@@ -2926,7 +3013,10 @@ export default function AppointmentScheduling() {
                       </div>
 
                       {scope && scope !== "No additional scope details" ? (
-                        <div className="indoor-appointment-scope" style={indoorScopeStyle}>
+                        <div
+                          className="indoor-appointment-scope"
+                          style={indoorScopeStyle}
+                        >
                           <strong style={{ fontWeight: 650, color: "#303034" }}>
                             Work note:
                           </strong>{" "}
@@ -2934,7 +3024,10 @@ export default function AppointmentScheduling() {
                         </div>
                       ) : null}
 
-                      <div className="indoor-appointment-actions" style={indoorActionsStyle}>
+                      <div
+                        className="indoor-appointment-actions"
+                        style={indoorActionsStyle}
+                      >
                         <button
                           type="button"
                           style={
@@ -3010,7 +3103,10 @@ export default function AppointmentScheduling() {
                           : {}),
                       }}
                     >
-                      <div className="indoor-appointment-card-header" style={indoorAppointmentHeaderStyle}>
+                      <div
+                        className="indoor-appointment-card-header"
+                        style={indoorAppointmentHeaderStyle}
+                      >
                         <div>
                           <div style={indoorAppointmentRefStyle}>
                             {formatRequestNumber(a.id)}
@@ -3023,7 +3119,10 @@ export default function AppointmentScheduling() {
                         <IndoorStatusBadge status={a.status} />
                       </div>
 
-                      <div className="indoor-appointment-info-grid" style={indoorInfoGridStyle}>
+                      <div
+                        className="indoor-appointment-info-grid"
+                        style={indoorInfoGridStyle}
+                      >
                         <IndoorInfo
                           label="Service"
                           value={humanizePurpose(a.purpose)}
@@ -3041,7 +3140,10 @@ export default function AppointmentScheduling() {
                       </div>
 
                       {scope && scope !== "No additional scope details" ? (
-                        <div className="indoor-appointment-scope" style={indoorScopeStyle}>
+                        <div
+                          className="indoor-appointment-scope"
+                          style={indoorScopeStyle}
+                        >
                           <strong style={{ fontWeight: 650, color: "#303034" }}>
                             Work note:
                           </strong>{" "}
@@ -3049,7 +3151,10 @@ export default function AppointmentScheduling() {
                         </div>
                       ) : null}
 
-                      <div className="indoor-appointment-actions" style={indoorActionsStyle}>
+                      <div
+                        className="indoor-appointment-actions"
+                        style={indoorActionsStyle}
+                      >
                         <button
                           type="button"
                           style={
@@ -3104,8 +3209,14 @@ export default function AppointmentScheduling() {
             {staffClosedAppointments.length === 0 ? (
               <div style={indoorEmptyStyle}>No appointment history yet.</div>
             ) : (
-              <div className="indoor-appointment-history-wrap" style={{ overflowX: "auto" }}>
-                <table className="indoor-appointment-history-table" style={indoorHistoryTableStyle}>
+              <div
+                className="indoor-appointment-history-wrap"
+                style={{ overflowX: "auto" }}
+              >
+                <table
+                  className="indoor-appointment-history-table"
+                  style={indoorHistoryTableStyle}
+                >
                   <thead>
                     <tr style={indoorHistoryHeadStyle}>
                       <th style={indoorHistoryThStyle}>Appointment</th>
@@ -3382,7 +3493,6 @@ export default function AppointmentScheduling() {
               }
             }
           `}</style>
-
         </>
       )}
     </div>

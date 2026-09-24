@@ -16,6 +16,16 @@ const APPOINTMENT_PURPOSES = [
   "installation",
 ];
 
+const ALLOWED_TIME_SLOTS = new Set(["09:00", "11:00", "13:00", "15:00"]);
+
+const APPOINTMENT_ACTIVE_STATUSES = new Set([
+  "pending",
+  "awaiting_staff_acceptance",
+  "confirmed",
+]);
+
+const APPOINTMENT_SLOT_LOCK_PREFIX = "wisdom:appointment-slot:";
+
 const normalizeText = (value) => String(value || "").trim();
 
 const APPOINTMENT_MONTHS = [
@@ -61,9 +71,76 @@ const toNullableInt = (value) => {
 
 const normalizeDateTime = (value) => {
   const raw = normalizeText(value);
+
   if (!raw) return null;
-  const cleaned = raw.replace("T", " ");
-  return cleaned.length === 16 ? `${cleaned}:00` : cleaned;
+
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(raw);
+
+  if (!match) return null;
+
+  const [, year, month, day, hour, minute, seconds = "00"] = match;
+
+  const yearNumber = Number(year);
+  const monthNumber = Number(month);
+  const dayNumber = Number(day);
+  const hourNumber = Number(hour);
+  const minuteNumber = Number(minute);
+  const secondNumber = Number(seconds);
+
+  if (
+    !Number.isInteger(yearNumber) ||
+    !Number.isInteger(monthNumber) ||
+    !Number.isInteger(dayNumber) ||
+    !Number.isInteger(hourNumber) ||
+    !Number.isInteger(minuteNumber) ||
+    !Number.isInteger(secondNumber)
+  ) {
+    return null;
+  }
+
+  if (
+    monthNumber < 1 ||
+    monthNumber > 12 ||
+    dayNumber < 1 ||
+    dayNumber > 31 ||
+    hourNumber < 0 ||
+    hourNumber > 23 ||
+    minuteNumber < 0 ||
+    minuteNumber > 59 ||
+    secondNumber < 0 ||
+    secondNumber > 59
+  ) {
+    return null;
+  }
+
+  // Appointment schedules are minute-based.
+  if (secondNumber !== 0) {
+    return null;
+  }
+
+  const date = new Date(
+    Date.UTC(
+      yearNumber,
+      monthNumber - 1,
+      dayNumber,
+      hourNumber,
+      minuteNumber,
+      0,
+    ),
+  );
+
+  if (
+    date.getUTCFullYear() !== yearNumber ||
+    date.getUTCMonth() !== monthNumber - 1 ||
+    date.getUTCDate() !== dayNumber ||
+    date.getUTCHours() !== hourNumber ||
+    date.getUTCMinutes() !== minuteNumber
+  ) {
+    return null;
+  }
+
+  return `${year}-${month}-${day} ${hour}:${minute}:00`;
 };
 
 // WISDOM APPOINTMENT WALL CLOCK API FIX R5.1
@@ -74,8 +151,7 @@ const APPOINTMENT_TIME_ZONE_OFFSET = "+08:00";
 
 const appointmentWallClockToEpochMs = (value) => {
   const raw = normalizeText(value).replace(" ", "T");
-  const match =
-    /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::(\d{2}))?/.exec(raw);
+  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::(\d{2}))?/.exec(raw);
 
   if (!match) return Number.NaN;
 
@@ -88,6 +164,128 @@ const appointmentWallClockToEpochMs = (value) => {
 const isAppointmentPastDue = (value) => {
   const epochMs = appointmentWallClockToEpochMs(value);
   return Number.isFinite(epochMs) ? epochMs < Date.now() : false;
+};
+
+const validateAppointmentSchedule = (value, { requireFuture = true } = {}) => {
+  const normalized = normalizeDateTime(value);
+
+  if (!normalized) {
+    return {
+      value: null,
+      message: "Appointment date and time must be a valid date/time.",
+    };
+  }
+
+  const match = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):00$/.exec(normalized);
+
+  if (!match) {
+    return {
+      value: null,
+      message: "Appointment date and time is invalid.",
+    };
+  }
+
+  const [, year, month, day, hour, minute] = match;
+  const datePart = `${year}-${month}-${day}`;
+  const timePart = `${hour}:${minute}`;
+
+  if (!ALLOWED_TIME_SLOTS.has(timePart)) {
+    return {
+      value: null,
+      message:
+        "Invalid appointment time. Please select one of the available time slots.",
+    };
+  }
+
+  const dayOfWeek = new Date(
+    Date.UTC(Number(year), Number(month) - 1, Number(day)),
+  ).getUTCDay();
+
+  if (dayOfWeek === 0) {
+    return {
+      value: null,
+      message: "Appointments are not available on Sundays.",
+    };
+  }
+
+  if (dayOfWeek === 6 && !["09:00", "11:00"].includes(timePart)) {
+    return {
+      value: null,
+      message:
+        "Saturday appointments are only available at 9:00 AM and 11:00 AM.",
+    };
+  }
+
+  if (requireFuture) {
+    const epochMs = appointmentWallClockToEpochMs(normalized);
+
+    if (!Number.isFinite(epochMs) || epochMs <= Date.now()) {
+      return {
+        value: null,
+        message: "Appointment date and time must be in the future.",
+      };
+    }
+  }
+
+  return {
+    value: normalized,
+    message: null,
+  };
+};
+
+const acquireAppointmentSlotLock = async (conn, scheduledDate) => {
+  const lockName = `${APPOINTMENT_SLOT_LOCK_PREFIX}${scheduledDate}`;
+
+  const [rows] = await conn.query(`SELECT GET_LOCK(?, 10) AS acquired`, [
+    lockName,
+  ]);
+
+  const acquired = Number(rows[0]?.acquired || 0) === 1;
+
+  return {
+    acquired,
+    lockName,
+  };
+};
+
+const releaseAppointmentSlotLock = async (conn, lockName) => {
+  if (!conn || !lockName) return;
+
+  try {
+    await conn.query(`SELECT RELEASE_LOCK(?) AS released`, [lockName]);
+  } catch (err) {
+    console.error("[appointments slot lock release]", err.message || err);
+  }
+};
+
+const hasActiveAppointmentAtSlot = async (
+  conn,
+  scheduledDate,
+  excludeAppointmentId = null,
+) => {
+  let sql = `
+    SELECT id
+    FROM appointments
+    WHERE scheduled_date = ?
+      AND status IN (
+        'pending',
+        'awaiting_staff_acceptance',
+        'confirmed'
+      )
+  `;
+
+  const params = [scheduledDate];
+
+  if (excludeAppointmentId) {
+    sql += ` AND id <> ?`;
+    params.push(excludeAppointmentId);
+  }
+
+  sql += ` LIMIT 1`;
+
+  const [rows] = await conn.query(sql, params);
+
+  return rows.length > 0;
 };
 
 const ensureUserHasRole = async (userId, allowedRoles) => {
@@ -308,25 +506,43 @@ exports.getAppointments = async (req, res) => {
 
 exports.getAvailability = async (req, res) => {
   try {
-    const { date } = req.query;
+    const rawDate = String(req.query.date || "").trim();
+    const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(rawDate);
 
-    if (!date) {
+    if (!dateMatch) {
       return res.status(400).json({
-        message: "Date is required.",
+        message: "Date must use the YYYY-MM-DD format.",
       });
     }
 
+    const [, year, month, day] = dateMatch;
+
+    const dateObj = new Date(
+      Date.UTC(Number(year), Number(month) - 1, Number(day)),
+    );
+
+    if (
+      dateObj.getUTCFullYear() !== Number(year) ||
+      dateObj.getUTCMonth() !== Number(month) - 1 ||
+      dateObj.getUTCDate() !== Number(day)
+    ) {
+      return res.status(400).json({
+        message: "Date is invalid.",
+      });
+    }
+
+    const date = rawDate;
+
     const [rows] = await db.query(
       `
-      SELECT TIME(scheduled_date) AS booked_time, status
+      SELECT id, TIME(scheduled_date) AS booked_time, status
       FROM appointments
       WHERE DATE(scheduled_date) = ?
         AND status IN (
-          'pending',
-          'awaiting_staff_acceptance',
-          'confirmed',
-          'completed'
-        )
+  'pending',
+  'awaiting_staff_acceptance',
+  'confirmed'
+)
       `,
       [date],
     );
@@ -334,7 +550,9 @@ exports.getAvailability = async (req, res) => {
     const booked = rows
       .map((r) => {
         const time = r.booked_time;
+
         return {
+          id: Number(r.id),
           time: time ? time.substring(0, 5) : null,
           status: r.status,
         };
@@ -359,8 +577,38 @@ exports.createAppointment = async (req, res) => {
       normalizeText(req.body.purpose).toLowerCase() || "installation";
 
     const preferredDate = normalizeDateTime(req.body.preferred_date);
-    const scheduledDate =
-      normalizeDateTime(req.body.scheduled_date) || preferredDate;
+
+    let scheduledDate = null;
+
+    if (Object.prototype.hasOwnProperty.call(req.body, "scheduled_date")) {
+      scheduledDate = normalizeDateTime(req.body.scheduled_date);
+
+      if (!scheduledDate) {
+        return res.status(400).json({
+          message: "Scheduled appointment date and time is invalid.",
+        });
+      }
+    } else {
+      scheduledDate = preferredDate;
+    }
+
+    const preferredScheduleValidation =
+      validateAppointmentSchedule(preferredDate);
+
+    if (preferredScheduleValidation.message) {
+      return res.status(400).json({
+        message: preferredScheduleValidation.message,
+      });
+    }
+
+    const scheduledScheduleValidation =
+      validateAppointmentSchedule(scheduledDate);
+
+    if (scheduledScheduleValidation.message) {
+      return res.status(400).json({
+        message: scheduledScheduleValidation.message,
+      });
+    }
 
     const notes = normalizeText(req.body.notes) || null;
     const assignedStaffId = toNullableInt(req.body.assigned_staff_id);
@@ -392,6 +640,17 @@ exports.createAppointment = async (req, res) => {
       );
 
       linkedOrder = orderRows[0] || null;
+
+      if (
+        linkedOrder &&
+        requestedCustomerId &&
+        Number(linkedOrder.customer_id || 0) !== Number(requestedCustomerId)
+      ) {
+        return res.status(400).json({
+          message:
+            "The selected customer does not match the customer on the linked order.",
+        });
+      }
 
       if (!linkedOrder) {
         return res.status(404).json({ message: "Linked order not found" });
@@ -427,11 +686,41 @@ exports.createAppointment = async (req, res) => {
     if (assignedStaffId) {
       let conn = null;
       let transactionActive = false;
+      let appointmentSlotLockName = null;
 
       try {
         conn = await db.getConnection();
         await conn.beginTransaction();
         transactionActive = true;
+
+        const slotLock = await acquireAppointmentSlotLock(conn, scheduledDate);
+
+        if (!slotLock.acquired) {
+          await conn.rollback();
+          transactionActive = false;
+
+          return res.status(503).json({
+            message:
+              "The appointment schedule is currently being processed. Please try again.",
+          });
+        }
+
+        appointmentSlotLockName = slotLock.lockName;
+
+        const slotConflict = await hasActiveAppointmentAtSlot(
+          conn,
+          scheduledDate,
+        );
+
+        if (slotConflict) {
+          await conn.rollback();
+          transactionActive = false;
+
+          return res.status(409).json({
+            message:
+              "The selected appointment schedule is already booked. Please choose another time slot.",
+          });
+        }
 
         const lockedProvider = await lockAndValidateIndoorProvider(
           conn,
@@ -441,6 +730,7 @@ exports.createAppointment = async (req, res) => {
         if (!lockedProvider) {
           await conn.rollback();
           transactionActive = false;
+
           return res.status(400).json({
             message:
               "Selected assigned staff member must be an active indoor staff member.",
@@ -459,6 +749,7 @@ exports.createAppointment = async (req, res) => {
         if (hasConflict) {
           await conn.rollback();
           transactionActive = false;
+
           return res.status(409).json({
             message:
               "The assigned staff already has an overlapping appointment.",
@@ -487,7 +778,7 @@ exports.createAppointment = async (req, res) => {
             orderId || null,
             customerId || null,
             req.user.id,
-            assignedStaffId || null,
+            assignedStaffId,
             req.user.id,
             purpose,
             scheduledDate,
@@ -497,52 +788,117 @@ exports.createAppointment = async (req, res) => {
           ],
         );
 
+        insertId = result.insertId;
+
         await conn.commit();
         transactionActive = false;
-        insertId = result.insertId;
       } catch (txErr) {
         if (conn && transactionActive) {
           await conn.rollback();
           transactionActive = false;
         }
+
         throw txErr;
       } finally {
+        if (conn && appointmentSlotLockName) {
+          await releaseAppointmentSlotLock(conn, appointmentSlotLockName);
+
+          appointmentSlotLockName = null;
+        }
+
         if (conn) conn.release();
       }
     } else {
-      const [result] = await db.query(
-        `
-        INSERT INTO appointments
-          (
-            order_id,
-            customer_id,
-            reviewed_by,
-            assigned_staff_id,
-            request_owner_id,
-            purpose,
-            scheduled_date,
-            preferred_date,
-            status,
-            notes
-          )
-        VALUES
-          (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `,
-        [
-          orderId || null,
-          customerId || null,
-          req.user.id,
-          assignedStaffId || null,
-          req.user.id,
-          purpose,
-          scheduledDate,
-          preferredDate,
-          initialStatus,
-          notes,
-        ],
-      );
+      let conn = null;
+      let transactionActive = false;
+      let appointmentSlotLockName = null;
 
-      insertId = result.insertId;
+      try {
+        conn = await db.getConnection();
+        await conn.beginTransaction();
+        transactionActive = true;
+
+        const slotLock = await acquireAppointmentSlotLock(conn, scheduledDate);
+
+        if (!slotLock.acquired) {
+          await conn.rollback();
+          transactionActive = false;
+
+          return res.status(503).json({
+            message:
+              "The appointment schedule is currently being processed. Please try again.",
+          });
+        }
+
+        appointmentSlotLockName = slotLock.lockName;
+
+        const slotConflict = await hasActiveAppointmentAtSlot(
+          conn,
+          scheduledDate,
+        );
+
+        if (slotConflict) {
+          await conn.rollback();
+          transactionActive = false;
+
+          return res.status(409).json({
+            message:
+              "The selected appointment schedule is already booked. Please choose another time slot.",
+          });
+        }
+
+        const [result] = await conn.query(
+          `
+          INSERT INTO appointments
+            (
+              order_id,
+              customer_id,
+              reviewed_by,
+              assigned_staff_id,
+              request_owner_id,
+              purpose,
+              scheduled_date,
+              preferred_date,
+              status,
+              notes
+            )
+          VALUES
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+          [
+            orderId || null,
+            customerId || null,
+            req.user.id,
+            null,
+            req.user.id,
+            purpose,
+            scheduledDate,
+            preferredDate,
+            "pending",
+            notes,
+          ],
+        );
+
+        insertId = result.insertId;
+
+        await conn.commit();
+        transactionActive = false;
+      } catch (txErr) {
+        if (conn && transactionActive) {
+          await conn.rollback();
+          transactionActive = false;
+        }
+
+        throw txErr;
+      } finally {
+        if (conn && appointmentSlotLockName) {
+          await releaseAppointmentSlotLock(conn, appointmentSlotLockName);
+
+          appointmentSlotLockName = null;
+        }
+
+        if (conn) conn.release();
+      }
     }
 
     const appointment = await getAppointmentById(insertId);
@@ -603,6 +959,8 @@ exports.updateAppointment = async (req, res) => {
 
   let conn = null;
   let transactionActive = false;
+  let appointmentSlotLockName = null;
+  let appointmentSlotLockHeld = false;
 
   try {
     conn = await db.getConnection();
@@ -744,6 +1102,14 @@ exports.updateAppointment = async (req, res) => {
 
         await conn.commit();
         transactionActive = false;
+
+        if (conn && appointmentSlotLockHeld) {
+          await releaseAppointmentSlotLock(conn, appointmentSlotLockName);
+
+          appointmentSlotLockName = null;
+          appointmentSlotLockHeld = false;
+        }
+
         conn.release();
         conn = null;
 
@@ -875,31 +1241,37 @@ exports.updateAppointment = async (req, res) => {
     }
 
     if (Object.prototype.hasOwnProperty.call(req.body, "preferred_date")) {
-      const normalizedPreferredDate = normalizeDateTime(
+      const preferredScheduleValidation = validateAppointmentSchedule(
         req.body.preferred_date,
       );
-      if (!normalizedPreferredDate) {
+
+      if (preferredScheduleValidation.message) {
         await conn.rollback();
         transactionActive = false;
+
         return res.status(400).json({
-          message: "Preferred appointment date and time is invalid.",
+          message: preferredScheduleValidation.message,
         });
       }
-      preferredDate = normalizedPreferredDate;
+
+      preferredDate = preferredScheduleValidation.value;
     }
 
     if (Object.prototype.hasOwnProperty.call(req.body, "scheduled_date")) {
-      const normalizedScheduledDate = normalizeDateTime(
+      const scheduledScheduleValidation = validateAppointmentSchedule(
         req.body.scheduled_date,
       );
-      if (!normalizedScheduledDate) {
+
+      if (scheduledScheduleValidation.message) {
         await conn.rollback();
         transactionActive = false;
+
         return res.status(400).json({
-          message: "Scheduled appointment date and time is invalid.",
+          message: scheduledScheduleValidation.message,
         });
       }
-      scheduledDate = normalizedScheduledDate;
+
+      scheduledDate = scheduledScheduleValidation.value;
     }
 
     if (Object.prototype.hasOwnProperty.call(req.body, "assigned_staff_id")) {
@@ -909,23 +1281,6 @@ exports.updateAppointment = async (req, res) => {
         assignedStaffId = null;
         status = "pending";
       } else {
-        const providerRow = await lockAndValidateIndoorProvider(
-          conn,
-          requestedProviderId,
-        );
-
-        if (!providerRow) {
-          await conn.rollback();
-          transactionActive = false;
-          return res.status(400).json({
-            message:
-              "Selected assigned staff member must be an active indoor staff member.",
-          });
-        }
-
-        lockedAssignedStaffId = requestedProviderId;
-        lockedProviderRow = providerRow;
-
         assignedStaffId = requestedProviderId;
         handledBy = req.user.id;
         status = "awaiting_staff_acceptance";
@@ -966,18 +1321,29 @@ exports.updateAppointment = async (req, res) => {
       status = requestedStatus;
     }
 
+    const scheduledDateChanged =
+      (scheduledDate ?? null) !== (existing.scheduled_date ?? null);
+
+    if (
+      currentStatus === "confirmed" &&
+      scheduledDateChanged &&
+      status === "confirmed"
+    ) {
+      status = assignedStaffId ? "awaiting_staff_acceptance" : "pending";
+    }
+
     // Evaluate the NEW business wall-clock date using Asia/Manila semantics.
-    const isNowPastDue = isAppointmentPastDue(
-      scheduledDate || preferredDate,
-    );
+    const isNowPastDue = isAppointmentPastDue(scheduledDate || preferredDate);
 
     if (
       isNowPastDue &&
       !["cancelled", "rejected", "completed"].includes(status) &&
-      currentStatus !== "confirmed"
+      (scheduledDate !== (existing.scheduled_date ?? null) ||
+        preferredDate !== (existing.preferred_date ?? null))
     ) {
       await conn.rollback();
       transactionActive = false;
+
       return res.status(400).json({
         message:
           "The chosen appointment date has already passed. Please select a future date.",
@@ -988,6 +1354,39 @@ exports.updateAppointment = async (req, res) => {
     // every branch above — not tied to which specific field the admin sent.
     // A reschedule-only request on an already-assigned/confirmed appointment
     // must still be checked against its existing (unchanged) assigned_staff_id.
+
+    if (scheduledDate && APPOINTMENT_ACTIVE_STATUSES.has(status)) {
+      const slotLock = await acquireAppointmentSlotLock(conn, scheduledDate);
+
+      if (!slotLock.acquired) {
+        await conn.rollback();
+        transactionActive = false;
+
+        return res.status(503).json({
+          message:
+            "The appointment schedule is currently being processed. Please try again.",
+        });
+      }
+
+      appointmentSlotLockName = slotLock.lockName;
+      appointmentSlotLockHeld = true;
+
+      const slotConflict = await hasActiveAppointmentAtSlot(
+        conn,
+        scheduledDate,
+        appointmentId,
+      );
+
+      if (slotConflict) {
+        await conn.rollback();
+        transactionActive = false;
+
+        return res.status(409).json({
+          message:
+            "The selected appointment schedule is already booked. Please choose another time slot.",
+        });
+      }
+    }
     if (
       assignedStaffId &&
       ["awaiting_staff_acceptance", "confirmed"].includes(status)
@@ -1134,6 +1533,14 @@ exports.updateAppointment = async (req, res) => {
 
     await conn.commit();
     transactionActive = false;
+
+    if (conn && appointmentSlotLockHeld) {
+      await releaseAppointmentSlotLock(conn, appointmentSlotLockName);
+
+      appointmentSlotLockName = null;
+      appointmentSlotLockHeld = false;
+    }
+
     conn.release();
     conn = null;
 
@@ -1175,6 +1582,13 @@ exports.updateAppointment = async (req, res) => {
       error: err.message,
     });
   } finally {
+    if (conn && appointmentSlotLockHeld) {
+      await releaseAppointmentSlotLock(conn, appointmentSlotLockName);
+
+      appointmentSlotLockName = null;
+      appointmentSlotLockHeld = false;
+    }
+
     if (conn) conn.release();
   }
 };
