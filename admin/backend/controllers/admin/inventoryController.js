@@ -2,6 +2,7 @@
 const pool = require("../../config/db");
 const {
   getPhilippineDateBoundsUtc,
+  getPhilippineDateKey,
 } = require("../../utils/philippineTime");
 const {
   retryPendingStockReservationsForMaterial,
@@ -1473,14 +1474,122 @@ exports.deleteRawMaterial = async (req, res) => {
 // STOCK MOVEMENTS
 // ═══════════════════════════════════════════════════════════
 
+const STOCK_REPORT_DATE_FILTERS = new Set([
+  "all",
+  "today",
+  "yesterday",
+  "this_week",
+  "this_month",
+  "this_year",
+  "custom",
+]);
+
+const formatUtcDateKeyForStockReport = (date) =>
+  [
+    String(date.getUTCFullYear()).padStart(4, "0"),
+    String(date.getUTCMonth() + 1).padStart(2, "0"),
+    String(date.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+
+const shiftStockReportDateKey = (dateKey, days) => {
+  const [year, month, day] = String(dateKey).split("-").map(Number);
+  return formatUtcDateKeyForStockReport(
+    new Date(Date.UTC(year, month - 1, day + days)),
+  );
+};
+
+const buildStockMovementReportDateRange = ({
+  dateFilter,
+  from,
+  to,
+}) => {
+  const normalizedFilter = String(dateFilter || "all")
+    .trim()
+    .toLowerCase();
+
+  if (!STOCK_REPORT_DATE_FILTERS.has(normalizedFilter)) {
+    const error = new Error("Invalid stock report date filter.");
+    error.status = 400;
+    throw error;
+  }
+
+  if (normalizedFilter === "all") {
+    return { startUtc: null, endUtc: null };
+  }
+
+  if (normalizedFilter === "custom") {
+    const fromKey = String(from || "").trim();
+    const toKey = String(to || "").trim();
+
+    if (fromKey && toKey && fromKey > toKey) {
+      const error = new Error("Start date cannot be after end date.");
+      error.status = 400;
+      throw error;
+    }
+
+    try {
+      return {
+        startUtc: fromKey
+          ? getPhilippineDateBoundsUtc(fromKey).startUtc
+          : null,
+        endUtc: toKey
+          ? getPhilippineDateBoundsUtc(toKey).nextStartUtc
+          : null,
+      };
+    } catch {
+      const error = new Error(
+        "Stock report dates must use valid YYYY-MM-DD values.",
+      );
+      error.status = 400;
+      throw error;
+    }
+  }
+
+  const todayKey = getPhilippineDateKey();
+  const [year, month, day] = todayKey.split("-").map(Number);
+
+  let startKey = todayKey;
+  let endKey = shiftStockReportDateKey(todayKey, 1);
+
+  if (normalizedFilter === "yesterday") {
+    startKey = shiftStockReportDateKey(todayKey, -1);
+    endKey = todayKey;
+  } else if (normalizedFilter === "this_week") {
+    // Preserve the Stock Report's existing Sunday-Saturday week.
+    const dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    startKey = shiftStockReportDateKey(todayKey, -dayOfWeek);
+    endKey = shiftStockReportDateKey(startKey, 7);
+  } else if (normalizedFilter === "this_month") {
+    startKey = [
+      String(year).padStart(4, "0"),
+      String(month).padStart(2, "0"),
+      "01",
+    ].join("-");
+    endKey = formatUtcDateKeyForStockReport(
+      new Date(Date.UTC(year, month, 1)),
+    );
+  } else if (normalizedFilter === "this_year") {
+    startKey = `${String(year).padStart(4, "0")}-01-01`;
+    endKey = `${String(year + 1).padStart(4, "0")}-01-01`;
+  }
+
+  return {
+    startUtc: getPhilippineDateBoundsUtc(startKey).startUtc,
+    endUtc: getPhilippineDateBoundsUtc(endKey).startUtc,
+  };
+};
+
 exports.getStockMovements = async (req, res) => {
   try {
     const {
       type,
       source,
+      inventory_type,
       search,
       from,
       to,
+      date_filter,
+      include_summary,
       product_id,
       material_id,
       page = 1,
@@ -1488,8 +1597,13 @@ exports.getStockMovements = async (req, res) => {
     } = req.query;
 
     const pageNumber = Math.max(1, parseInt(page, 10) || 1);
-    const limitNumber = Math.min(200, Math.max(1, parseInt(limit, 10) || 30));
+    const limitNumber = Math.min(
+      200,
+      Math.max(1, parseInt(limit, 10) || 30),
+    );
     const offset = (pageNumber - 1) * limitNumber;
+    const includeSummary =
+      String(include_summary || "1").trim() !== "0";
     const where = ["1=1"];
     const params = [];
 
@@ -1555,44 +1669,98 @@ exports.getStockMovements = async (req, res) => {
       params.push(normalizedSource);
     }
 
+    if (inventory_type) {
+      const normalizedInventoryType = String(inventory_type)
+        .trim()
+        .toLowerCase();
+
+      if (!["raw_material", "ready_made"].includes(normalizedInventoryType)) {
+        return res
+          .status(400)
+          .json({ message: "Invalid stock movement inventory type filter." });
+      }
+
+      // Preserve the Stock Report's historical browser-side classification:
+      // rows with a material are Raw Materials; rows without one are Ready-made.
+      if (normalizedInventoryType === "raw_material") {
+        where.push("sm.material_id IS NOT NULL");
+      } else {
+        where.push("sm.material_id IS NULL");
+      }
+    }
+
     if (product_id) {
       where.push("sm.product_id = ?");
       params.push(product_id);
     }
+
     if (material_id) {
       where.push("sm.material_id = ?");
       params.push(material_id);
     }
-    if (from) {
-      const { startUtc } = getPhilippineDateBoundsUtc(from);
-      where.push("sm.created_at >= ?");
-      params.push(startUtc);
+
+    if (
+      date_filter !== undefined &&
+      date_filter !== null &&
+      String(date_filter).trim() !== ""
+    ) {
+      const { startUtc, endUtc } = buildStockMovementReportDateRange({
+        dateFilter: date_filter,
+        from,
+        to,
+      });
+
+      if (startUtc) {
+        where.push("sm.created_at >= ?");
+        params.push(startUtc);
+      }
+
+      if (endUtc) {
+        where.push("sm.created_at < ?");
+        params.push(endUtc);
+      }
+    } else {
+      // Keep direct from/to support unchanged for the existing Inventory screens.
+      if (from) {
+        const { startUtc } = getPhilippineDateBoundsUtc(from);
+        where.push("sm.created_at >= ?");
+        params.push(startUtc);
+      }
+
+      if (to) {
+        const { nextStartUtc } = getPhilippineDateBoundsUtc(to);
+        where.push("sm.created_at < ?");
+        params.push(nextStartUtc);
+      }
     }
-    if (to) {
-      const { nextStartUtc } = getPhilippineDateBoundsUtc(to);
-      where.push("sm.created_at < ?");
-      params.push(nextStartUtc);
-    }
+
     if (search && String(search).trim()) {
       const pattern = `%${String(search).trim()}%`;
+
       where.push(`(
-        rm.name LIKE ?
-        OR p.name LIKE ?
-        OR o.order_number LIKE ?
-        OR customer.name LIKE ?
-        OR o.walkin_customer_name LIKE ?
-        OR sm.reference LIKE ?
-        OR sm.notes LIKE ?
+        CAST(sm.id AS CHAR) LIKE ?
+        OR COALESCE(sm.type, '') LIKE ?
+        OR (${movementSourceSql}) LIKE ?
+        OR COALESCE(rm.name, '') LIKE ?
+        OR COALESCE(rm.unit, '') LIKE ?
+        OR COALESCE(p.name, '') LIKE ?
+        OR COALESCE(s.name, '') LIKE ?
+        OR COALESCE(u.name, '') LIKE ?
+        OR COALESCE(o.order_number, '') LIKE ?
+        OR COALESCE(o.order_type, '') LIKE ?
+        OR COALESCE(o.status, '') LIKE ?
+        OR COALESCE(o.payment_status, '') LIKE ?
+        OR COALESCE(customer.name, '') LIKE ?
+        OR COALESCE(o.walkin_customer_name, '') LIKE ?
+        OR COALESCE(sm.reference, '') LIKE ?
+        OR COALESCE(sm.notes, '') LIKE ?
+        OR CAST(COALESCE(sm.quantity, 0) AS CHAR) LIKE ?
+        OR CAST(COALESCE(sm.material_id, 0) AS CHAR) LIKE ?
+        OR CAST(COALESCE(sm.product_id, 0) AS CHAR) LIKE ?
+        OR CAST(COALESCE(sm.order_id, 0) AS CHAR) LIKE ?
       )`);
-      params.push(
-        pattern,
-        pattern,
-        pattern,
-        pattern,
-        pattern,
-        pattern,
-        pattern,
-      );
+
+      params.push(...Array(20).fill(pattern));
     }
 
     const whereSql = where.join(" AND ");
@@ -1620,6 +1788,10 @@ exports.getStockMovements = async (req, res) => {
           bmr.status AS reservation_status,
           bmr.reserved_at,
           bmr.consumed_at,
+          CASE
+            WHEN sm.material_id IS NOT NULL THEN 'raw_material'
+            ELSE 'ready_made'
+          END AS inventory_type,
           ${movementSourceSql} AS movement_source
        FROM stock_movements sm
        ${movementJoins}
@@ -1629,30 +1801,33 @@ exports.getStockMovements = async (req, res) => {
       [...params, limitNumber, offset],
     );
 
-    const [[summary]] = await pool.query(
-      `SELECT
-          COUNT(*) AS record_count,
-          SUM(CASE WHEN sm.type = 'in' THEN 1 ELSE 0 END) AS in_count,
-          SUM(CASE WHEN sm.type = 'out' THEN 1 ELSE 0 END) AS out_count,
-          SUM(CASE WHEN sm.type = 'adjustment' THEN 1 ELSE 0 END) AS adjustment_count,
-          SUM(CASE WHEN sm.type = 'return' THEN 1 ELSE 0 END) AS return_count,
-          SUM(CASE WHEN (${movementSourceSql}) = 'blueprint_production' THEN 1 ELSE 0 END) AS blueprint_production_count,
-          SUM(CASE WHEN (${movementSourceSql}) = 'legacy_production' THEN 1 ELSE 0 END) AS legacy_production_count,
-          SUM(CASE WHEN (${movementSourceSql}) = 'ready_made_stock' THEN 1 ELSE 0 END) AS ready_made_stock_count,
-          SUM(CASE WHEN (${movementSourceSql}) = 'order_fulfillment' THEN 1 ELSE 0 END) AS order_fulfillment_count,
-          SUM(CASE WHEN (${movementSourceSql}) = 'manual' THEN 1 ELSE 0 END) AS manual_count
-       FROM stock_movements sm
-       ${movementJoins}
-       WHERE ${whereSql}`,
-      params,
-    );
-
-    res.json({
+    const response = {
       rows,
-      total: Number(summary?.record_count || 0),
       page: pageNumber,
       limit: limitNumber,
-      summary: {
+    };
+
+    if (includeSummary) {
+      const [[summary]] = await pool.query(
+        `SELECT
+            COUNT(*) AS record_count,
+            SUM(CASE WHEN sm.type = 'in' THEN 1 ELSE 0 END) AS in_count,
+            SUM(CASE WHEN sm.type = 'out' THEN 1 ELSE 0 END) AS out_count,
+            SUM(CASE WHEN sm.type = 'adjustment' THEN 1 ELSE 0 END) AS adjustment_count,
+            SUM(CASE WHEN sm.type = 'return' THEN 1 ELSE 0 END) AS return_count,
+            SUM(CASE WHEN (${movementSourceSql}) = 'blueprint_production' THEN 1 ELSE 0 END) AS blueprint_production_count,
+            SUM(CASE WHEN (${movementSourceSql}) = 'legacy_production' THEN 1 ELSE 0 END) AS legacy_production_count,
+            SUM(CASE WHEN (${movementSourceSql}) = 'ready_made_stock' THEN 1 ELSE 0 END) AS ready_made_stock_count,
+            SUM(CASE WHEN (${movementSourceSql}) = 'order_fulfillment' THEN 1 ELSE 0 END) AS order_fulfillment_count,
+            SUM(CASE WHEN (${movementSourceSql}) = 'manual' THEN 1 ELSE 0 END) AS manual_count
+         FROM stock_movements sm
+         ${movementJoins}
+         WHERE ${whereSql}`,
+        params,
+      );
+
+      response.total = Number(summary?.record_count || 0);
+      response.summary = {
         record_count: Number(summary?.record_count || 0),
         in_count: Number(summary?.in_count || 0),
         out_count: Number(summary?.out_count || 0),
@@ -1661,14 +1836,26 @@ exports.getStockMovements = async (req, res) => {
         blueprint_production_count: Number(
           summary?.blueprint_production_count || 0,
         ),
-        legacy_production_count: Number(summary?.legacy_production_count || 0),
-        ready_made_stock_count: Number(summary?.ready_made_stock_count || 0),
-        order_fulfillment_count: Number(summary?.order_fulfillment_count || 0),
+        legacy_production_count: Number(
+          summary?.legacy_production_count || 0,
+        ),
+        ready_made_stock_count: Number(
+          summary?.ready_made_stock_count || 0,
+        ),
+        order_fulfillment_count: Number(
+          summary?.order_fulfillment_count || 0,
+        ),
         manual_count: Number(summary?.manual_count || 0),
-      },
-    });
+      };
+    }
+
+    return res.json(response);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    if (Number(err?.status) === 400) {
+      return res.status(400).json({ message: err.message });
+    }
+
+    return res.status(500).json({ message: err.message });
   }
 };
 

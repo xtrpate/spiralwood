@@ -501,6 +501,58 @@ const INVENTORY_TYPES = [
   { value: "ready_made", label: "Ready-made" },
 ];
 
+const PAGE_SIZE = 20;
+const MOVEMENT_EXPORT_PAGE_SIZE = 200;
+
+const EMPTY_MOVEMENT_SUMMARY = {
+  record_count: 0,
+  in_count: 0,
+  out_count: 0,
+};
+
+const buildStockMovementParams = ({
+  page,
+  limit,
+  search,
+  movementType,
+  inventoryType,
+  dateFilter,
+  customStart,
+  customEnd,
+  includeSummary = true,
+}) => {
+  const params = {
+    page,
+    limit,
+    date_filter: dateFilter,
+  };
+
+  const normalizedSearch = String(search || "").trim();
+
+  if (normalizedSearch) {
+    params.search = normalizedSearch;
+  }
+
+  if (movementType) {
+    params.type = movementType;
+  }
+
+  if (inventoryType) {
+    params.inventory_type = inventoryType;
+  }
+
+  if (dateFilter === "custom") {
+    if (customStart) params.from = customStart;
+    if (customEnd) params.to = customEnd;
+  }
+
+  if (!includeSummary) {
+    params.include_summary = 0;
+  }
+
+  return params;
+};
+
 const formatDateTime = (value) => {
   if (!value) return "—";
   const parsed = new Date(value);
@@ -601,6 +653,7 @@ export default function StockReportPage() {
 
   // Filters
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [movementType, setMovementType] = useState("");
   const [inventoryType, setInventoryType] = useState("");
   const [dateFilter, setDateFilter] = useState("all");
@@ -611,57 +664,118 @@ export default function StockReportPage() {
 
   // Data
   const [rows, setRows] = useState([]);
+  const [movementTotal, setMovementTotal] = useState(0);
+  const [movementSummary, setMovementSummary] = useState(
+    EMPTY_MOVEMENT_SUMMARY,
+  );
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [generatedAt, setGeneratedAt] = useState("");
 
-  const loadReport = useCallback(async () => {
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  const loadMovements = useCallback(async () => {
     setLoading(true);
 
     try {
-      const endpoint =
-        reportType === "movements"
-          ? "/inventory/movements"
-          : "/inventory/transfers";
-      const { data } = await api.get(endpoint, {
+      const { data } = await api.get("/inventory/movements", {
+        params: buildStockMovementParams({
+          page,
+          limit: PAGE_SIZE,
+          search: debouncedSearch,
+          movementType,
+          inventoryType,
+          dateFilter,
+          customStart,
+          customEnd,
+        }),
+      });
+
+      setRows(Array.isArray(data?.rows) ? data.rows : []);
+      setMovementTotal(Number(data?.total || 0));
+      setMovementSummary({
+        ...EMPTY_MOVEMENT_SUMMARY,
+        ...(data?.summary || {}),
+      });
+      setGeneratedAt(new Date().toISOString());
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message || "Failed to load stock movements.",
+      );
+      setRows([]);
+      setMovementTotal(0);
+      setMovementSummary(EMPTY_MOVEMENT_SUMMARY);
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    page,
+    debouncedSearch,
+    movementType,
+    inventoryType,
+    dateFilter,
+    customStart,
+    customEnd,
+  ]);
+
+  const loadTransfers = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const { data } = await api.get("/inventory/transfers", {
         params: { limit: 5000 },
       });
 
-      setRows(Array.isArray(data.rows) ? data.rows : []);
+      setRows(Array.isArray(data?.rows) ? data.rows : []);
       setGeneratedAt(new Date().toISOString());
     } catch (err) {
-      toast.error(`Failed to load stock ${reportType}.`);
+      toast.error("Failed to load stock transfers.");
       setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [reportType]);
+  }, []);
+
+  const loadReport = useCallback(() => {
+    if (reportType === "movements") {
+      return loadMovements();
+    }
+
+    return loadTransfers();
+  }, [loadMovements, loadTransfers, reportType]);
 
   useEffect(() => {
-    loadReport();
-  }, [loadReport]);
+    if (reportType === "movements") {
+      loadMovements();
+    }
+  }, [loadMovements, reportType]);
+
+  useEffect(() => {
+    if (reportType === "transfers") {
+      loadTransfers();
+    }
+  }, [loadTransfers, reportType]);
 
   const filteredRows = useMemo(() => {
+    if (reportType === "movements") {
+      return rows;
+    }
+
     return rows.filter((row) => {
-      // 1. Date check
       const rowDate = getRowDate(row);
-      if (!isDateInRange(rowDate, dateFilter, customStart, customEnd))
+
+      if (!isDateInRange(rowDate, dateFilter, customStart, customEnd)) {
         return false;
-
-      // 2. Specific Movement Type & Inventory Type check
-      if (reportType === "movements") {
-        if (movementType && row.type !== movementType) return false;
-
-        if (inventoryType) {
-          const rowInvType =
-            row.inventory_type ||
-            (row.material_name ? "raw_material" : "ready_made");
-          if (rowInvType !== inventoryType) return false;
-        }
       }
 
-      // 3. Search check
       const query = search.trim().toLowerCase();
+
       if (query) {
         return Object.values(row).some((val) =>
           String(val || "")
@@ -676,52 +790,52 @@ export default function StockReportPage() {
     rows,
     search,
     reportType,
-    movementType,
-    inventoryType,
     dateFilter,
     customStart,
     customEnd,
   ]);
 
-  // Reset page to 1 when filters change
-  useEffect(() => {
-    setPage(1);
-  }, [
-    search,
-    reportType,
-    movementType,
-    inventoryType,
-    dateFilter,
-    customStart,
-    customEnd,
-  ]);
+  const reportRecordCount =
+    reportType === "movements" ? movementTotal : filteredRows.length;
 
   const paginatedRows = useMemo(() => {
-    const start = (page - 1) * 20;
-    return filteredRows.slice(start, start + 20);
-  }, [filteredRows, page]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / 20));
-
-  const summary = useMemo(() => {
-    const total = filteredRows.length;
-    let metric1 = 0;
-    let metric2 = 0;
-
     if (reportType === "movements") {
-      metric1 = filteredRows.filter((r) => r.type === "in").length;
-      metric2 = filteredRows.filter((r) => r.type === "out").length;
-    } else {
-      metric1 = filteredRows.filter(
-        (r) => !r.reversal_of_transfer_id && !r.reversed_by_transfer_id,
-      ).length;
-      metric2 = filteredRows.filter(
-        (r) => r.reversal_of_transfer_id || r.reversed_by_transfer_id,
-      ).length;
+      return rows;
     }
 
+    const start = (page - 1) * PAGE_SIZE;
+    return filteredRows.slice(start, start + PAGE_SIZE);
+  }, [filteredRows, page, reportType, rows]);
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(reportRecordCount / PAGE_SIZE),
+  );
+
+  const summary = useMemo(() => {
+    if (reportType === "movements") {
+      return {
+        total: movementTotal,
+        metric1: Number(movementSummary?.in_count || 0),
+        metric2: Number(movementSummary?.out_count || 0),
+      };
+    }
+
+    const total = filteredRows.length;
+    const metric1 = filteredRows.filter(
+      (row) => !row.reversal_of_transfer_id && !row.reversed_by_transfer_id,
+    ).length;
+    const metric2 = filteredRows.filter(
+      (row) => row.reversal_of_transfer_id || row.reversed_by_transfer_id,
+    ).length;
+
     return { total, metric1, metric2 };
-  }, [filteredRows, reportType]);
+  }, [
+    filteredRows,
+    movementSummary,
+    movementTotal,
+    reportType,
+  ]);
 
   const exportExcel = async () => {
     setExporting(true);
@@ -753,8 +867,59 @@ export default function StockReportPage() {
 
       let headers = [];
       let mappedData = [];
+      let exportRows = filteredRows;
 
       if (reportType === "movements") {
+        const firstResponse = await api.get("/inventory/movements", {
+          params: buildStockMovementParams({
+            page: 1,
+            limit: MOVEMENT_EXPORT_PAGE_SIZE,
+            search,
+            movementType,
+            inventoryType,
+            dateFilter,
+            customStart,
+            customEnd,
+          }),
+        });
+
+        exportRows = Array.isArray(firstResponse.data?.rows)
+          ? [...firstResponse.data.rows]
+          : [];
+
+        const exportTotal = Number(firstResponse.data?.total || 0);
+        const exportPages = Math.max(
+          1,
+          Math.ceil(exportTotal / MOVEMENT_EXPORT_PAGE_SIZE),
+        );
+
+        for (let exportPage = 2; exportPage <= exportPages; exportPage += 1) {
+          const { data } = await api.get("/inventory/movements", {
+            params: buildStockMovementParams({
+              page: exportPage,
+              limit: MOVEMENT_EXPORT_PAGE_SIZE,
+              search,
+              movementType,
+              inventoryType,
+              dateFilter,
+              customStart,
+              customEnd,
+              includeSummary: false,
+            }),
+          });
+
+          const batch = Array.isArray(data?.rows) ? data.rows : [];
+          exportRows.push(...batch);
+
+          if (batch.length === 0) break;
+        }
+
+        if (exportRows.length !== exportTotal) {
+          throw new Error(
+            "Stock movement records changed while the export was being prepared. Please export again.",
+          );
+        }
+
         headers = [
           "Date & Time",
           "Movement Type",
@@ -764,7 +929,7 @@ export default function StockReportPage() {
           "Order / Ref",
           "Recorded By",
         ];
-        mappedData = filteredRows.map((r) => [
+        mappedData = exportRows.map((r) => [
           formatDateTime(r.created_at),
           MOVEMENT_LABELS[r.type] || "Movement",
           SOURCE_LABELS[r.movement_source] || "Manual entry",
@@ -896,7 +1061,7 @@ export default function StockReportPage() {
             type="button"
             className="stk-button stk-button-primary"
             onClick={exportExcel}
-            disabled={loading || filteredRows.length === 0 || exporting}
+            disabled={loading || reportRecordCount === 0 || exporting}
           >
             {exporting ? "Exporting..." : "Export Excel"}
           </button>
@@ -932,6 +1097,8 @@ export default function StockReportPage() {
             setMovementType("");
             setInventoryType("");
             setSearch("");
+            setDebouncedSearch("");
+            setPage(1);
           }}
           style={{
             padding: "10px 18px",
@@ -961,6 +1128,8 @@ export default function StockReportPage() {
             setMovementType("");
             setInventoryType("");
             setSearch("");
+            setDebouncedSearch("");
+            setPage(1);
           }}
           style={{
             padding: "10px 18px",
@@ -991,7 +1160,10 @@ export default function StockReportPage() {
           <input
             type="search"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             placeholder="Search references, items, users..."
           />
         </label>
@@ -1002,7 +1174,10 @@ export default function StockReportPage() {
               <span>Inventory Type</span>
               <select
                 value={inventoryType}
-                onChange={(e) => setInventoryType(e.target.value)}
+                onChange={(e) => {
+                  setInventoryType(e.target.value);
+                  setPage(1);
+                }}
               >
                 {INVENTORY_TYPES.map((item) => (
                   <option key={item.value} value={item.value}>
@@ -1016,7 +1191,10 @@ export default function StockReportPage() {
               <span>Movement Type</span>
               <select
                 value={movementType}
-                onChange={(e) => setMovementType(e.target.value)}
+                onChange={(e) => {
+                  setMovementType(e.target.value);
+                  setPage(1);
+                }}
               >
                 <option value="">All Movements</option>
                 <option value="in">Stock In</option>
@@ -1037,6 +1215,7 @@ export default function StockReportPage() {
               setDateFilter(e.target.value);
               setCustomStart("");
               setCustomEnd("");
+              setPage(1);
             }}
           >
             <option value="all">All Time</option>
@@ -1060,7 +1239,10 @@ export default function StockReportPage() {
               <input
                 type="date"
                 value={customStart}
-                onChange={(e) => setCustomStart(e.target.value)}
+                onChange={(e) => {
+                  setCustomStart(e.target.value);
+                  setPage(1);
+                }}
               />
             </label>
             <label
@@ -1072,7 +1254,10 @@ export default function StockReportPage() {
                 type="date"
                 value={customEnd}
                 min={customStart}
-                onChange={(e) => setCustomEnd(e.target.value)}
+                onChange={(e) => {
+                  setCustomEnd(e.target.value);
+                  setPage(1);
+                }}
               />
             </label>
           </>
@@ -1131,7 +1316,7 @@ export default function StockReportPage() {
                 </p>
               </div>
               <div className="stk-section-count">
-                {filteredRows.length} record(s)
+                {reportRecordCount} record(s)
               </div>
             </div>
 
@@ -1164,7 +1349,7 @@ export default function StockReportPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRows.length === 0 ? (
+                  {paginatedRows.length === 0 ? (
                     <EmptyRow
                       colSpan={8}
                       text="No records match the current filters."
@@ -1244,7 +1429,7 @@ export default function StockReportPage() {
               </table>
             </div>
 
-            {filteredRows.length > 0 && (
+            {reportRecordCount > 0 && (
               <div
                 style={{
                   display: "flex",
@@ -1256,9 +1441,9 @@ export default function StockReportPage() {
                 }}
               >
                 <span style={{ fontSize: 11.5, color: "#71717a" }}>
-                  Showing {(page - 1) * 20 + 1} to{" "}
-                  {Math.min(page * 20, filteredRows.length)} of{" "}
-                  {filteredRows.length} records
+                  Showing {(page - 1) * PAGE_SIZE + 1} to{" "}
+                  {Math.min(page * PAGE_SIZE, reportRecordCount)} of{" "}
+                  {reportRecordCount} records
                 </span>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <button
