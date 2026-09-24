@@ -411,14 +411,37 @@ exports.getAll = async (req, res) => {
            END ASC,
            p.created_at DESC`;
 
+    const isAdminProductManagement =
+      sort === "admin_product_management";
+
+    const blueprintSelectSql = isAdminProductManagement
+      ? `COALESCE(b.title, pbs.title) AS blueprint_title,
+         COALESCE(b.thumbnail_url, pbs.thumbnail_url) AS blueprint_thumbnail_url,
+         pbs.source_blueprint_id AS blueprint_snapshot_source_id,
+         CASE
+           WHEN COALESCE(b.design_data, b.view_3d_data) IS NOT NULL
+             THEN COALESCE(CAST(b.updated_at AS CHAR), '')
+           ELSE COALESCE(CAST(pbs.captured_at AS CHAR), '')
+         END AS blueprint_preview_revision,
+         CASE
+           WHEN COALESCE(b.design_data, pbs.design_data) IS NOT NULL
+             OR COALESCE(b.view_3d_data, pbs.view_3d_data) IS NOT NULL
+             OR (
+               pbs.components_json IS NOT NULL
+               AND TRIM(pbs.components_json) NOT IN ('', '[]')
+             )
+           THEN 1 ELSE 0
+         END AS blueprint_has_scene`
+      : `COALESCE(b.title, pbs.title) AS blueprint_title,
+         COALESCE(b.thumbnail_url, pbs.thumbnail_url) AS blueprint_thumbnail_url,
+         COALESCE(b.design_data, pbs.design_data) AS blueprint_design_data,
+         COALESCE(b.view_3d_data, pbs.view_3d_data) AS blueprint_view_3d_data,
+         pbs.source_blueprint_id AS blueprint_snapshot_source_id,
+         pbs.components_json AS blueprint_components_json`;
+
     const [products] = await pool.query(
       `SELECT p.*, c.name AS category_name,
-              COALESCE(b.title, pbs.title) AS blueprint_title,
-              COALESCE(b.thumbnail_url, pbs.thumbnail_url) AS blueprint_thumbnail_url,
-              COALESCE(b.design_data, pbs.design_data) AS blueprint_design_data,
-              COALESCE(b.view_3d_data, pbs.view_3d_data) AS blueprint_view_3d_data,
-              pbs.source_blueprint_id AS blueprint_snapshot_source_id,
-              pbs.components_json AS blueprint_components_json
+              ${blueprintSelectSql}
        FROM products p
        LEFT JOIN categories c ON c.id = p.category_id
        LEFT JOIN blueprints b ON b.id = p.blueprint_id
@@ -532,7 +555,12 @@ exports.getOne = async (req, res) => {
               COALESCE(b.design_data, pbs.design_data) AS blueprint_design_data,
               COALESCE(b.view_3d_data, pbs.view_3d_data) AS blueprint_view_3d_data,
               pbs.source_blueprint_id AS blueprint_snapshot_source_id,
-              pbs.components_json AS blueprint_components_json
+              pbs.components_json AS blueprint_components_json,
+              CASE
+                WHEN COALESCE(b.design_data, b.view_3d_data) IS NOT NULL
+                  THEN COALESCE(CAST(b.updated_at AS CHAR), '')
+                ELSE COALESCE(CAST(pbs.captured_at AS CHAR), '')
+              END AS blueprint_preview_revision
        FROM products p
        LEFT JOIN categories c ON c.id = p.category_id
        LEFT JOIN blueprints b ON b.id = p.blueprint_id
@@ -542,6 +570,25 @@ exports.getOne = async (req, res) => {
     );
     if (!product)
       return res.status(404).json({ message: "Product not found." });
+
+    if (
+      String(req.query.blueprint_preview || "").trim() === "1" &&
+      product.type === "blueprint"
+    ) {
+      return res.json({
+        id: product.id,
+        name: product.name,
+        type: product.type,
+        blueprint_id: product.blueprint_id,
+        blueprint_title: product.blueprint_title,
+        blueprint_thumbnail_url: product.blueprint_thumbnail_url,
+        blueprint_design_data: product.blueprint_design_data,
+        blueprint_view_3d_data: product.blueprint_view_3d_data,
+        blueprint_snapshot_source_id: product.blueprint_snapshot_source_id,
+        blueprint_components_json: product.blueprint_components_json,
+        blueprint_preview_revision: product.blueprint_preview_revision,
+      });
+    }
 
     const [bom] = await pool.query(
       `SELECT bom.*, rm.name AS material_name, rm.unit
