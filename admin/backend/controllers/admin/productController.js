@@ -440,6 +440,74 @@ exports.getAll = async (req, res) => {
   }
 };
 
+// ── GET /api/products/summary ─────────────────────────────────────────────────
+exports.getSummary = async (req, res) => {
+  try {
+    // Preserve the Product Management summary's existing population:
+    // published products across both active and disabled records.
+    const [[summaryRow]] = await pool.query(`
+      SELECT
+        COUNT(*) AS total,
+        COALESCE(
+          SUM(
+            CASE
+              WHEN COALESCE(p.type, '') <> 'blueprint'
+                AND p.stock_status = 'in_stock'
+              THEN 1 ELSE 0
+            END
+          ),
+          0
+        ) AS in_stock,
+        COALESCE(
+          SUM(
+            CASE
+              WHEN COALESCE(p.type, '') <> 'blueprint'
+                AND p.stock_status = 'out_of_stock'
+              THEN 1 ELSE 0
+            END
+          ),
+          0
+        ) AS out_of_stock,
+        COALESCE(
+          SUM(
+            CASE
+              WHEN p.type = 'standard' AND p.is_featured = 1
+              THEN 1 ELSE 0
+            END
+          ),
+          0
+        ) AS featured_standard
+      FROM products p
+      WHERE p.is_published = 1
+        AND p.is_active IN (0, 1)
+    `);
+
+    const [categories] = await pool.query(`
+      SELECT DISTINCT
+        c.id,
+        c.name
+      FROM products p
+      INNER JOIN categories c ON c.id = p.category_id
+      WHERE p.is_published = 1
+        AND p.is_active IN (0, 1)
+      ORDER BY c.name ASC
+    `);
+
+    const total = Number(summaryRow?.total || 0);
+
+    res.json({
+      total,
+      inStock: Number(summaryRow?.in_stock || 0),
+      outOfStock: Number(summaryRow?.out_of_stock || 0),
+      published: total,
+      featuredStandard: Number(summaryRow?.featured_standard || 0),
+      categories,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 // ── GET /api/products/:id ─────────────────────────────────────────────────────
 exports.getCategories = async (req, res) => {
   try {

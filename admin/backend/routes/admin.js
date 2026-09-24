@@ -199,6 +199,12 @@ router.get(
   requirePermission("products.view"),
   products.getCategories,
 );
+router.get(
+  "/products/summary",
+  adminStaff,
+  requirePermission("products.view"),
+  products.getSummary,
+);
 router.patch(
   "/products/bulk-publish",
   adminStaff,
