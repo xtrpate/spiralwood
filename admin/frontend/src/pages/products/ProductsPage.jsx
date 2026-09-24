@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
@@ -68,11 +74,30 @@ const parseBlueprintComponents = (value) => {
   }
 };
 
-const buildProductBlueprintPreview = (product = {}) => {
-  const sourceBlueprintId =
-    product?.blueprint_id || product?.blueprint_snapshot_source_id || null;
+const getProductBlueprintSourceId = (product = {}) =>
+  product?.blueprint_id || product?.blueprint_snapshot_source_id || null;
 
-  if (!sourceBlueprintId) return null;
+const buildProductBlueprintMetadata = (product = {}) => {
+  const sourceBlueprintId = getProductBlueprintSourceId(product);
+
+  if (!sourceBlueprintId && !product?.blueprint_thumbnail_url) return null;
+
+  return {
+    id: sourceBlueprintId || `product-${product?.id || "preview"}`,
+    title: product.blueprint_title || product.name || "Blueprint",
+    thumbnail_url: product.blueprint_thumbnail_url || null,
+    preview_revision: product.blueprint_preview_revision || "",
+    has_scene:
+      Number(product.blueprint_has_scene || 0) === 1 ||
+      Boolean(product?.blueprint_design_data) ||
+      Boolean(product?.blueprint_view_3d_data) ||
+      parseBlueprintComponents(product?.blueprint_components_json).length > 0,
+  };
+};
+
+const buildProductBlueprintPreview = (product = {}) => {
+  const metadata = buildProductBlueprintMetadata(product);
+  if (!metadata) return null;
 
   const components = parseBlueprintComponents(
     product?.blueprint_components_json,
@@ -83,12 +108,10 @@ const buildProductBlueprintPreview = (product = {}) => {
     Boolean(product?.blueprint_view_3d_data) ||
     components.length > 0;
 
-  if (!hasScene && !product?.blueprint_thumbnail_url) return null;
+  if (!hasScene) return null;
 
   return {
-    id: sourceBlueprintId,
-    title: product.blueprint_title || product.name || "Blueprint",
-    thumbnail_url: product.blueprint_thumbnail_url || null,
+    ...metadata,
     design_data: product.blueprint_design_data || null,
     view_3d_data: product.blueprint_view_3d_data || null,
     components,
@@ -97,12 +120,81 @@ const buildProductBlueprintPreview = (product = {}) => {
 
 function ProductThumbnail({ product }) {
   const isBlueprint = product?.type === "blueprint";
-  const [blueprint, setBlueprint] = useState(() =>
-    isBlueprint ? buildProductBlueprintPreview(product) : null,
-  );
-  const [loadingBlueprint, setLoadingBlueprint] = useState(
-    Boolean(isBlueprint && product?.blueprint_id && !blueprint),
-  );
+  const blueprintMetadata = isBlueprint
+    ? buildProductBlueprintMetadata(product)
+    : null;
+  const inlineBlueprint = isBlueprint
+    ? buildProductBlueprintPreview(product)
+    : null;
+
+  const compactPreviewCacheKey =
+    blueprintMetadata?.has_scene && blueprintMetadata?.preview_revision
+      ? buildCompactPreviewCacheKey(
+          blueprintMetadata,
+          BLUEPRINT_PRODUCT_PREVIEW_PRESET,
+          BLUEPRINT_PRODUCT_PREVIEW_HEIGHT,
+        )
+      : "";
+
+  const cachedStaticPreview = compactPreviewCacheKey
+    ? readGeneratedCompactPreview(compactPreviewCacheKey)
+    : "";
+
+  const thumbnailRef = useRef(null);
+  const [visiblePreviewKey, setVisiblePreviewKey] = useState("");
+  const [blueprint, setBlueprint] = useState(() => inlineBlueprint);
+  const [loadingBlueprint, setLoadingBlueprint] = useState(false);
+
+  const viewportPreviewKey =
+    compactPreviewCacheKey || `product-blueprint:${product?.id || "unknown"}`;
+  const previewEligible = visiblePreviewKey === viewportPreviewKey;
+
+  useEffect(() => {
+    if (
+      !isBlueprint ||
+      cachedStaticPreview ||
+      !blueprintMetadata?.has_scene ||
+      !product?.id
+    ) {
+      return undefined;
+    }
+
+    const node = thumbnailRef.current;
+    if (!node) return undefined;
+
+    if (typeof IntersectionObserver === "undefined") {
+      setVisiblePreviewKey(viewportPreviewKey);
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting) return;
+
+        setVisiblePreviewKey(viewportPreviewKey);
+        observer.disconnect();
+      },
+      {
+        // Match the compact viewer's near-viewport behavior so heavy scene
+        // JSON is fetched only shortly before the row can actually render.
+        rootMargin: "240px 0px",
+        threshold: 0.01,
+      },
+    );
+
+    observer.observe(node);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [
+    isBlueprint,
+    cachedStaticPreview,
+    blueprintMetadata?.has_scene,
+    product?.id,
+    viewportPreviewKey,
+  ]);
 
   useEffect(() => {
     if (!isBlueprint) {
@@ -111,14 +203,19 @@ function ProductThumbnail({ product }) {
       return undefined;
     }
 
-    const inlineBlueprint = buildProductBlueprintPreview(product);
-    if (inlineBlueprint) {
-      setBlueprint(inlineBlueprint);
+    const nextInlineBlueprint = buildProductBlueprintPreview(product);
+    if (nextInlineBlueprint) {
+      setBlueprint(nextInlineBlueprint);
       setLoadingBlueprint(false);
       return undefined;
     }
 
-    if (!product?.blueprint_id) {
+    if (
+      cachedStaticPreview ||
+      !blueprintMetadata?.has_scene ||
+      !product?.id ||
+      !previewEligible
+    ) {
       setBlueprint(null);
       setLoadingBlueprint(false);
       return undefined;
@@ -127,18 +224,16 @@ function ProductThumbnail({ product }) {
     let active = true;
     setLoadingBlueprint(true);
 
+    // Product detail is the authoritative cold-cache source because it
+    // preserves product_blueprint_snapshots even after an editable Blueprint
+    // has been archived/purged.
     api
-      .get(`/blueprints/${product.blueprint_id}`)
+      .get(`/products/${product.id}`, {
+        params: { blueprint_preview: 1 },
+      })
       .then(({ data }) => {
         if (!active || !data) return;
-
-        setBlueprint({
-          id: data.id || product.blueprint_id,
-          title: data.title || product.name || "Blueprint",
-          thumbnail_url: data.thumbnail_url || null,
-          design_data: data.design_data || null,
-          view_3d_data: data.view_3d_data || null,
-        });
+        setBlueprint(buildProductBlueprintPreview(data));
       })
       .catch(() => {
         if (active) setBlueprint(null);
@@ -152,15 +247,35 @@ function ProductThumbnail({ product }) {
     };
   }, [
     isBlueprint,
+    product?.id,
     product?.blueprint_id,
     product?.blueprint_snapshot_source_id,
     product?.blueprint_title,
     product?.blueprint_thumbnail_url,
+    product?.blueprint_preview_revision,
+    product?.blueprint_has_scene,
     product?.blueprint_design_data,
     product?.blueprint_view_3d_data,
     product?.blueprint_components_json,
     product?.name,
+    cachedStaticPreview,
+    blueprintMetadata?.has_scene,
+    previewEligible,
   ]);
+
+  if (isBlueprint && cachedStaticPreview) {
+    return (
+      <div style={blueprintImage}>
+        <img
+          src={cachedStaticPreview}
+          alt=""
+          aria-hidden="true"
+          decoding="async"
+          style={blueprintStaticImage}
+        />
+      </div>
+    );
+  }
 
   if (blueprint) {
     const hasLiveBlueprintPreview =
@@ -169,29 +284,9 @@ function ProductThumbnail({ product }) {
       (Array.isArray(blueprint?.components) &&
         blueprint.components.length > 0);
 
-    const compactPreviewCacheKey = hasLiveBlueprintPreview
-      ? buildCompactPreviewCacheKey(
-          blueprint,
-          BLUEPRINT_PRODUCT_PREVIEW_PRESET,
-          BLUEPRINT_PRODUCT_PREVIEW_HEIGHT,
-        )
-      : "";
-
-    const cachedStaticPreview = compactPreviewCacheKey
-      ? readGeneratedCompactPreview(compactPreviewCacheKey)
-      : "";
-
     return (
       <div style={blueprintImage}>
-        {cachedStaticPreview ? (
-          <img
-            src={cachedStaticPreview}
-            alt=""
-            aria-hidden="true"
-            decoding="async"
-            style={blueprintStaticImage}
-          />
-        ) : hasLiveBlueprintPreview ? (
+        {hasLiveBlueprintPreview ? (
           <React.Suspense
             fallback={
               <div
@@ -204,6 +299,7 @@ function ProductThumbnail({ product }) {
           >
             <CustomerBlueprintViewer
               blueprint={blueprint}
+              compactCacheKey={compactPreviewCacheKey}
               readOnly
               showHumanControls={false}
               compact
@@ -231,6 +327,31 @@ function ProductThumbnail({ product }) {
     return (
       <div style={blueprintImage} aria-label="Loading blueprint preview">
         <div style={blueprintPreviewLoading}>•••</div>
+      </div>
+    );
+  }
+
+  if (isBlueprint && blueprintMetadata?.thumbnail_url) {
+    return (
+      <img
+        ref={thumbnailRef}
+        src={buildAssetUrl(blueprintMetadata.thumbnail_url)}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        style={blueprintImage}
+      />
+    );
+  }
+
+  if (isBlueprint) {
+    return (
+      <div
+        ref={thumbnailRef}
+        style={blueprintImage}
+        aria-label="Blueprint preview"
+      >
+        <div style={blueprintPreviewLoading}>—</div>
       </div>
     );
   }

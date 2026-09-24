@@ -266,6 +266,7 @@ export default function CustomerBlueprintViewer({
   defaultPreset = "iso",
   defaultShowHuman = true,
   compactHeight = 240,
+  compactCacheKey = "",
 }) {
   const mountRef = useRef(null);
   const previewHostRef = useRef(null);
@@ -289,11 +290,12 @@ export default function CustomerBlueprintViewer({
   const [compactSnapshotUrl, setCompactSnapshotUrl] = useState(() =>
     compact
       ? readGeneratedCompactPreview(
-          buildCompactPreviewCacheKey(
-            blueprint,
-            defaultPreset,
-            compactHeight,
-          ),
+          compactCacheKey ||
+            buildCompactPreviewCacheKey(
+              blueprint,
+              defaultPreset,
+              compactHeight,
+            ),
         )
       : "",
   );
@@ -314,13 +316,14 @@ export default function CustomerBlueprintViewer({
   const compactPreviewCacheKey = useMemo(
     () =>
       compact
-        ? buildCompactPreviewCacheKey(
+        ? compactCacheKey ||
+          buildCompactPreviewCacheKey(
             blueprint,
             defaultPreset,
             compactHeight,
           )
         : "",
-    [blueprint, compact, compactHeight, defaultPreset],
+    [blueprint, compact, compactCacheKey, compactHeight, defaultPreset],
   );
 
   useEffect(() => {

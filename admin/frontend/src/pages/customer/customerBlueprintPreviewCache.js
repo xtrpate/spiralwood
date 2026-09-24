@@ -26,18 +26,36 @@ export const buildCompactPreviewCacheKey = (
   preset = "iso",
   compactHeight = 240,
 ) => {
+  const previewRevision = String(
+    blueprint?.preview_revision ||
+      blueprint?.previewRevision ||
+      blueprint?.blueprint_preview_revision ||
+      "",
+  ).trim();
+
   let geometrySource = "";
 
-  try {
+  if (previewRevision) {
+    // Lightweight list responses can invalidate/reuse the exact same static
+    // preview cache without transporting full design_data/view_3d_data JSON.
     geometrySource = JSON.stringify({
       id: blueprint?.id || "",
-      updated_at: blueprint?.updated_at || blueprint?.updatedAt || "",
-      components: blueprint?.components || null,
-      design_data: blueprint?.design_data || null,
-      view_3d_data: blueprint?.view_3d_data || null,
+      preview_revision: previewRevision,
     });
-  } catch {
-    geometrySource = String(blueprint?.id || "");
+  } else {
+    // Backward-compatible fallback for callers that still provide full scene
+    // data but do not yet expose a lightweight preview revision.
+    try {
+      geometrySource = JSON.stringify({
+        id: blueprint?.id || "",
+        updated_at: blueprint?.updated_at || blueprint?.updatedAt || "",
+        components: blueprint?.components || null,
+        design_data: blueprint?.design_data || null,
+        view_3d_data: blueprint?.view_3d_data || null,
+      });
+    } catch {
+      geometrySource = String(blueprint?.id || "");
+    }
   }
 
   return (
