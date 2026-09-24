@@ -501,6 +501,47 @@ const formatMoney = (value) =>
     maximumFractionDigits: 2,
   })}`;
 
+const PAGE_SIZE = 20;
+const EXPORT_PAGE_SIZE = 250;
+
+const EMPTY_ORDER_SUMMARY = {
+  completed_or_delivered: 0,
+  in_progress: 0,
+};
+
+const buildOrderReportParams = ({
+  page,
+  limit,
+  search,
+  dateFilter,
+  customStart,
+  customEnd,
+  includeSummary = true,
+}) => {
+  const params = {
+    page,
+    limit,
+    transaction_report: 1,
+    date_filter: dateFilter,
+  };
+
+  const normalizedSearch = String(search || "").trim();
+  if (normalizedSearch) {
+    params.search = normalizedSearch;
+  }
+
+  if (dateFilter === "custom") {
+    if (customStart) params.from = customStart;
+    if (customEnd) params.to = customEnd;
+  }
+
+  if (!includeSummary) {
+    params.include_summary = 0;
+  }
+
+  return params;
+};
+
 const humanize = (value) =>
   String(value || "—")
     .replace(/_/g, " ")
@@ -582,6 +623,7 @@ export default function TransactionReportPage() {
 
   // Filters
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dateFilter, setDateFilter] = useState("all");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
@@ -590,44 +632,124 @@ export default function TransactionReportPage() {
 
   // Data
   const [rows, setRows] = useState([]);
+  const [orderTotal, setOrderTotal] = useState(0);
+  const [orderSummary, setOrderSummary] = useState(EMPTY_ORDER_SUMMARY);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [generatedAt, setGeneratedAt] = useState("");
 
-  const loadReport = useCallback(async () => {
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [reportType, dateFilter, customStart, customEnd]);
+
+  useEffect(() => {
+    if (reportType === "orders") {
+      setPage(1);
+    }
+  }, [debouncedSearch, reportType]);
+
+  useEffect(() => {
+    if (reportType === "cancellations") {
+      setPage(1);
+    }
+  }, [search, reportType]);
+
+  const loadOrders = useCallback(async () => {
     setLoading(true);
 
     try {
-      if (reportType === "orders") {
-        const { data } = await api.get("/orders", { params: { limit: 5000 } });
-        setRows(Array.isArray(data?.orders) ? data.orders : []);
-      } else {
-        const { data } = await api.get("/orders/cancellations", {
-          params: { limit: 5000 },
-        });
-        setRows(Array.isArray(data) ? data : []);
-      }
+      const { data } = await api.get("/orders", {
+        params: buildOrderReportParams({
+          page,
+          limit: PAGE_SIZE,
+          search: debouncedSearch,
+          dateFilter,
+          customStart,
+          customEnd,
+        }),
+      });
+
+      setRows(Array.isArray(data?.orders) ? data.orders : []);
+      setOrderTotal(Number(data?.total || 0));
+      setOrderSummary({
+        ...EMPTY_ORDER_SUMMARY,
+        ...(data?.summary || {}),
+      });
       setGeneratedAt(new Date().toISOString());
     } catch (err) {
-      toast.error(`Failed to load ${reportType}.`);
+      toast.error(
+        err?.response?.data?.message || "Failed to load orders.",
+      );
+      setRows([]);
+      setOrderTotal(0);
+      setOrderSummary(EMPTY_ORDER_SUMMARY);
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    page,
+    debouncedSearch,
+    dateFilter,
+    customStart,
+    customEnd,
+  ]);
+
+  const loadCancellations = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const { data } = await api.get("/orders/cancellations", {
+        params: { limit: 5000 },
+      });
+      setRows(Array.isArray(data) ? data : []);
+      setGeneratedAt(new Date().toISOString());
+    } catch (err) {
+      toast.error("Failed to load cancellations.");
       setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [reportType]);
+  }, []);
 
   useEffect(() => {
-    loadReport();
-  }, [loadReport]);
+    if (reportType === "orders") {
+      loadOrders();
+    }
+  }, [reportType, loadOrders]);
+
+  useEffect(() => {
+    if (reportType === "cancellations") {
+      loadCancellations();
+    }
+  }, [reportType, loadCancellations]);
+
+  const loadReport = () => {
+    if (reportType === "orders") {
+      loadOrders();
+      return;
+    }
+    loadCancellations();
+  };
 
   const filteredRows = useMemo(() => {
+    if (reportType === "orders") {
+      return rows;
+    }
+
     return rows.filter((row) => {
-      // 1. Date check
+      // Cancellation Records stays on the existing local filtering flow.
       const rowDate = getRowDate(row, reportType);
       if (!isDateInRange(rowDate, dateFilter, customStart, customEnd))
         return false;
 
-      // 2. Search check
       const query = search.trim().toLowerCase();
       if (query) {
         return Object.values(row).some((val) =>
@@ -641,47 +763,101 @@ export default function TransactionReportPage() {
     });
   }, [rows, search, reportType, dateFilter, customStart, customEnd]);
 
-  // Reset page to 1 when filters change
-  useEffect(() => {
-    setPage(1);
-  }, [search, reportType, dateFilter, customStart, customEnd]);
-
   const paginatedRows = useMemo(() => {
-    const start = (page - 1) * 20;
-    return filteredRows.slice(start, start + 20);
-  }, [filteredRows, page]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / 20));
-
-  const summary = useMemo(() => {
-    const total = filteredRows.length;
-    let metric1 = 0;
-    let metric2 = 0;
-
     if (reportType === "orders") {
-      metric1 = filteredRows.filter((r) =>
-        ["completed", "delivered"].includes(String(r.status).toLowerCase()),
-      ).length;
-      metric2 = filteredRows.filter((r) =>
-        ["pending", "confirmed", "production", "shipping"].includes(
-          String(r.status).toLowerCase(),
-        ),
-      ).length;
-    } else {
-      metric1 = filteredRows.filter((r) =>
-        ["pending"].includes(String(r.status).toLowerCase()),
-      ).length;
-      metric2 = filteredRows.filter((r) =>
-        ["approved", "cancelled"].includes(String(r.status).toLowerCase()),
-      ).length;
+      return rows;
     }
 
+    const start = (page - 1) * PAGE_SIZE;
+    return filteredRows.slice(start, start + PAGE_SIZE);
+  }, [filteredRows, page, reportType, rows]);
+
+  const reportRecordCount =
+    reportType === "orders" ? orderTotal : filteredRows.length;
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(reportRecordCount / PAGE_SIZE),
+  );
+
+  const summary = useMemo(() => {
+    if (reportType === "orders") {
+      return {
+        total: orderTotal,
+        metric1: Number(orderSummary?.completed_or_delivered || 0),
+        metric2: Number(orderSummary?.in_progress || 0),
+      };
+    }
+
+    const total = filteredRows.length;
+    const metric1 = filteredRows.filter((r) =>
+      ["pending"].includes(String(r.status).toLowerCase()),
+    ).length;
+    const metric2 = filteredRows.filter((r) =>
+      ["approved", "cancelled"].includes(String(r.status).toLowerCase()),
+    ).length;
+
     return { total, metric1, metric2 };
-  }, [filteredRows, reportType]);
+  }, [filteredRows, orderSummary, orderTotal, reportType]);
 
   const exportExcel = async () => {
     setExporting(true);
     try {
+      let exportRows = filteredRows;
+
+      if (reportType === "orders") {
+        const firstResponse = await api.get("/orders", {
+          params: buildOrderReportParams({
+            page: 1,
+            limit: EXPORT_PAGE_SIZE,
+            search,
+            dateFilter,
+            customStart,
+            customEnd,
+          }),
+        });
+
+        exportRows = Array.isArray(firstResponse.data?.orders)
+          ? [...firstResponse.data.orders]
+          : [];
+
+        const exportTotal = Number(firstResponse.data?.total || 0);
+        const exportPages = Math.max(
+          1,
+          Math.ceil(exportTotal / EXPORT_PAGE_SIZE),
+        );
+
+        for (let exportPage = 2; exportPage <= exportPages; exportPage += 1) {
+          const { data } = await api.get("/orders", {
+            params: buildOrderReportParams({
+              page: exportPage,
+              limit: EXPORT_PAGE_SIZE,
+              search,
+              dateFilter,
+              customStart,
+              customEnd,
+              includeSummary: false,
+            }),
+          });
+
+          const batch = Array.isArray(data?.orders) ? data.orders : [];
+          exportRows.push(...batch);
+
+          if (batch.length === 0) break;
+        }
+
+        if (exportRows.length !== exportTotal) {
+          throw new Error(
+            "Order records changed while the export was being prepared. Please export again.",
+          );
+        }
+      }
+
+      if (exportRows.length === 0) {
+        toast.error("No records match the current filters.");
+        return;
+      }
+
       const workbook = XLSX.utils.book_new();
 
       const headerStyle = {
@@ -720,7 +896,7 @@ export default function TransactionReportPage() {
           "Payment Status",
           "Order Status",
         ];
-        mappedData = filteredRows.map((r) => [
+        mappedData = exportRows.map((r) => [
           formatDateTime(r.created_at),
           r.order_number || `#${r.id}`,
           r.customer_name || r.walkin_customer_name || "—",
@@ -845,7 +1021,7 @@ export default function TransactionReportPage() {
             type="button"
             className="trx-button trx-button-primary"
             onClick={exportExcel}
-            disabled={loading || filteredRows.length === 0 || exporting}
+            disabled={loading || reportRecordCount === 0 || exporting}
           >
             {exporting ? "Exporting..." : "Export Excel"}
           </button>
@@ -1018,7 +1194,7 @@ export default function TransactionReportPage() {
                 </p>
               </div>
               <div className="trx-section-count">
-                {filteredRows.length} record(s)
+                {reportRecordCount} record(s)
               </div>
             </div>
 
@@ -1051,7 +1227,7 @@ export default function TransactionReportPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRows.length === 0 ? (
+                  {paginatedRows.length === 0 ? (
                     <EmptyRow
                       colSpan={7}
                       text="No records match the current filters."
@@ -1133,7 +1309,7 @@ export default function TransactionReportPage() {
               </table>
             </div>
 
-            {filteredRows.length > 0 && (
+            {reportRecordCount > 0 && (
               <div
                 style={{
                   display: "flex",
@@ -1145,9 +1321,9 @@ export default function TransactionReportPage() {
                 }}
               >
                 <span style={{ fontSize: 11.5, color: "#71717a" }}>
-                  Showing {(page - 1) * 20 + 1} to{" "}
-                  {Math.min(page * 20, filteredRows.length)} of{" "}
-                  {filteredRows.length} records
+                  Showing {(page - 1) * PAGE_SIZE + 1} to{" "}
+                  {Math.min(page * PAGE_SIZE, reportRecordCount)} of{" "}
+                  {reportRecordCount} records
                 </span>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <button

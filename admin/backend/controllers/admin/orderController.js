@@ -1,7 +1,10 @@
 // controllers/orderController.js – Order Management (Admin) [SCHEMA-CORRECTED]
 // controllers/orderController.js – Order Management (Admin) [SCHEMA-CORRECTED]
 const pool = require("../../config/db");
-const { getPhilippineDateBoundsUtc } = require("../../utils/philippineTime");
+const {
+  getPhilippineDateBoundsUtc,
+  getPhilippineDateKey,
+} = require("../../utils/philippineTime");
 const { signUploadPath } = require("../../utils/signedUrl");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const {
@@ -640,6 +643,107 @@ exports.rejectCustomRequest = async (req, res) => {
   }
 };
 
+const TRANSACTION_REPORT_DATE_FILTERS = new Set([
+  "all",
+  "today",
+  "yesterday",
+  "this_week",
+  "this_month",
+  "this_year",
+  "custom",
+]);
+
+const formatUtcDateKey = (date) =>
+  [
+    String(date.getUTCFullYear()).padStart(4, "0"),
+    String(date.getUTCMonth() + 1).padStart(2, "0"),
+    String(date.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+
+const shiftDateKey = (dateKey, days) => {
+  const [year, month, day] = String(dateKey).split("-").map(Number);
+  return formatUtcDateKey(new Date(Date.UTC(year, month - 1, day + days)));
+};
+
+const buildTransactionReportDateRange = ({
+  dateFilter,
+  from,
+  to,
+}) => {
+  const normalizedFilter = String(dateFilter || "all")
+    .trim()
+    .toLowerCase();
+
+  if (!TRANSACTION_REPORT_DATE_FILTERS.has(normalizedFilter)) {
+    const error = new Error("Invalid transaction report date filter.");
+    error.status = 400;
+    throw error;
+  }
+
+  if (normalizedFilter === "all") {
+    return { startUtc: null, endUtc: null };
+  }
+
+  if (normalizedFilter === "custom") {
+    const fromKey = String(from || "").trim();
+    const toKey = String(to || "").trim();
+
+    if (fromKey && toKey && fromKey > toKey) {
+      const error = new Error("Start date cannot be after end date.");
+      error.status = 400;
+      throw error;
+    }
+
+    try {
+      return {
+        startUtc: fromKey
+          ? getPhilippineDateBoundsUtc(fromKey).startUtc
+          : null,
+        endUtc: toKey
+          ? getPhilippineDateBoundsUtc(toKey).nextStartUtc
+          : null,
+      };
+    } catch {
+      const error = new Error(
+        "Transaction report dates must use valid YYYY-MM-DD values.",
+      );
+      error.status = 400;
+      throw error;
+    }
+  }
+
+  const todayKey = getPhilippineDateKey();
+  const [year, month, day] = todayKey.split("-").map(Number);
+
+  let startKey = todayKey;
+  let endKey = shiftDateKey(todayKey, 1);
+
+  if (normalizedFilter === "yesterday") {
+    startKey = shiftDateKey(todayKey, -1);
+    endKey = todayKey;
+  } else if (normalizedFilter === "this_week") {
+    // Preserve the Transaction Report's existing Sunday-Saturday week.
+    const dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    startKey = shiftDateKey(todayKey, -dayOfWeek);
+    endKey = shiftDateKey(startKey, 7);
+  } else if (normalizedFilter === "this_month") {
+    startKey = [
+      String(year).padStart(4, "0"),
+      String(month).padStart(2, "0"),
+      "01",
+    ].join("-");
+    endKey = formatUtcDateKey(new Date(Date.UTC(year, month, 1)));
+  } else if (normalizedFilter === "this_year") {
+    startKey = `${String(year).padStart(4, "0")}-01-01`;
+    endKey = `${String(year + 1).padStart(4, "0")}-01-01`;
+  }
+
+  return {
+    startUtc: getPhilippineDateBoundsUtc(startKey).startUtc,
+    endUtc: getPhilippineDateBoundsUtc(endKey).startUtc,
+  };
+};
+
 exports.getAll = async (req, res) => {
   try {
     const {
@@ -649,12 +753,19 @@ exports.getAll = async (req, res) => {
       search,
       from,
       to,
+      date_filter,
+      transaction_report,
+      include_summary,
       page = 1,
       limit = 20,
     } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
     const where = ["1=1"];
     const params = [];
+    const transactionReportMode =
+      String(transaction_report || "").trim() === "1";
+    const includeSummary =
+      String(include_summary || "1").trim() !== "0";
 
     if (status) {
       where.push("o.status = ?");
@@ -669,7 +780,23 @@ exports.getAll = async (req, res) => {
       where.push("LOWER(o.type) = ?");
       params.push(channel.toLowerCase());
     }
-    if (from && to) {
+    if (transactionReportMode) {
+      const { startUtc, endUtc } = buildTransactionReportDateRange({
+        dateFilter: date_filter,
+        from,
+        to,
+      });
+
+      if (startUtc) {
+        where.push("o.created_at >= ?");
+        params.push(startUtc);
+      }
+
+      if (endUtc) {
+        where.push("o.created_at < ?");
+        params.push(endUtc);
+      }
+    } else if (from && to) {
       const { startUtc } = getPhilippineDateBoundsUtc(from);
       const { nextStartUtc } = getPhilippineDateBoundsUtc(to);
       where.push("o.created_at >= ? AND o.created_at < ?");
@@ -685,6 +812,25 @@ exports.getAll = async (req, res) => {
         "o.order_number LIKE ?",
       ];
       const searchParams = [pattern, pattern, parseInt(term, 10) || 0, pattern];
+
+      if (transactionReportMode) {
+        clauses.push(
+          "LOWER(COALESCE(o.type, '')) LIKE LOWER(?)",
+          "LOWER(COALESCE(o.status, '')) LIKE LOWER(?)",
+          "LOWER(COALESCE(o.payment_status, '')) LIKE LOWER(?)",
+          "LOWER(COALESCE(o.payment_method, '')) LIKE LOWER(?)",
+          "LOWER(COALESCE(o.order_type, '')) LIKE LOWER(?)",
+          "CAST(COALESCE(o.total, 0) AS CHAR) LIKE ?",
+        );
+        searchParams.push(
+          pattern,
+          pattern,
+          pattern,
+          pattern,
+          pattern,
+          pattern,
+        );
+      }
 
       const rawDigits = term.replace(/\D/g, "");
       const phoneVariants = new Set(rawDigits ? [rawDigits] : []);
@@ -820,46 +966,65 @@ exports.getAll = async (req, res) => {
       }
     }
 
-    const [[{ total }]] = await pool.query(
-      `SELECT COUNT(*) AS total FROM orders o LEFT JOIN users u ON u.id = o.customer_id
-       WHERE ${where.join(" AND ")}`,
-      params,
-    );
+    let total;
+    let summary;
 
-    const [[summary]] = await pool.query(
-      `SELECT
-          COUNT(*) AS total_orders,
-          COALESCE(SUM(CASE
-            WHEN LOWER(COALESCE(o.status, '')) = 'pending'
-              OR LOWER(COALESCE(o.payment_status, '')) = 'pending'
-            THEN 1 ELSE 0 END), 0) AS needs_review,
-          COALESCE(SUM(CASE
-            WHEN LOWER(COALESCE(o.order_type, '')) = 'blueprint'
-            THEN 1 ELSE 0 END), 0) AS custom_requests,
-          COALESCE(SUM(CASE
-            WHEN LOWER(COALESCE(o.order_type, '')) = 'blueprint'
-              AND LOWER(COALESCE(o.status, '')) = 'pending'
-            THEN 1 ELSE 0 END), 0) AS quote_needed,
-          COALESCE(SUM(CASE
-            WHEN LOWER(COALESCE(o.payment_status, '')) = 'paid'
-            THEN 1 ELSE 0 END), 0) AS paid_orders,
-          COALESCE(SUM(CASE
-            WHEN LOWER(COALESCE(o.type, '')) = 'online'
-            THEN 1 ELSE 0 END), 0) AS online_orders,
-          COALESCE(SUM(CASE
-            WHEN LOWER(COALESCE(o.status, '')) = 'pending'
-            THEN 1 ELSE 0 END), 0) AS pending_orders,
-          COALESCE(SUM(CASE
-            WHEN LOWER(COALESCE(o.status, '')) = 'completed'
-            THEN 1 ELSE 0 END), 0) AS completed_orders
-       FROM orders o
-       LEFT JOIN users u ON u.id = o.customer_id
-       WHERE ${where.join(" AND ")}`,
-      params,
-    );
+    if (includeSummary) {
+      const [[summaryRow]] = await pool.query(
+        `SELECT
+            COUNT(*) AS total_orders,
+            COALESCE(SUM(CASE
+              WHEN LOWER(COALESCE(o.status, '')) = 'pending'
+                OR LOWER(COALESCE(o.payment_status, '')) = 'pending'
+              THEN 1 ELSE 0 END), 0) AS needs_review,
+            COALESCE(SUM(CASE
+              WHEN LOWER(COALESCE(o.order_type, '')) = 'blueprint'
+              THEN 1 ELSE 0 END), 0) AS custom_requests,
+            COALESCE(SUM(CASE
+              WHEN LOWER(COALESCE(o.order_type, '')) = 'blueprint'
+                AND LOWER(COALESCE(o.status, '')) = 'pending'
+              THEN 1 ELSE 0 END), 0) AS quote_needed,
+            COALESCE(SUM(CASE
+              WHEN LOWER(COALESCE(o.payment_status, '')) = 'paid'
+              THEN 1 ELSE 0 END), 0) AS paid_orders,
+            COALESCE(SUM(CASE
+              WHEN LOWER(COALESCE(o.type, '')) = 'online'
+              THEN 1 ELSE 0 END), 0) AS online_orders,
+            COALESCE(SUM(CASE
+              WHEN LOWER(COALESCE(o.status, '')) = 'pending'
+              THEN 1 ELSE 0 END), 0) AS pending_orders,
+            COALESCE(SUM(CASE
+              WHEN LOWER(COALESCE(o.status, '')) = 'completed'
+              THEN 1 ELSE 0 END), 0) AS completed_orders,
+            COALESCE(SUM(CASE
+              WHEN LOWER(COALESCE(o.status, '')) IN ('completed', 'delivered')
+              THEN 1 ELSE 0 END), 0) AS completed_or_delivered,
+            COALESCE(SUM(CASE
+              WHEN LOWER(COALESCE(o.status, '')) IN (
+                'pending',
+                'confirmed',
+                'production',
+                'shipping'
+              )
+              THEN 1 ELSE 0 END), 0) AS in_progress
+         FROM orders o
+         LEFT JOIN users u ON u.id = o.customer_id
+         WHERE ${where.join(" AND ")}`,
+        params,
+      );
 
-    res.json({ orders, total, summary });
+      summary = summaryRow || {};
+      total = Number(summary.total_orders || 0);
+    }
+
+    res.json({
+      orders,
+      ...(includeSummary ? { total, summary } : {}),
+    });
   } catch (err) {
+    if (Number(err?.status) === 400) {
+      return res.status(400).json({ message: err.message });
+    }
     res.status(500).json({ message: err.message });
   }
 };
