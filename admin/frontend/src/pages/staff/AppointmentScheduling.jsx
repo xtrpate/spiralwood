@@ -726,6 +726,8 @@ export default function AppointmentScheduling() {
   const isAdmin = user?.role === "admin";
   const canManageAppointments = isAdmin && hasPermission("appointments.manage");
   const isIndoorStaff = user?.role === "staff" && user?.staff_type === "indoor";
+  const isAcceptedByCurrentIndoorStaff = (appointment) =>
+    Number(appointment?.reviewed_by || 0) === Number(user?.id || 0);
 
   const [appointments, setAppointments] = useState([]);
   const [assignedStaff, setAssignedStaff] = useState([]);
@@ -3083,7 +3085,7 @@ export default function AppointmentScheduling() {
 
           <IndoorAppointmentSection
             title="Active Appointments"
-            subtitle="Appointments you accepted and are currently handling."
+            subtitle="Confirmed appointments assigned to you."
           >
             {staffConfirmedAppointments.length === 0 ? (
               <div style={indoorEmptyStyle}>No active appointments.</div>
@@ -3158,30 +3160,57 @@ export default function AppointmentScheduling() {
                         className="indoor-appointment-actions"
                         style={indoorActionsStyle}
                       >
-                        {String(a.status || "").toLowerCase() ===
-                          "confirmed" && (
-                          <button
-                            type="button"
-                            style={
-                              actionLoadingId === a.id
-                                ? indoorDisabledButton
-                                : indoorPrimaryButton
-                            }
-                            disabled={actionLoadingId === a.id}
-                            onClick={() =>
-                              handleAction(
-                                a.id,
-                                { status: "in_progress" },
-                                "Appointment started successfully.",
-                              )
-                            }
-                          >
-                            <CheckCircle2 size={14} />
-                            {actionLoadingId === a.id
-                              ? "Starting..."
-                              : "Start Appointment"}
-                          </button>
-                        )}
+                        {String(a.status || "").toLowerCase() === "confirmed" &&
+                          !isAcceptedByCurrentIndoorStaff(a) && (
+                            <button
+                              type="button"
+                              style={
+                                actionLoadingId === a.id
+                                  ? indoorDisabledButton
+                                  : indoorPrimaryButton
+                              }
+                              disabled={actionLoadingId === a.id}
+                              onClick={() =>
+                                handleAction(
+                                  a.id,
+                                  { status: "confirmed" },
+                                  "Appointment accepted successfully.",
+                                )
+                              }
+                            >
+                              <CheckCircle2 size={14} />
+
+                              {actionLoadingId === a.id
+                                ? "Accepting..."
+                                : "Accept Appointment"}
+                            </button>
+                          )}
+
+                        {String(a.status || "").toLowerCase() === "confirmed" &&
+                          isAcceptedByCurrentIndoorStaff(a) && (
+                            <button
+                              type="button"
+                              style={
+                                actionLoadingId === a.id
+                                  ? indoorDisabledButton
+                                  : indoorPrimaryButton
+                              }
+                              disabled={actionLoadingId === a.id}
+                              onClick={() =>
+                                handleAction(
+                                  a.id,
+                                  { status: "in_progress" },
+                                  "Appointment started successfully.",
+                                )
+                              }
+                            >
+                              <CheckCircle2 size={14} />
+
+                              {actionLoadingId === a.id
+                                ? "Starting..."
+                                : "Start Appointment"}
+                            </button>
+                          )}
 
                         {String(a.status || "").toLowerCase() ===
                           "in_progress" && (
@@ -3197,11 +3226,12 @@ export default function AppointmentScheduling() {
                               handleAction(
                                 a.id,
                                 { status: "completed" },
-                                "Appointment marked as completed.",
+                                "Appointment marked as done.",
                               )
                             }
                           >
                             <Check size={14} />
+
                             {actionLoadingId === a.id
                               ? "Saving..."
                               : "Mark Done"}
