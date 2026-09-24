@@ -504,6 +504,46 @@ const INVENTORY_TYPES = [
 const PAGE_SIZE = 20;
 const MOVEMENT_EXPORT_PAGE_SIZE = 200;
 
+const TRANSFER_EXPORT_PAGE_SIZE = 100;
+
+const EMPTY_TRANSFER_SUMMARY = {
+  completed_transfers: 0,
+  reversed_transfers: 0,
+};
+
+const buildStockTransferParams = ({
+  page,
+  limit,
+  search,
+  dateFilter,
+  customStart,
+  customEnd,
+  includeSummary = true,
+}) => {
+  const params = {
+    page,
+    limit,
+    date_filter: dateFilter,
+  };
+
+  const normalizedSearch = String(search || "").trim();
+
+  if (normalizedSearch) {
+    params.search = normalizedSearch;
+  }
+
+  if (dateFilter === "custom") {
+    if (customStart) params.from = customStart;
+    if (customEnd) params.to = customEnd;
+  }
+
+  if (!includeSummary) {
+    params.include_summary = 0;
+  }
+
+  return params;
+};
+
 const EMPTY_MOVEMENT_SUMMARY = {
   record_count: 0,
   in_count: 0,
@@ -668,6 +708,10 @@ export default function StockReportPage() {
   const [movementSummary, setMovementSummary] = useState(
     EMPTY_MOVEMENT_SUMMARY,
   );
+  const [transferTotal, setTransferTotal] = useState(0);
+  const [transferSummary, setTransferSummary] = useState(
+    EMPTY_TRANSFER_SUMMARY,
+  );
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [generatedAt, setGeneratedAt] = useState("");
@@ -729,18 +773,41 @@ export default function StockReportPage() {
 
     try {
       const { data } = await api.get("/inventory/transfers", {
-        params: { limit: 5000 },
+        params: buildStockTransferParams({
+          page,
+          limit: PAGE_SIZE,
+          search: debouncedSearch,
+          dateFilter,
+          customStart,
+          customEnd,
+        }),
       });
 
       setRows(Array.isArray(data?.rows) ? data.rows : []);
+      setTransferTotal(Number(data?.total || 0));
+      setTransferSummary({
+        ...EMPTY_TRANSFER_SUMMARY,
+        ...(data?.summary || {}),
+      });
       setGeneratedAt(new Date().toISOString());
     } catch (err) {
-      toast.error("Failed to load stock transfers.");
+      toast.error(
+        err?.response?.data?.message || "Failed to load stock transfers.",
+      );
       setRows([]);
+      setTransferTotal(0);
+      setTransferSummary(EMPTY_TRANSFER_SUMMARY);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [
+    page,
+    debouncedSearch,
+    dateFilter,
+    customStart,
+    customEnd,
+  ]);
+
 
   const loadReport = useCallback(() => {
     if (reportType === "movements") {
@@ -762,50 +829,12 @@ export default function StockReportPage() {
     }
   }, [loadTransfers, reportType]);
 
-  const filteredRows = useMemo(() => {
-    if (reportType === "movements") {
-      return rows;
-    }
-
-    return rows.filter((row) => {
-      const rowDate = getRowDate(row);
-
-      if (!isDateInRange(rowDate, dateFilter, customStart, customEnd)) {
-        return false;
-      }
-
-      const query = search.trim().toLowerCase();
-
-      if (query) {
-        return Object.values(row).some((val) =>
-          String(val || "")
-            .toLowerCase()
-            .includes(query),
-        );
-      }
-
-      return true;
-    });
-  }, [
-    rows,
-    search,
-    reportType,
-    dateFilter,
-    customStart,
-    customEnd,
-  ]);
+  const filteredRows = rows;
 
   const reportRecordCount =
-    reportType === "movements" ? movementTotal : filteredRows.length;
+    reportType === "movements" ? movementTotal : transferTotal;
 
-  const paginatedRows = useMemo(() => {
-    if (reportType === "movements") {
-      return rows;
-    }
-
-    const start = (page - 1) * PAGE_SIZE;
-    return filteredRows.slice(start, start + PAGE_SIZE);
-  }, [filteredRows, page, reportType, rows]);
+  const paginatedRows = rows;
 
   const totalPages = Math.max(
     1,
@@ -821,20 +850,17 @@ export default function StockReportPage() {
       };
     }
 
-    const total = filteredRows.length;
-    const metric1 = filteredRows.filter(
-      (row) => !row.reversal_of_transfer_id && !row.reversed_by_transfer_id,
-    ).length;
-    const metric2 = filteredRows.filter(
-      (row) => row.reversal_of_transfer_id || row.reversed_by_transfer_id,
-    ).length;
-
-    return { total, metric1, metric2 };
+    return {
+      total: transferTotal,
+      metric1: Number(transferSummary?.completed_transfers || 0),
+      metric2: Number(transferSummary?.reversed_transfers || 0),
+    };
   }, [
-    filteredRows,
     movementSummary,
     movementTotal,
     reportType,
+    transferSummary,
+    transferTotal,
   ]);
 
   const exportExcel = async () => {
@@ -939,6 +965,52 @@ export default function StockReportPage() {
           r.created_by_name || "System",
         ]);
       } else {
+        const firstResponse = await api.get("/inventory/transfers", {
+          params: buildStockTransferParams({
+            page: 1,
+            limit: TRANSFER_EXPORT_PAGE_SIZE,
+            search,
+            dateFilter,
+            customStart,
+            customEnd,
+          }),
+        });
+
+        exportRows = Array.isArray(firstResponse.data?.rows)
+          ? [...firstResponse.data.rows]
+          : [];
+
+        const exportTotal = Number(firstResponse.data?.total || 0);
+        const exportPages = Math.max(
+          1,
+          Math.ceil(exportTotal / TRANSFER_EXPORT_PAGE_SIZE),
+        );
+
+        for (let exportPage = 2; exportPage <= exportPages; exportPage += 1) {
+          const { data } = await api.get("/inventory/transfers", {
+            params: buildStockTransferParams({
+              page: exportPage,
+              limit: TRANSFER_EXPORT_PAGE_SIZE,
+              search,
+              dateFilter,
+              customStart,
+              customEnd,
+              includeSummary: false,
+            }),
+          });
+
+          const batch = Array.isArray(data?.rows) ? data.rows : [];
+          exportRows.push(...batch);
+
+          if (batch.length === 0) break;
+        }
+
+        if (exportRows.length !== exportTotal) {
+          throw new Error(
+            "Stock transfer records changed while the export was being prepared. Please export again.",
+          );
+        }
+
         headers = [
           "Date & Time",
           "Reference",
@@ -949,7 +1021,7 @@ export default function StockReportPage() {
           "Status",
           "User",
         ];
-        mappedData = filteredRows.map((r) => [
+        mappedData = exportRows.map((r) => [
           formatDateTime(r.created_at),
           r.reference_code || "—",
           DIRECTIONS[r.direction]?.from || "—",
@@ -964,6 +1036,7 @@ export default function StockReportPage() {
           r.transferred_by_name || "System",
         ]);
       }
+
 
       const titleStyle = {
         font: { bold: true, sz: 16, color: { rgb: "111827" } },
