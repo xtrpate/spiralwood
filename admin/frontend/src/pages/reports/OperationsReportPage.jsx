@@ -180,6 +180,48 @@ const buildOperationsTaskParams = ({
   return params;
 };
 
+
+const DELIVERY_EXPORT_PAGE_SIZE = 200;
+
+const EMPTY_DELIVERY_SUMMARY = {
+  pending: 0,
+  completed: 0,
+};
+
+const buildOperationsDeliveryParams = ({
+  page,
+  limit,
+  search,
+  dateFilter,
+  customStart,
+  customEnd,
+  includeSummary = true,
+}) => {
+  const params = {
+    operations_report: 1,
+    page,
+    limit,
+    date_filter: dateFilter,
+  };
+
+  const normalizedSearch = String(search || "").trim();
+
+  if (normalizedSearch) {
+    params.search = normalizedSearch;
+  }
+
+  if (dateFilter === "custom") {
+    if (customStart) params.from = customStart;
+    if (customEnd) params.to = customEnd;
+  }
+
+  if (!includeSummary) {
+    params.include_summary = 0;
+  }
+
+  return params;
+};
+
 const formatDateTime = (value) => {
   if (!value) return "—";
   const parsed = new Date(value);
@@ -900,6 +942,10 @@ export default function OperationsReportPage() {
   const [appointmentSummary, setAppointmentSummary] = useState(
     EMPTY_APPOINTMENT_SUMMARY,
   );
+  const [deliveryTotal, setDeliveryTotal] = useState(0);
+  const [deliverySummary, setDeliverySummary] = useState(
+    EMPTY_DELIVERY_SUMMARY,
+  );
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [generatedAt, setGeneratedAt] = useState("");
@@ -997,10 +1043,50 @@ export default function OperationsReportPage() {
     customEnd,
   ]);
 
+  const loadDeliveryReport = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const { data } = await api.get("/pos/deliveries", {
+        params: buildOperationsDeliveryParams({
+          page,
+          limit: PAGE_SIZE,
+          search: debouncedSearch,
+          dateFilter,
+          customStart,
+          customEnd,
+        }),
+      });
+
+      setRows(Array.isArray(data?.deliveries) ? data.deliveries : []);
+      setDeliveryTotal(Number(data?.total || 0));
+      setDeliverySummary({
+        ...EMPTY_DELIVERY_SUMMARY,
+        ...(data?.summary || {}),
+      });
+      setGeneratedAt(new Date().toISOString());
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message || "Failed to load deliveries.",
+      );
+      setRows([]);
+      setDeliveryTotal(0);
+      setDeliverySummary(EMPTY_DELIVERY_SUMMARY);
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    page,
+    debouncedSearch,
+    dateFilter,
+    customStart,
+    customEnd,
+  ]);
+
   const loadLegacyReport = useCallback(async () => {
     if (
       !activeOperation ||
-      ["tasks", "appointments"].includes(activeOperation.value)
+      ["tasks", "appointments", "delivery"].includes(activeOperation.value)
     ) {
       return;
     }
@@ -1034,9 +1120,11 @@ export default function OperationsReportPage() {
   const loadReport = useCallback(() => {
     if (operationType === "tasks") return loadTaskReport();
     if (operationType === "appointments") return loadAppointmentReport();
+    if (operationType === "delivery") return loadDeliveryReport();
     return loadLegacyReport();
   }, [
     loadAppointmentReport,
+    loadDeliveryReport,
     loadLegacyReport,
     loadTaskReport,
     operationType,
@@ -1051,13 +1139,17 @@ export default function OperationsReportPage() {
   }, [loadAppointmentReport, operationType]);
 
   useEffect(() => {
-    if (!["tasks", "appointments"].includes(operationType)) {
+    if (operationType === "delivery") loadDeliveryReport();
+  }, [loadDeliveryReport, operationType]);
+
+  useEffect(() => {
+    if (!["tasks", "appointments", "delivery"].includes(operationType)) {
       loadLegacyReport();
     }
   }, [loadLegacyReport, operationType]);
 
   const filteredRows = useMemo(() => {
-    if (["tasks", "appointments"].includes(operationType)) {
+    if (["tasks", "appointments", "delivery"].includes(operationType)) {
       return rows;
     }
 
@@ -1097,10 +1189,12 @@ export default function OperationsReportPage() {
       ? taskTotal
       : operationType === "appointments"
         ? appointmentTotal
-        : filteredRows.length;
+        : operationType === "delivery"
+          ? deliveryTotal
+          : filteredRows.length;
 
   const paginatedRows = useMemo(() => {
-    if (["tasks", "appointments"].includes(operationType)) {
+    if (["tasks", "appointments", "delivery"].includes(operationType)) {
       return rows;
     }
 
@@ -1237,6 +1331,14 @@ export default function OperationsReportPage() {
       };
     }
 
+    if (operationType === "delivery") {
+      return {
+        total: deliveryTotal,
+        pending: Number(deliverySummary?.pending || 0),
+        completed: Number(deliverySummary?.completed || 0),
+      };
+    }
+
     const total = filteredRows.length;
     const pending = filteredRows.filter((r) =>
       ["pending", "scheduled", "in_progress"].includes(
@@ -1253,6 +1355,8 @@ export default function OperationsReportPage() {
   }, [
     appointmentSummary,
     appointmentTotal,
+    deliverySummary,
+    deliveryTotal,
     filteredRows,
     operationType,
     taskSummary,
@@ -1422,6 +1526,55 @@ export default function OperationsReportPage() {
           ),
         ]);
       } else if (operationType === "delivery") {
+        const firstResponse = await api.get("/pos/deliveries", {
+          params: buildOperationsDeliveryParams({
+            page: 1,
+            limit: DELIVERY_EXPORT_PAGE_SIZE,
+            search,
+            dateFilter,
+            customStart,
+            customEnd,
+          }),
+        });
+
+        exportRows = Array.isArray(firstResponse.data?.deliveries)
+          ? [...firstResponse.data.deliveries]
+          : [];
+
+        const exportTotal = Number(firstResponse.data?.total || 0);
+        const exportPages = Math.max(
+          1,
+          Math.ceil(exportTotal / DELIVERY_EXPORT_PAGE_SIZE),
+        );
+
+        for (let exportPage = 2; exportPage <= exportPages; exportPage += 1) {
+          const { data } = await api.get("/pos/deliveries", {
+            params: buildOperationsDeliveryParams({
+              page: exportPage,
+              limit: DELIVERY_EXPORT_PAGE_SIZE,
+              search,
+              dateFilter,
+              customStart,
+              customEnd,
+              includeSummary: false,
+            }),
+          });
+
+          const batch = Array.isArray(data?.deliveries)
+            ? data.deliveries
+            : [];
+
+          exportRows.push(...batch);
+
+          if (batch.length === 0) break;
+        }
+
+        if (exportRows.length !== exportTotal) {
+          throw new Error(
+            "Delivery records changed while the export was being prepared. Please export again.",
+          );
+        }
+
         headers = [
           "Delivery ID",
           "Order Number",
@@ -1429,7 +1582,7 @@ export default function OperationsReportPage() {
           "Status",
           "Delivery Date",
         ];
-        mappedData = filteredRows.map((r) => [
+        mappedData = exportRows.map((r) => [
           r.id,
           r.order_number || "—",
           r.driver_name || "Unassigned",
