@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import api from "../../services/api";
 import useAuthStore from "../../store/authStore";
+import { getSocket, subscribeSocketReady } from "../../services/socket";
 import {
   Plus,
   Search,
@@ -861,6 +862,55 @@ export default function AppointmentScheduling() {
     fetchAssignStaff();
   }, [fetchAppointments, fetchAssignStaff]);
 
+  /*
+   * Live appointment updates.
+   *
+   * Backend emits "appointment:updated" whenever an appointment's
+   * assignment, schedule, status, or cancellation changes.
+   *
+   * The page refreshes its appointment list instead of requiring
+   * the user to reload the browser.
+   */
+  useEffect(() => {
+    const handleAppointmentUpdated = (payload) => {
+      if (!payload?.appointment_id) {
+        return;
+      }
+
+      fetchAppointments();
+    };
+
+    const attachSocketListener = (socket) => {
+      if (!socket) return;
+
+      socket.off("appointment:updated", handleAppointmentUpdated);
+
+      socket.on("appointment:updated", handleAppointmentUpdated);
+    };
+
+    const socket = getSocket();
+
+    if (socket) {
+      attachSocketListener(socket);
+    }
+
+    const unsubscribeReady = subscribeSocketReady(attachSocketListener);
+
+    return () => {
+      unsubscribeReady();
+
+      if (socket) {
+        socket.off("appointment:updated", handleAppointmentUpdated);
+      }
+
+      const currentSocket = getSocket();
+
+      if (currentSocket && currentSocket !== socket) {
+        currentSocket.off("appointment:updated", handleAppointmentUpdated);
+      }
+    };
+  }, [fetchAppointments]);
+
   // Notification double-click focus support (forward compatibility —
   // no active notification creation point produces focus_appointment_id
   // today, but the page is wired so it works the moment one does).
@@ -1585,20 +1635,6 @@ export default function AppointmentScheduling() {
             <button
               type="button"
               role="tab"
-              aria-selected={adminActiveTab === "in_progress"}
-              style={
-                adminActiveTab === "in_progress"
-                  ? adminTabButtonActiveStyle
-                  : adminTabButtonStyle
-              }
-              onClick={() => setAdminActiveTab("in_progress")}
-            >
-              In Progress
-            </button>
-
-            <button
-              type="button"
-              role="tab"
               aria-selected={adminActiveTab === "confirmed"}
               style={
                 adminActiveTab === "confirmed"
@@ -1608,6 +1644,20 @@ export default function AppointmentScheduling() {
               onClick={() => setAdminActiveTab("confirmed")}
             >
               Confirmed
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={adminActiveTab === "in_progress"}
+              style={
+                adminActiveTab === "in_progress"
+                  ? adminTabButtonActiveStyle
+                  : adminTabButtonStyle
+              }
+              onClick={() => setAdminActiveTab("in_progress")}
+            >
+              In Progress
             </button>
 
             <button

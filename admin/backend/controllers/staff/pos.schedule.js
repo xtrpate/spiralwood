@@ -445,6 +445,61 @@ const getAppointmentById = async (appointmentId) => {
   return rows[0] || null;
 };
 
+const emitAppointmentSocketUpdate = (req, appointment) => {
+  if (!appointment) return;
+
+  const io = req.app.get("io");
+
+  if (!io) return;
+
+  const payload = {
+    appointment_id: Number(appointment.id),
+    customer_id: appointment.customer_id
+      ? Number(appointment.customer_id)
+      : null,
+    assigned_staff_id: appointment.assigned_staff_id
+      ? Number(appointment.assigned_staff_id)
+      : null,
+    status: String(appointment.status || "").toLowerCase(),
+    scheduled_date: appointment.scheduled_date || null,
+    preferred_date: appointment.preferred_date || null,
+    updated_at: appointment.updated_at || null,
+  };
+
+  try {
+    /*
+     * Customer-specific live update.
+     */
+    if (payload.customer_id) {
+      io.to(`user:${payload.customer_id}`).emit("appointment:updated", payload);
+    }
+
+    /*
+     * Admin + staff live update.
+     *
+     * server.js already places authenticated admin/staff
+     * sockets inside the "staff-updates" room.
+     */
+    io.to("staff-updates").emit("appointment:updated", payload);
+
+    /*
+     * Assigned staff gets the event through their personal room too.
+     * This keeps the event available even if the staff-room behavior
+     * changes later.
+     */
+    if (payload.assigned_staff_id) {
+      io.to(`user:${payload.assigned_staff_id}`).emit(
+        "appointment:updated",
+        payload,
+      );
+    }
+
+    console.log("[APPOINTMENT SOCKET] appointment:updated", payload);
+  } catch (err) {
+    console.error("[APPOINTMENT SOCKET EMIT]", err?.message || err);
+  }
+};
+
 const OPERATIONS_APPOINTMENT_DATE_FILTERS = new Set([
   "all",
   "today",
@@ -1515,6 +1570,8 @@ exports.updateAppointment = async (req, res) => {
 
         const updated = await getAppointmentById(appointmentId);
 
+        emitAppointmentSocketUpdate(req, updated);
+
         await sendCustomerAppointmentNotificationSafe(db, {
           appointmentId,
           event: "in_progress",
@@ -1609,6 +1666,8 @@ exports.updateAppointment = async (req, res) => {
 
         const updated = await getAppointmentById(appointmentId);
 
+        emitAppointmentSocketUpdate(req, updated);
+
         await sendCustomerAppointmentNotificationSafe(db, {
           appointmentId,
           event: "cancelled",
@@ -1700,6 +1759,8 @@ exports.updateAppointment = async (req, res) => {
         conn = null;
 
         const updated = await getAppointmentById(appointmentId);
+
+        emitAppointmentSocketUpdate(req, updated);
 
         await sendCustomerAppointmentNotificationSafe(db, {
           appointmentId,
@@ -2091,6 +2152,8 @@ exports.updateAppointment = async (req, res) => {
     conn = null;
 
     const updated = await getAppointmentById(appointmentId);
+
+    emitAppointmentSocketUpdate(req, updated);
 
     if (assignmentChanged && assignedStaffId && status === "confirmed") {
       await sendCustomerAppointmentNotificationSafe(db, {
