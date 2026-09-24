@@ -2,7 +2,10 @@
 const fs = require("fs");
 const db = require("../../config/db");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
-const { getPhilippineDateBoundsUtc } = require("../../utils/philippineTime");
+const {
+  getPhilippineDateBoundsUtc,
+  getPhilippineDateKey,
+} = require("../../utils/philippineTime");
 const { signUploadPath } = require("../../utils/signedUrl");
 const {
   storeUploadBuffer,
@@ -512,7 +515,349 @@ exports.getDeliverableOrders = async (req, res) => {
   }
 };
 
+
+const OPERATIONS_DELIVERY_DATE_FILTERS = new Set([
+  "all",
+  "today",
+  "yesterday",
+  "this_week",
+  "this_month",
+  "this_year",
+  "custom",
+]);
+
+const formatUtcDateKeyForOperationsDeliveryReport = (date) =>
+  [
+    String(date.getUTCFullYear()).padStart(4, "0"),
+    String(date.getUTCMonth() + 1).padStart(2, "0"),
+    String(date.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+
+const shiftOperationsDeliveryDateKey = (dateKey, days) => {
+  const [year, month, day] = String(dateKey).split("-").map(Number);
+  return formatUtcDateKeyForOperationsDeliveryReport(
+    new Date(Date.UTC(year, month - 1, day + days)),
+  );
+};
+
+const buildOperationsDeliveryDateRange = ({
+  dateFilter,
+  from,
+  to,
+}) => {
+  const normalizedFilter = String(dateFilter || "all")
+    .trim()
+    .toLowerCase();
+
+  if (!OPERATIONS_DELIVERY_DATE_FILTERS.has(normalizedFilter)) {
+    const error = new Error("Invalid operations delivery date filter.");
+    error.status = 400;
+    throw error;
+  }
+
+  if (normalizedFilter === "all") {
+    return {
+      startKey: null,
+      endKey: null,
+      startUtc: null,
+      endUtc: null,
+    };
+  }
+
+  if (normalizedFilter === "custom") {
+    const fromKey = String(from || "").trim();
+    const toKey = String(to || "").trim();
+
+    if (fromKey && toKey && fromKey > toKey) {
+      const error = new Error("Start date cannot be after end date.");
+      error.status = 400;
+      throw error;
+    }
+
+    try {
+      const startBounds = fromKey
+        ? getPhilippineDateBoundsUtc(fromKey)
+        : null;
+      const endBounds = toKey ? getPhilippineDateBoundsUtc(toKey) : null;
+
+      return {
+        startKey: fromKey || null,
+        endKey: toKey ? shiftOperationsDeliveryDateKey(toKey, 1) : null,
+        startUtc: startBounds?.startUtc || null,
+        endUtc: endBounds?.nextStartUtc || null,
+      };
+    } catch {
+      const error = new Error(
+        "Operations delivery dates must use valid YYYY-MM-DD values.",
+      );
+      error.status = 400;
+      throw error;
+    }
+  }
+
+  const todayKey = getPhilippineDateKey();
+  const [year, month, day] = todayKey.split("-").map(Number);
+
+  let startKey = todayKey;
+  let endKey = shiftOperationsDeliveryDateKey(todayKey, 1);
+
+  if (normalizedFilter === "yesterday") {
+    startKey = shiftOperationsDeliveryDateKey(todayKey, -1);
+    endKey = todayKey;
+  } else if (normalizedFilter === "this_week") {
+    // Preserve the Operations Report's existing Sunday-Saturday week.
+    const dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    startKey = shiftOperationsDeliveryDateKey(todayKey, -dayOfWeek);
+    endKey = shiftOperationsDeliveryDateKey(startKey, 7);
+  } else if (normalizedFilter === "this_month") {
+    startKey = [
+      String(year).padStart(4, "0"),
+      String(month).padStart(2, "0"),
+      "01",
+    ].join("-");
+    endKey = formatUtcDateKeyForOperationsDeliveryReport(
+      new Date(Date.UTC(year, month, 1)),
+    );
+  } else if (normalizedFilter === "this_year") {
+    startKey = `${String(year).padStart(4, "0")}-01-01`;
+    endKey = `${String(year + 1).padStart(4, "0")}-01-01`;
+  }
+
+  return {
+    startKey,
+    endKey,
+    startUtc: getPhilippineDateBoundsUtc(startKey).startUtc,
+    endUtc: getPhilippineDateBoundsUtc(endKey).startUtc,
+  };
+};
+
+const getOperationsDeliveryReport = async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(
+      200,
+      Math.max(1, parseInt(req.query.limit, 10) || 20),
+    );
+    const offset = (page - 1) * limit;
+    const includeSummary =
+      String(req.query.include_summary || "1").trim() !== "0";
+
+    const where = ["1=1"];
+    const params = [];
+
+    // Preserve the current /deliveries visibility rule for delivery staff.
+    if (req.user.role === "staff") {
+      where.push("d.driver_id = ?");
+      params.push(req.user.id);
+    }
+
+    const search = String(req.query.search || "").trim();
+
+    if (search.length > 120) {
+      return res
+        .status(400)
+        .json({ message: "Search must be 120 characters or less." });
+    }
+
+    if (search) {
+      const pattern = `%${search}%`;
+
+      where.push(`(
+        CAST(d.id AS CHAR) LIKE ?
+        OR CAST(COALESCE(d.order_id, 0) AS CHAR) LIKE ?
+        OR CAST(COALESCE(d.driver_id, 0) AS CHAR) LIKE ?
+        OR CAST(COALESCE(d.assigned_by, 0) AS CHAR) LIKE ?
+        OR CAST(COALESCE(d.assigned_at, '') AS CHAR) LIKE ?
+        OR CAST(COALESCE(d.scheduled_date, '') AS CHAR) LIKE ?
+        OR CAST(COALESCE(d.delivered_date, '') AS CHAR) LIKE ?
+        OR COALESCE(d.address, '') LIKE ?
+        OR COALESCE(d.status, '') LIKE ?
+        OR COALESCE(d.notes, '') LIKE ?
+        OR CAST(COALESCE(d.updated_at, '') AS CHAR) LIKE ?
+        OR COALESCE(o.order_number, '') LIKE ?
+        OR CAST(COALESCE(o.total, 0) AS CHAR) LIKE ?
+        OR COALESCE(o.payment_method, '') LIKE ?
+        OR COALESCE(o.payment_status, '') LIKE ?
+        OR COALESCE(o.order_type, '') LIKE ?
+        OR COALESCE(o.remaining_payment_method, '') LIKE ?
+        OR COALESCE(o.walkin_customer_name, customer.name, 'Walk-in Customer') LIKE ?
+        OR COALESCE(o.walkin_customer_phone, customer.phone, '') LIKE ?
+        OR COALESCE(driver.name, '') LIKE ?
+        OR COALESCE(da.received_by_name, '') LIKE ?
+        OR COALESCE(da.recipient_type, '') LIKE ?
+        OR COALESCE(da.receipt_number, '') LIKE ?
+      )`);
+
+      params.push(...Array(23).fill(pattern));
+    }
+
+    const {
+      startKey,
+      endKey,
+      startUtc,
+      endUtc,
+    } = buildOperationsDeliveryDateRange({
+      dateFilter: req.query.date_filter,
+      from: req.query.from,
+      to: req.query.to,
+    });
+
+    // Preserve Operations Report's previous date priority:
+    // scheduled_date first; otherwise updated_at.
+    if (startKey) {
+      where.push(`(
+        (d.scheduled_date IS NOT NULL AND DATE(d.scheduled_date) >= ?)
+        OR
+        (d.scheduled_date IS NULL AND d.updated_at >= ?)
+      )`);
+      params.push(startKey, startUtc);
+    }
+
+    if (endKey) {
+      where.push(`(
+        (d.scheduled_date IS NOT NULL AND DATE(d.scheduled_date) < ?)
+        OR
+        (d.scheduled_date IS NULL AND d.updated_at < ?)
+      )`);
+      params.push(endKey, endUtc);
+    }
+
+    const activeAckJoinSql = `
+      LEFT JOIN delivery_acknowledgements da
+        ON da.id = (
+          SELECT da2.id
+          FROM delivery_acknowledgements da2
+          WHERE da2.delivery_id = d.id
+            AND da2.voided_at IS NULL
+          ORDER BY da2.id DESC
+          LIMIT 1
+        )`;
+
+    const joinsSql = `
+      INNER JOIN orders o ON o.id = d.order_id
+      LEFT JOIN users customer ON customer.id = o.customer_id
+      LEFT JOIN users driver ON driver.id = d.driver_id
+      ${activeAckJoinSql}`;
+
+    const whereSql = where.join(" AND ");
+
+    const [rows] = await db.query(
+      `SELECT
+         d.id,
+         d.order_id,
+         d.driver_id,
+         d.assigned_by,
+         d.assigned_at,
+         d.scheduled_date,
+         d.delivered_date,
+         d.address,
+         d.status,
+         d.notes,
+         d.signed_receipt,
+         d.updated_at,
+
+         da.id AS delivery_acknowledgement_id,
+         da.received_by_name AS delivery_received_by_name,
+         da.recipient_type AS delivery_recipient_type,
+         da.acknowledged_at AS delivery_acknowledged_at,
+         da.receipt_number AS delivery_receipt_number,
+         CASE
+           WHEN da.signature_data IS NOT NULL
+            AND TRIM(da.signature_data) <> '' THEN 1
+           ELSE 0
+         END AS delivery_has_signature,
+
+         o.order_number,
+         o.total,
+         o.payment_method,
+         o.payment_status,
+         o.order_type,
+         o.remaining_payment_method,
+         o.delivery_lat,
+         o.delivery_lng,
+         o.created_at AS order_created_at,
+
+         COALESCE(o.walkin_customer_name, customer.name, 'Walk-in Customer') AS customer_name,
+         COALESCE(o.walkin_customer_phone, customer.phone, '') AS customer_phone,
+
+         driver.name AS driver_name
+
+       FROM deliveries d
+       ${joinsSql}
+       WHERE ${whereSql}
+       ORDER BY d.updated_at DESC, d.id DESC
+       LIMIT ? OFFSET ?`,
+      [...params, limit, offset],
+    );
+
+    rows.forEach((row) => {
+      if (row.signed_receipt) {
+        row.signed_receipt = signUploadPath(row.signed_receipt);
+      }
+    });
+
+    const response = {
+      deliveries: rows,
+      page,
+      limit,
+    };
+
+    if (includeSummary) {
+      const [[summaryRow]] = await db.query(
+        `SELECT
+           COUNT(*) AS total,
+           COALESCE(SUM(
+             CASE
+               WHEN LOWER(COALESCE(d.status, '')) IN (
+                 'pending',
+                 'scheduled',
+                 'in_progress'
+               )
+               THEN 1 ELSE 0
+             END
+           ), 0) AS pending,
+           COALESCE(SUM(
+             CASE
+               WHEN LOWER(COALESCE(d.status, '')) IN (
+                 'completed',
+                 'resolved',
+                 'delivered',
+                 'done'
+               )
+               THEN 1 ELSE 0
+             END
+           ), 0) AS completed
+         FROM deliveries d
+         ${joinsSql}
+         WHERE ${whereSql}`,
+        params,
+      );
+
+      response.total = Number(summaryRow?.total || 0);
+      response.summary = {
+        pending: Number(summaryRow?.pending || 0),
+        completed: Number(summaryRow?.completed || 0),
+      };
+    }
+
+    return res.json(response);
+  } catch (err) {
+    if (Number(err?.status) === 400) {
+      return res.status(400).json({ message: err.message });
+    }
+
+    console.error("[pos.fulfillment GET /deliveries operations report]", err);
+    return res.status(500).json({
+      message: "Failed to load deliveries operations report.",
+    });
+  }
+};
+
 exports.getDeliveries = async (req, res) => {
+  if (String(req.query.operations_report || "").trim() === "1") {
+    return getOperationsDeliveryReport(req, res);
+  }
+
   try {
     let sql = `
       SELECT

@@ -6,10 +6,121 @@
 const crypto = require("crypto");
 const pool = require("../../config/db");
 
+const {
+  getPhilippineDateBoundsUtc,
+  getPhilippineDateKey,
+} = require("../../utils/philippineTime");
+
 const DIRECTIONS = new Set([
   "warehouse_to_display",
   "display_to_warehouse",
 ]);
+
+const STOCK_TRANSFER_REPORT_DATE_FILTERS = new Set([
+  "all",
+  "today",
+  "yesterday",
+  "this_week",
+  "this_month",
+  "this_year",
+  "custom",
+]);
+
+const formatUtcDateKeyForTransferReport = (date) =>
+  [
+    String(date.getUTCFullYear()).padStart(4, "0"),
+    String(date.getUTCMonth() + 1).padStart(2, "0"),
+    String(date.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+
+const shiftTransferReportDateKey = (dateKey, days) => {
+  const [year, month, day] = String(dateKey).split("-").map(Number);
+  return formatUtcDateKeyForTransferReport(
+    new Date(Date.UTC(year, month - 1, day + days)),
+  );
+};
+
+const buildStockTransferReportDateRange = ({
+  dateFilter,
+  from,
+  to,
+}) => {
+  const normalizedFilter = String(dateFilter || "all")
+    .trim()
+    .toLowerCase();
+
+  if (!STOCK_TRANSFER_REPORT_DATE_FILTERS.has(normalizedFilter)) {
+    const error = new Error("Invalid stock transfer report date filter.");
+    error.status = 400;
+    throw error;
+  }
+
+  if (normalizedFilter === "all") {
+    return { startUtc: null, endUtc: null };
+  }
+
+  if (normalizedFilter === "custom") {
+    const fromKey = String(from || "").trim();
+    const toKey = String(to || "").trim();
+
+    if (fromKey && toKey && fromKey > toKey) {
+      const error = new Error("Start date cannot be after end date.");
+      error.status = 400;
+      throw error;
+    }
+
+    try {
+      return {
+        startUtc: fromKey
+          ? getPhilippineDateBoundsUtc(fromKey).startUtc
+          : null,
+        endUtc: toKey
+          ? getPhilippineDateBoundsUtc(toKey).nextStartUtc
+          : null,
+      };
+    } catch {
+      const error = new Error(
+        "Stock transfer report dates must use valid YYYY-MM-DD values.",
+      );
+      error.status = 400;
+      throw error;
+    }
+  }
+
+  const todayKey = getPhilippineDateKey();
+  const [year, month, day] = todayKey.split("-").map(Number);
+
+  let startKey = todayKey;
+  let endKey = shiftTransferReportDateKey(todayKey, 1);
+
+  if (normalizedFilter === "yesterday") {
+    startKey = shiftTransferReportDateKey(todayKey, -1);
+    endKey = todayKey;
+  } else if (normalizedFilter === "this_week") {
+    // Preserve the Stock Report's existing Sunday-Saturday week.
+    const dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    startKey = shiftTransferReportDateKey(todayKey, -dayOfWeek);
+    endKey = shiftTransferReportDateKey(startKey, 7);
+  } else if (normalizedFilter === "this_month") {
+    startKey = [
+      String(year).padStart(4, "0"),
+      String(month).padStart(2, "0"),
+      "01",
+    ].join("-");
+    endKey = formatUtcDateKeyForTransferReport(
+      new Date(Date.UTC(year, month, 1)),
+    );
+  } else if (normalizedFilter === "this_year") {
+    startKey = `${String(year).padStart(4, "0")}-01-01`;
+    endKey = `${String(year + 1).padStart(4, "0")}-01-01`;
+  }
+
+  return {
+    startUtc: getPhilippineDateBoundsUtc(startKey).startUtc,
+    endUtc: getPhilippineDateBoundsUtc(endKey).startUtc,
+  };
+};
+
 
 const cleanText = (value, maxLength) => {
   const text = String(value ?? "").trim();
@@ -339,8 +450,13 @@ exports.getTransferInventory = async (req, res) => {
 exports.listTransfers = async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const limit = Math.min(
+      100,
+      Math.max(1, parseInt(req.query.limit, 10) || 20),
+    );
     const offset = (page - 1) * limit;
+    const includeSummary =
+      String(req.query.include_summary || "1").trim() !== "0";
     const where = ["1=1"];
     const params = [];
 
@@ -356,45 +472,92 @@ exports.listTransfers = async (req, res) => {
     const search = String(req.query.search || "").trim();
     if (search) {
       if (search.length > 100) {
-        return res.status(400).json({ message: "Search must be 100 characters or less." });
+        return res
+          .status(400)
+          .json({ message: "Search must be 100 characters or less." });
       }
+
       const pattern = `%${search}%`;
       where.push(`(
-        st.reference_code LIKE ?
-        OR st.reason LIKE ?
+        CAST(st.id AS CHAR) LIKE ?
+        OR COALESCE(st.reference_code, '') LIKE ?
+        OR COALESCE(st.direction, '') LIKE ?
+        OR COALESCE(st.reason, '') LIKE ?
+        OR COALESCE(actor.name, '') LIKE ?
+        OR CAST(COALESCE(st.transferred_by, 0) AS CHAR) LIKE ?
+        OR CAST(COALESCE(st.reversal_of_transfer_id, 0) AS CHAR) LIKE ?
         OR EXISTS (
-          SELECT 1 FROM stock_transfer_items sti_search
+          SELECT 1
+          FROM stock_transfer_items sti_search
           WHERE sti_search.transfer_id = st.id
-            AND sti_search.product_name_snapshot LIKE ?
+            AND (
+              COALESCE(sti_search.product_name_snapshot, '') LIKE ?
+              OR CAST(COALESCE(sti_search.quantity, 0) AS CHAR) LIKE ?
+            )
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM stock_transfers reversal_search
+          WHERE reversal_search.reversal_of_transfer_id = st.id
+            AND COALESCE(reversal_search.reference_code, '') LIKE ?
         )
       )`);
-      params.push(pattern, pattern, pattern);
+      params.push(...Array(10).fill(pattern));
     }
 
-    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-    const from = String(req.query.from || "").trim();
-    const to = String(req.query.to || "").trim();
-    if (from) {
-      if (!datePattern.test(from)) {
-        return res.status(400).json({ message: "From date must use YYYY-MM-DD." });
+    const dateFilter = String(req.query.date_filter || "").trim();
+
+    if (dateFilter) {
+      const { startUtc, endUtc } = buildStockTransferReportDateRange({
+        dateFilter,
+        from: req.query.from,
+        to: req.query.to,
+      });
+
+      if (startUtc) {
+        where.push("st.created_at >= ?");
+        params.push(startUtc);
       }
-      // created_at is stored/interpreted in UTC. A date picked in the UI is a
-      // Philippine calendar date, so convert Manila midnight (+08:00) to UTC.
-      where.push("st.created_at >= DATE_SUB(?, INTERVAL 8 HOUR)");
-      params.push(`${from} 00:00:00`);
-    }
-    if (to) {
-      if (!datePattern.test(to)) {
-        return res.status(400).json({ message: "To date must use YYYY-MM-DD." });
+
+      if (endUtc) {
+        where.push("st.created_at < ?");
+        params.push(endUtc);
       }
-      // Use an exclusive next-day Manila boundary, converted to UTC.
-      where.push(
-        "st.created_at < DATE_SUB(DATE_ADD(?, INTERVAL 1 DAY), INTERVAL 8 HOUR)",
-      );
-      params.push(`${to} 00:00:00`);
-    }
-    if (from && to && from > to) {
-      return res.status(400).json({ message: "From date cannot be after To date." });
+    } else {
+      // Preserve the operational Stock Transfer page's existing from/to API.
+      const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+      const from = String(req.query.from || "").trim();
+      const to = String(req.query.to || "").trim();
+
+      if (from) {
+        if (!datePattern.test(from)) {
+          return res
+            .status(400)
+            .json({ message: "From date must use YYYY-MM-DD." });
+        }
+
+        where.push("st.created_at >= DATE_SUB(?, INTERVAL 8 HOUR)");
+        params.push(`${from} 00:00:00`);
+      }
+
+      if (to) {
+        if (!datePattern.test(to)) {
+          return res
+            .status(400)
+            .json({ message: "To date must use YYYY-MM-DD." });
+        }
+
+        where.push(
+          "st.created_at < DATE_SUB(DATE_ADD(?, INTERVAL 1 DAY), INTERVAL 8 HOUR)",
+        );
+        params.push(`${to} 00:00:00`);
+      }
+
+      if (from && to && from > to) {
+        return res
+          .status(400)
+          .json({ message: "From date cannot be after To date." });
+      }
     }
 
     const whereSql = where.join(" AND ");
@@ -428,27 +591,61 @@ exports.listTransfers = async (req, res) => {
       [...params, limit, offset],
     );
 
-    const [[countRow]] = await pool.query(
-      `SELECT COUNT(*) AS total
-       FROM stock_transfers st
-       WHERE ${whereSql}`,
-      params,
-    );
-
-    return res.json({
+    const response = {
       rows: rows.map((row) => ({
         ...row,
         item_count: Number(row.item_count || 0),
         total_quantity: Number(row.total_quantity || 0),
       })),
-      total: Number(countRow?.total || 0),
       page,
       limit,
-    });
+    };
+
+    if (includeSummary) {
+      const [[summaryRow]] = await pool.query(
+        `SELECT
+           COUNT(DISTINCT st.id) AS total_records,
+           COUNT(
+             DISTINCT CASE
+               WHEN st.reversal_of_transfer_id IS NULL
+                 AND reversal.id IS NULL
+               THEN st.id
+               ELSE NULL
+             END
+           ) AS completed_transfers,
+           COUNT(
+             DISTINCT CASE
+               WHEN st.reversal_of_transfer_id IS NOT NULL
+                 OR reversal.id IS NOT NULL
+               THEN st.id
+               ELSE NULL
+             END
+           ) AS reversed_transfers
+         FROM stock_transfers st
+         LEFT JOIN users actor ON actor.id = st.transferred_by
+         LEFT JOIN stock_transfers reversal
+           ON reversal.reversal_of_transfer_id = st.id
+         WHERE ${whereSql}`,
+        params,
+      );
+
+      response.total = Number(summaryRow?.total_records || 0);
+      response.summary = {
+        completed_transfers: Number(
+          summaryRow?.completed_transfers || 0,
+        ),
+        reversed_transfers: Number(
+          summaryRow?.reversed_transfers || 0,
+        ),
+      };
+    }
+
+    return res.json(response);
   } catch (error) {
     return sendError(res, error);
   }
 };
+
 
 exports.getTransfer = async (req, res) => {
   try {

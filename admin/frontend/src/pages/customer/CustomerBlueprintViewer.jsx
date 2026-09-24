@@ -4,6 +4,11 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import { buildAssetUrl } from "../../services/api";
 import { createFurnitureObject } from "../blueprints/3d/createFurnitureObjects";
 import { extractCustomerBlueprintScene } from "./customerBlueprintAdapter";
+import {
+  buildCompactPreviewCacheKey,
+  readGeneratedCompactPreview,
+  writeGeneratedCompactPreview,
+} from "./customerBlueprintPreviewCache";
 
 const mmToCameraDistance = (size, fov, aspect) => {
   const fitHeightDistance =
@@ -225,107 +230,6 @@ const hasExactAdmin3DSource = (blueprint = {}) => {
   return nestedDesignSources.some(
     (source) => extractDirect3DItems(source).length > 0,
   );
-};
-
-// WISDOM PERSISTENT GENERATED PREVIEW CACHE V1.0.6
-const COMPACT_PREVIEW_CACHE_PREFIX = "wisdom:generated-blueprint-preview:v3:";
-
-// WISDOM COMPACT HD PREVIEW CACHE VERSION V1
-// Included in the hashed key so previously cached 1x / 0.90-quality
-// snapshots regenerate automatically while remaining eligible for
-// the existing prefix-based cache pruning.
-const COMPACT_PREVIEW_RENDER_VERSION = "hd-2x-webp96-v1";
-
-const compactPreviewHash = (value = "") => {
-  const text = String(value || "");
-  let hash = 2166136261;
-
-  for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-
-  return (hash >>> 0).toString(36);
-};
-
-const buildCompactPreviewCacheKey = (
-  blueprint = {},
-  preset = "iso",
-  compactHeight = 240,
-) => {
-  let geometrySource = "";
-
-  try {
-    geometrySource = JSON.stringify({
-      id: blueprint?.id || "",
-      updated_at: blueprint?.updated_at || blueprint?.updatedAt || "",
-      components: blueprint?.components || null,
-      design_data: blueprint?.design_data || null,
-      view_3d_data: blueprint?.view_3d_data || null,
-    });
-  } catch {
-    geometrySource = String(blueprint?.id || "");
-  }
-
-  return (
-    COMPACT_PREVIEW_CACHE_PREFIX +
-    compactPreviewHash(
-      [
-        preset,
-        compactHeight,
-        COMPACT_PREVIEW_RENDER_VERSION,
-        geometrySource,
-      ].join("|"),
-    )
-  );
-};
-
-const readGeneratedCompactPreview = (cacheKey) => {
-  if (!cacheKey || typeof window === "undefined") return "";
-
-  try {
-    return window.localStorage.getItem(cacheKey) || "";
-  } catch {
-    return "";
-  }
-};
-
-const writeGeneratedCompactPreview = (cacheKey, dataUrl) => {
-  if (
-    !cacheKey ||
-    !dataUrl ||
-    typeof window === "undefined" ||
-    !String(dataUrl).startsWith("data:image/")
-  ) {
-    return;
-  }
-
-  try {
-    window.localStorage.setItem(cacheKey, dataUrl);
-    return;
-  } catch {
-    // Keep this cache isolated from the rest of the application. If browser
-    // storage is full, prune only generated WISDOM preview entries.
-  }
-
-  try {
-    const previewKeys = [];
-
-    for (let index = 0; index < window.localStorage.length; index += 1) {
-      const key = window.localStorage.key(index);
-      if (key?.startsWith(COMPACT_PREVIEW_CACHE_PREFIX)) {
-        previewKeys.push(key);
-      }
-    }
-
-    previewKeys.slice(0, Math.max(8, previewKeys.length - 36)).forEach((key) => {
-      window.localStorage.removeItem(key);
-    });
-
-    window.localStorage.setItem(cacheKey, dataUrl);
-  } catch {
-    // Preview caching is an optimization only; rendering still works without it.
-  }
 };
 
 const formatMm = (value) => {

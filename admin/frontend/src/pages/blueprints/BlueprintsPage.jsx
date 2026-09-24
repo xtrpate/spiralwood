@@ -3,8 +3,15 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
-import CustomerBlueprintViewer from "../customer/CustomerBlueprintViewer";
+import {
+  buildCompactPreviewCacheKey,
+  readGeneratedCompactPreview,
+} from "../customer/customerBlueprintPreviewCache";
 import "./BlueprintsPage.css";
+
+const CustomerBlueprintViewer = React.lazy(() =>
+  import("../customer/CustomerBlueprintViewer"),
+);
 
 const STAGE_COLORS = {
   design: ["#ffffff", "#52525b", "#d4d4d8"],
@@ -650,6 +657,12 @@ export default function BlueprintsPage() {
             const isTemplate = Number(bp.is_template) === 1;
             const hasThumbnail = !!bp.thumbnail_url && !imageErrors[bp.id];
             const hasLivePreview = Boolean(bp.design_data || bp.view_3d_data);
+            const compactPreviewCacheKey = hasLivePreview
+              ? buildCompactPreviewCacheKey(bp, "front", 190)
+              : "";
+            const cachedStaticPreview = hasLivePreview
+              ? readGeneratedCompactPreview(compactPreviewCacheKey)
+              : "";
             const isImported =
               String(bp.source || "").toLowerCase() === "imported";
             const isCompleted = displayStage === "completed";
@@ -707,20 +720,65 @@ export default function BlueprintsPage() {
                     overflow: "hidden",
                   }}
                 >
-                  {hasLivePreview ? (
-                    <CustomerBlueprintViewer
-                      blueprint={bp}
-                      readOnly
-                      showHumanControls={false}
-                      compact
-                      compactHeight={190}
-                      defaultPreset="front"
-                      defaultShowHuman={false}
+                  {cachedStaticPreview ? (
+                    <img
+                      src={cachedStaticPreview}
+                      alt=""
+                      aria-hidden="true"
+                      decoding="async"
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "contain",
+                        display: "block",
+                        background: "#f7f2ea",
+                      }}
                     />
+                  ) : hasLivePreview ? (
+                    <React.Suspense
+                      fallback={
+                        hasThumbnail ? (
+                          <img
+                            src={buildAssetUrl(bp.thumbnail_url)}
+                            alt=""
+                            loading="lazy"
+                            decoding="async"
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "contain",
+                              display: "block",
+                              padding: 10,
+                            }}
+                          />
+                        ) : (
+                          <div
+                            aria-hidden="true"
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              background: "#fafafa",
+                            }}
+                          />
+                        )
+                      }
+                    >
+                      <CustomerBlueprintViewer
+                        blueprint={bp}
+                        readOnly
+                        showHumanControls={false}
+                        compact
+                        compactHeight={190}
+                        defaultPreset="front"
+                        defaultShowHuman={false}
+                      />
+                    </React.Suspense>
                   ) : hasThumbnail ? (
                     <img
                       src={buildAssetUrl(bp.thumbnail_url)}
                       alt=""
+                      loading="lazy"
+                      decoding="async"
                       onError={() =>
                         setImageErrors((prev) => ({
                           ...prev,

@@ -97,6 +97,173 @@ const OPERATION_TYPES = [
   { value: "warranty", label: "Warranty Claims", endpoint: "/warranty" },
 ];
 
+const PAGE_SIZE = 20;
+const TASK_EXPORT_PAGE_SIZE = 200;
+
+const EMPTY_TASK_SUMMARY = {
+  pending: 0,
+  completed: 0,
+};
+
+const APPOINTMENT_EXPORT_PAGE_SIZE = 200;
+
+const EMPTY_APPOINTMENT_SUMMARY = {
+  pending: 0,
+  completed: 0,
+};
+
+const buildOperationsAppointmentParams = ({
+  page,
+  limit,
+  search,
+  dateFilter,
+  customStart,
+  customEnd,
+  includeSummary = true,
+}) => {
+  const params = {
+    operations_report: 1,
+    page,
+    limit,
+    date_filter: dateFilter,
+  };
+
+  const normalizedSearch = String(search || "").trim();
+
+  if (normalizedSearch) {
+    params.search = normalizedSearch;
+  }
+
+  if (dateFilter === "custom") {
+    if (customStart) params.from = customStart;
+    if (customEnd) params.to = customEnd;
+  }
+
+  if (!includeSummary) {
+    params.include_summary = 0;
+  }
+
+  return params;
+};
+
+const buildOperationsTaskParams = ({
+  page,
+  limit,
+  search,
+  dateFilter,
+  customStart,
+  customEnd,
+  includeSummary = true,
+}) => {
+  const params = {
+    operations_report: 1,
+    page,
+    limit,
+    date_filter: dateFilter,
+  };
+
+  const normalizedSearch = String(search || "").trim();
+
+  if (normalizedSearch) {
+    params.search = normalizedSearch;
+  }
+
+  if (dateFilter === "custom") {
+    if (customStart) params.from = customStart;
+    if (customEnd) params.to = customEnd;
+  }
+
+  if (!includeSummary) {
+    params.include_summary = 0;
+  }
+
+  return params;
+};
+
+
+const DELIVERY_EXPORT_PAGE_SIZE = 200;
+
+const EMPTY_DELIVERY_SUMMARY = {
+  pending: 0,
+  completed: 0,
+};
+
+const buildOperationsDeliveryParams = ({
+  page,
+  limit,
+  search,
+  dateFilter,
+  customStart,
+  customEnd,
+  includeSummary = true,
+}) => {
+  const params = {
+    operations_report: 1,
+    page,
+    limit,
+    date_filter: dateFilter,
+  };
+
+  const normalizedSearch = String(search || "").trim();
+
+  if (normalizedSearch) {
+    params.search = normalizedSearch;
+  }
+
+  if (dateFilter === "custom") {
+    if (customStart) params.from = customStart;
+    if (customEnd) params.to = customEnd;
+  }
+
+  if (!includeSummary) {
+    params.include_summary = 0;
+  }
+
+  return params;
+};
+
+
+const WARRANTY_EXPORT_PAGE_SIZE = 200;
+
+const EMPTY_WARRANTY_SUMMARY = {
+  pending: 0,
+  completed: 0,
+};
+
+const buildOperationsWarrantyParams = ({
+  page,
+  limit,
+  search,
+  dateFilter,
+  customStart,
+  customEnd,
+  includeSummary = true,
+}) => {
+  const params = {
+    operations_report: 1,
+    page,
+    limit,
+    date_filter: dateFilter,
+  };
+
+  const normalizedSearch = String(search || "").trim();
+
+  if (normalizedSearch) {
+    params.search = normalizedSearch;
+  }
+
+  if (dateFilter === "custom") {
+    if (customStart) params.from = customStart;
+    if (customEnd) params.to = customEnd;
+  }
+
+  if (!includeSummary) {
+    params.include_summary = 0;
+  }
+
+  return params;
+};
+
 const formatDateTime = (value) => {
   if (!value) return "—";
   const parsed = new Date(value);
@@ -783,6 +950,7 @@ export default function OperationsReportPage() {
   const navigate = useNavigate();
   const [operationType, setOperationType] = useState("tasks");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
   // Date filter state
   const [dateFilter, setDateFilter] = useState("all");
@@ -810,6 +978,20 @@ export default function OperationsReportPage() {
   });
 
   const [rows, setRows] = useState([]);
+  const [taskTotal, setTaskTotal] = useState(0);
+  const [taskSummary, setTaskSummary] = useState(EMPTY_TASK_SUMMARY);
+  const [appointmentTotal, setAppointmentTotal] = useState(0);
+  const [appointmentSummary, setAppointmentSummary] = useState(
+    EMPTY_APPOINTMENT_SUMMARY,
+  );
+  const [deliveryTotal, setDeliveryTotal] = useState(0);
+  const [deliverySummary, setDeliverySummary] = useState(
+    EMPTY_DELIVERY_SUMMARY,
+  );
+  const [warrantyTotal, setWarrantyTotal] = useState(0);
+  const [warrantySummary, setWarrantySummary] = useState(
+    EMPTY_WARRANTY_SUMMARY,
+  );
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [generatedAt, setGeneratedAt] = useState("");
@@ -819,72 +1001,224 @@ export default function OperationsReportPage() {
     [operationType],
   );
 
-  const loadReport = useCallback(async () => {
-    if (!activeOperation) return;
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  const loadTaskReport = useCallback(async () => {
     setLoading(true);
 
     try {
-      const { data } = await api.get(activeOperation.endpoint, {
-        params: { limit: 5000 },
+      const { data } = await api.get("/tasks", {
+        params: buildOperationsTaskParams({
+          page,
+          limit: PAGE_SIZE,
+          search: debouncedSearch,
+          dateFilter,
+          customStart,
+          customEnd,
+        }),
       });
 
-      const fetchedRows =
-        data.tasks ||
-        data.claims ||
-        data.deliveries ||
-        data.appointments ||
-        data.rows ||
-        data ||
-        [];
-
-      setRows(Array.isArray(fetchedRows) ? fetchedRows : []);
+      setRows(Array.isArray(data?.tasks) ? data.tasks : []);
+      setTaskTotal(Number(data?.total || 0));
+      setTaskSummary({
+        ...EMPTY_TASK_SUMMARY,
+        ...(data?.summary || {}),
+      });
       setGeneratedAt(new Date().toISOString());
     } catch (err) {
-      toast.error(`Failed to load ${activeOperation.label.toLowerCase()}.`);
+      toast.error(
+        err?.response?.data?.message || "Failed to load task assignments.",
+      );
       setRows([]);
+      setTaskTotal(0);
+      setTaskSummary(EMPTY_TASK_SUMMARY);
     } finally {
       setLoading(false);
     }
-  }, [activeOperation]);
+  }, [
+    page,
+    debouncedSearch,
+    dateFilter,
+    customStart,
+    customEnd,
+  ]);
+
+  const loadAppointmentReport = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const { data } = await api.get("/pos/appointments", {
+        params: buildOperationsAppointmentParams({
+          page,
+          limit: PAGE_SIZE,
+          search: debouncedSearch,
+          dateFilter,
+          customStart,
+          customEnd,
+        }),
+      });
+
+      setRows(Array.isArray(data?.appointments) ? data.appointments : []);
+      setAppointmentTotal(Number(data?.total || 0));
+      setAppointmentSummary({
+        ...EMPTY_APPOINTMENT_SUMMARY,
+        ...(data?.summary || {}),
+      });
+      setGeneratedAt(new Date().toISOString());
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message || "Failed to load appointments.",
+      );
+      setRows([]);
+      setAppointmentTotal(0);
+      setAppointmentSummary(EMPTY_APPOINTMENT_SUMMARY);
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    page,
+    debouncedSearch,
+    dateFilter,
+    customStart,
+    customEnd,
+  ]);
+
+  const loadDeliveryReport = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const { data } = await api.get("/pos/deliveries", {
+        params: buildOperationsDeliveryParams({
+          page,
+          limit: PAGE_SIZE,
+          search: debouncedSearch,
+          dateFilter,
+          customStart,
+          customEnd,
+        }),
+      });
+
+      setRows(Array.isArray(data?.deliveries) ? data.deliveries : []);
+      setDeliveryTotal(Number(data?.total || 0));
+      setDeliverySummary({
+        ...EMPTY_DELIVERY_SUMMARY,
+        ...(data?.summary || {}),
+      });
+      setGeneratedAt(new Date().toISOString());
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message || "Failed to load deliveries.",
+      );
+      setRows([]);
+      setDeliveryTotal(0);
+      setDeliverySummary(EMPTY_DELIVERY_SUMMARY);
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    page,
+    debouncedSearch,
+    dateFilter,
+    customStart,
+    customEnd,
+  ]);
+
+  const loadWarrantyReport = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const { data } = await api.get("/warranty", {
+        params: buildOperationsWarrantyParams({
+          page,
+          limit: PAGE_SIZE,
+          search: debouncedSearch,
+          dateFilter,
+          customStart,
+          customEnd,
+        }),
+      });
+
+      setRows(Array.isArray(data?.claims) ? data.claims : []);
+      setWarrantyTotal(Number(data?.total || 0));
+      setWarrantySummary({
+        ...EMPTY_WARRANTY_SUMMARY,
+        ...(data?.summary || {}),
+      });
+      setGeneratedAt(new Date().toISOString());
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message || "Failed to load warranty claims.",
+      );
+      setRows([]);
+      setWarrantyTotal(0);
+      setWarrantySummary(EMPTY_WARRANTY_SUMMARY);
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    page,
+    debouncedSearch,
+    dateFilter,
+    customStart,
+    customEnd,
+  ]);
+
+  const loadReport = useCallback(() => {
+    if (operationType === "tasks") return loadTaskReport();
+    if (operationType === "appointments") return loadAppointmentReport();
+    if (operationType === "delivery") return loadDeliveryReport();
+    return loadWarrantyReport();
+  }, [
+    loadAppointmentReport,
+    loadDeliveryReport,
+    loadTaskReport,
+    loadWarrantyReport,
+    operationType,
+  ]);
 
   useEffect(() => {
-    loadReport();
-  }, [loadReport]);
+    if (operationType === "tasks") loadTaskReport();
+  }, [loadTaskReport, operationType]);
 
-  const filteredRows = useMemo(() => {
-    return rows.filter((row) => {
-      // 1. Date check
-      const rowDate = getRowDate(row, operationType);
-      if (!isDateInRange(rowDate, dateFilter, customStart, customEnd)) {
-        return false;
-      }
+  useEffect(() => {
+    if (operationType === "appointments") loadAppointmentReport();
+  }, [loadAppointmentReport, operationType]);
 
-      // 2. Search check
-      const query = search.trim().toLowerCase();
-      if (query) {
-        const matchesSearch = Object.values(row).some((val) =>
-          String(val || "")
-            .toLowerCase()
-            .includes(query),
-        );
-        if (!matchesSearch) return false;
-      }
+  useEffect(() => {
+    if (operationType === "delivery") loadDeliveryReport();
+  }, [loadDeliveryReport, operationType]);
 
-      return true;
-    });
-  }, [rows, search, operationType, dateFilter, customStart, customEnd]);
+  useEffect(() => {
+    if (operationType === "warranty") loadWarrantyReport();
+  }, [loadWarrantyReport, operationType]);
 
-  // Reset page to 1 when filters change
+  const filteredRows = rows;
+
   useEffect(() => {
     setPage(1);
   }, [search, operationType, dateFilter, customStart, customEnd]);
 
-  const paginatedRows = useMemo(() => {
-    const start = (page - 1) * 20;
-    return filteredRows.slice(start, start + 20);
-  }, [filteredRows, page]);
+  const reportRecordCount =
+    operationType === "tasks"
+      ? taskTotal
+      : operationType === "appointments"
+        ? appointmentTotal
+        : operationType === "delivery"
+          ? deliveryTotal
+          : warrantyTotal;
 
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / 20));
+  const paginatedRows = rows;
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(reportRecordCount / PAGE_SIZE),
+  );
 
   const openDetail = async (row) => {
     if (operationType === "delivery") {
@@ -994,20 +1328,46 @@ export default function OperationsReportPage() {
   };
 
   const summary = useMemo(() => {
-    const total = filteredRows.length;
-    const pending = filteredRows.filter((r) =>
-      ["pending", "scheduled", "in_progress"].includes(
-        String(r.status).toLowerCase(),
-      ),
-    ).length;
-    const completed = filteredRows.filter((r) =>
-      ["completed", "resolved", "delivered", "done"].includes(
-        String(r.status).toLowerCase(),
-      ),
-    ).length;
+    if (operationType === "tasks") {
+      return {
+        total: taskTotal,
+        pending: Number(taskSummary?.pending || 0),
+        completed: Number(taskSummary?.completed || 0),
+      };
+    }
 
-    return { total, pending, completed };
-  }, [filteredRows]);
+    if (operationType === "appointments") {
+      return {
+        total: appointmentTotal,
+        pending: Number(appointmentSummary?.pending || 0),
+        completed: Number(appointmentSummary?.completed || 0),
+      };
+    }
+
+    if (operationType === "delivery") {
+      return {
+        total: deliveryTotal,
+        pending: Number(deliverySummary?.pending || 0),
+        completed: Number(deliverySummary?.completed || 0),
+      };
+    }
+
+    return {
+      total: warrantyTotal,
+      pending: Number(warrantySummary?.pending || 0),
+      completed: Number(warrantySummary?.completed || 0),
+    };
+  }, [
+    appointmentSummary,
+    appointmentTotal,
+    deliverySummary,
+    deliveryTotal,
+    operationType,
+    taskSummary,
+    taskTotal,
+    warrantySummary,
+    warrantyTotal,
+  ]);
 
   const exportExcel = async () => {
     setExporting(true);
@@ -1039,8 +1399,55 @@ export default function OperationsReportPage() {
 
       let headers = [];
       let mappedData = [];
+      let exportRows = filteredRows;
 
       if (operationType === "tasks") {
+        const firstResponse = await api.get("/tasks", {
+          params: buildOperationsTaskParams({
+            page: 1,
+            limit: TASK_EXPORT_PAGE_SIZE,
+            search,
+            dateFilter,
+            customStart,
+            customEnd,
+          }),
+        });
+
+        exportRows = Array.isArray(firstResponse.data?.tasks)
+          ? [...firstResponse.data.tasks]
+          : [];
+
+        const exportTotal = Number(firstResponse.data?.total || 0);
+        const exportPages = Math.max(
+          1,
+          Math.ceil(exportTotal / TASK_EXPORT_PAGE_SIZE),
+        );
+
+        for (let exportPage = 2; exportPage <= exportPages; exportPage += 1) {
+          const { data } = await api.get("/tasks", {
+            params: buildOperationsTaskParams({
+              page: exportPage,
+              limit: TASK_EXPORT_PAGE_SIZE,
+              search,
+              dateFilter,
+              customStart,
+              customEnd,
+              includeSummary: false,
+            }),
+          });
+
+          const batch = Array.isArray(data?.tasks) ? data.tasks : [];
+          exportRows.push(...batch);
+
+          if (batch.length === 0) break;
+        }
+
+        if (exportRows.length !== exportTotal) {
+          throw new Error(
+            "Task assignment records changed while the export was being prepared. Please export again.",
+          );
+        }
+
         headers = [
           "Task ID",
           "Order / Reference",
@@ -1048,7 +1455,7 @@ export default function OperationsReportPage() {
           "Status",
           "Created At",
         ];
-        mappedData = filteredRows.map((r) => [
+        mappedData = exportRows.map((r) => [
           r.id,
           r.order_id || "—",
           r.assigned_to_name || "Unassigned",
@@ -1056,6 +1463,55 @@ export default function OperationsReportPage() {
           formatDateTime(r.created_at),
         ]);
       } else if (operationType === "appointments") {
+        const firstResponse = await api.get("/pos/appointments", {
+          params: buildOperationsAppointmentParams({
+            page: 1,
+            limit: APPOINTMENT_EXPORT_PAGE_SIZE,
+            search,
+            dateFilter,
+            customStart,
+            customEnd,
+          }),
+        });
+
+        exportRows = Array.isArray(firstResponse.data?.appointments)
+          ? [...firstResponse.data.appointments]
+          : [];
+
+        const exportTotal = Number(firstResponse.data?.total || 0);
+        const exportPages = Math.max(
+          1,
+          Math.ceil(exportTotal / APPOINTMENT_EXPORT_PAGE_SIZE),
+        );
+
+        for (let exportPage = 2; exportPage <= exportPages; exportPage += 1) {
+          const { data } = await api.get("/pos/appointments", {
+            params: buildOperationsAppointmentParams({
+              page: exportPage,
+              limit: APPOINTMENT_EXPORT_PAGE_SIZE,
+              search,
+              dateFilter,
+              customStart,
+              customEnd,
+              includeSummary: false,
+            }),
+          });
+
+          const batch = Array.isArray(data?.appointments)
+            ? data.appointments
+            : [];
+
+          exportRows.push(...batch);
+
+          if (batch.length === 0) break;
+        }
+
+        if (exportRows.length !== exportTotal) {
+          throw new Error(
+            "Appointment records changed while the export was being prepared. Please export again.",
+          );
+        }
+
         headers = [
           "Appointment ID",
           "Customer",
@@ -1063,7 +1519,7 @@ export default function OperationsReportPage() {
           "Status",
           "Scheduled Date",
         ];
-        mappedData = filteredRows.map((r) => [
+        mappedData = exportRows.map((r) => [
           r.id,
           r.customer_name || "—",
           humanize(r.purpose || r.service_type || r.type || r.service),
@@ -1076,6 +1532,55 @@ export default function OperationsReportPage() {
           ),
         ]);
       } else if (operationType === "delivery") {
+        const firstResponse = await api.get("/pos/deliveries", {
+          params: buildOperationsDeliveryParams({
+            page: 1,
+            limit: DELIVERY_EXPORT_PAGE_SIZE,
+            search,
+            dateFilter,
+            customStart,
+            customEnd,
+          }),
+        });
+
+        exportRows = Array.isArray(firstResponse.data?.deliveries)
+          ? [...firstResponse.data.deliveries]
+          : [];
+
+        const exportTotal = Number(firstResponse.data?.total || 0);
+        const exportPages = Math.max(
+          1,
+          Math.ceil(exportTotal / DELIVERY_EXPORT_PAGE_SIZE),
+        );
+
+        for (let exportPage = 2; exportPage <= exportPages; exportPage += 1) {
+          const { data } = await api.get("/pos/deliveries", {
+            params: buildOperationsDeliveryParams({
+              page: exportPage,
+              limit: DELIVERY_EXPORT_PAGE_SIZE,
+              search,
+              dateFilter,
+              customStart,
+              customEnd,
+              includeSummary: false,
+            }),
+          });
+
+          const batch = Array.isArray(data?.deliveries)
+            ? data.deliveries
+            : [];
+
+          exportRows.push(...batch);
+
+          if (batch.length === 0) break;
+        }
+
+        if (exportRows.length !== exportTotal) {
+          throw new Error(
+            "Delivery records changed while the export was being prepared. Please export again.",
+          );
+        }
+
         headers = [
           "Delivery ID",
           "Order Number",
@@ -1083,7 +1588,7 @@ export default function OperationsReportPage() {
           "Status",
           "Delivery Date",
         ];
-        mappedData = filteredRows.map((r) => [
+        mappedData = exportRows.map((r) => [
           r.id,
           r.order_number || "—",
           r.driver_name || "Unassigned",
@@ -1091,8 +1596,54 @@ export default function OperationsReportPage() {
           formatDateTime(r.scheduled_date || r.delivery_date || r.created_at),
         ]);
       } else if (operationType === "warranty") {
+        const firstResponse = await api.get("/warranty", {
+          params: buildOperationsWarrantyParams({
+            page: 1,
+            limit: WARRANTY_EXPORT_PAGE_SIZE,
+            search,
+            dateFilter,
+            customStart,
+            customEnd,
+          }),
+        });
+
+        exportRows = Array.isArray(firstResponse.data?.claims)
+          ? [...firstResponse.data.claims]
+          : [];
+
+        const exportTotal = Number(firstResponse.data?.total || 0);
+        const exportPages = Math.max(
+          1,
+          Math.ceil(exportTotal / WARRANTY_EXPORT_PAGE_SIZE),
+        );
+
+        for (let exportPage = 2; exportPage <= exportPages; exportPage += 1) {
+          const { data } = await api.get("/warranty", {
+            params: buildOperationsWarrantyParams({
+              page: exportPage,
+              limit: WARRANTY_EXPORT_PAGE_SIZE,
+              search,
+              dateFilter,
+              customStart,
+              customEnd,
+              includeSummary: false,
+            }),
+          });
+
+          const batch = Array.isArray(data?.claims) ? data.claims : [];
+          exportRows.push(...batch);
+
+          if (batch.length === 0) break;
+        }
+
+        if (exportRows.length !== exportTotal) {
+          throw new Error(
+            "Warranty claim records changed while the export was being prepared. Please export again.",
+          );
+        }
+
         headers = ["Claim ID", "Customer", "Issue", "Status", "Filed On"];
-        mappedData = filteredRows.map((r) => [
+        mappedData = exportRows.map((r) => [
           r.id,
           r.customer_name || "—",
           r.issue_description || "—",
@@ -1194,7 +1745,7 @@ export default function OperationsReportPage() {
             type="button"
             className="opr-button opr-button-primary"
             onClick={exportExcel}
-            disabled={loading || filteredRows.length === 0 || exporting}
+            disabled={loading || reportRecordCount === 0 || exporting}
           >
             {exporting ? "Exporting..." : "Export Excel"}
           </button>
@@ -1230,6 +1781,8 @@ export default function OperationsReportPage() {
             onClick={() => {
               setOperationType(item.value);
               setSearch("");
+              setDebouncedSearch("");
+              setPage(1);
             }}
             style={{
               padding: "10px 18px",
@@ -1351,7 +1904,7 @@ export default function OperationsReportPage() {
                 </p>
               </div>
               <div className="opr-section-count">
-                {filteredRows.length} record(s)
+                {reportRecordCount} record(s)
               </div>
             </div>
 
@@ -1399,7 +1952,7 @@ export default function OperationsReportPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRows.length === 0 ? (
+                  {paginatedRows.length === 0 ? (
                     <EmptyRow
                       colSpan={5}
                       text={`No ${activeOperation.label.toLowerCase()} match the current filters.`}
@@ -1487,7 +2040,7 @@ export default function OperationsReportPage() {
               </table>
             </div>
 
-            {filteredRows.length > 0 && (
+            {reportRecordCount > 0 && (
               <div
                 style={{
                   display: "flex",
@@ -1499,9 +2052,9 @@ export default function OperationsReportPage() {
                 }}
               >
                 <span style={{ fontSize: 11.5, color: "#71717a" }}>
-                  Showing {(page - 1) * 20 + 1} to{" "}
-                  {Math.min(page * 20, filteredRows.length)} of{" "}
-                  {filteredRows.length} records
+                  Showing {(page - 1) * PAGE_SIZE + 1} to{" "}
+                  {Math.min(page * PAGE_SIZE, reportRecordCount)} of{" "}
+                  {reportRecordCount} records
                 </span>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <button

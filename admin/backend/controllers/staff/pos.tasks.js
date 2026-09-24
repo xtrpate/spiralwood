@@ -1,5 +1,9 @@
 // controllers/staff/pos.tasks.js
 const db = require("../../config/db"); // Uses the unified db config
+const {
+  getPhilippineDateBoundsUtc,
+  getPhilippineDateKey,
+} = require("../../utils/philippineTime");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const { createNotificationSafe } = require("../../utils/notificationHelper");
 const {
@@ -286,8 +290,340 @@ exports.getUnreadCount = async (req, res) => {
   }
 };
 
+
+const OPERATIONS_TASK_DATE_FILTERS = new Set([
+  "all",
+  "today",
+  "yesterday",
+  "this_week",
+  "this_month",
+  "this_year",
+  "custom",
+]);
+
+const formatUtcDateKeyForOperationsTaskReport = (date) =>
+  [
+    String(date.getUTCFullYear()).padStart(4, "0"),
+    String(date.getUTCMonth() + 1).padStart(2, "0"),
+    String(date.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+
+const shiftOperationsTaskDateKey = (dateKey, days) => {
+  const [year, month, day] = String(dateKey).split("-").map(Number);
+  return formatUtcDateKeyForOperationsTaskReport(
+    new Date(Date.UTC(year, month - 1, day + days)),
+  );
+};
+
+const buildOperationsTaskDateRange = ({ dateFilter, from, to }) => {
+  const normalizedFilter = String(dateFilter || "all")
+    .trim()
+    .toLowerCase();
+
+  if (!OPERATIONS_TASK_DATE_FILTERS.has(normalizedFilter)) {
+    const error = new Error("Invalid operations task date filter.");
+    error.status = 400;
+    throw error;
+  }
+
+  if (normalizedFilter === "all") {
+    return { startUtc: null, endUtc: null };
+  }
+
+  if (normalizedFilter === "custom") {
+    const fromKey = String(from || "").trim();
+    const toKey = String(to || "").trim();
+
+    if (fromKey && toKey && fromKey > toKey) {
+      const error = new Error("Start date cannot be after end date.");
+      error.status = 400;
+      throw error;
+    }
+
+    try {
+      return {
+        startUtc: fromKey
+          ? getPhilippineDateBoundsUtc(fromKey).startUtc
+          : null,
+        endUtc: toKey
+          ? getPhilippineDateBoundsUtc(toKey).nextStartUtc
+          : null,
+      };
+    } catch {
+      const error = new Error(
+        "Operations task dates must use valid YYYY-MM-DD values.",
+      );
+      error.status = 400;
+      throw error;
+    }
+  }
+
+  const todayKey = getPhilippineDateKey();
+  const [year, month, day] = todayKey.split("-").map(Number);
+
+  let startKey = todayKey;
+  let endKey = shiftOperationsTaskDateKey(todayKey, 1);
+
+  if (normalizedFilter === "yesterday") {
+    startKey = shiftOperationsTaskDateKey(todayKey, -1);
+    endKey = todayKey;
+  } else if (normalizedFilter === "this_week") {
+    // Preserve the Operations Report's existing Sunday-Saturday week.
+    const dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    startKey = shiftOperationsTaskDateKey(todayKey, -dayOfWeek);
+    endKey = shiftOperationsTaskDateKey(startKey, 7);
+  } else if (normalizedFilter === "this_month") {
+    startKey = [
+      String(year).padStart(4, "0"),
+      String(month).padStart(2, "0"),
+      "01",
+    ].join("-");
+    endKey = formatUtcDateKeyForOperationsTaskReport(
+      new Date(Date.UTC(year, month, 1)),
+    );
+  } else if (normalizedFilter === "this_year") {
+    startKey = `${String(year).padStart(4, "0")}-01-01`;
+    endKey = `${String(year + 1).padStart(4, "0")}-01-01`;
+  }
+
+  return {
+    startUtc: getPhilippineDateBoundsUtc(startKey).startUtc,
+    endUtc: getPhilippineDateBoundsUtc(endKey).startUtc,
+  };
+};
+
+const getOperationsTaskReport = async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(
+      200,
+      Math.max(1, parseInt(req.query.limit, 10) || 20),
+    );
+    const offset = (page - 1) * limit;
+    const includeSummary =
+      String(req.query.include_summary || "1").trim() !== "0";
+
+    const where = ["1=1"];
+    const params = [];
+
+    if (req.user.role !== "admin") {
+      const staffId = parseInt(req.user.id, 10);
+
+      // Keep the exact same staff visibility semantics as the normal /tasks
+      // response. Report mode changes only paging/filtering/summary.
+      where.push(`(
+        (
+          t.order_id IS NOT NULL
+          AND (
+            EXISTS (
+              SELECT 1
+              FROM project_tasks owned
+              WHERE owned.order_id = t.order_id
+                AND owned.assigned_to = ?
+                AND owned.status IN ('pending', 'in_progress', 'blocked')
+            )
+            OR (
+              NOT EXISTS (
+                SELECT 1
+                FROM project_tasks unfinished
+                WHERE unfinished.order_id = t.order_id
+                  AND unfinished.status <> 'completed'
+              )
+              AND EXISTS (
+                SELECT 1
+                FROM project_tasks final_step
+                WHERE final_step.order_id = t.order_id
+                  AND LOWER(TRIM(final_step.task_role)) = 'packing'
+                  AND final_step.assigned_to = ?
+                  AND final_step.status = 'completed'
+              )
+            )
+          )
+        )
+        OR (t.order_id IS NULL AND t.assigned_to = ?)
+      )`);
+      where.push("COALESCE(LOWER(o.status), '') <> 'cancelled'");
+      params.push(staffId, staffId, staffId);
+    }
+
+    const search = String(req.query.search || "").trim();
+    if (search.length > 100) {
+      return res
+        .status(400)
+        .json({ message: "Search must be 100 characters or less." });
+    }
+
+    if (search) {
+      const pattern = `%${search}%`;
+      where.push(`(
+        CAST(t.id AS CHAR) LIKE ?
+        OR COALESCE(t.title, '') LIKE ?
+        OR COALESCE(t.description, '') LIKE ?
+        OR COALESCE(t.task_role, '') LIKE ?
+        OR COALESCE(t.status, '') LIKE ?
+        OR CAST(COALESCE(t.due_date, '') AS CHAR) LIKE ?
+        OR CAST(COALESCE(t.order_id, 0) AS CHAR) LIKE ?
+        OR CAST(COALESCE(t.blueprint_id, 0) AS CHAR) LIKE ?
+        OR CAST(COALESCE(t.assigned_to, 0) AS CHAR) LIKE ?
+        OR CAST(COALESCE(t.assigned_by, 0) AS CHAR) LIKE ?
+        OR COALESCE(assignee.name, '') LIKE ?
+        OR COALESCE(assigner.name, '') LIKE ?
+        OR COALESCE(o.order_number, '') LIKE ?
+        OR COALESCE(o.delivery_address, '') LIKE ?
+        OR COALESCE(customer.name, o.walkin_customer_name, 'Walk-in Customer') LIKE ?
+        OR CAST(COALESCE(t.created_at, '') AS CHAR) LIKE ?
+        OR CAST(COALESCE(t.updated_at, '') AS CHAR) LIKE ?
+      )`);
+      params.push(...Array(17).fill(pattern));
+    }
+
+    const { startUtc, endUtc } = buildOperationsTaskDateRange({
+      dateFilter: req.query.date_filter,
+      from: req.query.from,
+      to: req.query.to,
+    });
+
+    if (startUtc) {
+      where.push("COALESCE(t.created_at, t.updated_at) >= ?");
+      params.push(startUtc);
+    }
+
+    if (endUtc) {
+      where.push("COALESCE(t.created_at, t.updated_at) < ?");
+      params.push(endUtc);
+    }
+
+    const joinsSql = `
+      LEFT JOIN users assignee ON t.assigned_to = assignee.id
+      LEFT JOIN users assigner ON t.assigned_by = assigner.id
+      LEFT JOIN orders o ON t.order_id = o.id
+      LEFT JOIN users customer ON o.customer_id = customer.id`;
+
+    const whereSql = where.join(" AND ");
+
+    const [tasks] = await db.query(
+      `SELECT
+         t.*,
+         assignee.name AS assigned_to_name,
+         assigner.name AS assigned_by_name,
+         o.order_number,
+         o.delivery_address,
+         COALESCE(customer.name, o.walkin_customer_name, 'Walk-in Customer') AS customer_name
+       FROM project_tasks t
+       ${joinsSql}
+       WHERE ${whereSql}
+       ORDER BY t.created_at DESC, t.id DESC
+       LIMIT ? OFFSET ?`,
+      [...params, limit, offset],
+    );
+
+    // Keep the existing blocked-task detail useful without loading the larger
+    // production-material payload that the Operations Report does not render.
+    const blockedTaskIds = tasks
+      .filter((task) => normalize(task.status) === "blocked")
+      .map((task) => Number(task.id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+
+    if (blockedTaskIds.length > 0) {
+      const placeholders = blockedTaskIds.map(() => "?").join(", ");
+      const [auditRows] = await db.query(
+        `SELECT record_id, new_values
+         FROM audit_logs
+         WHERE table_name = 'project_tasks'
+           AND record_id IN (${placeholders})
+         ORDER BY id DESC`,
+        blockedTaskIds,
+      );
+
+      const reasonByTaskId = new Map();
+
+      for (const row of auditRows) {
+        const recordId = Number(row.record_id);
+        if (!Number.isInteger(recordId) || reasonByTaskId.has(recordId)) {
+          continue;
+        }
+
+        let nextValues = row.new_values;
+        if (typeof nextValues === "string") {
+          try {
+            nextValues = JSON.parse(nextValues);
+          } catch {
+            nextValues = null;
+          }
+        }
+
+        const holdReason = String(nextValues?.hold_reason || "").trim();
+        if (normalize(nextValues?.status) === "blocked" && holdReason) {
+          reasonByTaskId.set(recordId, holdReason);
+        }
+      }
+
+      for (const task of tasks) {
+        if (normalize(task.status) === "blocked") {
+          task.hold_reason = reasonByTaskId.get(Number(task.id)) || null;
+        }
+      }
+    }
+
+    const response = { tasks, page, limit };
+
+    if (includeSummary) {
+      const [[summaryRow]] = await db.query(
+        `SELECT
+           COUNT(*) AS total,
+           COALESCE(SUM(
+             CASE
+               WHEN LOWER(COALESCE(t.status, '')) IN (
+                 'pending',
+                 'scheduled',
+                 'in_progress'
+               )
+               THEN 1 ELSE 0
+             END
+           ), 0) AS pending,
+           COALESCE(SUM(
+             CASE
+               WHEN LOWER(COALESCE(t.status, '')) IN (
+                 'completed',
+                 'resolved',
+                 'delivered',
+                 'done'
+               )
+               THEN 1 ELSE 0
+             END
+           ), 0) AS completed
+         FROM project_tasks t
+         ${joinsSql}
+         WHERE ${whereSql}`,
+        params,
+      );
+
+      response.total = Number(summaryRow?.total || 0);
+      response.summary = {
+        pending: Number(summaryRow?.pending || 0),
+        completed: Number(summaryRow?.completed || 0),
+      };
+    }
+
+    return res.json(response);
+  } catch (err) {
+    if (Number(err?.status) === 400) {
+      return res.status(400).json({ message: err.message });
+    }
+
+    console.error("[pos.tasks GET / operations report]", err);
+    return res.status(500).json({
+      message: "Failed to load task assignments report.",
+    });
+  }
+};
+
 /* ── Get Tasks (Admin sees all, Staff sees theirs) ── */
 exports.getTasks = async (req, res) => {
+  if (String(req.query.operations_report || "").trim() === "1") {
+    return getOperationsTaskReport(req, res);
+  }
+
   try {
     let query = `
       SELECT t.*,

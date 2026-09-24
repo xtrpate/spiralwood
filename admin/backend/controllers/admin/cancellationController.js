@@ -7,6 +7,10 @@ const {
   BlueprintMaterialReleaseError,
 } = require("../../services/blueprintMaterialReleaseService");
 const { emitOrderStatusUpdate } = require("../../utils/orderStatusSocket");
+const {
+  getPhilippineDateBoundsUtc,
+  getPhilippineDateKey,
+} = require("../../utils/philippineTime");
 
 const APPROVABLE_ORDER_STATUSES = new Set([
   "confirmed",
@@ -47,8 +51,415 @@ const isRetryableLockError = (err) =>
   Number(err?.errno) === 1213 ||
   Number(err?.errno) === 1205;
 
+const TRANSACTION_REPORT_DATE_FILTERS = new Set([
+  "all",
+  "today",
+  "yesterday",
+  "this_week",
+  "this_month",
+  "this_year",
+  "custom",
+]);
+
+const formatUtcDateKey = (date) =>
+  [
+    String(date.getUTCFullYear()).padStart(4, "0"),
+    String(date.getUTCMonth() + 1).padStart(2, "0"),
+    String(date.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+
+const shiftDateKey = (dateKey, days) => {
+  const [year, month, day] = String(dateKey).split("-").map(Number);
+  return formatUtcDateKey(new Date(Date.UTC(year, month - 1, day + days)));
+};
+
+const buildTransactionReportDateRange = ({
+  dateFilter,
+  from,
+  to,
+}) => {
+  const normalizedFilter = String(dateFilter || "all")
+    .trim()
+    .toLowerCase();
+
+  if (!TRANSACTION_REPORT_DATE_FILTERS.has(normalizedFilter)) {
+    const error = new Error("Invalid transaction report date filter.");
+    error.status = 400;
+    throw error;
+  }
+
+  if (normalizedFilter === "all") {
+    return { startUtc: null, endUtc: null };
+  }
+
+  if (normalizedFilter === "custom") {
+    const fromKey = String(from || "").trim();
+    const toKey = String(to || "").trim();
+
+    if (fromKey && toKey && fromKey > toKey) {
+      const error = new Error("Start date cannot be after end date.");
+      error.status = 400;
+      throw error;
+    }
+
+    try {
+      return {
+        startUtc: fromKey
+          ? getPhilippineDateBoundsUtc(fromKey).startUtc
+          : null,
+        endUtc: toKey
+          ? getPhilippineDateBoundsUtc(toKey).nextStartUtc
+          : null,
+      };
+    } catch {
+      const error = new Error(
+        "Transaction report dates must use valid YYYY-MM-DD values.",
+      );
+      error.status = 400;
+      throw error;
+    }
+  }
+
+  const todayKey = getPhilippineDateKey();
+  const [year, month, day] = todayKey.split("-").map(Number);
+
+  let startKey = todayKey;
+  let endKey = shiftDateKey(todayKey, 1);
+
+  if (normalizedFilter === "yesterday") {
+    startKey = shiftDateKey(todayKey, -1);
+    endKey = todayKey;
+  } else if (normalizedFilter === "this_week") {
+    // Preserve the Transaction Report's existing Sunday-Saturday week.
+    const dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    startKey = shiftDateKey(todayKey, -dayOfWeek);
+    endKey = shiftDateKey(startKey, 7);
+  } else if (normalizedFilter === "this_month") {
+    startKey = [
+      String(year).padStart(4, "0"),
+      String(month).padStart(2, "0"),
+      "01",
+    ].join("-");
+    endKey = formatUtcDateKey(new Date(Date.UTC(year, month, 1)));
+  } else if (normalizedFilter === "this_year") {
+    startKey = `${String(year).padStart(4, "0")}-01-01`;
+    endKey = `${String(year + 1).padStart(4, "0")}-01-01`;
+  }
+
+  return {
+    startUtc: getPhilippineDateBoundsUtc(startKey).startUtc,
+    endUtc: getPhilippineDateBoundsUtc(endKey).startUtc,
+  };
+};
+
+const CANCELLATION_RECORDS_FROM_SQL = `
+  FROM (
+    SELECT
+      CONCAT('custom_request:', ccr.id) AS record_key,
+      'custom_furniture' AS record_type,
+      'custom_request' AS record_source,
+      ccr.id AS request_id,
+      ccr.order_id,
+      ccr.requested_by,
+      ccr.reason,
+      CAST(ccr.status AS CHAR) AS status,
+      ccr.order_status_at_request,
+      ccr.reviewed_by,
+      ccr.review_note,
+      ccr.requested_at,
+      ccr.reviewed_at
+    FROM custom_cancellation_requests ccr
+
+    UNION ALL
+
+    SELECT
+      CONCAT('ready_made:', ready.id) AS record_key,
+      'ready_made' AS record_type,
+      'ready_made_order' AS record_source,
+      NULL AS request_id,
+      ready.id AS order_id,
+      ready.customer_id AS requested_by,
+      COALESCE(
+        NULLIF(TRIM(ready.cancellation_reason), ''),
+        'Order cancelled'
+      ) AS reason,
+      'cancelled' AS status,
+      NULL AS order_status_at_request,
+      NULL AS reviewed_by,
+      NULL AS review_note,
+      COALESCE(ready.cancelled_at, ready.updated_at, ready.created_at) AS requested_at,
+      ready.cancelled_at AS reviewed_at
+    FROM orders ready
+    WHERE LOWER(
+      COALESCE(NULLIF(TRIM(ready.order_type), ''), 'standard')
+    ) = 'standard'
+      AND LOWER(COALESCE(ready.status, '')) = 'cancelled'
+
+    UNION ALL
+
+    SELECT
+      CONCAT('custom_legacy:', legacy.id) AS record_key,
+      'custom_furniture' AS record_type,
+      'custom_legacy' AS record_source,
+      NULL AS request_id,
+      legacy.id AS order_id,
+      legacy.customer_id AS requested_by,
+      COALESCE(
+        NULLIF(TRIM(legacy.cancellation_reason), ''),
+        'Historical custom furniture cancellation'
+      ) AS reason,
+      'cancelled' AS status,
+      NULL AS order_status_at_request,
+      NULL AS reviewed_by,
+      NULL AS review_note,
+      COALESCE(legacy.cancelled_at, legacy.updated_at, legacy.created_at) AS requested_at,
+      legacy.cancelled_at AS reviewed_at
+    FROM orders legacy
+    WHERE LOWER(COALESCE(legacy.order_type, '')) = 'blueprint'
+      AND LOWER(COALESCE(legacy.status, '')) = 'cancelled'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM custom_cancellation_requests existing_request
+        WHERE existing_request.order_id = legacy.id
+      )
+  ) records
+  INNER JOIN orders o ON o.id = records.order_id
+  LEFT JOIN users customer ON customer.id = o.customer_id
+  LEFT JOIN users requester ON requester.id = records.requested_by
+  LEFT JOIN users reviewer ON reviewer.id = records.reviewed_by
+`;
+
 exports.listRequests = async (req, res) => {
   try {
+    const transactionReportMode =
+      String(req.query?.transaction_report || "").trim() === "1";
+
+    // Preserve the existing operational Cancellation Requests page contract:
+    // no report mode => the historical array response remains unchanged.
+    if (!transactionReportMode) {
+      const [rows] = await db.query(
+        `SELECT
+           records.record_key,
+           records.record_type,
+           records.record_source,
+           records.request_id AS id,
+           records.request_id,
+           records.order_id,
+           records.requested_by,
+           records.reason,
+           records.status,
+           records.order_status_at_request,
+           records.reviewed_by,
+           records.review_note,
+           records.requested_at,
+           records.reviewed_at,
+           o.order_number,
+           o.status AS order_status,
+           o.total,
+           o.payment_status,
+           o.fulfillment_method,
+           COALESCE(
+             NULLIF(TRIM(o.walkin_customer_name), ''),
+             customer.name,
+             'Customer'
+           ) AS customer_name,
+           COALESCE(
+             requester.name,
+             customer.name,
+             NULLIF(TRIM(o.walkin_customer_name), ''),
+             'Customer'
+           ) AS requested_by_name,
+           reviewer.name AS reviewed_by_name,
+           COALESCE(
+             (
+               SELECT SUM(
+                 CASE
+                   WHEN LOWER(COALESCE(pt.status, '')) = 'verified'
+                   THEN pt.amount
+                   ELSE 0
+                 END
+               )
+               FROM payment_transactions pt
+               WHERE pt.order_id = o.id
+             ),
+             0
+           ) AS verified_payment_total,
+           (
+             SELECT COUNT(*)
+             FROM payment_transactions pt
+             WHERE pt.order_id = o.id
+               AND LOWER(COALESCE(pt.status, '')) = 'pending'
+           ) AS pending_payment_count,
+           CASE
+             WHEN o.paymongo_session_id IS NOT NULL
+               OR o.payment_url IS NOT NULL
+             THEN 1
+             ELSE 0
+           END AS payment_session_active,
+           (
+             SELECT COUNT(*)
+             FROM project_tasks task
+             WHERE task.order_id = o.id
+           ) AS production_task_count,
+           (
+             SELECT COUNT(*)
+             FROM project_tasks task
+             WHERE task.order_id = o.id
+               AND LOWER(COALESCE(task.status, '')) = 'completed'
+           ) AS production_completed_count,
+           (
+             SELECT d.status
+             FROM deliveries d
+             WHERE d.order_id = o.id
+             ORDER BY d.id DESC
+             LIMIT 1
+           ) AS delivery_status
+         FROM (
+           SELECT
+             CONCAT('custom_request:', ccr.id) AS record_key,
+             'custom_furniture' AS record_type,
+             'custom_request' AS record_source,
+             ccr.id AS request_id,
+             ccr.order_id,
+             ccr.requested_by,
+             ccr.reason,
+             CAST(ccr.status AS CHAR) AS status,
+             ccr.order_status_at_request,
+             ccr.reviewed_by,
+             ccr.review_note,
+             ccr.requested_at,
+             ccr.reviewed_at
+           FROM custom_cancellation_requests ccr
+
+           UNION ALL
+
+           SELECT
+             CONCAT('ready_made:', ready.id) AS record_key,
+             'ready_made' AS record_type,
+             'ready_made_order' AS record_source,
+             NULL AS request_id,
+             ready.id AS order_id,
+             ready.customer_id AS requested_by,
+             COALESCE(
+               NULLIF(TRIM(ready.cancellation_reason), ''),
+               'Order cancelled'
+             ) AS reason,
+             'cancelled' AS status,
+             NULL AS order_status_at_request,
+             NULL AS reviewed_by,
+             NULL AS review_note,
+             COALESCE(ready.cancelled_at, ready.updated_at, ready.created_at) AS requested_at,
+             ready.cancelled_at AS reviewed_at
+           FROM orders ready
+           WHERE LOWER(
+             COALESCE(NULLIF(TRIM(ready.order_type), ''), 'standard')
+           ) = 'standard'
+             AND LOWER(COALESCE(ready.status, '')) = 'cancelled'
+
+           UNION ALL
+
+           SELECT
+             CONCAT('custom_legacy:', legacy.id) AS record_key,
+             'custom_furniture' AS record_type,
+             'custom_legacy' AS record_source,
+             NULL AS request_id,
+             legacy.id AS order_id,
+             legacy.customer_id AS requested_by,
+             COALESCE(
+               NULLIF(TRIM(legacy.cancellation_reason), ''),
+               'Historical custom furniture cancellation'
+             ) AS reason,
+             'cancelled' AS status,
+             NULL AS order_status_at_request,
+             NULL AS reviewed_by,
+             NULL AS review_note,
+             COALESCE(legacy.cancelled_at, legacy.updated_at, legacy.created_at) AS requested_at,
+             legacy.cancelled_at AS reviewed_at
+           FROM orders legacy
+           WHERE LOWER(COALESCE(legacy.order_type, '')) = 'blueprint'
+             AND LOWER(COALESCE(legacy.status, '')) = 'cancelled'
+             AND NOT EXISTS (
+               SELECT 1
+               FROM custom_cancellation_requests existing_request
+               WHERE existing_request.order_id = legacy.id
+             )
+         ) records
+         INNER JOIN orders o ON o.id = records.order_id
+         LEFT JOIN users customer ON customer.id = o.customer_id
+         LEFT JOIN users requester ON requester.id = records.requested_by
+         LEFT JOIN users reviewer ON reviewer.id = records.reviewed_by
+         ORDER BY records.requested_at DESC, records.order_id DESC
+         LIMIT 1000`,
+      );
+
+      return res.json(rows);
+    }
+
+    const {
+      page = 1,
+      limit = 20,
+      search,
+      date_filter,
+      from,
+      to,
+      include_summary,
+    } = req.query || {};
+
+    const reportPage = parsePositiveInt(page) || 1;
+    const reportLimit = Math.min(parsePositiveInt(limit) || 20, 500);
+    const offset = (reportPage - 1) * reportLimit;
+    const includeSummary =
+      String(include_summary || "1").trim() !== "0";
+
+    const where = [];
+    const params = [];
+
+    const { startUtc, endUtc } = buildTransactionReportDateRange({
+      dateFilter: date_filter,
+      from,
+      to,
+    });
+
+    if (startUtc) {
+      where.push("records.requested_at >= ?");
+      params.push(startUtc);
+    }
+
+    if (endUtc) {
+      where.push("records.requested_at < ?");
+      params.push(endUtc);
+    }
+
+    const normalizedSearch = String(search || "").trim();
+
+    if (normalizedSearch) {
+      const pattern = `%${normalizedSearch}%`;
+
+      where.push(`(
+        COALESCE(records.record_key, '') LIKE ?
+        OR CAST(COALESCE(records.request_id, 0) AS CHAR) LIKE ?
+        OR COALESCE(o.order_number, '') LIKE ?
+        OR CAST(records.order_id AS CHAR) LIKE ?
+        OR COALESCE(NULLIF(TRIM(o.walkin_customer_name), ''), customer.name, '') LIKE ?
+        OR COALESCE(requester.name, '') LIKE ?
+        OR COALESCE(reviewer.name, '') LIKE ?
+        OR COALESCE(records.reason, '') LIKE ?
+        OR COALESCE(records.review_note, '') LIKE ?
+        OR COALESCE(records.record_type, '') LIKE ?
+        OR COALESCE(records.record_source, '') LIKE ?
+        OR COALESCE(records.status, '') LIKE ?
+        OR COALESCE(records.order_status_at_request, '') LIKE ?
+        OR COALESCE(o.status, '') LIKE ?
+        OR COALESCE(o.payment_status, '') LIKE ?
+        OR COALESCE(o.fulfillment_method, '') LIKE ?
+        OR CAST(COALESCE(o.total, 0) AS CHAR) LIKE ?
+      )`);
+
+      params.push(...Array(17).fill(pattern));
+    }
+
+    const whereSql = where.length > 0 ? ` WHERE ${where.join(" AND ")}` : "";
+
     const [rows] = await db.query(
       `SELECT
          records.record_key,
@@ -126,86 +537,53 @@ exports.listRequests = async (req, res) => {
            ORDER BY d.id DESC
            LIMIT 1
          ) AS delivery_status
-       FROM (
-         SELECT
-           CONCAT('custom_request:', ccr.id) AS record_key,
-           'custom_furniture' AS record_type,
-           'custom_request' AS record_source,
-           ccr.id AS request_id,
-           ccr.order_id,
-           ccr.requested_by,
-           ccr.reason,
-           CAST(ccr.status AS CHAR) AS status,
-           ccr.order_status_at_request,
-           ccr.reviewed_by,
-           ccr.review_note,
-           ccr.requested_at,
-           ccr.reviewed_at
-         FROM custom_cancellation_requests ccr
-
-         UNION ALL
-
-         SELECT
-           CONCAT('ready_made:', ready.id) AS record_key,
-           'ready_made' AS record_type,
-           'ready_made_order' AS record_source,
-           NULL AS request_id,
-           ready.id AS order_id,
-           ready.customer_id AS requested_by,
-           COALESCE(
-             NULLIF(TRIM(ready.cancellation_reason), ''),
-             'Order cancelled'
-           ) AS reason,
-           'cancelled' AS status,
-           NULL AS order_status_at_request,
-           NULL AS reviewed_by,
-           NULL AS review_note,
-           COALESCE(ready.cancelled_at, ready.updated_at, ready.created_at) AS requested_at,
-           ready.cancelled_at AS reviewed_at
-         FROM orders ready
-         WHERE LOWER(
-           COALESCE(NULLIF(TRIM(ready.order_type), ''), 'standard')
-         ) = 'standard'
-           AND LOWER(COALESCE(ready.status, '')) = 'cancelled'
-
-         UNION ALL
-
-         SELECT
-           CONCAT('custom_legacy:', legacy.id) AS record_key,
-           'custom_furniture' AS record_type,
-           'custom_legacy' AS record_source,
-           NULL AS request_id,
-           legacy.id AS order_id,
-           legacy.customer_id AS requested_by,
-           COALESCE(
-             NULLIF(TRIM(legacy.cancellation_reason), ''),
-             'Historical custom furniture cancellation'
-           ) AS reason,
-           'cancelled' AS status,
-           NULL AS order_status_at_request,
-           NULL AS reviewed_by,
-           NULL AS review_note,
-           COALESCE(legacy.cancelled_at, legacy.updated_at, legacy.created_at) AS requested_at,
-           legacy.cancelled_at AS reviewed_at
-         FROM orders legacy
-         WHERE LOWER(COALESCE(legacy.order_type, '')) = 'blueprint'
-           AND LOWER(COALESCE(legacy.status, '')) = 'cancelled'
-           AND NOT EXISTS (
-             SELECT 1
-             FROM custom_cancellation_requests existing_request
-             WHERE existing_request.order_id = legacy.id
-           )
-       ) records
-       INNER JOIN orders o ON o.id = records.order_id
-       LEFT JOIN users customer ON customer.id = o.customer_id
-       LEFT JOIN users requester ON requester.id = records.requested_by
-       LEFT JOIN users reviewer ON reviewer.id = records.reviewed_by
+       ${CANCELLATION_RECORDS_FROM_SQL}
+       ${whereSql}
        ORDER BY records.requested_at DESC, records.order_id DESC
-       LIMIT 1000`,
+       LIMIT ? OFFSET ?`,
+      [...params, reportLimit, offset],
     );
 
-    return res.json(rows);
+    const response = { records: rows };
+
+    if (includeSummary) {
+      const [[summaryRow]] = await db.query(
+        `SELECT
+           COUNT(*) AS total_records,
+           COALESCE(
+             SUM(CASE
+               WHEN LOWER(COALESCE(records.status, '')) = 'pending'
+               THEN 1 ELSE 0
+             END),
+             0
+           ) AS pending_review,
+           COALESCE(
+             SUM(CASE
+               WHEN LOWER(COALESCE(records.status, '')) IN ('approved', 'cancelled')
+               THEN 1 ELSE 0
+             END),
+             0
+           ) AS approved_or_cancelled
+         ${CANCELLATION_RECORDS_FROM_SQL}
+         ${whereSql}`,
+        params,
+      );
+
+      response.total = Number(summaryRow?.total_records || 0);
+      response.summary = {
+        pending_review: Number(summaryRow?.pending_review || 0),
+        approved_or_cancelled: Number(
+          summaryRow?.approved_or_cancelled || 0,
+        ),
+      };
+    }
+
+    return res.json(response);
   } catch (err) {
+    if (Number(err?.status) === 400) {
+      return res.status(400).json({ message: err.message });
+    }
+
     console.error("[admin cancellations list]", err);
     return res.status(500).json({
       message: "Failed to load cancellation records.",
