@@ -105,6 +105,47 @@ const EMPTY_TASK_SUMMARY = {
   completed: 0,
 };
 
+const APPOINTMENT_EXPORT_PAGE_SIZE = 200;
+
+const EMPTY_APPOINTMENT_SUMMARY = {
+  pending: 0,
+  completed: 0,
+};
+
+const buildOperationsAppointmentParams = ({
+  page,
+  limit,
+  search,
+  dateFilter,
+  customStart,
+  customEnd,
+  includeSummary = true,
+}) => {
+  const params = {
+    operations_report: 1,
+    page,
+    limit,
+    date_filter: dateFilter,
+  };
+
+  const normalizedSearch = String(search || "").trim();
+
+  if (normalizedSearch) {
+    params.search = normalizedSearch;
+  }
+
+  if (dateFilter === "custom") {
+    if (customStart) params.from = customStart;
+    if (customEnd) params.to = customEnd;
+  }
+
+  if (!includeSummary) {
+    params.include_summary = 0;
+  }
+
+  return params;
+};
+
 const buildOperationsTaskParams = ({
   page,
   limit,
@@ -855,6 +896,10 @@ export default function OperationsReportPage() {
   const [rows, setRows] = useState([]);
   const [taskTotal, setTaskTotal] = useState(0);
   const [taskSummary, setTaskSummary] = useState(EMPTY_TASK_SUMMARY);
+  const [appointmentTotal, setAppointmentTotal] = useState(0);
+  const [appointmentSummary, setAppointmentSummary] = useState(
+    EMPTY_APPOINTMENT_SUMMARY,
+  );
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [generatedAt, setGeneratedAt] = useState("");
@@ -912,8 +957,53 @@ export default function OperationsReportPage() {
     customEnd,
   ]);
 
+  const loadAppointmentReport = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const { data } = await api.get("/pos/appointments", {
+        params: buildOperationsAppointmentParams({
+          page,
+          limit: PAGE_SIZE,
+          search: debouncedSearch,
+          dateFilter,
+          customStart,
+          customEnd,
+        }),
+      });
+
+      setRows(Array.isArray(data?.appointments) ? data.appointments : []);
+      setAppointmentTotal(Number(data?.total || 0));
+      setAppointmentSummary({
+        ...EMPTY_APPOINTMENT_SUMMARY,
+        ...(data?.summary || {}),
+      });
+      setGeneratedAt(new Date().toISOString());
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message || "Failed to load appointments.",
+      );
+      setRows([]);
+      setAppointmentTotal(0);
+      setAppointmentSummary(EMPTY_APPOINTMENT_SUMMARY);
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    page,
+    debouncedSearch,
+    dateFilter,
+    customStart,
+    customEnd,
+  ]);
+
   const loadLegacyReport = useCallback(async () => {
-    if (!activeOperation || activeOperation.value === "tasks") return;
+    if (
+      !activeOperation ||
+      ["tasks", "appointments"].includes(activeOperation.value)
+    ) {
+      return;
+    }
 
     setLoading(true);
 
@@ -942,38 +1032,41 @@ export default function OperationsReportPage() {
   }, [activeOperation]);
 
   const loadReport = useCallback(() => {
-    if (operationType === "tasks") {
-      return loadTaskReport();
-    }
-
+    if (operationType === "tasks") return loadTaskReport();
+    if (operationType === "appointments") return loadAppointmentReport();
     return loadLegacyReport();
-  }, [loadLegacyReport, loadTaskReport, operationType]);
+  }, [
+    loadAppointmentReport,
+    loadLegacyReport,
+    loadTaskReport,
+    operationType,
+  ]);
 
   useEffect(() => {
-    if (operationType === "tasks") {
-      loadTaskReport();
-    }
+    if (operationType === "tasks") loadTaskReport();
   }, [loadTaskReport, operationType]);
 
   useEffect(() => {
-    if (operationType !== "tasks") {
+    if (operationType === "appointments") loadAppointmentReport();
+  }, [loadAppointmentReport, operationType]);
+
+  useEffect(() => {
+    if (!["tasks", "appointments"].includes(operationType)) {
       loadLegacyReport();
     }
   }, [loadLegacyReport, operationType]);
 
   const filteredRows = useMemo(() => {
-    if (operationType === "tasks") {
+    if (["tasks", "appointments"].includes(operationType)) {
       return rows;
     }
 
     return rows.filter((row) => {
-      // 1. Date check
       const rowDate = getRowDate(row, operationType);
       if (!isDateInRange(rowDate, dateFilter, customStart, customEnd)) {
         return false;
       }
 
-      // 2. Search check
       const query = search.trim().toLowerCase();
       if (query) {
         const matchesSearch = Object.values(row).some((val) =>
@@ -995,16 +1088,19 @@ export default function OperationsReportPage() {
     customEnd,
   ]);
 
-  // Reset page to 1 when filters change
   useEffect(() => {
     setPage(1);
   }, [search, operationType, dateFilter, customStart, customEnd]);
 
   const reportRecordCount =
-    operationType === "tasks" ? taskTotal : filteredRows.length;
+    operationType === "tasks"
+      ? taskTotal
+      : operationType === "appointments"
+        ? appointmentTotal
+        : filteredRows.length;
 
   const paginatedRows = useMemo(() => {
-    if (operationType === "tasks") {
+    if (["tasks", "appointments"].includes(operationType)) {
       return rows;
     }
 
@@ -1133,6 +1229,14 @@ export default function OperationsReportPage() {
       };
     }
 
+    if (operationType === "appointments") {
+      return {
+        total: appointmentTotal,
+        pending: Number(appointmentSummary?.pending || 0),
+        completed: Number(appointmentSummary?.completed || 0),
+      };
+    }
+
     const total = filteredRows.length;
     const pending = filteredRows.filter((r) =>
       ["pending", "scheduled", "in_progress"].includes(
@@ -1147,6 +1251,8 @@ export default function OperationsReportPage() {
 
     return { total, pending, completed };
   }, [
+    appointmentSummary,
+    appointmentTotal,
     filteredRows,
     operationType,
     taskSummary,
@@ -1247,6 +1353,55 @@ export default function OperationsReportPage() {
           formatDateTime(r.created_at),
         ]);
       } else if (operationType === "appointments") {
+        const firstResponse = await api.get("/pos/appointments", {
+          params: buildOperationsAppointmentParams({
+            page: 1,
+            limit: APPOINTMENT_EXPORT_PAGE_SIZE,
+            search,
+            dateFilter,
+            customStart,
+            customEnd,
+          }),
+        });
+
+        exportRows = Array.isArray(firstResponse.data?.appointments)
+          ? [...firstResponse.data.appointments]
+          : [];
+
+        const exportTotal = Number(firstResponse.data?.total || 0);
+        const exportPages = Math.max(
+          1,
+          Math.ceil(exportTotal / APPOINTMENT_EXPORT_PAGE_SIZE),
+        );
+
+        for (let exportPage = 2; exportPage <= exportPages; exportPage += 1) {
+          const { data } = await api.get("/pos/appointments", {
+            params: buildOperationsAppointmentParams({
+              page: exportPage,
+              limit: APPOINTMENT_EXPORT_PAGE_SIZE,
+              search,
+              dateFilter,
+              customStart,
+              customEnd,
+              includeSummary: false,
+            }),
+          });
+
+          const batch = Array.isArray(data?.appointments)
+            ? data.appointments
+            : [];
+
+          exportRows.push(...batch);
+
+          if (batch.length === 0) break;
+        }
+
+        if (exportRows.length !== exportTotal) {
+          throw new Error(
+            "Appointment records changed while the export was being prepared. Please export again.",
+          );
+        }
+
         headers = [
           "Appointment ID",
           "Customer",
@@ -1254,7 +1409,7 @@ export default function OperationsReportPage() {
           "Status",
           "Scheduled Date",
         ];
-        mappedData = filteredRows.map((r) => [
+        mappedData = exportRows.map((r) => [
           r.id,
           r.customer_name || "—",
           humanize(r.purpose || r.service_type || r.type || r.service),
