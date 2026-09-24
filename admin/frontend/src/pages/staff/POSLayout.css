@@ -1,9 +1,16 @@
-* {
+html,
+body {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
-body {
+
+:where(.pos-root, .pos-root *) {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+.pos-root {
   font-family: "Inter", "Segoe UI", system-ui, sans-serif;
   background: #f4f4f5;
 }
@@ -264,16 +271,16 @@ body {
 }
 
 /* â”€â”€â”€ SHARED PAGE STYLES (Monochrome Updates) â”€â”€â”€ */
-.page-header {
+:where(.pos-root) .page-header {
   margin-bottom: 24px;
 }
-.page-header h1 {
+:where(.pos-root) .page-header h1 {
   font-size: 24px;
   font-weight: 800;
   color: #0a0a0a;
   letter-spacing: -0.02em;
 }
-.page-header p {
+:where(.pos-root) .page-header p {
   color: #52525b;
   font-size: 13px;
   margin-top: 6px;
@@ -384,7 +391,7 @@ body {
 }
 
 /* Badges (Overwritten to Monochrome) */
-.badge {
+:where(.pos-root) .badge {
   display: inline-block;
   padding: 4px 10px;
   border-radius: 999px;
@@ -393,56 +400,56 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
-.badge-green {
+:where(.pos-root) .badge-green {
   background: #0a0a0a;
   color: #ffffff;
   border: 1px solid #0a0a0a;
 } /* Completed/Success */
-.badge-red {
+:where(.pos-root) .badge-red {
   background: #fef2f2;
   color: #991b1b;
   border: 1px solid #fecaca;
 } /* Cancelled/Failed */
-.badge-yellow {
+:where(.pos-root) .badge-yellow {
   background: #ffffff;
   color: #52525b;
   border: 1px solid #d4d4d8;
 } /* Pending */
-.badge-blue {
+:where(.pos-root) .badge-blue {
   background: #f4f4f5;
   color: #18181b;
   border: 1px solid #e4e4e7;
 } /* Confirmed */
-.badge-gray {
+:where(.pos-root) .badge-gray {
   background: #fafafa;
   color: #71717a;
   border: 1px solid #e4e4e7;
 } /* Archived */
 
 /* Form styles */
-.form-grid {
+:where(.pos-root) .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
-.form-field {
+:where(.pos-root) .form-field {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
-.form-field.full {
+:where(.pos-root) .form-field.full {
   grid-column: 1 / -1;
 }
-.form-field label {
+:where(.pos-root) .form-field label {
   font-size: 12px;
   font-weight: 800;
   color: #18181b;
   letter-spacing: 1px;
   text-transform: uppercase;
 }
-.form-field input,
-.form-field select,
-.form-field textarea {
+:where(.pos-root) .form-field input,
+:where(.pos-root) .form-field select,
+:where(.pos-root) .form-field textarea {
   padding: 10px 14px;
   border: 1px solid #e4e4e7;
   border-radius: 8px;
@@ -452,13 +459,13 @@ body {
   font-family: inherit;
   outline: none;
 }
-.form-field input:focus,
-.form-field select:focus,
-.form-field textarea:focus {
+:where(.pos-root) .form-field input:focus,
+:where(.pos-root) .form-field select:focus,
+:where(.pos-root) .form-field textarea:focus {
   border-color: #18181b;
 }
 
-.btn {
+:where(.pos-root) .btn {
   padding: 10px 20px;
   border-radius: 8px;
   font-size: 13px;
@@ -471,36 +478,36 @@ body {
   justify-content: center;
   gap: 8px;
 }
-.btn-primary {
+:where(.pos-root) .btn-primary {
   background: #18181b;
   color: #ffffff;
   border: 1px solid #18181b;
 }
-.btn-primary:hover {
+:where(.pos-root) .btn-primary:hover {
   background: #3f3f46;
 }
-.btn-secondary {
+:where(.pos-root) .btn-secondary {
   background: #f4f4f5;
   color: #18181b;
   border: 1px solid #e4e4e7;
 }
-.btn-secondary:hover {
+:where(.pos-root) .btn-secondary:hover {
   background: #e4e4e7;
 }
-.btn-danger {
+:where(.pos-root) .btn-danger {
   background: #fef2f2;
   color: #991b1b;
   border: 1px solid #fecaca;
 }
-.btn-danger:hover {
+:where(.pos-root) .btn-danger:hover {
   background: #fee2e2;
 }
-.btn:disabled {
+:where(.pos-root) .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.loading-screen {
+:where(.pos-root) .loading-screen {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -511,7 +518,7 @@ body {
 }
 
 @media (max-width: 768px) {
-  .form-grid {
+  :where(.pos-root) .form-grid {
     grid-template-columns: 1fr;
   }
   .pos-main {
@@ -526,7 +533,7 @@ body {
   }
 }
 
-.loading-screen {
+:where(.pos-root) .loading-screen {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -620,7 +627,7 @@ body {
     box-shadow: 10px 0 30px rgba(0, 0, 0, 0.5); /* Adds a shadow over the blur */
   }
 
-  .form-grid {
+  :where(.pos-root) .form-grid {
     grid-template-columns: 1fr;
   }
 

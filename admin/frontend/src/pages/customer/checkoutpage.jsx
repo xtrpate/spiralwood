@@ -1262,7 +1262,7 @@ export default function CheckoutPage() {
                   <span className="btn-spinner" /> Placing Order…
                 </>
               ) : (
-                "Place Order"
+                <span className="place-order-label">Place Order</span>
               )}
             </button>
           </div>

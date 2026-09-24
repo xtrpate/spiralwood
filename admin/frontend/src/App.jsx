@@ -303,7 +303,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
         <CartProvider>
           <CustomCartProvider>
             <Toaster position="top-center" toastOptions={{ duration: 4000 }} />

@@ -190,13 +190,13 @@
   text-align: left;
 }
 
-.product-grid {
+:where(.search-layout) .product-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(238px, 1fr));
   gap: 18px;
 }
 
-.product-card {
+:where(.search-layout) .product-card {
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -211,7 +211,7 @@
     transform 150ms ease;
 }
 
-.product-card:hover {
+:where(.search-layout) .product-card:hover {
   border-color: #bdbdc3;
   box-shadow: 0 8px 24px rgba(17, 17, 17, 0.055);
   transform: translateY(-2px);
@@ -618,7 +618,7 @@
     gap: 20px;
   }
 
-  .product-grid {
+  :where(.search-layout) .product-grid {
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   }
 }
@@ -647,7 +647,7 @@
     width: 100%;
   }
 
-  .product-grid {
+  :where(.search-layout) .product-grid {
     grid-template-columns: 1fr;
   }
 
@@ -658,7 +658,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .product-card,
+  :where(.search-layout) .product-card,
   .add-btn,
   .barcode-btn,
   .checkout-btn,
@@ -667,7 +667,7 @@
     transition: none !important;
   }
 
-  .product-card:hover,
+  :where(.search-layout) .product-card:hover,
   .add-btn:active:not(:disabled) {
     transform: none;
   }
@@ -726,7 +726,7 @@
 }
 
 /* Tighter product rhythm while keeping equal card structure. */
-.product-grid {
+:where(.search-layout) .product-grid {
   gap: 16px;
 }
 
@@ -1017,7 +1017,7 @@
    ========================================================= */
 
 /* Product cards: image, name, price/stock, action only. */
-.product-card {
+:where(.search-layout) .product-card {
   min-height: 0;
 }
 
