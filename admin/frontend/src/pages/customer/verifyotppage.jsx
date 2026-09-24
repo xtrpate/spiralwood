@@ -13,7 +13,6 @@ export default function VerifyOtpPage() {
     verifyOtp,
     verifyResetOtp,
     resendOtp,
-    forgotPassword,
     resendResetOtp,
     verifyPhoneOtp,
     resendPhoneOtp,
@@ -26,7 +25,29 @@ export default function VerifyOtpPage() {
   // Get password passed from login page
   const [password] = useState(location.state?.password || "");
 
-  const [email] = useState(location.state?.email || "");
+  const RESET_EMAIL_STORAGE_KEY = "wisdom_password_reset_email";
+  const RESET_PURPOSE_STORAGE_KEY = "wisdom_password_reset_purpose";
+
+  const locationEmail = String(location.state?.email || "").trim();
+  const locationPurpose = location.state?.purpose || "";
+
+  const storedResetEmail =
+    sessionStorage.getItem(RESET_EMAIL_STORAGE_KEY) || "";
+  const storedResetPurpose =
+    sessionStorage.getItem(RESET_PURPOSE_STORAGE_KEY) || "";
+
+  const email =
+    locationEmail ||
+    (storedResetPurpose === "forgot_password" ? storedResetEmail : "");
+
+  const purpose =
+    locationPurpose ||
+    (storedResetPurpose === "forgot_password"
+      ? storedResetPurpose
+      : "verify_email");
+
+  const isForgotPassword = purpose === "forgot_password";
+
   const [verificationStep, setVerificationStep] = useState(
     location.state?.startingStep || "email",
   );
@@ -38,14 +59,30 @@ export default function VerifyOtpPage() {
   const [loading, setLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const otpRefs = useRef([]);
-  const purpose = location.state?.purpose || "verify_email";
-  const isForgotPassword = purpose === "forgot_password";
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
     const t = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
     return () => clearTimeout(t);
   }, [resendCooldown]);
+
+  useEffect(() => {
+    // Save password-reset information so refresh does not lose the flow
+    if (locationEmail && location.state?.purpose === "forgot_password") {
+      sessionStorage.setItem(RESET_EMAIL_STORAGE_KEY, locationEmail);
+      sessionStorage.setItem(RESET_PURPOSE_STORAGE_KEY, "forgot_password");
+      return;
+    }
+
+    // A normal verification flow should not inherit an old reset flow
+    if (
+      location.state?.email &&
+      location.state?.purpose !== "forgot_password"
+    ) {
+      sessionStorage.removeItem(RESET_EMAIL_STORAGE_KEY);
+      sessionStorage.removeItem(RESET_PURPOSE_STORAGE_KEY);
+    }
+  }, [locationEmail, location.state?.email, location.state?.purpose]);
 
   useEffect(() => {
     if (!email) {
@@ -94,6 +131,9 @@ export default function VerifyOtpPage() {
     try {
       if (isForgotPassword) {
         const result = await verifyResetOtp(email, code);
+
+        sessionStorage.removeItem(RESET_EMAIL_STORAGE_KEY);
+        sessionStorage.removeItem(RESET_PURPOSE_STORAGE_KEY);
 
         navigate("/reset-password", {
           state: {
@@ -450,9 +490,15 @@ export default function VerifyOtpPage() {
 
           <div className="auth-switch" style={{ marginTop: 16 }}>
             <button
-              onClick={() =>
-                navigate(isForgotPassword ? "/forgot-password" : "/login")
-              }
+              onClick={() => {
+                if (isForgotPassword) {
+                  sessionStorage.removeItem(RESET_EMAIL_STORAGE_KEY);
+                  sessionStorage.removeItem(RESET_PURPOSE_STORAGE_KEY);
+                  navigate("/forgot-password");
+                } else {
+                  navigate("/login");
+                }
+              }}
             >
               {isForgotPassword ? "← Back" : "← Back to Login"}
             </button>

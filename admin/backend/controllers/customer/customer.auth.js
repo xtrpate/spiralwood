@@ -22,6 +22,7 @@ require("dotenv").config();
 const OTP_EXPIRY_MINUTES = 15;
 const RESET_OTP_EXPIRY_MINUTES = 15;
 const RESET_TOKEN_EXPIRY = "10m";
+const PASSWORD_HISTORY_LIMIT = 3;
 
 const generateOtp = () => crypto.randomInt(100000, 1000000).toString();
 
@@ -1619,12 +1620,18 @@ exports.resetPassword = async (req, res) => {
     });
   }
 
+  let connection;
+
   try {
-    const [rows] = await db.query(
+    connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    const [rows] = await connection.query(
       `
       SELECT
         id,
         email,
+        password,
         role,
         is_verified,
         is_active,
@@ -1634,11 +1641,14 @@ exports.resetPassword = async (req, res) => {
       FROM users
       WHERE id = ?
       LIMIT 1
+      FOR UPDATE
       `,
       [payload.id],
     );
 
     if (!rows.length) {
+      await connection.rollback();
+
       return res.status(404).json({
         message: "Account not found.",
       });
@@ -1647,30 +1657,40 @@ exports.resetPassword = async (req, res) => {
     const user = rows[0];
 
     if (String(user.role).trim() !== "customer") {
+      await connection.rollback();
+
       return res.status(401).json({
         message: "Invalid reset session. Please request a new reset code.",
       });
     }
 
     if (!user.is_verified) {
+      await connection.rollback();
+
       return res.status(403).json({
         message: "Please verify your email before resetting your password.",
       });
     }
 
     if (!user.is_active) {
+      await connection.rollback();
+
       return res.status(403).json({
         message: "Your account has been deactivated. Please contact support.",
       });
     }
 
     if (user.otp_purpose !== "password_reset") {
+      await connection.rollback();
+
       return res.status(401).json({
         message: "Invalid reset session. Please request a new reset code.",
       });
     }
 
     if (!user.otp_expires || new Date() > new Date(user.otp_expires)) {
+      await connection.rollback();
+
       return res.status(401).json({
         message:
           "Your reset session has expired. Please request a new reset code.",
@@ -1683,14 +1703,60 @@ exports.resetPassword = async (req, res) => {
     );
 
     if (!resetSessionMatches) {
+      await connection.rollback();
+
       return res.status(401).json({
         message: "Invalid reset session. Please request a new reset code.",
       });
     }
 
+    // ------------------------------------------------------------
+    // PASSWORD REUSE CHECK
+    // ------------------------------------------------------------
+
+    const sameAsCurrent = await bcrypt.compare(
+      normalizedNewPassword,
+      user.password || "",
+    );
+
+    if (sameAsCurrent) {
+      await connection.rollback();
+
+      return res.status(400).json({
+        message: "You cannot reuse your current password.",
+      });
+    }
+
+    const [historyRows] = await connection.query(
+      `
+      SELECT password_hash
+      FROM user_password_history
+      WHERE user_id = ?
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+      `,
+      [user.id, PASSWORD_HISTORY_LIMIT],
+    );
+
+    for (const history of historyRows) {
+      const sameAsPrevious = await bcrypt.compare(
+        normalizedNewPassword,
+        history.password_hash,
+      );
+
+      if (sameAsPrevious) {
+        await connection.rollback();
+
+        return res.status(400).json({
+          message:
+            "You cannot reuse your current password or any of your previous 3 passwords.",
+        });
+      }
+    }
+
     const hashedPassword = await bcrypt.hash(normalizedNewPassword, 12);
 
-    const [updateResult] = await db.query(
+    const [updateResult] = await connection.query(
       `
       UPDATE users
       SET
@@ -1708,18 +1774,63 @@ exports.resetPassword = async (req, res) => {
     );
 
     if (updateResult.affectedRows !== 1) {
+      await connection.rollback();
+
       return res.status(401).json({
         message:
           "Your reset session has expired. Please request a new reset code.",
       });
     }
 
+    // Save the old password as the newest previous password.
+    await connection.query(
+      `
+      INSERT INTO user_password_history (user_id, password_hash)
+      VALUES (?, ?)
+      `,
+      [user.id, user.password],
+    );
+
+    // Keep only the 3 most recent previous passwords.
+    const [historyToKeep] = await connection.query(
+      `
+      SELECT id
+      FROM user_password_history
+      WHERE user_id = ?
+      ORDER BY created_at DESC, id DESC
+      `,
+      [user.id],
+    );
+
+    const oldHistoryIds = historyToKeep
+      .slice(PASSWORD_HISTORY_LIMIT)
+      .map((row) => row.id);
+
+    if (oldHistoryIds.length > 0) {
+      const placeholders = oldHistoryIds.map(() => "?").join(",");
+
+      await connection.query(
+        `
+        DELETE FROM user_password_history
+        WHERE user_id = ?
+          AND id IN (${placeholders})
+        `,
+        [user.id, ...oldHistoryIds],
+      );
+    }
+
+    await connection.commit();
+
     await writeAuditLogSafe({
       userId: user.id,
       action: "password_reset_completed",
       tableName: "users",
       recordId: user.id,
-      newValues: { password_reset: true, method: "email_otp" },
+      newValues: {
+        password_reset: true,
+        method: "email_otp",
+        password_history_checked: true,
+      },
       ipAddress: req.ip || null,
     });
 
@@ -1727,11 +1838,23 @@ exports.resetPassword = async (req, res) => {
       message: "Password reset successful. You can now log in.",
     });
   } catch (err) {
+    if (connection) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        console.error("[reset-password rollback]", rollbackError);
+      }
+    }
+
     console.error("[reset-password]", err);
 
     return res.status(500).json({
       message: "Server error. Please try again.",
     });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
   }
 };
 
