@@ -193,7 +193,14 @@ export default function ProductsPage() {
 
   const navigate = useNavigate();
   const [products, setProducts] = useState([]);
-  const [allProducts, setAllProducts] = useState([]);
+  const [productSummary, setProductSummary] = useState({
+    total: 0,
+    inStock: 0,
+    outOfStock: 0,
+    published: 0,
+    featuredStandard: 0,
+    categories: [],
+  });
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -279,19 +286,16 @@ export default function ProductsPage() {
 
   const loadSummary = useCallback(async () => {
     try {
-      const [activeResponse, disabledResponse] = await Promise.all([
-        api.get("/products", {
-          params: { is_active: 1, is_published: 1, page: 1, limit: 5000 },
-        }),
-        api.get("/products", {
-          params: { is_active: 0, is_published: 1, page: 1, limit: 5000 },
-        }),
-      ]);
+      const { data } = await api.get("/products/summary");
 
-      setAllProducts([
-        ...(activeResponse.data?.products || []),
-        ...(disabledResponse.data?.products || []),
-      ]);
+      setProductSummary({
+        total: Number(data?.total || 0),
+        inStock: Number(data?.inStock || 0),
+        outOfStock: Number(data?.outOfStock || 0),
+        published: Number(data?.published || 0),
+        featuredStandard: Number(data?.featuredStandard || 0),
+        categories: Array.isArray(data?.categories) ? data.categories : [],
+      });
     } catch {
       // Keep the list usable even if the secondary summary request fails.
     }
@@ -326,50 +330,33 @@ export default function ProductsPage() {
     };
   }, [actionMenuId]);
 
-  const categories = useMemo(() => {
-    const map = new Map();
-
-    allProducts.forEach((product) => {
-      const id = product.category_id;
-      const name = product.category_name;
-      if (id && name) map.set(String(id), name);
-    });
-
-    return [...map.entries()]
-      .map(([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [allProducts]);
-
-  const summary = useMemo(() => {
-    const readyMade = allProducts.filter(
-      (product) => product.type !== "blueprint",
-    );
-
-    return {
-      total: allProducts.length,
-      inStock: readyMade.filter(
-        (product) => product.stock_status === "in_stock",
-      ).length,
-      outOfStock: readyMade.filter(
-        (product) => product.stock_status === "out_of_stock",
-      ).length,
-      published: allProducts.length,
-    };
-  }, [allProducts]);
-
-  const newProductsCount = useMemo(
+  const categories = useMemo(
     () =>
-      allProducts.filter(
-        (product) =>
-          product.type === "standard" && Number(product.is_featured) === 1,
-      ).length,
-    [allProducts],
+      (productSummary.categories || [])
+        .map((category) => ({
+          id: String(category.id),
+          name: category.name,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [productSummary.categories],
   );
 
+  const summary = useMemo(
+    () => ({
+      total: Number(productSummary.total || 0),
+      inStock: Number(productSummary.inStock || 0),
+      outOfStock: Number(productSummary.outOfStock || 0),
+      published: Number(productSummary.published || 0),
+    }),
+    [productSummary],
+  );
+
+  const newProductsCount = Number(productSummary.featuredStandard || 0);
+
   const toggleFeatured = async (id) => {
-    const targetProduct =
-      allProducts.find((product) => Number(product.id) === Number(id)) ||
-      products.find((product) => Number(product.id) === Number(id));
+    const targetProduct = products.find(
+      (product) => Number(product.id) === Number(id),
+    );
 
     if (!targetProduct) {
       toast.error("Product not found.");
