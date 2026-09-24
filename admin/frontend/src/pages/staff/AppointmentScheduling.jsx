@@ -887,8 +887,10 @@ export default function AppointmentScheduling() {
 
       if (status === "pending") {
         setAdminActiveTab("new");
+      } else if (status === "in_progress") {
+        setAdminActiveTab("in_progress");
       } else if (status === "awaiting_staff_acceptance") {
-        setAdminActiveTab("awaiting");
+        setAdminActiveTab("confirmed");
       } else if (status === "confirmed") {
         setAdminActiveTab("confirmed");
       } else if (["completed", "rejected", "cancelled"].includes(status)) {
@@ -975,11 +977,10 @@ export default function AppointmentScheduling() {
     [appointments],
   );
 
-  const adminAwaitingAcceptance = useMemo(
+  const adminInProgressAppointments = useMemo(
     () =>
       appointments.filter(
-        (a) =>
-          String(a.status || "").toLowerCase() === "awaiting_staff_acceptance",
+        (a) => String(a.status || "").toLowerCase() === "in_progress",
       ),
     [appointments],
   );
@@ -1229,8 +1230,8 @@ export default function AppointmentScheduling() {
   };
 
   const filteredAdminNewRequests = adminNewRequests.filter(matchesAdminFilters);
-  const filteredAdminAwaitingAcceptance =
-    adminAwaitingAcceptance.filter(matchesAdminFilters);
+  const filteredAdminInProgressAppointments =
+    adminInProgressAppointments.filter(matchesAdminFilters);
   const filteredAdminConfirmedAppointments =
     adminConfirmedAppointments.filter(matchesAdminFilters);
   const filteredAdminClosedAppointments =
@@ -1239,8 +1240,8 @@ export default function AppointmentScheduling() {
   const adminFilteredCount =
     adminActiveTab === "new"
       ? filteredAdminNewRequests.length
-      : adminActiveTab === "awaiting"
-        ? filteredAdminAwaitingAcceptance.length
+      : adminActiveTab === "in_progress"
+        ? filteredAdminInProgressAppointments.length
         : adminActiveTab === "confirmed"
           ? filteredAdminConfirmedAppointments.length
           : adminActiveTab === "history"
@@ -1475,9 +1476,9 @@ export default function AppointmentScheduling() {
             />
 
             <AdminSummaryCard
-              label="Reviewing Schedule"
-              count={adminAwaitingAcceptance.length}
-              hint="Waiting for staff response"
+              label="In Progress"
+              count={adminInProgressAppointments.length}
+              hint="Appointments currently being handled"
             />
 
             <AdminSummaryCard
@@ -1584,15 +1585,15 @@ export default function AppointmentScheduling() {
             <button
               type="button"
               role="tab"
-              aria-selected={adminActiveTab === "awaiting"}
+              aria-selected={adminActiveTab === "in_progress"}
               style={
-                adminActiveTab === "awaiting"
+                adminActiveTab === "in_progress"
                   ? adminTabButtonActiveStyle
                   : adminTabButtonStyle
               }
-              onClick={() => setAdminActiveTab("awaiting")}
+              onClick={() => setAdminActiveTab("in_progress")}
             >
-              Reviewing Schedule
+              In Progress
             </button>
 
             <button
@@ -2684,12 +2685,12 @@ export default function AppointmentScheduling() {
             </SectionCard>
           )}
 
-          {adminActiveTab === "awaiting" && (
+          {adminActiveTab === "in_progress" && (
             <SectionCard
-              title="Reviewing Schedule"
-              subtitle="Assigned requests waiting for staff response."
+              title="In Progress Appointments"
+              subtitle="Appointments currently being handled by indoor staff."
             >
-              {filteredAdminAwaitingAcceptance.length === 0 ? (
+              {filteredAdminInProgressAppointments.length === 0 ? (
                 <p style={emptyStateStyle}>No appointments to show.</p>
               ) : (
                 <div style={adminTableScrollStyle}>
@@ -2705,7 +2706,7 @@ export default function AppointmentScheduling() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredAdminAwaitingAcceptance.map((a) => (
+                      {filteredAdminInProgressAppointments.map((a) => (
                         <tr
                           key={a.id}
                           id={`appointment-row-${a.id}`}
@@ -2761,7 +2762,7 @@ export default function AppointmentScheduling() {
           {adminActiveTab === "confirmed" && (
             <SectionCard
               title="Confirmed Appointments"
-              subtitle="Accepted appointments currently active."
+              subtitle="Confirmed appointments assigned to indoor staff."
             >
               {filteredAdminConfirmedAppointments.length === 0 ? (
                 <p style={emptyStateStyle}>No appointments to show.</p>
@@ -2837,7 +2838,7 @@ export default function AppointmentScheduling() {
           {adminActiveTab === "history" && (
             <SectionCard
               title="Appointment History"
-              subtitle="Completed, rejected, and cancelled appointments."
+              subtitle="Done and cancelled appointments."
             >
               {filteredAdminClosedAppointments.length === 0 ? (
                 <p style={emptyStateStyle}>No appointments to show.</p>
