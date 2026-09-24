@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FileDown, Search, Eye, X } from "lucide-react";
 import toast from "react-hot-toast";
@@ -29,6 +29,48 @@ const formatMoney = (value) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+
+const PAGE_SIZE = 20;
+const EXPORT_PAGE_SIZE = 250;
+
+const EMPTY_SUMMARY = {
+  total_revenue: 0,
+  total_cogs: 0,
+  total_gross_profit: 0,
+  overall_margin_percentage: 0,
+};
+
+const buildReportParams = ({
+  page,
+  limit,
+  search,
+  orderType,
+  dateFilter,
+  customStart,
+  customEnd,
+  includeSummary = true,
+}) => {
+  const params = {
+    page,
+    limit,
+    date_filter: dateFilter,
+  };
+
+  const normalizedSearch = String(search || "").trim();
+  if (normalizedSearch) params.search = normalizedSearch;
+  if (orderType !== "all") params.order_type = orderType;
+
+  if (dateFilter === "custom" && customStart && customEnd) {
+    params.from = customStart;
+    params.to = customEnd;
+  }
+
+  if (!includeSummary) {
+    params.include_summary = 0;
+  }
+
+  return params;
+};
 
 const formatDateTime = (value) => {
   if (!value) return "—";
@@ -77,6 +119,7 @@ export default function SalesProfitabilityReportPage() {
   const navigate = useNavigate();
 
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [orderType, setOrderType] = useState("all");
   const [dateFilter, setDateFilter] = useState("all");
   const [customStart, setCustomStart] = useState("");
@@ -176,81 +219,124 @@ export default function SalesProfitabilityReportPage() {
   };
 
   const [rows, setRows] = useState([]);
-  const [summary, setSummary] = useState({
-    total_revenue: 0,
-    total_cogs: 0,
-    total_gross_profit: 0,
-    overall_margin_percentage: 0,
-  });
+  const [total, setTotal] = useState(0);
+  const [summary, setSummary] = useState(EMPTY_SUMMARY);
 
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [generatedAt, setGeneratedAt] = useState("");
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, orderType, dateFilter, customStart, customEnd]);
+
   const loadReport = useCallback(async () => {
     setLoading(true);
     try {
       const { data } = await api.get("/reports/sales-profitability", {
-        params: { limit: 5000 },
+        params: buildReportParams({
+          page,
+          limit: PAGE_SIZE,
+          search: debouncedSearch,
+          orderType,
+          dateFilter,
+          customStart,
+          customEnd,
+        }),
       });
+
       setRows(Array.isArray(data?.records) ? data.records : []);
-      setSummary(data?.summary || summary);
+      setTotal(Number(data?.total || 0));
+      setSummary({ ...EMPTY_SUMMARY, ...(data?.summary || {}) });
       setGeneratedAt(new Date().toISOString());
     } catch (err) {
-      toast.error("Failed to load Sales & Profitability report.");
+      toast.error(
+        err?.response?.data?.message ||
+          "Failed to load Sales & Profitability report.",
+      );
       setRows([]);
+      setTotal(0);
+      setSummary(EMPTY_SUMMARY);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [
+    page,
+    debouncedSearch,
+    orderType,
+    dateFilter,
+    customStart,
+    customEnd,
+  ]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
+
+  useEffect(() => {
     loadReport();
   }, [loadReport]);
 
-  const filteredRows = useMemo(() => {
-    return rows.filter((row) => {
-      // Order Type Filter
-      if (orderType !== "all" && row.order_type !== orderType) return false;
-
-      // Search Filter
-      const query = search.trim().toLowerCase();
-      if (query) {
-        const matchStr =
-          `${row.order_number} ${row.customer_name}`.toLowerCase();
-        if (!matchStr.includes(query)) return false;
-      }
-
-      // Local Date Filter (Fallback if backend doesn't filter perfectly)
-      if (dateFilter !== "all" && customStart && customEnd) {
-        const rowDate = new Date(row.date_sold);
-        if (
-          rowDate < new Date(`${customStart}T00:00:00`) ||
-          rowDate > new Date(`${customEnd}T23:59:59`)
-        ) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [rows, search, orderType, dateFilter, customStart, customEnd]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [search, orderType, dateFilter, customStart, customEnd]);
-
-  const paginatedRows = useMemo(() => {
-    const start = (page - 1) * 20;
-    return filteredRows.slice(start, start + 20);
-  }, [filteredRows, page]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / 20));
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const exportExcel = async () => {
     setExporting(true);
     try {
+      const firstResponse = await api.get("/reports/sales-profitability", {
+        params: buildReportParams({
+          page: 1,
+          limit: EXPORT_PAGE_SIZE,
+          search,
+          orderType,
+          dateFilter,
+          customStart,
+          customEnd,
+        }),
+      });
+
+      const exportRows = Array.isArray(firstResponse.data?.records)
+        ? [...firstResponse.data.records]
+        : [];
+      const exportTotal = Number(firstResponse.data?.total || 0);
+
+      if (exportRows.length === 0 || exportTotal === 0) {
+        toast.error("No records match the current filters.");
+        return;
+      }
+
+      const exportPages = Math.max(
+        1,
+        Math.ceil(exportTotal / EXPORT_PAGE_SIZE),
+      );
+
+      for (let exportPage = 2; exportPage <= exportPages; exportPage += 1) {
+        const { data } = await api.get("/reports/sales-profitability", {
+          params: buildReportParams({
+            page: exportPage,
+            limit: EXPORT_PAGE_SIZE,
+            search,
+            orderType,
+            dateFilter,
+            customStart,
+            customEnd,
+            includeSummary: false,
+          }),
+        });
+
+        const batch = Array.isArray(data?.records) ? data.records : [];
+        exportRows.push(...batch);
+
+        if (batch.length < EXPORT_PAGE_SIZE) break;
+      }
+
       const workbook = XLSX.utils.book_new();
 
       const headerStyle = {
@@ -292,7 +378,7 @@ export default function SalesProfitabilityReportPage() {
         "Margin (%)",
       ];
 
-      const mappedData = filteredRows.map((r) => [
+      const mappedData = exportRows.map((r) => [
         formatDateTime(r.date_sold),
         r.order_number,
         r.customer_name,
@@ -370,7 +456,7 @@ export default function SalesProfitabilityReportPage() {
             type="button"
             className="sales-button sales-button-primary"
             onClick={exportExcel}
-            disabled={loading || filteredRows.length === 0 || exporting}
+            disabled={loading || total === 0 || exporting}
           >
             <FileDown size={14} style={{ marginRight: 6 }} />
             {exporting ? "Exporting..." : "Export Excel"}
@@ -513,7 +599,7 @@ export default function SalesProfitabilityReportPage() {
                 <p>Detailed financial breakdown of every fulfilled order.</p>
               </div>
               <div className="sales-section-count">
-                {filteredRows.length} record(s)
+                {total} record(s)
               </div>
             </div>
 
@@ -533,13 +619,13 @@ export default function SalesProfitabilityReportPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRows.length === 0 ? (
+                  {rows.length === 0 ? (
                     <EmptyRow
                       colSpan={9}
                       text="No records match the current filters."
                     />
                   ) : (
-                    paginatedRows.map((row) => (
+                    rows.map((row) => (
                       <tr
                         key={row.order_id}
                         className="sales-clickable-row"
@@ -600,12 +686,11 @@ export default function SalesProfitabilityReportPage() {
               </table>
             </div>
 
-            {filteredRows.length > 0 && (
+            {rows.length > 0 && (
               <div className="sales-pagination-footer">
                 <span className="sales-page-info">
-                  Showing {(page - 1) * 20 + 1} to{" "}
-                  {Math.min(page * 20, filteredRows.length)} of{" "}
-                  {filteredRows.length} records
+                  Showing {(page - 1) * PAGE_SIZE + 1} to{" "}
+                  {Math.min(page * PAGE_SIZE, total)} of {total} records
                 </span>
                 <div className="sales-page-controls">
                   <button
