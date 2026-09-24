@@ -1,5 +1,11 @@
 // src/components/layout/AdminLayout.jsx – Sidebar + topbar shell
-import React, { useState, useEffect, useRef } from "react";
+import React, {
+  Suspense,
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+} from "react";
 import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
 import {
   ArrowLeftRight,
@@ -10,6 +16,7 @@ import {
   Calendar,
   CalendarCheck2,
   ChartCandlestick,
+  Minus,
   ClipboardList,
   Database,
   Download,
@@ -18,7 +25,9 @@ import {
   History,
   Home,
   LogOut,
+  Menu,
   Package,
+  Plus,
   RefreshCw,
   RotateCcw,
   Ruler,
@@ -58,15 +67,6 @@ const getLogoUrl = (value) => {
 };
 
 const NAV_ITEMS = [
-  { section: "Dashboard" },
-  {
-    label: "Dashboard",
-    path: "/admin/dashboard",
-    icon: Home,
-    permission: "dashboard.view",
-    roles: ["admin", "staff"],
-  },
-
   { section: "Maintenance" },
   {
     label: "Products",
@@ -166,7 +166,7 @@ const NAV_ITEMS = [
     roles: ["admin", "staff"],
   },
 
-  { section: "Blueprints & Production" },
+  { section: "Blueprints" },
   {
     label: "Blueprint Management",
     path: "/admin/blueprints",
@@ -294,11 +294,59 @@ const NAV_ITEMS = [
   },
 ];
 
+const SECTION_ICONS = {
+  Maintenance: Package,
+  Transactions: ArrowLeftRight,
+  Operations: ClipboardList,
+  Blueprints: Ruler,
+  Reports: BarChart3,
+  Administration: Users,
+  Website: Settings,
+};
+
+const getSectionForPath = (pathname) => {
+  let currentSection = null;
+
+  for (const item of NAV_ITEMS) {
+    if (item.section) {
+      currentSection = item.section;
+    } else if (
+      item.path &&
+      (pathname === item.path || pathname.startsWith(`${item.path}/`))
+    ) {
+      return currentSection;
+    }
+  }
+
+  return null;
+};
+
+function AdminRouteLoadingFallback() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      style={{
+        minHeight: "40vh",
+        display: "grid",
+        placeItems: "center",
+        padding: "32px 16px",
+        color: "#71717a",
+        fontSize: 13,
+      }}
+    >
+      Loading...
+    </div>
+  );
+}
+
 export default function AdminLayout() {
   const { user, logout, hasPermission } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [open, setOpen] = useState(true);
+  const [openSection, setOpenSection] = useState("Dashboard");
+  const [sidebarHovering, setSidebarHovering] = useState(false);
   // WISDOM ADMIN OFFICIAL LOGO V1
   const [brandLogo, setBrandLogo] = useState("");
   const { clearCart } = useCart();
@@ -310,10 +358,20 @@ export default function AdminLayout() {
     }
   }, [location.pathname]);
 
+  useLayoutEffect(() => {
+    const activeSection = getSectionForPath(location.pathname);
+
+    if (activeSection) {
+      setOpenSection(activeSection);
+    }
+  }, [location.pathname]);
+
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [logoutFeedbackStatus, setLogoutFeedbackStatus] = useState("loading");
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const sidebarExpanded = open || sidebarHovering || mobileOpen;
 
   useEffect(() => {
     let active = true;
@@ -400,12 +458,13 @@ export default function AdminLayout() {
     return roleAllowed && permissionAllowed;
   });
 
-  // 👉 EXTRA POLISH: Hide empty section headers so your sidebar looks perfectly clean
   const visibleItems = baseVisibleItems.filter((item, index, array) => {
     if (!item.section) return true;
     const nextItem = array[index + 1];
     return nextItem && !nextItem.section; // Only keep the section header if it has links under it
   });
+
+  let currentSection = null;
 
   return (
     <div
@@ -426,11 +485,13 @@ export default function AdminLayout() {
       )}
       <aside
         className={`wisdom-sidebar ${mobileOpen ? "mobile-open" : ""}`}
+        onMouseEnter={() => setSidebarHovering(true)}
+        onMouseLeave={() => setSidebarHovering(false)}
         style={{
-          width: open ? 240 : 64,
+          width: sidebarExpanded ? 240 : 64,
           background: "#0a0a0a",
           color: "#e5e7eb",
-          transition: "width .2s",
+          transition: "width .2s ease",
           overflow: "hidden",
           flexShrink: 0,
           display: "flex",
@@ -470,7 +531,7 @@ export default function AdminLayout() {
                 }}
               />
             )}
-            {open && (
+            {sidebarExpanded && (
               <span
                 style={{
                   fontWeight: 600,
@@ -495,6 +556,53 @@ export default function AdminLayout() {
           </button>
         </div>
 
+        {hasPermission("dashboard.view") && (
+          <div
+            style={{
+              padding: "12px 0 4px 0",
+            }}
+          >
+            <NavLink
+              to="/admin/dashboard"
+              end
+              className="wisdom-sidebar-link wisdom-sidebar-primary-link"
+              title={!sidebarExpanded ? "Dashboard" : undefined}
+              onClick={() => setMobileOpen(false)}
+              style={({ isActive }) => ({
+                display: "flex",
+                alignItems: "center",
+                justifyContent: sidebarExpanded ? "flex-start" : "center",
+                gap: sidebarExpanded ? 10 : 0,
+                margin: "0 8px",
+                padding: sidebarExpanded ? "9px 10px" : "9px 0",
+                color: isActive ? "#ffffff" : "#a1a1aa",
+                background: isActive ? "#27272a" : "transparent",
+                borderRadius: 6,
+                textDecoration: "none",
+                fontSize: 13.5,
+                fontWeight: isActive ? 600 : 500,
+                whiteSpace: "nowrap",
+                transition: "background .15s, color .15s",
+              })}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 18,
+                  height: 18,
+                  flex: "0 0 18px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Home size={16} strokeWidth={1.7} />
+              </span>
+              {sidebarExpanded && <span>Dashboard</span>}
+            </NavLink>
+          </div>
+        )}
+
         <nav
           style={{
             flex: 1,
@@ -504,29 +612,91 @@ export default function AdminLayout() {
         >
           {visibleItems.map((item, i) => {
             if (item.section) {
-              return open ? (
-                <div
+              currentSection = item.section;
+
+              const SectionIcon = SECTION_ICONS[item.section];
+
+              return (
+                <button
                   key={i}
+                  type="button"
+                  className="wisdom-sidebar-section-toggle"
+                  onClick={() => {
+                    setOpenSection((current) =>
+                      current === item.section ? null : item.section,
+                    );
+                  }}
+                  aria-expanded={openSection === item.section}
+                  aria-label={`Toggle ${item.section} menu`}
+                  title={!sidebarExpanded ? item.section : undefined}
                   style={{
-                    padding: "12px 16px 4px",
-                    fontSize: 10,
-                    textTransform: "uppercase",
-                    letterSpacing: 1.2,
+                    width: "100%",
+                    minHeight: 36,
+                    padding: sidebarExpanded ? "8px 12px" : "8px 0",
+                    border: "none",
+                    background: "transparent",
                     color: "#71717a",
-                    fontWeight: 700,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: sidebarExpanded
+                      ? "space-between"
+                      : "center",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    fontSize: 11,
+                    textTransform: "uppercase",
+                    letterSpacing: 1.1,
+                    fontWeight: 600,
+                    textAlign: "left",
                   }}
                 >
-                  {item.section}
-                </div>
-              ) : (
-                <div
-                  key={i}
-                  style={{
-                    borderTop: "1px solid #27272a",
-                    margin: "8px 0",
-                  }}
-                />
+                  <span
+                    className="wisdom-sidebar-section-label"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: sidebarExpanded ? "flex-start" : "center",
+                      gap: 9,
+                      minWidth: 0,
+                    }}
+                  >
+                    {SectionIcon && (
+                      <SectionIcon
+                        className="wisdom-sidebar-section-icon"
+                        size={15}
+                        strokeWidth={1.8}
+                        aria-hidden="true"
+                      />
+                    )}
+
+                    {sidebarExpanded && (
+                      <span
+                        style={{
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {item.section}
+                      </span>
+                    )}
+                  </span>
+
+                  {sidebarExpanded &&
+                    (openSection === item.section ? (
+                      <Minus size={14} strokeWidth={1.8} aria-hidden="true" />
+                    ) : (
+                      <Plus size={14} strokeWidth={1.8} aria-hidden="true" />
+                    ))}
+                </button>
               );
+            }
+
+            if (
+              currentSection &&
+              (!sidebarExpanded || currentSection !== openSection)
+            ) {
+              return null;
             }
 
             const Icon = item.icon;
@@ -536,39 +706,55 @@ export default function AdminLayout() {
                 key={item.path}
                 to={item.path}
                 end
-                title={!open ? item.label : undefined}
+                className={`wisdom-sidebar-link ${
+                  currentSection
+                    ? "wisdom-sidebar-subnav-link"
+                    : "wisdom-sidebar-primary-link"
+                }`}
+                title={!sidebarExpanded ? item.label : undefined}
                 onClick={() => setMobileOpen(false)}
                 style={({ isActive }) => ({
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: open ? "flex-start" : "center",
-                  gap: open ? 10 : 0,
-                  margin: "2px 8px",
-                  padding: open ? "9px 10px" : "9px 0",
+                  justifyContent: currentSection
+                    ? "flex-start"
+                    : sidebarExpanded
+                      ? "flex-start"
+                      : "center",
+                  gap: currentSection ? 0 : sidebarExpanded ? 10 : 0,
+                  margin: currentSection ? "0 8px 0 30px" : "2px 8px",
+                  padding: currentSection
+                    ? "8px 10px 8px 20px"
+                    : sidebarExpanded
+                      ? "9px 10px"
+                      : "9px 0",
                   color: isActive ? "#ffffff" : "#a1a1aa",
                   background: isActive ? "#27272a" : "transparent",
-                  borderRadius: 6,
+                  borderRadius: currentSection ? "0 6px 6px 0" : 6,
                   textDecoration: "none",
-                  fontSize: 13,
+                  fontSize: currentSection ? 12.5 : 13.5,
                   fontWeight: isActive ? 600 : 500,
                   whiteSpace: "nowrap",
                   transition: "background .15s, color .15s",
                 })}
               >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: 18,
-                    height: 18,
-                    flex: "0 0 18px",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Icon size={16} strokeWidth={1.7} />
-                </span>
-                {open && <span>{item.label}</span>}
+                {!currentSection && (
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: 18,
+                      height: 18,
+                      flex: "0 0 18px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Icon size={16} strokeWidth={1.7} />
+                  </span>
+                )}
+
+                {sidebarExpanded && <span>{item.label}</span>}
               </NavLink>
             );
           })}
@@ -578,20 +764,21 @@ export default function AdminLayout() {
           {/* WISDOM ADMIN YELLOW BELL LOGOUT ALIGNMENT V1 */}
           <button
             type="button"
+            className="wisdom-sidebar-logout"
             onClick={handleLogout}
-            title={!open ? "Logout" : undefined}
+            title={!sidebarExpanded ? "Logout" : undefined}
             aria-label="Logout"
             style={{
               width: "100%",
               minHeight: 36,
-              padding: open ? "9px 21px" : "9px 0",
+              padding: sidebarExpanded ? "9px 21px" : "9px 0",
               border: "none",
               borderLeft: "3px solid transparent",
               background: "transparent",
               color: "#a1a1aa",
               display: "flex",
               alignItems: "center",
-              justifyContent: open ? "flex-start" : "center",
+              justifyContent: sidebarExpanded ? "flex-start" : "center",
               gap: 10,
               cursor: "pointer",
               fontFamily: "inherit",
@@ -623,7 +810,7 @@ export default function AdminLayout() {
             >
               <LogOut size={16} strokeWidth={1.8} />
             </span>
-            {open && <span>Logout</span>}
+            {sidebarExpanded && <span>Logout</span>}
           </button>
         </nav>
 
@@ -686,6 +873,19 @@ export default function AdminLayout() {
 
           {/* WISDOM ADMIN HEADER COMPACT ACCOUNT V1 */}
           {/* WISDOM ADMIN HEADER SIZE ALIGNMENT V1.0.1 */}
+          <button
+            type="button"
+            className="wisdom-sidebar-header-toggle"
+            onClick={() => {
+              setOpen((current) => !current);
+              setSidebarHovering(false);
+            }}
+            aria-label={open ? "Minimize sidebar" : "Expand sidebar"}
+            title={open ? "Minimize sidebar" : "Expand sidebar"}
+          >
+            <Menu size={20} strokeWidth={1.8} />
+          </button>
+
           <NotificationBell headerCompact />
 
           <div
@@ -782,7 +982,8 @@ export default function AdminLayout() {
                 }}
               >
                 {user?.role === "admin"
-                  ? String(user?.authority_level || "").toLowerCase() === "admin"
+                  ? String(user?.authority_level || "").toLowerCase() ===
+                    "admin"
                     ? "Super Admin"
                     : "Manager"
                   : "Staff"}
@@ -799,7 +1000,9 @@ export default function AdminLayout() {
             overflowY: "auto",
           }}
         >
-          <Outlet />
+          <Suspense fallback={<AdminRouteLoadingFallback />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
       {showLogoutModal && (

@@ -12,6 +12,16 @@
    Breakpoints used project-wide for this pass: 1023px (tablet ceiling),
    767px (phone ceiling), 480px (small phone). */
 
+/* Prevent the browser's default body margin from creating a visible
+   gap beside the admin shell after reload. */
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+}
+
 /* Mobile-only controls are hidden by default (desktop-first safety net —
    even if this file fails to load for some reason, nothing new appears). */
 .wisdom-hamburger-btn,
@@ -21,6 +31,47 @@
 
 .wisdom-sidebar-overlay {
   display: none;
+}
+
+/* ==========================================================================
+   SIDEBAR VISUAL DESIGN
+   ========================================================================== */
+
+.wisdom-sidebar {
+  border-radius: 0 16px 16px 0;
+  overflow: hidden;
+  box-shadow: 4px 0 18px rgba(0, 0, 0, 0.08);
+}
+
+/* ==========================================================================
+   SIDEBAR SECTION DROPDOWN BUTTONS
+   ========================================================================== */
+
+.wisdom-sidebar-section-toggle {
+  width: calc(100% - 16px) !important;
+  min-height: 36px;
+  margin: 5px 8px 3px !important;
+  padding: 8px 12px !important;
+  border-radius: 8px !important;
+  box-sizing: border-box;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.wisdom-sidebar-section-toggle:hover {
+  background: #18181b !important;
+  color: #ffffff !important;
+}
+
+.wisdom-sidebar-section-toggle[aria-expanded="true"] {
+  color: #e4e4e7 !important;
+}
+
+.wisdom-sidebar-section-toggle:hover .wisdom-sidebar-section-icon,
+.wisdom-sidebar-section-toggle[aria-expanded="true"]
+  .wisdom-sidebar-section-icon {
+  color: #ffffff;
 }
 
 @media (max-width: 1023px) {
@@ -50,9 +101,10 @@
     transform: translateX(0);
   }
 
-  /* Desktop collapse arrow doesn't apply to an off-canvas drawer. */
+  /* Sidebar width collapse control is intentionally hidden.
+   The existing JSX/functionality remains untouched. */
   .wisdom-sidebar-collapse-toggle {
-    display: none;
+    display: none !important;
   }
 
   .wisdom-sidebar-close {
@@ -174,7 +226,15 @@
 
 /* WISDOM SIDEBAR REFERENCE TYPOGRAPHY V1.0.1 */
 .wisdom-sidebar {
-  font-family: "Inter", "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif !important;
+  font-family:
+    "Inter",
+    "Segoe UI Variable Text",
+    "Segoe UI Variable",
+    "Segoe UI",
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif !important;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -206,4 +266,85 @@
   font-size: 13px !important;
   font-weight: 400 !important;
   letter-spacing: -0.012em !important;
+}
+
+/* ==========================================================================
+   DESKTOP SIDEBAR HEADER TOGGLE
+   ========================================================================== */
+
+.wisdom-sidebar-header-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  margin-right: auto;
+  padding: 0;
+  border: 1px solid #d4d4d8;
+  background: #ffffff;
+  color: #18181b;
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.wisdom-sidebar-header-toggle:hover {
+  background: #f4f4f5;
+  border-color: #a1a1aa;
+}
+
+.wisdom-sidebar-header-toggle:focus-visible {
+  outline: 2px solid #71717a;
+  outline-offset: 2px;
+}
+
+/* ==========================================================================
+   SIDEBAR SUBNAVIGATION
+   ========================================================================== */
+
+.wisdom-sidebar-subnav-link {
+  position: relative;
+  min-height: 34px;
+  border-left: 1px solid #3f3f46 !important;
+}
+
+.wisdom-sidebar-subnav-link:hover {
+  background: #18181b !important;
+  color: #ffffff !important;
+}
+
+.wisdom-sidebar-subnav-link[aria-current="page"] {
+  background: #27272a !important;
+  color: #ffffff !important;
+}
+
+.wisdom-sidebar-subnav-link span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wisdom-sidebar-primary-link {
+  font-size: 13.5px !important;
+}
+
+.wisdom-sidebar-subnav-link {
+  font-size: 12.5px !important;
+}
+
+.wisdom-sidebar-primary-link {
+  font-size: 13.5px !important;
+  font-weight: 500 !important;
+}
+
+.wisdom-sidebar-logout {
+  font-size: 13.5px !important;
+  font-weight: 500 !important;
+}
+
+.wisdom-sidebar-collapse-toggle {
+  display: none !important;
 }
