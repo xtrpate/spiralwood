@@ -97,6 +97,48 @@ const OPERATION_TYPES = [
   { value: "warranty", label: "Warranty Claims", endpoint: "/warranty" },
 ];
 
+const PAGE_SIZE = 20;
+const TASK_EXPORT_PAGE_SIZE = 200;
+
+const EMPTY_TASK_SUMMARY = {
+  pending: 0,
+  completed: 0,
+};
+
+const buildOperationsTaskParams = ({
+  page,
+  limit,
+  search,
+  dateFilter,
+  customStart,
+  customEnd,
+  includeSummary = true,
+}) => {
+  const params = {
+    operations_report: 1,
+    page,
+    limit,
+    date_filter: dateFilter,
+  };
+
+  const normalizedSearch = String(search || "").trim();
+
+  if (normalizedSearch) {
+    params.search = normalizedSearch;
+  }
+
+  if (dateFilter === "custom") {
+    if (customStart) params.from = customStart;
+    if (customEnd) params.to = customEnd;
+  }
+
+  if (!includeSummary) {
+    params.include_summary = 0;
+  }
+
+  return params;
+};
+
 const formatDateTime = (value) => {
   if (!value) return "—";
   const parsed = new Date(value);
@@ -783,6 +825,7 @@ export default function OperationsReportPage() {
   const navigate = useNavigate();
   const [operationType, setOperationType] = useState("tasks");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
   // Date filter state
   const [dateFilter, setDateFilter] = useState("all");
@@ -810,6 +853,8 @@ export default function OperationsReportPage() {
   });
 
   const [rows, setRows] = useState([]);
+  const [taskTotal, setTaskTotal] = useState(0);
+  const [taskSummary, setTaskSummary] = useState(EMPTY_TASK_SUMMARY);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [generatedAt, setGeneratedAt] = useState("");
@@ -819,8 +864,57 @@ export default function OperationsReportPage() {
     [operationType],
   );
 
-  const loadReport = useCallback(async () => {
-    if (!activeOperation) return;
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  const loadTaskReport = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const { data } = await api.get("/tasks", {
+        params: buildOperationsTaskParams({
+          page,
+          limit: PAGE_SIZE,
+          search: debouncedSearch,
+          dateFilter,
+          customStart,
+          customEnd,
+        }),
+      });
+
+      setRows(Array.isArray(data?.tasks) ? data.tasks : []);
+      setTaskTotal(Number(data?.total || 0));
+      setTaskSummary({
+        ...EMPTY_TASK_SUMMARY,
+        ...(data?.summary || {}),
+      });
+      setGeneratedAt(new Date().toISOString());
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message || "Failed to load task assignments.",
+      );
+      setRows([]);
+      setTaskTotal(0);
+      setTaskSummary(EMPTY_TASK_SUMMARY);
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    page,
+    debouncedSearch,
+    dateFilter,
+    customStart,
+    customEnd,
+  ]);
+
+  const loadLegacyReport = useCallback(async () => {
+    if (!activeOperation || activeOperation.value === "tasks") return;
+
     setLoading(true);
 
     try {
@@ -847,11 +941,31 @@ export default function OperationsReportPage() {
     }
   }, [activeOperation]);
 
+  const loadReport = useCallback(() => {
+    if (operationType === "tasks") {
+      return loadTaskReport();
+    }
+
+    return loadLegacyReport();
+  }, [loadLegacyReport, loadTaskReport, operationType]);
+
   useEffect(() => {
-    loadReport();
-  }, [loadReport]);
+    if (operationType === "tasks") {
+      loadTaskReport();
+    }
+  }, [loadTaskReport, operationType]);
+
+  useEffect(() => {
+    if (operationType !== "tasks") {
+      loadLegacyReport();
+    }
+  }, [loadLegacyReport, operationType]);
 
   const filteredRows = useMemo(() => {
+    if (operationType === "tasks") {
+      return rows;
+    }
+
     return rows.filter((row) => {
       // 1. Date check
       const rowDate = getRowDate(row, operationType);
@@ -872,19 +986,36 @@ export default function OperationsReportPage() {
 
       return true;
     });
-  }, [rows, search, operationType, dateFilter, customStart, customEnd]);
+  }, [
+    rows,
+    search,
+    operationType,
+    dateFilter,
+    customStart,
+    customEnd,
+  ]);
 
   // Reset page to 1 when filters change
   useEffect(() => {
     setPage(1);
   }, [search, operationType, dateFilter, customStart, customEnd]);
 
-  const paginatedRows = useMemo(() => {
-    const start = (page - 1) * 20;
-    return filteredRows.slice(start, start + 20);
-  }, [filteredRows, page]);
+  const reportRecordCount =
+    operationType === "tasks" ? taskTotal : filteredRows.length;
 
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / 20));
+  const paginatedRows = useMemo(() => {
+    if (operationType === "tasks") {
+      return rows;
+    }
+
+    const start = (page - 1) * PAGE_SIZE;
+    return filteredRows.slice(start, start + PAGE_SIZE);
+  }, [filteredRows, operationType, page, rows]);
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(reportRecordCount / PAGE_SIZE),
+  );
 
   const openDetail = async (row) => {
     if (operationType === "delivery") {
@@ -994,6 +1125,14 @@ export default function OperationsReportPage() {
   };
 
   const summary = useMemo(() => {
+    if (operationType === "tasks") {
+      return {
+        total: taskTotal,
+        pending: Number(taskSummary?.pending || 0),
+        completed: Number(taskSummary?.completed || 0),
+      };
+    }
+
     const total = filteredRows.length;
     const pending = filteredRows.filter((r) =>
       ["pending", "scheduled", "in_progress"].includes(
@@ -1007,7 +1146,12 @@ export default function OperationsReportPage() {
     ).length;
 
     return { total, pending, completed };
-  }, [filteredRows]);
+  }, [
+    filteredRows,
+    operationType,
+    taskSummary,
+    taskTotal,
+  ]);
 
   const exportExcel = async () => {
     setExporting(true);
@@ -1039,8 +1183,55 @@ export default function OperationsReportPage() {
 
       let headers = [];
       let mappedData = [];
+      let exportRows = filteredRows;
 
       if (operationType === "tasks") {
+        const firstResponse = await api.get("/tasks", {
+          params: buildOperationsTaskParams({
+            page: 1,
+            limit: TASK_EXPORT_PAGE_SIZE,
+            search,
+            dateFilter,
+            customStart,
+            customEnd,
+          }),
+        });
+
+        exportRows = Array.isArray(firstResponse.data?.tasks)
+          ? [...firstResponse.data.tasks]
+          : [];
+
+        const exportTotal = Number(firstResponse.data?.total || 0);
+        const exportPages = Math.max(
+          1,
+          Math.ceil(exportTotal / TASK_EXPORT_PAGE_SIZE),
+        );
+
+        for (let exportPage = 2; exportPage <= exportPages; exportPage += 1) {
+          const { data } = await api.get("/tasks", {
+            params: buildOperationsTaskParams({
+              page: exportPage,
+              limit: TASK_EXPORT_PAGE_SIZE,
+              search,
+              dateFilter,
+              customStart,
+              customEnd,
+              includeSummary: false,
+            }),
+          });
+
+          const batch = Array.isArray(data?.tasks) ? data.tasks : [];
+          exportRows.push(...batch);
+
+          if (batch.length === 0) break;
+        }
+
+        if (exportRows.length !== exportTotal) {
+          throw new Error(
+            "Task assignment records changed while the export was being prepared. Please export again.",
+          );
+        }
+
         headers = [
           "Task ID",
           "Order / Reference",
@@ -1048,7 +1239,7 @@ export default function OperationsReportPage() {
           "Status",
           "Created At",
         ];
-        mappedData = filteredRows.map((r) => [
+        mappedData = exportRows.map((r) => [
           r.id,
           r.order_id || "—",
           r.assigned_to_name || "Unassigned",
@@ -1194,7 +1385,7 @@ export default function OperationsReportPage() {
             type="button"
             className="opr-button opr-button-primary"
             onClick={exportExcel}
-            disabled={loading || filteredRows.length === 0 || exporting}
+            disabled={loading || reportRecordCount === 0 || exporting}
           >
             {exporting ? "Exporting..." : "Export Excel"}
           </button>
@@ -1230,6 +1421,8 @@ export default function OperationsReportPage() {
             onClick={() => {
               setOperationType(item.value);
               setSearch("");
+              setDebouncedSearch("");
+              setPage(1);
             }}
             style={{
               padding: "10px 18px",
@@ -1351,7 +1544,7 @@ export default function OperationsReportPage() {
                 </p>
               </div>
               <div className="opr-section-count">
-                {filteredRows.length} record(s)
+                {reportRecordCount} record(s)
               </div>
             </div>
 
@@ -1399,7 +1592,7 @@ export default function OperationsReportPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRows.length === 0 ? (
+                  {paginatedRows.length === 0 ? (
                     <EmptyRow
                       colSpan={5}
                       text={`No ${activeOperation.label.toLowerCase()} match the current filters.`}
@@ -1487,7 +1680,7 @@ export default function OperationsReportPage() {
               </table>
             </div>
 
-            {filteredRows.length > 0 && (
+            {reportRecordCount > 0 && (
               <div
                 style={{
                   display: "flex",
@@ -1499,9 +1692,9 @@ export default function OperationsReportPage() {
                 }}
               >
                 <span style={{ fontSize: 11.5, color: "#71717a" }}>
-                  Showing {(page - 1) * 20 + 1} to{" "}
-                  {Math.min(page * 20, filteredRows.length)} of{" "}
-                  {filteredRows.length} records
+                  Showing {(page - 1) * PAGE_SIZE + 1} to{" "}
+                  {Math.min(page * PAGE_SIZE, reportRecordCount)} of{" "}
+                  {reportRecordCount} records
                 </span>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <button
