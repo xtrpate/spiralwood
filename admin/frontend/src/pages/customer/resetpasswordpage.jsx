@@ -4,6 +4,8 @@ import { Lock } from "lucide-react";
 import "./authpages.css";
 import useAuthStore from "../../store/authStore";
 
+const RESET_TOKEN_STORAGE_KEY = "wisdom_password_reset_token";
+
 const calcStrength = (pw) => {
   let score = 0;
 
@@ -27,12 +29,21 @@ export default function ResetPasswordPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const resetToken = location.state?.resetToken || "";
+  const locationResetToken = location.state?.resetToken || "";
+
+  const resetToken =
+    locationResetToken || sessionStorage.getItem(RESET_TOKEN_STORAGE_KEY) || "";
+
   useEffect(() => {
+    if (locationResetToken) {
+      sessionStorage.setItem(RESET_TOKEN_STORAGE_KEY, locationResetToken);
+    }
+
     if (!resetToken) {
+      sessionStorage.removeItem(RESET_TOKEN_STORAGE_KEY);
       navigate("/forgot-password", { replace: true });
     }
-  }, [resetToken, navigate]);
+  }, [locationResetToken, resetToken, navigate]);
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -51,6 +62,17 @@ export default function ResetPasswordPage() {
       return;
     }
 
+    const hasLetters = /[A-Za-z]/.test(password);
+    const hasNumbers = /[0-9]/.test(password);
+    const hasSpecial = /[^A-Za-z0-9]/.test(password);
+
+    if (!hasLetters || !hasNumbers || !hasSpecial) {
+      setError(
+        "Password must contain a mix of letters, numbers, and special characters.",
+      );
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
       return;
@@ -60,7 +82,11 @@ export default function ResetPasswordPage() {
 
     try {
       await resetPassword(resetToken, password);
+
+      sessionStorage.removeItem(RESET_TOKEN_STORAGE_KEY);
+
       navigate("/login", {
+        replace: true,
         state: {
           message: "Password reset successful. You can now sign in.",
         },
@@ -82,7 +108,10 @@ export default function ResetPasswordPage() {
           <button
             type="button"
             className="auth-close"
-            onClick={() => navigate("/")}
+            onClick={() => {
+              sessionStorage.removeItem(RESET_TOKEN_STORAGE_KEY);
+              navigate("/", { replace: true });
+            }}
             aria-label="Close"
           >
             ×
@@ -237,7 +266,15 @@ export default function ResetPasswordPage() {
           </form>
 
           <div className="auth-switch">
-            <button onClick={() => navigate("/login")}>Back to Login</button>
+            <button
+              type="button"
+              onClick={() => {
+                sessionStorage.removeItem(RESET_TOKEN_STORAGE_KEY);
+                navigate("/login", { replace: true });
+              }}
+            >
+              Back to Login
+            </button>
           </div>
         </div>
       </div>

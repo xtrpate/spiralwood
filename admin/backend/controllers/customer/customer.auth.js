@@ -33,7 +33,11 @@ const verifyOtpValue = async (storedValue, suppliedOtp) => {
   const stored = String(storedValue);
   const supplied = String(suppliedOtp || "").trim();
 
-  if (stored.startsWith("$2a$") || stored.startsWith("$2b$") || stored.startsWith("$2y$")) {
+  if (
+    stored.startsWith("$2a$") ||
+    stored.startsWith("$2b$") ||
+    stored.startsWith("$2y$")
+  ) {
     return bcrypt.compare(supplied, stored);
   }
 
@@ -47,9 +51,7 @@ const getGlobalEmailFooter = async () => {
     const [rows] = await db.query(
       "SELECT content FROM website_content WHERE content_type = 'setting' AND content_key = 'email_footer' LIMIT 1",
     );
-    return rows.length > 0 && rows[0].content
-      ? rows[0].content
-      : "";
+    return rows.length > 0 && rows[0].content ? rows[0].content : "";
   } catch (err) {
     console.error("Failed to fetch email footer:", err.message);
     return ""; // Fails safely so emails still send even if the setting is missing!
@@ -938,9 +940,12 @@ exports.changeRegistrationPhone = async (req, res) => {
       [normalizedPhone, phoneOtpHash, phoneOtpExpires, user.id],
     );
 
-    console.log("[OTP] Sending replacement registration phone verification SMS.", {
-      userId: user.id,
-    });
+    console.log(
+      "[OTP] Sending replacement registration phone verification SMS.",
+      {
+        userId: user.id,
+      },
+    );
 
     // Send the new OTP to the new phone number.
     await sendSms({
@@ -1177,8 +1182,8 @@ exports.verifyResetOtp = async (req, res) => {
     );
 
     if (!rows.length) {
-      return res.status(404).json({
-        message: "Account not found.",
+      return res.status(400).json({
+        message: "Invalid or expired reset code.",
       });
     }
 
@@ -1186,7 +1191,7 @@ exports.verifyResetOtp = async (req, res) => {
 
     if (user.otp_purpose !== "forgot_password") {
       return res.status(400).json({
-        message: "Invalid reset code.",
+        message: "Invalid or expired reset code.",
       });
     }
 
@@ -1196,21 +1201,39 @@ exports.verifyResetOtp = async (req, res) => {
     );
     if (!resetOtpMatches) {
       return res.status(400).json({
-        message: "Invalid reset code.",
+        message: "Invalid or expired reset code.",
       });
     }
 
     if (!user.otp_expires || new Date() > new Date(user.otp_expires)) {
       return res.status(400).json({
-        message: "Reset code has expired.",
+        message: "Invalid or expired reset code.",
       });
     }
+
+    const resetJti = crypto.randomBytes(32).toString("hex");
+    const resetJtiHash = await hashOtp(resetJti);
+
+    const resetTokenExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await db.query(
+      `
+  UPDATE users
+  SET
+    otp_code = ?,
+    otp_purpose = 'password_reset',
+    otp_expires = ?
+  WHERE id = ?
+  `,
+      [resetJtiHash, resetTokenExpiresAt, user.id],
+    );
 
     const resetToken = jwt.sign(
       {
         id: user.id,
         email: String(email).trim().toLowerCase(),
         purpose: "password_reset",
+        jti: resetJti,
       },
       process.env.JWT_SECRET,
       {
@@ -1476,6 +1499,76 @@ exports.forgotPassword = async (req, res) => {
   }
 };
 
+exports.resendResetOtp = async (req, res) => {
+  const { email } = req.body || {};
+
+  const GENERIC_MESSAGE =
+    "If an account with that email exists, we've sent a 6-digit reset code.";
+
+  if (!email) {
+    return res.status(400).json({
+      message: "Email is required.",
+    });
+  }
+
+  try {
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    const [rows] = await db.query(
+      `
+      SELECT id, name, is_verified, is_active
+      FROM users
+      WHERE email = ?
+        AND role = 'customer'
+      LIMIT 1
+      `,
+      [normalizedEmail],
+    );
+
+    if (rows.length === 0) {
+      return res.json({ message: GENERIC_MESSAGE });
+    }
+
+    const user = rows[0];
+
+    if (!user.is_verified || !user.is_active) {
+      return res.json({ message: GENERIC_MESSAGE });
+    }
+
+    const resetOtp = generateOtp();
+    const resetOtpHash = await hashOtp(resetOtp);
+    const resetExpiry = new Date(
+      Date.now() + RESET_OTP_EXPIRY_MINUTES * 60 * 1000,
+    );
+
+    await db.query(
+      `
+      UPDATE users
+      SET
+        otp_code = ?,
+        otp_purpose = 'forgot_password',
+        otp_expires = ?
+      WHERE id = ?
+      `,
+      [resetOtpHash, resetExpiry, user.id],
+    );
+
+    const firstName = user.name ? user.name.split(" ")[0] : "Customer";
+
+    await sendResetOtpEmail(normalizedEmail, resetOtp, firstName);
+
+    return res.json({
+      message: GENERIC_MESSAGE,
+    });
+  } catch (err) {
+    console.error("[resend-reset-otp]", err);
+
+    return res.status(500).json({
+      message: "Server error. Please try again.",
+    });
+  }
+};
+
 exports.resetPassword = async (req, res) => {
   const { reset_token, new_password } = req.body;
 
@@ -1485,9 +1578,22 @@ exports.resetPassword = async (req, res) => {
     });
   }
 
-  if (String(new_password).length < 8) {
+  const normalizedNewPassword = String(new_password);
+
+  if (normalizedNewPassword.length < 8) {
     return res.status(400).json({
       message: "New password must be at least 8 characters.",
+    });
+  }
+
+  const hasLetters = /[A-Za-z]/.test(normalizedNewPassword);
+  const hasNumbers = /[0-9]/.test(normalizedNewPassword);
+  const hasSpecial = /[^A-Za-z0-9]/.test(normalizedNewPassword);
+
+  if (!hasLetters || !hasNumbers || !hasSpecial) {
+    return res.status(400).json({
+      message:
+        "New password must contain a mix of letters, numbers, and special characters.",
     });
   }
 
@@ -1502,13 +1608,29 @@ exports.resetPassword = async (req, res) => {
     });
   }
 
+  if (
+    !payload ||
+    payload.purpose !== "password_reset" ||
+    typeof payload.jti !== "string" ||
+    !payload.jti.trim()
+  ) {
+    return res.status(401).json({
+      message: "Invalid reset session. Please request a new reset code.",
+    });
+  }
+
   try {
     const [rows] = await db.query(
       `
       SELECT
         id,
+        email,
+        role,
         is_verified,
-        is_active
+        is_active,
+        otp_code,
+        otp_purpose,
+        otp_expires
       FROM users
       WHERE id = ?
       LIMIT 1
@@ -1524,6 +1646,12 @@ exports.resetPassword = async (req, res) => {
 
     const user = rows[0];
 
+    if (String(user.role).trim() !== "customer") {
+      return res.status(401).json({
+        message: "Invalid reset session. Please request a new reset code.",
+      });
+    }
+
     if (!user.is_verified) {
       return res.status(403).json({
         message: "Please verify your email before resetting your password.",
@@ -1536,9 +1664,33 @@ exports.resetPassword = async (req, res) => {
       });
     }
 
-    const hashedPassword = await bcrypt.hash(new_password, 12);
+    if (user.otp_purpose !== "password_reset") {
+      return res.status(401).json({
+        message: "Invalid reset session. Please request a new reset code.",
+      });
+    }
 
-    await db.query(
+    if (!user.otp_expires || new Date() > new Date(user.otp_expires)) {
+      return res.status(401).json({
+        message:
+          "Your reset session has expired. Please request a new reset code.",
+      });
+    }
+
+    const resetSessionMatches = await verifyOtpValue(
+      user.otp_code,
+      payload.jti,
+    );
+
+    if (!resetSessionMatches) {
+      return res.status(401).json({
+        message: "Invalid reset session. Please request a new reset code.",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(normalizedNewPassword, 12);
+
+    const [updateResult] = await db.query(
       `
       UPDATE users
       SET
@@ -1547,9 +1699,20 @@ exports.resetPassword = async (req, res) => {
         otp_purpose = NULL,
         otp_expires = NULL
       WHERE id = ?
+        AND role = 'customer'
+        AND otp_purpose = 'password_reset'
+        AND otp_expires IS NOT NULL
+        AND otp_expires > NOW()
       `,
       [hashedPassword, user.id],
     );
+
+    if (updateResult.affectedRows !== 1) {
+      return res.status(401).json({
+        message:
+          "Your reset session has expired. Please request a new reset code.",
+      });
+    }
 
     await writeAuditLogSafe({
       userId: user.id,

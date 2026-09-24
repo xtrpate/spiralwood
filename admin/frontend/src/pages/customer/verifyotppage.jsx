@@ -14,9 +14,10 @@ export default function VerifyOtpPage() {
     verifyResetOtp,
     resendOtp,
     forgotPassword,
+    resendResetOtp,
     verifyPhoneOtp,
     resendPhoneOtp,
-    login, // <--- Import login
+    login,
   } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
@@ -45,6 +46,14 @@ export default function VerifyOtpPage() {
     const t = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
     return () => clearTimeout(t);
   }, [resendCooldown]);
+
+  useEffect(() => {
+    if (!email) {
+      navigate(isForgotPassword ? "/forgot-password" : "/login", {
+        replace: true,
+      });
+    }
+  }, [email, isForgotPassword, navigate]);
 
   const handleOtpChange = (index, val) => {
     if (!/^\d*$/.test(val)) return;
@@ -142,7 +151,7 @@ export default function VerifyOtpPage() {
 
     try {
       if (isForgotPassword) {
-        await forgotPassword(email);
+        await resendResetOtp(email);
       } else if (verificationStep === "email") {
         await resendOtp(email);
       } else {

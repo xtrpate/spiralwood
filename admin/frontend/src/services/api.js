@@ -46,6 +46,7 @@ const isPublicGuestRequest = (url = "") => {
     requestUrl.includes("/customer/auth/verify-otp") ||
     requestUrl.includes("/customer/auth/resend-otp") ||
     requestUrl.includes("/customer/auth/forgot-password") ||
+    requestUrl.includes("/customer/auth/resend-reset-otp") ||
     requestUrl.includes("/customer/auth/reset-password")
   );
 };

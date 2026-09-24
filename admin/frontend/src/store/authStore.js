@@ -317,6 +317,13 @@ const useAuthStore = create((set, get) => ({
     return data;
   },
 
+  resendResetOtp: async (email) => {
+    const { data } = await api.post("/customer/auth/resend-reset-otp", {
+      email: String(email || "").trim(),
+    });
+    return data;
+  },
+
   resetPassword: async (resetToken, newPassword) => {
     const { data } = await api.post("/customer/auth/reset-password", {
       reset_token: resetToken,
