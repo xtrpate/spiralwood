@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import useAuthStore from "../../store/authStore";
 import api from "../../services/api";
+import { getSocket, subscribeSocketReady } from "../../services/socket";
 import {
   MotionFeedbackOverlay,
   getMotionFeedbackDurations,
@@ -151,9 +152,42 @@ const ApptSkeletonItem = () => (
 const StatusBadge = ({ status }) => {
   const map = {
     pending: { cls: "appt-badge-pending", label: "Pending" },
-    confirmed: { cls: "appt-badge-confirmed", label: "Confirmed" },
-    done: { cls: "appt-badge-completed", label: "Completed" },
-    cancelled: { cls: "appt-badge-cancelled", label: "Cancelled" },
+
+    confirmed: {
+      cls: "appt-badge-confirmed",
+      label: "Confirmed",
+    },
+
+    in_progress: {
+      cls: "appt-badge-confirmed",
+      label: "In Progress",
+    },
+
+    completed: {
+      cls: "appt-badge-completed",
+      label: "Done",
+    },
+
+    done: {
+      cls: "appt-badge-completed",
+      label: "Done",
+    },
+
+    cancelled: {
+      cls: "appt-badge-cancelled",
+      label: "Cancelled",
+    },
+
+    // Legacy database values are never shown using their old names.
+    awaiting_staff_acceptance: {
+      cls: "appt-badge-confirmed",
+      label: "Confirmed",
+    },
+
+    rejected: {
+      cls: "appt-badge-cancelled",
+      label: "Cancelled",
+    },
   };
 
   const { cls, label } = map[status] || {
@@ -340,16 +374,76 @@ export default function AppointmentPage() {
 
   const fetchAppointments = async () => {
     setLoadingAppts(true);
+
     try {
       const res = await api.get("/customer/appointments");
+
       setAppointments(Array.isArray(res.data) ? res.data : []);
-    } catch {
-      setAppointments([]);
+    } catch (err) {
+      console.error("Failed to fetch customer appointments:", err);
+
+      // Keep the last known-good appointment list.
+      // A request failure is not the same thing as "no appointments".
     } finally {
       setLoadingAppts(false);
       setInitialLoad(false);
     }
   };
+
+  useEffect(() => {
+    if (!user?.id) return undefined;
+
+    const handleAppointmentNotification = (payload) => {
+      const targetType = String(payload?.target_type || "").toLowerCase();
+
+      if (targetType !== "appointment") {
+        return;
+      }
+
+      if (
+        payload?.user_id != null &&
+        Number(payload.user_id) !== Number(user.id)
+      ) {
+        return;
+      }
+
+      fetchAppointments();
+
+      // Also refresh booked slots because a cancelled appointment
+      // can make its previous slot available again.
+      setWeekStart((current) => new Date(current));
+    };
+
+    const attachListener = (socket) => {
+      if (!socket) return;
+
+      socket.off("notification:new", handleAppointmentNotification);
+
+      socket.on("notification:new", handleAppointmentNotification);
+    };
+
+    const socket = getSocket();
+
+    if (socket) {
+      attachListener(socket);
+    }
+
+    const unsubscribeReady = subscribeSocketReady(attachListener);
+
+    return () => {
+      unsubscribeReady();
+
+      if (socket) {
+        socket.off("notification:new", handleAppointmentNotification);
+      }
+
+      const currentSocket = getSocket();
+
+      if (currentSocket && currentSocket !== socket) {
+        currentSocket.off("notification:new", handleAppointmentNotification);
+      }
+    };
+  }, [user?.id]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -1227,9 +1321,7 @@ export default function AppointmentPage() {
                           </div>
                         )}
 
-                        {["pending", "awaiting_staff_acceptance"].includes(
-                          a.status,
-                        ) && (
+                        {String(a.status || "").toLowerCase() === "pending" && (
                           <button
                             type="button"
                             className="appt-btn-cancel"

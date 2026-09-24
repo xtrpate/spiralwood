@@ -1,11 +1,15 @@
 const db = require("../../config/db");
 const { getPhilippineDateKey } = require("../../utils/philippineTime");
 const { createNotificationSafe } = require("../../utils/notificationHelper");
+const {
+  sendCustomerAppointmentNotificationSafe,
+} = require("../../services/customerAppointmentNotificationService");
 
 const APPOINTMENT_STATUSES = [
   "pending",
   "awaiting_staff_acceptance",
   "confirmed",
+  "in_progress",
   "completed",
   "rejected",
   "cancelled",
@@ -23,6 +27,7 @@ const APPOINTMENT_ACTIVE_STATUSES = new Set([
   "pending",
   "awaiting_staff_acceptance",
   "confirmed",
+  "in_progress",
 ]);
 
 const APPOINTMENT_SLOT_LOCK_PREFIX = "wisdom:appointment-slot:";
@@ -271,7 +276,8 @@ const hasActiveAppointmentAtSlot = async (
       AND status IN (
         'pending',
         'awaiting_staff_acceptance',
-        'confirmed'
+        'confirmed',
+        'in_progress'
       )
   `;
 
@@ -347,7 +353,11 @@ const hasOverlappingProviderAppointment = async (
     `SELECT id
      FROM appointments
      WHERE assigned_staff_id = ?
-       AND status IN ('awaiting_staff_acceptance', 'confirmed')
+       AND status IN (
+         'awaiting_staff_acceptance',
+         'confirmed',
+         'in_progress'
+       )
        AND id != ?
        AND scheduled_date < DATE_ADD(?, INTERVAL ? MINUTE)
        AND DATE_ADD(scheduled_date, INTERVAL ? MINUTE) > ?
@@ -435,7 +445,6 @@ const getAppointmentById = async (appointmentId) => {
   return rows[0] || null;
 };
 
-
 const OPERATIONS_APPOINTMENT_DATE_FILTERS = new Set([
   "all",
   "today",
@@ -460,11 +469,7 @@ const shiftOperationsAppointmentDateKey = (dateKey, days) => {
   );
 };
 
-const buildOperationsAppointmentDateRange = ({
-  dateFilter,
-  from,
-  to,
-}) => {
+const buildOperationsAppointmentDateRange = ({ dateFilter, from, to }) => {
   const normalizedFilter = String(dateFilter || "all")
     .trim()
     .toLowerCase();
@@ -835,10 +840,11 @@ exports.getAvailability = async (req, res) => {
       FROM appointments
       WHERE DATE(scheduled_date) = ?
         AND status IN (
-  'pending',
-  'awaiting_staff_acceptance',
-  'confirmed'
-)
+          'pending',
+          'awaiting_staff_acceptance',
+          'confirmed',
+          'in_progress'
+        )
       `,
       [date],
     );
@@ -972,9 +978,7 @@ exports.createAppointment = async (req, res) => {
       }
     }
 
-    const initialStatus = assignedStaffId
-      ? "awaiting_staff_acceptance"
-      : "pending";
+    const initialStatus = assignedStaffId ? "confirmed" : "pending";
 
     let assignedStaff = null;
     let insertId;
@@ -1216,6 +1220,13 @@ exports.createAppointment = async (req, res) => {
       });
     }
 
+    if (assignedStaffId && appointment?.customer_id) {
+      await sendCustomerAppointmentNotificationSafe(db, {
+        appointmentId: insertId,
+        event: "confirmed",
+      });
+    }
+
     req.auditRecord = {
       id: insertId,
       new: {
@@ -1315,96 +1326,85 @@ exports.updateAppointment = async (req, res) => {
       if (!isAssignedProvider) {
         await conn.rollback();
         transactionActive = false;
+
         return res.status(403).json({
           message: "You can only update appointments assigned to you.",
         });
       }
 
       const requestedStatus = normalizeText(req.body.status).toLowerCase();
+
       const nextNotes =
         req.body.notes === undefined
           ? (existing.notes ?? null)
           : normalizeText(req.body.notes) || null;
 
-      if (currentStatus === "awaiting_staff_acceptance") {
-        const isAccept = requestedStatus === "confirmed";
-        const isReturnToAdmin = requestedStatus === "pending";
+      /*
+       * Legacy records using awaiting_staff_acceptance
+       * are treated as confirmed.
+       */
+      const effectiveCurrentStatus =
+        currentStatus === "awaiting_staff_acceptance"
+          ? "confirmed"
+          : currentStatus;
 
-        if (!isAccept && !isReturnToAdmin) {
-          await conn.rollback();
-          transactionActive = false;
-          return res.status(400).json({
-            message:
-              "Assigned appointment tasks can only be accepted or returned to admin.",
-          });
-        }
-
-        if (isAccept && isPastDue) {
-          await conn.rollback();
-          transactionActive = false;
-          return res.status(400).json({
-            message:
-              "This appointment schedule has already passed. Please return it to the admin.",
-          });
-        }
-
+      /*
+       * --------------------------------------------------------
+       * CONFIRMED
+       * --------------------------------------------------------
+       *
+       * Staff first ACCEPTS the appointment.
+       *
+       * Status stays confirmed.
+       *
+       * reviewed_by becomes the staff member who accepted it.
+       */
+      if (
+        effectiveCurrentStatus === "confirmed" &&
+        requestedStatus === "confirmed"
+      ) {
         await conn.query(
           `
           UPDATE appointments
           SET
-            assigned_staff_id = ?,
-            status = ?,
+            reviewed_by = ?,
+            status = 'confirmed',
             notes = ?,
             updated_at = NOW()
           WHERE id = ?
           `,
-          [
-            isReturnToAdmin ? null : existing.assigned_staff_id,
-            isAccept ? "confirmed" : "pending",
-            nextNotes,
-            appointmentId,
-          ],
+          [req.user.id, nextNotes, appointmentId],
         );
 
         const purposeLabel = getAppointmentPurposeLabel(existing.purpose);
+
         const scheduleLabel = formatAppointmentSchedule(
           existing.scheduled_date,
         );
-        if (isAccept && existing.customer_id) {
+
+        const ownerId = existing.request_owner_id || existing.reviewed_by;
+
+        if (
+          ownerId &&
+          Number(ownerId) !== Number(req.user.id) &&
+          Number(ownerId) !== Number(existing.customer_id || 0)
+        ) {
           await createNotificationSafe(conn, {
-            userId: existing.customer_id,
-            type: "appointment_confirmed",
-            title: "Appointment Confirmed",
-            message: `Your ${purposeLabel} appointment is confirmed for ${scheduleLabel}.`,
+            userId: ownerId,
+            type: "appointment_staff_accepted",
+            title: "Appointment Accepted by Staff",
+            message:
+              `${req.user.name || "Indoor staff"} accepted ` +
+              `the ${purposeLabel} appointment scheduled ` +
+              `for ${scheduleLabel}.`,
             targetType: "appointment",
             targetId: appointmentId,
             targetOrderId: existing.order_id || null,
           });
         }
-        if (isReturnToAdmin) {
-          const ownerId = existing.request_owner_id || existing.reviewed_by;
-          if (ownerId && Number(ownerId) !== Number(req.user.id)) {
-            await createNotificationSafe(conn, {
-              userId: ownerId,
-              type: "appointment_reassignment_needed",
-              title: "Appointment Needs Reassignment",
-              message: `${req.user.name || "Indoor staff"} returned the ${purposeLabel} appointment scheduled for ${scheduleLabel}. Assign another staff member.`,
-              targetType: "appointment",
-              targetId: appointmentId,
-              targetOrderId: existing.order_id || null,
-            });
-          }
-        }
 
         await conn.commit();
         transactionActive = false;
-
-        if (conn && appointmentSlotLockHeld) {
-          await releaseAppointmentSlotLock(conn, appointmentSlotLockName);
-
-          appointmentSlotLockName = null;
-          appointmentSlotLockHeld = false;
-        }
 
         conn.release();
         conn = null;
@@ -1414,96 +1414,320 @@ exports.updateAppointment = async (req, res) => {
         req.auditRecord = {
           id: appointmentId,
           old: {
-            status: currentStatus,
-            assigned_staff_id: existing.assigned_staff_id ?? null,
+            status: effectiveCurrentStatus,
+            reviewed_by: existing.reviewed_by ?? null,
           },
           new: {
-            status: isAccept ? "confirmed" : "pending",
-            assigned_staff_id: isReturnToAdmin
-              ? null
-              : (existing.assigned_staff_id ?? null),
-            changed_fields: isReturnToAdmin
-              ? ["status", "assigned_staff_id"]
-              : ["status"],
+            status: "confirmed",
+            reviewed_by: req.user.id,
+            changed_fields: ["reviewed_by"],
           },
         };
 
         return res.json({
-          message: isAccept
-            ? "Appointment accepted successfully."
-            : "Appointment returned to admin for reassignment.",
+          message: "Appointment accepted successfully.",
           appointment: updated,
         });
       }
 
-      if (currentStatus !== "confirmed") {
-        await conn.rollback();
-        transactionActive = false;
-        return res.status(400).json({
-          message:
-            "Only assigned or confirmed appointments can be updated by indoor staff.",
-        });
-      }
+      /*
+       * --------------------------------------------------------
+       * CONFIRMED -> IN PROGRESS
+       * --------------------------------------------------------
+       *
+       * Staff must accept first.
+       */
+      if (
+        effectiveCurrentStatus === "confirmed" &&
+        requestedStatus === "in_progress"
+      ) {
+        const staffHasAccepted =
+          Number(existing.reviewed_by) === Number(req.user.id);
 
-      if (!["completed", "cancelled"].includes(requestedStatus)) {
-        await conn.rollback();
-        transactionActive = false;
-        return res.status(400).json({
-          message:
-            "Indoor staff can only mark confirmed appointments as completed or cancelled.",
-        });
-      }
+        if (!staffHasAccepted) {
+          await conn.rollback();
+          transactionActive = false;
 
-      await conn.query(
-        `
-        UPDATE appointments
-        SET
-          status = ?,
-          notes = ?,
-          updated_at = NOW()
-        WHERE id = ?
-        `,
-        [requestedStatus, nextNotes, appointmentId],
-      );
+          return res.status(400).json({
+            message: "Accept the appointment before starting it.",
+          });
+        }
 
-      if (existing.customer_id) {
+        await conn.query(
+          `
+          UPDATE appointments
+          SET
+            status = 'in_progress',
+            notes = ?,
+            updated_at = NOW()
+          WHERE id = ?
+          `,
+          [nextNotes, appointmentId],
+        );
+
         const purposeLabel = getAppointmentPurposeLabel(existing.purpose);
+
         const scheduleLabel = formatAppointmentSchedule(
           existing.scheduled_date,
         );
-        await createNotificationSafe(conn, {
-          userId: existing.customer_id,
-          type: "appointment_update",
-          title:
-            requestedStatus === "completed"
-              ? "Appointment Completed"
-              : "Appointment Cancelled",
-          message:
-            requestedStatus === "completed"
-              ? `Your ${purposeLabel} appointment scheduled for ${scheduleLabel} has been completed.`
-              : `Your ${purposeLabel} appointment scheduled for ${scheduleLabel} has been cancelled.`,
-          targetType: "appointment",
-          targetId: appointmentId,
-          targetOrderId: existing.order_id || null,
+
+        if (existing.customer_id) {
+          await createNotificationSafe(conn, {
+            userId: existing.customer_id,
+            type: "appointment_update",
+            title: "Appointment In Progress",
+            message:
+              `Your ${purposeLabel} appointment ` +
+              `scheduled for ${scheduleLabel} ` +
+              `is now in progress. Our staff has started the appointment.`,
+            targetType: "appointment",
+            targetId: appointmentId,
+            targetOrderId: existing.order_id || null,
+          });
+        }
+
+        const ownerId = existing.request_owner_id || existing.reviewed_by;
+
+        if (
+          ownerId &&
+          Number(ownerId) !== Number(req.user.id) &&
+          Number(ownerId) !== Number(existing.customer_id || 0)
+        ) {
+          await createNotificationSafe(conn, {
+            userId: ownerId,
+            type: "appointment_update",
+            title: "Appointment Started",
+            message:
+              `${req.user.name || "Indoor staff"} started ` +
+              `the ${purposeLabel} appointment scheduled ` +
+              `for ${scheduleLabel}.`,
+            targetType: "appointment",
+            targetId: appointmentId,
+            targetOrderId: existing.order_id || null,
+          });
+        }
+
+        await conn.commit();
+        transactionActive = false;
+
+        conn.release();
+        conn = null;
+
+        const updated = await getAppointmentById(appointmentId);
+
+        await sendCustomerAppointmentNotificationSafe(db, {
+          appointmentId,
+          event: "in_progress",
+        });
+
+        req.auditRecord = {
+          id: appointmentId,
+          old: {
+            status: "confirmed",
+          },
+          new: {
+            status: "in_progress",
+            changed_fields: ["status"],
+          },
+        };
+
+        return res.json({
+          message: "Appointment started successfully.",
+          appointment: updated,
         });
       }
 
-      await conn.commit();
+      /*
+       * --------------------------------------------------------
+       * CONFIRMED -> CANCELLED
+       * IN PROGRESS -> CANCELLED
+       *
+       * Staff is responsible for cancellation.
+       */
+      if (
+        ["confirmed", "in_progress"].includes(effectiveCurrentStatus) &&
+        requestedStatus === "cancelled"
+      ) {
+        await conn.query(
+          `
+          UPDATE appointments
+          SET
+            status = 'cancelled',
+            notes = ?,
+            updated_at = NOW()
+          WHERE id = ?
+          `,
+          [nextNotes, appointmentId],
+        );
+
+        const purposeLabel = getAppointmentPurposeLabel(existing.purpose);
+
+        const scheduleLabel = formatAppointmentSchedule(
+          existing.scheduled_date,
+        );
+
+        if (existing.customer_id) {
+          await createNotificationSafe(conn, {
+            userId: existing.customer_id,
+            type: "appointment_update",
+            title: "Appointment Cancelled",
+            message:
+              `Your ${purposeLabel} appointment ` +
+              `scheduled for ${scheduleLabel} has been cancelled by our staff.`,
+            targetType: "appointment",
+            targetId: appointmentId,
+            targetOrderId: existing.order_id || null,
+          });
+        }
+
+        const ownerId = existing.request_owner_id || existing.reviewed_by;
+
+        if (
+          ownerId &&
+          Number(ownerId) !== Number(req.user.id) &&
+          Number(ownerId) !== Number(existing.customer_id || 0)
+        ) {
+          await createNotificationSafe(conn, {
+            userId: ownerId,
+            type: "appointment_update",
+            title: "Appointment Cancelled",
+            message:
+              `${req.user.name || "Indoor staff"} cancelled ` +
+              `the ${purposeLabel} appointment scheduled ` +
+              `for ${scheduleLabel}.`,
+            targetType: "appointment",
+            targetId: appointmentId,
+            targetOrderId: existing.order_id || null,
+          });
+        }
+
+        await conn.commit();
+        transactionActive = false;
+
+        conn.release();
+        conn = null;
+
+        const updated = await getAppointmentById(appointmentId);
+
+        await sendCustomerAppointmentNotificationSafe(db, {
+          appointmentId,
+          event: "cancelled",
+        });
+
+        req.auditRecord = {
+          id: appointmentId,
+          old: {
+            status: effectiveCurrentStatus,
+          },
+          new: {
+            status: "cancelled",
+            changed_fields: ["status"],
+          },
+        };
+
+        return res.json({
+          message: "Appointment cancelled successfully.",
+          appointment: updated,
+        });
+      }
+
+      /*
+       * --------------------------------------------------------
+       * IN PROGRESS -> DONE
+       * --------------------------------------------------------
+       */
+      if (
+        effectiveCurrentStatus === "in_progress" &&
+        requestedStatus === "completed"
+      ) {
+        await conn.query(
+          `
+          UPDATE appointments
+          SET
+            status = 'completed',
+            notes = ?,
+            updated_at = NOW()
+          WHERE id = ?
+          `,
+          [nextNotes, appointmentId],
+        );
+
+        const purposeLabel = getAppointmentPurposeLabel(existing.purpose);
+
+        const scheduleLabel = formatAppointmentSchedule(
+          existing.scheduled_date,
+        );
+
+        if (existing.customer_id) {
+          await createNotificationSafe(conn, {
+            userId: existing.customer_id,
+            type: "appointment_update",
+            title: "Appointment Completed",
+            message:
+              `Your ${purposeLabel} appointment ` +
+              `scheduled for ${scheduleLabel} has been completed.`,
+            targetType: "appointment",
+            targetId: appointmentId,
+            targetOrderId: existing.order_id || null,
+          });
+        }
+
+        const ownerId = existing.request_owner_id || existing.reviewed_by;
+
+        if (
+          ownerId &&
+          Number(ownerId) !== Number(req.user.id) &&
+          Number(ownerId) !== Number(existing.customer_id || 0)
+        ) {
+          await createNotificationSafe(conn, {
+            userId: ownerId,
+            type: "appointment_update",
+            title: "Appointment Completed",
+            message:
+              `${req.user.name || "Indoor staff"} marked ` +
+              `the ${purposeLabel} appointment scheduled ` +
+              `for ${scheduleLabel} as completed.`,
+            targetType: "appointment",
+            targetId: appointmentId,
+            targetOrderId: existing.order_id || null,
+          });
+        }
+
+        await conn.commit();
+        transactionActive = false;
+
+        conn.release();
+        conn = null;
+
+        const updated = await getAppointmentById(appointmentId);
+
+        await sendCustomerAppointmentNotificationSafe(db, {
+          appointmentId,
+          event: "completed",
+        });
+
+        req.auditRecord = {
+          id: appointmentId,
+          old: {
+            status: "in_progress",
+          },
+          new: {
+            status: "completed",
+            changed_fields: ["status"],
+          },
+        };
+
+        return res.json({
+          message: "Appointment completed successfully.",
+          appointment: updated,
+        });
+      }
+
+      await conn.rollback();
       transactionActive = false;
-      conn.release();
-      conn = null;
 
-      const updated = await getAppointmentById(appointmentId);
-
-      req.auditRecord = {
-        id: appointmentId,
-        old: { status: currentStatus },
-        new: { status: requestedStatus, changed_fields: ["status"] },
-      };
-
-      return res.json({
-        message: "Appointment updated successfully.",
-        appointment: updated,
+      return res.status(400).json({
+        message: "Invalid staff appointment action for the current status.",
       });
     }
 
@@ -1579,7 +1803,7 @@ exports.updateAppointment = async (req, res) => {
       } else {
         assignedStaffId = requestedProviderId;
         handledBy = req.user.id;
-        status = "awaiting_staff_acceptance";
+        status = "confirmed";
       }
     }
 
@@ -1592,29 +1816,55 @@ exports.updateAppointment = async (req, res) => {
         return res.status(400).json({ message: "Invalid appointment status" });
       }
 
-      if (requestedStatus === "confirmed" || requestedStatus === "completed") {
+      if (
+        requestedStatus === "completed" ||
+        requestedStatus === "in_progress"
+      ) {
         await conn.rollback();
         transactionActive = false;
+
         return res.status(400).json({
           message:
-            "Only the assigned indoor staff can confirm or complete an appointment.",
+            "Only the assigned indoor staff can start or complete an appointment.",
         });
       }
 
-      if (requestedStatus === "awaiting_staff_acceptance" && !assignedStaffId) {
-        await conn.rollback();
-        transactionActive = false;
-        return res.status(400).json({
-          message:
-            "Assign an indoor staff member before setting the appointment to Awaiting Staff Acceptance.",
-        });
-      }
+      if (requestedStatus === "confirmed") {
+        if (!assignedStaffId) {
+          await conn.rollback();
+          transactionActive = false;
 
-      if (requestedStatus === "pending") {
-        assignedStaffId = null;
-      }
+          return res.status(400).json({
+            message:
+              "Assign an active indoor staff member before confirming an appointment.",
+          });
+        }
 
-      status = requestedStatus;
+        handledBy = req.user.id;
+        status = "confirmed";
+      } else if (requestedStatus === "awaiting_staff_acceptance") {
+        // Legacy compatibility:
+        // old clients may still send this value,
+        // but the new workflow stores it as confirmed.
+        if (!assignedStaffId) {
+          await conn.rollback();
+          transactionActive = false;
+
+          return res.status(400).json({
+            message:
+              "Assign an active indoor staff member before confirming an appointment.",
+          });
+        }
+
+        handledBy = req.user.id;
+        status = "confirmed";
+      } else {
+        if (requestedStatus === "pending") {
+          assignedStaffId = null;
+        }
+
+        status = requestedStatus;
+      }
     }
 
     const scheduledDateChanged =
@@ -1625,7 +1875,7 @@ exports.updateAppointment = async (req, res) => {
       scheduledDateChanged &&
       status === "confirmed"
     ) {
-      status = assignedStaffId ? "awaiting_staff_acceptance" : "pending";
+      status = assignedStaffId ? "confirmed" : "pending";
     }
 
     // Evaluate the NEW business wall-clock date using Asia/Manila semantics.
@@ -1841,6 +2091,31 @@ exports.updateAppointment = async (req, res) => {
     conn = null;
 
     const updated = await getAppointmentById(appointmentId);
+
+    if (assignmentChanged && assignedStaffId && status === "confirmed") {
+      await sendCustomerAppointmentNotificationSafe(db, {
+        appointmentId,
+        event: "confirmed",
+      });
+    } else if (
+      scheduleChanged &&
+      existing.customer_id &&
+      status === "confirmed"
+    ) {
+      await sendCustomerAppointmentNotificationSafe(db, {
+        appointmentId,
+        event: "rescheduled",
+      });
+    } else if (
+      status === "cancelled" &&
+      status !== currentStatus &&
+      existing.customer_id
+    ) {
+      await sendCustomerAppointmentNotificationSafe(db, {
+        appointmentId,
+        event: "cancelled",
+      });
+    }
 
     if (changedFields.length > 0) {
       req.auditRecord = {

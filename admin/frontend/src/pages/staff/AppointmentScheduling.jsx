@@ -22,6 +22,7 @@ const STATUS_LABELS = {
   pending: "Pending Review",
   awaiting_staff_acceptance: "Reviewing Schedule",
   confirmed: "Confirmed",
+  in_progress: "In Progress",
   completed: "Completed",
   rejected: "Rejected",
   cancelled: "Cancelled",
@@ -39,6 +40,7 @@ const getStatusStyle = (status) => {
         border: "1px solid #d4d4d8",
       };
     case "confirmed":
+    case "in_progress":
       return {
         background: "#f4f4f5",
         color: "#18181b",
@@ -1013,8 +1015,9 @@ export default function AppointmentScheduling() {
 
     return appointments.filter(
       (a) =>
-        String(a.status || "").toLowerCase() === "confirmed" &&
-        isAssignedToCurrentIndoorStaff(a),
+        ["confirmed", "in_progress"].includes(
+          String(a.status || "").toLowerCase(),
+        ) && isAssignedToCurrentIndoorStaff(a),
     );
   }, [appointments, isIndoorStaff, isAssignedToCurrentIndoorStaff]);
 
@@ -3155,45 +3158,79 @@ export default function AppointmentScheduling() {
                         className="indoor-appointment-actions"
                         style={indoorActionsStyle}
                       >
-                        <button
-                          type="button"
-                          style={
-                            actionLoadingId === a.id
-                              ? indoorDisabledButton
-                              : indoorPrimaryButton
-                          }
-                          disabled={actionLoadingId === a.id}
-                          onClick={() =>
-                            handleAction(
-                              a.id,
-                              { status: "completed" },
-                              "Appointment marked as completed.",
-                            )
-                          }
-                        >
-                          <Check size={14} />
-                          {actionLoadingId === a.id ? "Saving..." : "Mark Done"}
-                        </button>
+                        {String(a.status || "").toLowerCase() ===
+                          "confirmed" && (
+                          <button
+                            type="button"
+                            style={
+                              actionLoadingId === a.id
+                                ? indoorDisabledButton
+                                : indoorPrimaryButton
+                            }
+                            disabled={actionLoadingId === a.id}
+                            onClick={() =>
+                              handleAction(
+                                a.id,
+                                { status: "in_progress" },
+                                "Appointment started successfully.",
+                              )
+                            }
+                          >
+                            <CheckCircle2 size={14} />
+                            {actionLoadingId === a.id
+                              ? "Starting..."
+                              : "Start Appointment"}
+                          </button>
+                        )}
 
-                        <button
-                          type="button"
-                          style={
-                            actionLoadingId === a.id
-                              ? indoorDisabledButton
-                              : indoorDangerButton
-                          }
-                          disabled={actionLoadingId === a.id}
-                          onClick={() =>
-                            handleAction(
-                              a.id,
-                              { status: "cancelled" },
-                              "Appointment cancelled.",
-                            )
-                          }
-                        >
-                          <Ban size={14} />
-                          Cancel
-                        </button>
+                        {String(a.status || "").toLowerCase() ===
+                          "in_progress" && (
+                          <button
+                            type="button"
+                            style={
+                              actionLoadingId === a.id
+                                ? indoorDisabledButton
+                                : indoorPrimaryButton
+                            }
+                            disabled={actionLoadingId === a.id}
+                            onClick={() =>
+                              handleAction(
+                                a.id,
+                                { status: "completed" },
+                                "Appointment marked as completed.",
+                              )
+                            }
+                          >
+                            <Check size={14} />
+                            {actionLoadingId === a.id
+                              ? "Saving..."
+                              : "Mark Done"}
+                          </button>
+                        )}
+
+                        {["confirmed", "in_progress"].includes(
+                          String(a.status || "").toLowerCase(),
+                        ) && (
+                          <button
+                            type="button"
+                            style={
+                              actionLoadingId === a.id
+                                ? indoorDisabledButton
+                                : indoorDangerButton
+                            }
+                            disabled={actionLoadingId === a.id}
+                            onClick={() =>
+                              handleAction(
+                                a.id,
+                                { status: "cancelled" },
+                                "Appointment cancelled.",
+                              )
+                            }
+                          >
+                            <Ban size={14} />
+                            Cancel
+                          </button>
+                        )}
                       </div>
                     </article>
                   );

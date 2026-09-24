@@ -519,18 +519,33 @@ exports.cancelAppointment = async (req, res) => {
       });
     }
 
-    const cancellableStatuses = ["pending", "awaiting_staff_acceptance"];
+    const cancellableStatuses = ["pending"];
 
     if (!cancellableStatuses.includes(appointment.status)) {
       return res.status(400).json({
-        message: "This appointment can no longer be cancelled online.",
+        message: "Only pending appointments can be cancelled online.",
       });
     }
 
-    await db.query(
-      `UPDATE appointments SET status = 'cancelled' WHERE id = ?`,
-      [appointmentId],
+    const [cancelResult] = await db.query(
+      `
+      UPDATE appointments
+      SET
+        status = 'cancelled',
+        updated_at = NOW()
+      WHERE id = ?
+        AND customer_id = ?
+        AND status = 'pending'
+      `,
+      [appointmentId, req.user.id],
     );
+
+    if (!cancelResult.affectedRows) {
+      return res.status(409).json({
+        message:
+          "This appointment can no longer be cancelled. It may have already been assigned or updated.",
+      });
+    }
 
     await writeAuditLogSafe({
       userId: req.user.id,

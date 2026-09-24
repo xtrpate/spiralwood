@@ -262,7 +262,7 @@ const ROLE_DEFAULTS = Object.freeze({
 
     customers: ["view"],
 
-    appointments: ["create", "view"],
+    appointments: ["create", "view", "delete"],
 
     warranty: ["create", "view"],
   },
