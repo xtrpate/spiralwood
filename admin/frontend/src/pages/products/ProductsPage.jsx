@@ -10,7 +10,14 @@ import {
   EyeOff,
   RefreshCw,
 } from "lucide-react";
-import CustomerBlueprintViewer from "../customer/CustomerBlueprintViewer";
+import {
+  buildCompactPreviewCacheKey,
+  readGeneratedCompactPreview,
+} from "../customer/customerBlueprintPreviewCache";
+
+const CustomerBlueprintViewer = React.lazy(() =>
+  import("../customer/CustomerBlueprintViewer"),
+);
 
 // WISDOM PRODUCT MANAGEMENT PROFESSIONAL UI V2
 // WISDOM UNIFIED PRODUCT PRICE V1
@@ -18,6 +25,8 @@ import CustomerBlueprintViewer from "../customer/CustomerBlueprintViewer";
 // WISDOM PRODUCT COST LABEL AND SUMMARY NUMBER FIX V1
 // WISDOM BLUEPRINT PREVIEW PRICE SUMMARY FIX V1
 const MAX_HOMEPAGE_NEW_PRODUCTS = 4;
+const BLUEPRINT_PRODUCT_PREVIEW_PRESET = "isometric";
+const BLUEPRINT_PRODUCT_PREVIEW_HEIGHT = 46;
 const NEW_PRODUCT_LIMIT_MESSAGE =
   "You can show up to 4 new products on the homepage. Unmark one product first.";
 const STOCK_BADGE = {
@@ -154,17 +163,66 @@ function ProductThumbnail({ product }) {
   ]);
 
   if (blueprint) {
+    const hasLiveBlueprintPreview =
+      Boolean(blueprint?.design_data) ||
+      Boolean(blueprint?.view_3d_data) ||
+      (Array.isArray(blueprint?.components) &&
+        blueprint.components.length > 0);
+
+    const compactPreviewCacheKey = hasLiveBlueprintPreview
+      ? buildCompactPreviewCacheKey(
+          blueprint,
+          BLUEPRINT_PRODUCT_PREVIEW_PRESET,
+          BLUEPRINT_PRODUCT_PREVIEW_HEIGHT,
+        )
+      : "";
+
+    const cachedStaticPreview = compactPreviewCacheKey
+      ? readGeneratedCompactPreview(compactPreviewCacheKey)
+      : "";
+
     return (
       <div style={blueprintImage}>
-        <CustomerBlueprintViewer
-          blueprint={blueprint}
-          readOnly
-          showHumanControls={false}
-          compact
-          compactHeight={46}
-          defaultPreset="isometric"
-          defaultShowHuman={false}
-        />
+        {cachedStaticPreview ? (
+          <img
+            src={cachedStaticPreview}
+            alt=""
+            aria-hidden="true"
+            decoding="async"
+            style={blueprintStaticImage}
+          />
+        ) : hasLiveBlueprintPreview ? (
+          <React.Suspense
+            fallback={
+              <div
+                style={blueprintPreviewLoading}
+                aria-label="Loading blueprint preview"
+              >
+                •••
+              </div>
+            }
+          >
+            <CustomerBlueprintViewer
+              blueprint={blueprint}
+              readOnly
+              showHumanControls={false}
+              compact
+              compactHeight={BLUEPRINT_PRODUCT_PREVIEW_HEIGHT}
+              defaultPreset={BLUEPRINT_PRODUCT_PREVIEW_PRESET}
+              defaultShowHuman={false}
+            />
+          </React.Suspense>
+        ) : blueprint?.thumbnail_url ? (
+          <img
+            src={buildAssetUrl(blueprint.thumbnail_url)}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            style={blueprintStaticImage}
+          />
+        ) : (
+          <div style={blueprintPreviewLoading}>—</div>
+        )}
       </div>
     );
   }
@@ -1360,6 +1418,14 @@ const blueprintImage = {
   border: "1px solid #e4e4e7",
   borderRadius: 2,
   boxSizing: "border-box",
+};
+
+const blueprintStaticImage = {
+  width: "100%",
+  height: "100%",
+  display: "block",
+  objectFit: "contain",
+  background: "#f7f5f2",
 };
 
 const blueprintPreviewLoading = {
