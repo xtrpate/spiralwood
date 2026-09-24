@@ -222,6 +222,48 @@ const buildOperationsDeliveryParams = ({
   return params;
 };
 
+
+const WARRANTY_EXPORT_PAGE_SIZE = 200;
+
+const EMPTY_WARRANTY_SUMMARY = {
+  pending: 0,
+  completed: 0,
+};
+
+const buildOperationsWarrantyParams = ({
+  page,
+  limit,
+  search,
+  dateFilter,
+  customStart,
+  customEnd,
+  includeSummary = true,
+}) => {
+  const params = {
+    operations_report: 1,
+    page,
+    limit,
+    date_filter: dateFilter,
+  };
+
+  const normalizedSearch = String(search || "").trim();
+
+  if (normalizedSearch) {
+    params.search = normalizedSearch;
+  }
+
+  if (dateFilter === "custom") {
+    if (customStart) params.from = customStart;
+    if (customEnd) params.to = customEnd;
+  }
+
+  if (!includeSummary) {
+    params.include_summary = 0;
+  }
+
+  return params;
+};
+
 const formatDateTime = (value) => {
   if (!value) return "—";
   const parsed = new Date(value);
@@ -946,6 +988,10 @@ export default function OperationsReportPage() {
   const [deliverySummary, setDeliverySummary] = useState(
     EMPTY_DELIVERY_SUMMARY,
   );
+  const [warrantyTotal, setWarrantyTotal] = useState(0);
+  const [warrantySummary, setWarrantySummary] = useState(
+    EMPTY_WARRANTY_SUMMARY,
+  );
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [generatedAt, setGeneratedAt] = useState("");
@@ -1083,50 +1129,56 @@ export default function OperationsReportPage() {
     customEnd,
   ]);
 
-  const loadLegacyReport = useCallback(async () => {
-    if (
-      !activeOperation ||
-      ["tasks", "appointments", "delivery"].includes(activeOperation.value)
-    ) {
-      return;
-    }
-
+  const loadWarrantyReport = useCallback(async () => {
     setLoading(true);
 
     try {
-      const { data } = await api.get(activeOperation.endpoint, {
-        params: { limit: 5000 },
+      const { data } = await api.get("/warranty", {
+        params: buildOperationsWarrantyParams({
+          page,
+          limit: PAGE_SIZE,
+          search: debouncedSearch,
+          dateFilter,
+          customStart,
+          customEnd,
+        }),
       });
 
-      const fetchedRows =
-        data.tasks ||
-        data.claims ||
-        data.deliveries ||
-        data.appointments ||
-        data.rows ||
-        data ||
-        [];
-
-      setRows(Array.isArray(fetchedRows) ? fetchedRows : []);
+      setRows(Array.isArray(data?.claims) ? data.claims : []);
+      setWarrantyTotal(Number(data?.total || 0));
+      setWarrantySummary({
+        ...EMPTY_WARRANTY_SUMMARY,
+        ...(data?.summary || {}),
+      });
       setGeneratedAt(new Date().toISOString());
     } catch (err) {
-      toast.error(`Failed to load ${activeOperation.label.toLowerCase()}.`);
+      toast.error(
+        err?.response?.data?.message || "Failed to load warranty claims.",
+      );
       setRows([]);
+      setWarrantyTotal(0);
+      setWarrantySummary(EMPTY_WARRANTY_SUMMARY);
     } finally {
       setLoading(false);
     }
-  }, [activeOperation]);
+  }, [
+    page,
+    debouncedSearch,
+    dateFilter,
+    customStart,
+    customEnd,
+  ]);
 
   const loadReport = useCallback(() => {
     if (operationType === "tasks") return loadTaskReport();
     if (operationType === "appointments") return loadAppointmentReport();
     if (operationType === "delivery") return loadDeliveryReport();
-    return loadLegacyReport();
+    return loadWarrantyReport();
   }, [
     loadAppointmentReport,
     loadDeliveryReport,
-    loadLegacyReport,
     loadTaskReport,
+    loadWarrantyReport,
     operationType,
   ]);
 
@@ -1143,42 +1195,10 @@ export default function OperationsReportPage() {
   }, [loadDeliveryReport, operationType]);
 
   useEffect(() => {
-    if (!["tasks", "appointments", "delivery"].includes(operationType)) {
-      loadLegacyReport();
-    }
-  }, [loadLegacyReport, operationType]);
+    if (operationType === "warranty") loadWarrantyReport();
+  }, [loadWarrantyReport, operationType]);
 
-  const filteredRows = useMemo(() => {
-    if (["tasks", "appointments", "delivery"].includes(operationType)) {
-      return rows;
-    }
-
-    return rows.filter((row) => {
-      const rowDate = getRowDate(row, operationType);
-      if (!isDateInRange(rowDate, dateFilter, customStart, customEnd)) {
-        return false;
-      }
-
-      const query = search.trim().toLowerCase();
-      if (query) {
-        const matchesSearch = Object.values(row).some((val) =>
-          String(val || "")
-            .toLowerCase()
-            .includes(query),
-        );
-        if (!matchesSearch) return false;
-      }
-
-      return true;
-    });
-  }, [
-    rows,
-    search,
-    operationType,
-    dateFilter,
-    customStart,
-    customEnd,
-  ]);
+  const filteredRows = rows;
 
   useEffect(() => {
     setPage(1);
@@ -1191,16 +1211,9 @@ export default function OperationsReportPage() {
         ? appointmentTotal
         : operationType === "delivery"
           ? deliveryTotal
-          : filteredRows.length;
+          : warrantyTotal;
 
-  const paginatedRows = useMemo(() => {
-    if (["tasks", "appointments", "delivery"].includes(operationType)) {
-      return rows;
-    }
-
-    const start = (page - 1) * PAGE_SIZE;
-    return filteredRows.slice(start, start + PAGE_SIZE);
-  }, [filteredRows, operationType, page, rows]);
+  const paginatedRows = rows;
 
   const totalPages = Math.max(
     1,
@@ -1339,28 +1352,21 @@ export default function OperationsReportPage() {
       };
     }
 
-    const total = filteredRows.length;
-    const pending = filteredRows.filter((r) =>
-      ["pending", "scheduled", "in_progress"].includes(
-        String(r.status).toLowerCase(),
-      ),
-    ).length;
-    const completed = filteredRows.filter((r) =>
-      ["completed", "resolved", "delivered", "done"].includes(
-        String(r.status).toLowerCase(),
-      ),
-    ).length;
-
-    return { total, pending, completed };
+    return {
+      total: warrantyTotal,
+      pending: Number(warrantySummary?.pending || 0),
+      completed: Number(warrantySummary?.completed || 0),
+    };
   }, [
     appointmentSummary,
     appointmentTotal,
     deliverySummary,
     deliveryTotal,
-    filteredRows,
     operationType,
     taskSummary,
     taskTotal,
+    warrantySummary,
+    warrantyTotal,
   ]);
 
   const exportExcel = async () => {
@@ -1590,8 +1596,54 @@ export default function OperationsReportPage() {
           formatDateTime(r.scheduled_date || r.delivery_date || r.created_at),
         ]);
       } else if (operationType === "warranty") {
+        const firstResponse = await api.get("/warranty", {
+          params: buildOperationsWarrantyParams({
+            page: 1,
+            limit: WARRANTY_EXPORT_PAGE_SIZE,
+            search,
+            dateFilter,
+            customStart,
+            customEnd,
+          }),
+        });
+
+        exportRows = Array.isArray(firstResponse.data?.claims)
+          ? [...firstResponse.data.claims]
+          : [];
+
+        const exportTotal = Number(firstResponse.data?.total || 0);
+        const exportPages = Math.max(
+          1,
+          Math.ceil(exportTotal / WARRANTY_EXPORT_PAGE_SIZE),
+        );
+
+        for (let exportPage = 2; exportPage <= exportPages; exportPage += 1) {
+          const { data } = await api.get("/warranty", {
+            params: buildOperationsWarrantyParams({
+              page: exportPage,
+              limit: WARRANTY_EXPORT_PAGE_SIZE,
+              search,
+              dateFilter,
+              customStart,
+              customEnd,
+              includeSummary: false,
+            }),
+          });
+
+          const batch = Array.isArray(data?.claims) ? data.claims : [];
+          exportRows.push(...batch);
+
+          if (batch.length === 0) break;
+        }
+
+        if (exportRows.length !== exportTotal) {
+          throw new Error(
+            "Warranty claim records changed while the export was being prepared. Please export again.",
+          );
+        }
+
         headers = ["Claim ID", "Customer", "Issue", "Status", "Filed On"];
-        mappedData = filteredRows.map((r) => [
+        mappedData = exportRows.map((r) => [
           r.id,
           r.customer_name || "—",
           r.issue_description || "—",
