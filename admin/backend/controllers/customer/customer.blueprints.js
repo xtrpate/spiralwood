@@ -538,10 +538,16 @@ exports.getAllBlueprints = async (req, res) => {
     page = 1,
     limit = 24,
     summary = "",
+    include_total = "",
   } = req.query;
 
   const summaryMode = ["1", "true", "yes"].includes(
     String(summary || "")
+      .trim()
+      .toLowerCase(),
+  );
+  const includeTotal = !["0", "false", "no"].includes(
+    String(include_total || "")
       .trim()
       .toLowerCase(),
   );
@@ -763,12 +769,18 @@ exports.getAllBlueprints = async (req, res) => {
           };
         });
 
-    const [countRows] = await db.query(
-      `SELECT COUNT(*) AS total
-       FROM blueprints b
-       ${where}`,
-      params,
-    );
+    let total = blueprints.length;
+
+    if (includeTotal) {
+      const [countRows] = await db.query(
+        `SELECT COUNT(*) AS total
+         FROM blueprints b
+         ${where}`,
+        params,
+      );
+
+      total = countRows[0]?.total || 0;
+    }
 
     let woodTypes = [];
 
@@ -795,7 +807,8 @@ exports.getAllBlueprints = async (req, res) => {
 
     res.json({
       blueprints,
-      total: countRows[0]?.total || 0,
+      total,
+      total_is_partial: !includeTotal,
       page: pageNum,
       limit: limitNum,
       wood_types: woodTypes.map((row) => row.wood_type),

@@ -3,6 +3,10 @@ import useAuthStore from "../../store/authStore";
 import { useCart } from "./cartcontext";
 import api, { buildAssetUrl } from "../../services/api";
 import {
+  buildCompactPreviewCacheKey,
+  readGeneratedCompactPreview,
+} from "./customerBlueprintPreviewCache";
+import {
   Home,
   Scissors,
   ShoppingBag,
@@ -41,6 +45,39 @@ import {
 
 const LandingPage = lazy(() => import("./LandingPage"));
 const CustomerBlueprintViewer = lazy(() => import("./CustomerBlueprintViewer"));
+
+const HEADER_SEARCH_BLUEPRINT_PREVIEW_PRESET = "iso";
+const HEADER_SEARCH_BLUEPRINT_PREVIEW_HEIGHT = 232;
+const HEADER_SEARCH_DEBOUNCE_MS = 300;
+
+const resolveHeaderBlueprintPreviewImage = (item = {}) => {
+  if (!item?.id) {
+    return item?.preview_image_url || item?.thumbnail_url || "";
+  }
+
+  const previewMetadata = {
+    id: item.id,
+    preview_revision:
+      item.preview_revision ||
+      item.blueprint_preview_revision ||
+      item.updated_at ||
+      item.created_at ||
+      String(item.id),
+  };
+
+  const cacheKey = buildCompactPreviewCacheKey(
+    previewMetadata,
+    HEADER_SEARCH_BLUEPRINT_PREVIEW_PRESET,
+    HEADER_SEARCH_BLUEPRINT_PREVIEW_HEIGHT,
+  );
+
+  return (
+    readGeneratedCompactPreview(cacheKey) ||
+    item.preview_image_url ||
+    item.thumbnail_url ||
+    ""
+  );
+};
 
 function DeferredBlueprintViewer(props) {
   return (
@@ -222,6 +259,7 @@ export default function CustomerLayout() {
   const miniCartRef = useRef(null);
   const cartButtonRef = useRef(null);
   const searchInputRef = useRef(null);
+  const headerSearchRequestRef = useRef(0);
   const {
     cart,
     cartCount,
@@ -319,32 +357,50 @@ export default function CustomerLayout() {
     };
   }, [customerUser]);
 
-  // 👉 ADD THIS EFFECT: Fetches products for the Top Navbar dropdown
+  // WISDOM HEADER SEARCH LIGHTWEIGHT PREVIEWS P7.5B
   useEffect(() => {
-    if (!headerSearch.trim() || !searchFocused) {
+    const requestId = ++headerSearchRequestRef.current;
+    const query = headerSearch.trim();
+
+    if (!query || !searchFocused) {
       setSearchResults([]);
-      return;
+      setSearchLoading(false);
+      return undefined;
     }
 
+    const controller = new AbortController();
+    let active = true;
+
+    setSearchLoading(false);
+
     const timer = setTimeout(async () => {
+      if (!active || requestId !== headerSearchRequestRef.current) return;
+
       setSearchLoading(true);
 
       try {
         const [productRes, blueprintRes] = await Promise.all([
           api.get("/customer/products", {
             params: {
-              q: headerSearch,
+              q: query,
               limit: 5,
               type: "standard",
+              summary: 1,
             },
+            signal: controller.signal,
           }),
           api.get("/customer/blueprints", {
             params: {
-              q: headerSearch,
+              q: query,
               limit: 5,
+              summary: 1,
+              include_total: 0,
             },
+            signal: controller.signal,
           }),
         ]);
+
+        if (!active || requestId !== headerSearchRequestRef.current) return;
 
         const rawProducts = Array.isArray(productRes.data?.products)
           ? productRes.data.products
@@ -378,23 +434,35 @@ export default function CustomerLayout() {
           subtitle:
             item.category_label || item.category || "Customize Template",
           badge: "Customize",
-          imageUrl: item.preview_image_url || item.thumbnail_url || "",
-          // WISDOM HEADER SEARCH LIVE BLUEPRINT PREVIEW V1.0.1
-          blueprintPreview: item,
+          imageUrl: resolveHeaderBlueprintPreviewImage(item),
           priceText: "Customize template",
           searchValue: item.title,
         }));
 
         setSearchResults([...mappedProducts, ...mappedBlueprints].slice(0, 8));
       } catch (err) {
+        if (
+          !active ||
+          controller.signal.aborted ||
+          err?.code === "ERR_CANCELED"
+        ) {
+          return;
+        }
+
         console.error("Navbar search error", err);
         setSearchResults([]);
       } finally {
-        setSearchLoading(false);
+        if (active && requestId === headerSearchRequestRef.current) {
+          setSearchLoading(false);
+        }
       }
-    }, 300);
+    }, HEADER_SEARCH_DEBOUNCE_MS);
 
-    return () => clearTimeout(timer);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [headerSearch, searchFocused]);
 
   const getAvatarUrl = (value) => {
@@ -940,34 +1008,17 @@ export default function CustomerLayout() {
                             justifyContent: "center",
                           }}
                         >
-                          {item.resultType === "template" &&
-                          item.blueprintPreview ? (
-                            <div
-                              aria-label={`${item.title} furniture preview`}
-                              style={{
-                                width: "100%",
-                                height: "100%",
-                                pointerEvents: "none",
-                              }}
-                            >
-                              <DeferredBlueprintViewer
-                                blueprint={item.blueprintPreview}
-                                readOnly
-                                showHumanControls={false}
-                                compact
-                                compactHeight={44}
-                                defaultPreset="isometric"
-                                defaultShowHuman={false}
-                              />
-                            </div>
-                          ) : item.imageUrl ? (
+                          {item.imageUrl ? (
                             <img
                               src={buildAssetUrl(item.imageUrl)}
                               alt={item.title}
                               style={{
                                 width: "100%",
                                 height: "100%",
-                                objectFit: "cover",
+                                objectFit:
+                                  item.resultType === "template"
+                                    ? "contain"
+                                    : "cover",
                               }}
                               onError={(e) => {
                                 e.currentTarget.style.display = "none";
