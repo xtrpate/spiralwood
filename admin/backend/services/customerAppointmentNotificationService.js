@@ -79,8 +79,8 @@ const getAppointmentContent = ({ event, scheduledDate }) => {
           `Please make sure to be available at the ` +
           `${date} and ${time} of your appointment ` +
           `as our staff will contact you. ` +
-          `If you cannot be contacted for 30 mins ` +
-          `your appointment will be canceled automatically.`,
+          `If our staff cannot contact you for 30 mins, ` +
+          `your appointment may be canceled.`,
       };
 
     case "in_progress":

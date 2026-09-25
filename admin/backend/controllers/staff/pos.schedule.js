@@ -11,7 +11,6 @@ const APPOINTMENT_STATUSES = [
   "confirmed",
   "in_progress",
   "completed",
-  "rejected",
   "cancelled",
 ];
 
@@ -482,18 +481,6 @@ const emitAppointmentSocketUpdate = (req, appointment) => {
      */
     io.to("staff-updates").emit("appointment:updated", payload);
 
-    /*
-     * Assigned staff gets the event through their personal room too.
-     * This keeps the event available even if the staff-room behavior
-     * changes later.
-     */
-    if (payload.assigned_staff_id) {
-      io.to(`user:${payload.assigned_staff_id}`).emit(
-        "appointment:updated",
-        payload,
-      );
-    }
-
     console.log("[APPOINTMENT SOCKET] appointment:updated", payload);
   } catch (err) {
     console.error("[APPOINTMENT SOCKET EMIT]", err?.message || err);
@@ -721,10 +708,19 @@ const getOperationsAppointmentReport = async (req, res) => {
        FROM appointments a
        ${joinsSql}
        WHERE ${whereSql}
-       ORDER BY
-         FIELD(a.status, 'pending', 'awaiting_staff_acceptance', 'confirmed', 'completed', 'rejected', 'cancelled'),
-         COALESCE(a.scheduled_date, a.preferred_date) ASC,
-         a.id DESC
+      ORDER BY
+  FIELD(
+    a.status,
+    'pending',
+    'awaiting_staff_acceptance',
+    'confirmed',
+    'in_progress',
+    'completed',
+    'rejected',
+    'cancelled'
+  ),
+  COALESCE(a.scheduled_date, a.preferred_date) ASC,
+  a.id DESC
        LIMIT ? OFFSET ?`,
       [...params, limit, offset],
     );
@@ -843,9 +839,18 @@ exports.getAppointments = async (req, res) => {
 
     sql += `
       ORDER BY
-        FIELD(a.status, 'pending', 'awaiting_staff_acceptance', 'confirmed', 'completed', 'rejected', 'cancelled'),
-        COALESCE(a.scheduled_date, a.preferred_date) ASC,
-        a.id DESC
+  FIELD(
+    a.status,
+    'pending',
+    'awaiting_staff_acceptance',
+    'confirmed',
+    'in_progress',
+    'completed',
+    'rejected',
+    'cancelled'
+  ),
+  COALESCE(a.scheduled_date, a.preferred_date) ASC,
+  a.id DESC
       LIMIT 200
     `;
 
@@ -1856,6 +1861,16 @@ exports.updateAppointment = async (req, res) => {
     }
 
     if (Object.prototype.hasOwnProperty.call(req.body, "assigned_staff_id")) {
+      if (currentStatus === "in_progress") {
+        await conn.rollback();
+        transactionActive = false;
+
+        return res.status(400).json({
+          message:
+            "An appointment that is already in progress cannot be reassigned.",
+        });
+      }
+
       const requestedProviderId = toNullableInt(req.body.assigned_staff_id);
 
       if (!requestedProviderId) {

@@ -165,9 +165,8 @@ const StatusBadge = ({ status }) => {
 
     completed: {
       cls: "appt-badge-completed",
-      label: "Done",
+      label: "Completed",
     },
-
     done: {
       cls: "appt-badge-completed",
       label: "Done",
@@ -393,6 +392,14 @@ export default function AppointmentPage() {
   useEffect(() => {
     if (!user?.id) return undefined;
 
+    const refreshAppointmentView = () => {
+      fetchAppointments();
+
+      // Also refresh booked slots because a cancelled appointment
+      // can make its previous slot available again.
+      setWeekStart((current) => new Date(current));
+    };
+
     const handleAppointmentNotification = (payload) => {
       const targetType = String(payload?.target_type || "").toLowerCase();
 
@@ -407,19 +414,34 @@ export default function AppointmentPage() {
         return;
       }
 
-      fetchAppointments();
+      refreshAppointmentView();
+    };
 
-      // Also refresh booked slots because a cancelled appointment
-      // can make its previous slot available again.
-      setWeekStart((current) => new Date(current));
+    const handleAppointmentUpdated = (payload) => {
+      const appointmentId = Number(payload?.appointment_id);
+
+      if (!Number.isInteger(appointmentId) || appointmentId <= 0) {
+        return;
+      }
+
+      if (
+        payload?.customer_id != null &&
+        Number(payload.customer_id) !== Number(user.id)
+      ) {
+        return;
+      }
+
+      refreshAppointmentView();
     };
 
     const attachListener = (socket) => {
       if (!socket) return;
 
       socket.off("notification:new", handleAppointmentNotification);
+      socket.off("appointment:updated", handleAppointmentUpdated);
 
       socket.on("notification:new", handleAppointmentNotification);
+      socket.on("appointment:updated", handleAppointmentUpdated);
     };
 
     const socket = getSocket();
@@ -435,12 +457,14 @@ export default function AppointmentPage() {
 
       if (socket) {
         socket.off("notification:new", handleAppointmentNotification);
+        socket.off("appointment:updated", handleAppointmentUpdated);
       }
 
       const currentSocket = getSocket();
 
       if (currentSocket && currentSocket !== socket) {
         currentSocket.off("notification:new", handleAppointmentNotification);
+        currentSocket.off("appointment:updated", handleAppointmentUpdated);
       }
     };
   }, [user?.id]);

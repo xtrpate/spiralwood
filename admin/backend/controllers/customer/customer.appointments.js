@@ -13,6 +13,54 @@ const MAX_ADDRESS_LENGTH = 300;
 
 const normalizeText = (value) => String(value || "").trim();
 
+const emitCustomerAppointmentSocketUpdate = ({
+  req,
+  appointmentId,
+  customerId,
+  assignedStaffId = null,
+  status,
+  scheduledDate = null,
+  preferredDate = null,
+}) => {
+  const io = req.app.get("io");
+
+  if (!io) {
+    console.warn(
+      "[CUSTOMER APPOINTMENT SOCKET] Socket.IO instance is not available.",
+    );
+    return;
+  }
+
+  const payload = {
+    appointment_id: Number(appointmentId),
+    customer_id: customerId ? Number(customerId) : null,
+    assigned_staff_id: assignedStaffId ? Number(assignedStaffId) : null,
+    status: String(status || "").toLowerCase(),
+    scheduled_date: scheduledDate || null,
+    preferred_date: preferredDate || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  try {
+    if (payload.customer_id) {
+      io.to(`user:${payload.customer_id}`).emit("appointment:updated", payload);
+    }
+
+    io.to("staff-updates").emit("appointment:updated", payload);
+
+    if (payload.assigned_staff_id) {
+      io.to(`user:${payload.assigned_staff_id}`).emit(
+        "appointment:updated",
+        payload,
+      );
+    }
+
+    console.log("[CUSTOMER APPOINTMENT SOCKET] appointment:updated", payload);
+  } catch (err) {
+    console.error("[CUSTOMER APPOINTMENT SOCKET EMIT]", err?.message || err);
+  }
+};
+
 const isValidYMDDate = (value) => {
   const raw = normalizeText(value);
 
@@ -394,6 +442,16 @@ exports.createAppointment = async (req, res) => {
       }
     }
 
+    emitCustomerAppointmentSocketUpdate({
+      req,
+      appointmentId: insertId,
+      customerId: req.user.id,
+      assignedStaffId: null,
+      status: "pending",
+      scheduledDate: scheduled_date,
+      preferredDate: preferred_schedule,
+    });
+
     await writeAuditLogSafe({
       userId: req.user.id,
       action: "request_appointment",
@@ -547,6 +605,16 @@ exports.cancelAppointment = async (req, res) => {
       });
     }
 
+    emitCustomerAppointmentSocketUpdate({
+      req,
+      appointmentId: appointment.id,
+      customerId: req.user.id,
+      assignedStaffId: appointment.assigned_staff_id,
+      status: "cancelled",
+      scheduledDate: appointment.scheduled_date,
+      preferredDate: appointment.scheduled_date,
+    });
+
     await writeAuditLogSafe({
       userId: req.user.id,
       action: "cancel_appointment",
@@ -626,10 +694,11 @@ exports.getAvailability = async (req, res) => {
       FROM appointments
       WHERE DATE(scheduled_date) = ?
   AND status IN (
-      'pending',
-      'awaiting_staff_acceptance',
-      'confirmed'
-  )
+    'pending',
+    'awaiting_staff_acceptance',
+    'confirmed',
+    'in_progress'
+)
       `,
       [date],
     );
@@ -677,10 +746,11 @@ exports.getWeeklyAvailability = async (req, res) => {
       FROM appointments
       WHERE DATE(scheduled_date) BETWEEN ? AND DATE_ADD(?, INTERVAL 6 DAY)
         AND status IN (
-          'pending',
-          'awaiting_staff_acceptance',
-          'confirmed'
-        )
+  'pending',
+  'awaiting_staff_acceptance',
+  'confirmed',
+  'in_progress'
+)
       `,
       [start, start],
     );

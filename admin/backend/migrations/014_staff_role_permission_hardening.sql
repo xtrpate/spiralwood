@@ -48,6 +48,7 @@ WHERE p.permission_key IN (
   'customers.view',
   'appointments.create',
   'appointments.view',
+  'appointments.delete',
   'warranty.create',
   'warranty.view'
 )

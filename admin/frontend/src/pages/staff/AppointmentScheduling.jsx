@@ -21,7 +21,6 @@ const PURPOSE_LABELS = {
 
 const STATUS_LABELS = {
   pending: "Pending Review",
-  awaiting_staff_acceptance: "Reviewing Schedule",
   confirmed: "Confirmed",
   in_progress: "In Progress",
   completed: "Completed",
@@ -34,7 +33,6 @@ const getStatusStyle = (status) => {
   const s = String(status || "").toLowerCase();
   switch (s) {
     case "pending":
-    case "awaiting_staff_acceptance":
       return {
         background: "#ffffff",
         color: "#52525b",
@@ -360,7 +358,6 @@ function AdminSummaryCard({ label, count, hint }) {
 const getIndoorStatusLabel = (status) => {
   const key = String(status || "").toLowerCase();
 
-  if (key === "awaiting_staff_acceptance") return "Reviewing Schedule";
   if (key === "confirmed") return "Confirmed";
   if (key === "completed") return "Completed";
   if (key === "cancelled") return "Cancelled";
@@ -1053,15 +1050,8 @@ export default function AppointmentScheduling() {
     [appointments],
   );
 
-  const staffNewAssignments = useMemo(() => {
-    if (!isIndoorStaff) return [];
-
-    return appointments.filter(
-      (a) =>
-        String(a.status || "").toLowerCase() === "awaiting_staff_acceptance" &&
-        isAssignedToCurrentIndoorStaff(a),
-    );
-  }, [appointments, isIndoorStaff, isAssignedToCurrentIndoorStaff]);
+  // Staff assignments now use the normal confirmed status.
+  // Unaccepted confirmed appointments are handled in Active Appointments.
 
   const staffConfirmedAppointments = useMemo(() => {
     if (!isIndoorStaff) return [];
@@ -1439,11 +1429,6 @@ export default function AppointmentScheduling() {
     );
   };
   const staffSummary = [
-    {
-      label: "New Assignments",
-      count: staffNewAssignments.length,
-      hint: "Waiting for your acceptance",
-    },
     {
       label: "Active Appointments",
       count: staffConfirmedAppointments.length,
@@ -2426,23 +2411,16 @@ export default function AppointmentScheduling() {
 
                   const isStaffChanged = rescheduleStaffId !== currentStaffId;
 
-                  // Smart status transitions based on what was changed
+                  // Smart status transitions based on what was changed.
                   let newStatus = rescheduleModal.status;
 
                   if (newStatus === "pending" && rescheduleStaffId) {
-                    newStatus = "awaiting_staff_acceptance";
-                  } else if (
-                    newStatus === "awaiting_staff_acceptance" &&
-                    !rescheduleStaffId
-                  ) {
-                    newStatus = "pending";
+                    newStatus = "confirmed";
                   } else if (
                     newStatus === "confirmed" &&
                     (isDateChanged || isStaffChanged)
                   ) {
-                    newStatus = rescheduleStaffId
-                      ? "awaiting_staff_acceptance"
-                      : "pending";
+                    newStatus = rescheduleStaffId ? "confirmed" : "pending";
                   }
 
                   const payload = {
@@ -2457,8 +2435,8 @@ export default function AppointmentScheduling() {
                   const saved = await handleAction(
                     rescheduleModal.id,
                     payload,
-                    newStatus === "awaiting_staff_acceptance"
-                      ? "Appointment updated. Staff must accept."
+                    newStatus === "confirmed"
+                      ? "Appointment confirmed and assigned to indoor staff."
                       : "Appointment updated successfully.",
                   );
 
@@ -2710,20 +2688,6 @@ export default function AppointmentScheduling() {
                               >
                                 <Calendar size={14} /> Manage
                               </button>
-
-                              <button
-                                style={btnDanger}
-                                disabled={actionLoadingId === a.id}
-                                onClick={() =>
-                                  handleAction(
-                                    a.id,
-                                    { status: "rejected" },
-                                    "Appointment request rejected.",
-                                  )
-                                }
-                              >
-                                <Ban size={14} /> Reject
-                              </button>
                             </div>
                           </td>
                         </tr>
@@ -2777,27 +2741,15 @@ export default function AppointmentScheduling() {
 
                           <td style={tdStyle}>
                             <div style={adminRowActionsStyle}>
-                              <button
-                                style={btnGhost}
-                                disabled={actionLoadingId === a.id}
-                                onClick={() => openReschedule(a, "reassign")}
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  color: "#71717a",
+                                  fontWeight: 500,
+                                }}
                               >
-                                <UserCheck size={14} /> Reassign
-                              </button>
-
-                              <button
-                                style={btnDanger}
-                                disabled={actionLoadingId === a.id}
-                                onClick={() =>
-                                  handleAction(
-                                    a.id,
-                                    { status: "rejected" },
-                                    "Appointment request rejected.",
-                                  )
-                                }
-                              >
-                                <Ban size={14} /> Reject
-                              </button>
+                                Reassignment unavailable while in progress
+                              </span>
                             </div>
                           </td>
                         </tr>
@@ -3006,133 +2958,6 @@ export default function AppointmentScheduling() {
               {success}
             </div>
           ) : null}
-
-          <IndoorAppointmentSection
-            title="New Assignments"
-            subtitle="Appointments waiting for your response."
-          >
-            {staffNewAssignments.length === 0 ? (
-              <div style={indoorEmptyStyle}>No new appointments.</div>
-            ) : (
-              <div style={indoorAppointmentListStyle}>
-                {staffNewAssignments.map((a) => {
-                  const scope = cleanIndoorWorkNote(getScope(a));
-
-                  return (
-                    <article
-                      key={a.id}
-                      id={`appointment-row-${a.id}`}
-                      className="indoor-appointment-card"
-                      style={{
-                        ...indoorAppointmentCardStyle,
-                        ...(focusedAppointmentId === a.id
-                          ? {
-                              boxShadow: "inset 0 0 0 2px #18181b",
-                            }
-                          : {}),
-                      }}
-                    >
-                      <div
-                        className="indoor-appointment-card-header"
-                        style={indoorAppointmentHeaderStyle}
-                      >
-                        <div>
-                          <div style={indoorAppointmentRefStyle}>
-                            {formatRequestNumber(a.id)}
-                          </div>
-                          <div style={indoorCustomerStyle}>
-                            {a.customer_name || "Customer"}
-                          </div>
-                        </div>
-
-                        <IndoorStatusBadge status={a.status} />
-                      </div>
-
-                      <div
-                        className="indoor-appointment-info-grid"
-                        style={indoorInfoGridStyle}
-                      >
-                        <IndoorInfo
-                          label="Service"
-                          value={humanizePurpose(a.purpose)}
-                          important
-                        />
-                        <IndoorInfo
-                          label="Schedule"
-                          value={formatAppointmentDateTime(
-                            a.preferred_date || a.scheduled_date,
-                          )}
-                          important
-                        />
-                        <IndoorInfo label="Location" value={getAddress(a)} />
-                        <IndoorInfo label="Contact" value={getContact(a)} />
-                      </div>
-
-                      {scope && scope !== "No additional scope details" ? (
-                        <div
-                          className="indoor-appointment-scope"
-                          style={indoorScopeStyle}
-                        >
-                          <strong style={{ fontWeight: 650, color: "#303034" }}>
-                            Work note:
-                          </strong>{" "}
-                          {scope}
-                        </div>
-                      ) : null}
-
-                      <div
-                        className="indoor-appointment-actions"
-                        style={indoorActionsStyle}
-                      >
-                        <button
-                          type="button"
-                          style={
-                            actionLoadingId === a.id ||
-                            isPastDue(a.preferred_date || a.scheduled_date)
-                              ? indoorDisabledButton
-                              : indoorPrimaryButton
-                          }
-                          disabled={
-                            actionLoadingId === a.id ||
-                            isPastDue(a.preferred_date || a.scheduled_date)
-                          }
-                          onClick={() =>
-                            handleAction(
-                              a.id,
-                              { status: "confirmed" },
-                              "Appointment accepted and confirmed.",
-                            )
-                          }
-                        >
-                          <CheckCircle2 size={14} />
-                          {actionLoadingId === a.id ? "Saving..." : "Accept"}
-                        </button>
-
-                        <button
-                          type="button"
-                          style={btnGhost}
-                          disabled={actionLoadingId === a.id}
-                          onClick={() =>
-                            handleAction(
-                              a.id,
-                              {
-                                status: "pending",
-                                assigned_staff_id: null,
-                              },
-                              "Appointment returned to admin for reassignment.",
-                            )
-                          }
-                        >
-                          <Ban size={14} />
-                          Return to Admin
-                        </button>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            )}
-          </IndoorAppointmentSection>
 
           <IndoorAppointmentSection
             title="Active Appointments"
