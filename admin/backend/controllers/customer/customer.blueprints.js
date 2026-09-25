@@ -531,14 +531,27 @@ const enrichBlueprintForCustomer = (row = {}) => {
 
 /* ── GET /customer/blueprints ─────────────────────────────────────────────── */
 exports.getAllBlueprints = async (req, res) => {
-  const { q, wood_type, sort = "newest", page = 1, limit = 24 } = req.query;
+  const {
+    q,
+    wood_type,
+    sort = "newest",
+    page = 1,
+    limit = 24,
+    summary = "",
+  } = req.query;
+
+  const summaryMode = ["1", "true", "yes"].includes(
+    String(summary || "")
+      .trim()
+      .toLowerCase(),
+  );
 
   try {
-    let where = `WHERE b.is_deleted = 0 
+    let where = `WHERE b.is_deleted = 0
        AND (b.is_template = 1 OR b.is_gallery = 1)
        AND EXISTS (
-         SELECT 1 FROM products p 
-         WHERE p.blueprint_id = b.id 
+         SELECT 1 FROM products p
+         WHERE p.blueprint_id = b.id
          AND p.is_published = 1
          AND p.is_active = 1
        )`;
@@ -564,29 +577,13 @@ exports.getAllBlueprints = async (req, res) => {
 
     const orderBy = sortMap[sort] || sortMap.newest;
     const pageNum = Number.parseInt(page, 10) || 1;
-    const limitNum = Number.parseInt(limit, 10) || 24;
+    const requestedLimit = Number.parseInt(limit, 10) || 24;
+    const limitNum = summaryMode
+      ? Math.min(50, Math.max(1, requestedLimit))
+      : requestedLimit;
     const offset = (pageNum - 1) * limitNum;
 
-    // ── FIXED: Main Query (Must be .query for LIMIT compatibility) ──
-    const [rows] = await db.query(
-      `SELECT
-        b.id,
-        b.title,
-        b.description,
-        b.base_price,
-        b.wood_type,
-        b.thumbnail_url,
-        b.file_url,
-        b.file_type,
-        b.design_data,
-        b.view_3d_data,
-        b.is_template,
-        b.is_gallery,
-        b.stage,
-        b.source,
-        b.created_at,
-        b.updated_at,
-        u.name AS creator_name,
+    const categorySelect = `
         (
           SELECT p.category_id
           FROM products p
@@ -606,6 +603,68 @@ exports.getAllBlueprints = async (req, res) => {
           ORDER BY p.id DESC
           LIMIT 1
         ) AS catalog_category_name
+    `;
+
+    // Summary mode intentionally avoids selecting the large design/view JSON.
+    // A card can fetch its exact Blueprint only when it approaches the viewport.
+    const summarySelect = `
+        b.id,
+        b.title,
+        b.description,
+        b.base_price,
+        b.wood_type,
+        b.thumbnail_url,
+        b.is_template,
+        b.is_gallery,
+        b.stage,
+        b.source,
+        b.created_at,
+        b.updated_at,
+        u.name AS creator_name,
+        COALESCE(
+          CAST(b.updated_at AS CHAR),
+          CAST(b.created_at AS CHAR),
+          CAST(b.id AS CHAR)
+        ) AS preview_revision,
+        CASE
+          WHEN b.design_data IS NOT NULL
+            OR b.view_3d_data IS NOT NULL
+            OR EXISTS (
+              SELECT 1
+              FROM blueprint_components bc
+              WHERE bc.blueprint_id = b.id
+              LIMIT 1
+            )
+          THEN 1
+          ELSE 0
+        END AS has_saved_3d,
+        ${categorySelect}
+    `;
+
+    const fullSelect = `
+        b.id,
+        b.title,
+        b.description,
+        b.base_price,
+        b.wood_type,
+        b.thumbnail_url,
+        b.file_url,
+        b.file_type,
+        b.design_data,
+        b.view_3d_data,
+        b.is_template,
+        b.is_gallery,
+        b.stage,
+        b.source,
+        b.created_at,
+        b.updated_at,
+        u.name AS creator_name,
+        ${categorySelect}
+    `;
+
+    const [rows] = await db.query(
+      `SELECT
+        ${summaryMode ? summarySelect : fullSelect}
       FROM blueprints b
       LEFT JOIN users u ON u.id = b.creator_id
       ${where}
@@ -614,53 +673,96 @@ exports.getAllBlueprints = async (req, res) => {
       [...params, parseInt(limitNum), parseInt(offset)],
     );
 
-    const blueprints = rows.map((row) => {
-      const mapped = enrichBlueprintForCustomer(row);
+    const blueprints = summaryMode
+      ? rows.map((row) => ({
+          id: row.id,
+          title: row.title || "",
+          description: row.description || "",
+          base_price: Number(row.base_price) || 0,
+          wood_type: row.wood_type || "",
+          thumbnail_url: row.thumbnail_url || "",
+          preview_image_url: row.thumbnail_url || "",
+          category:
+            String(row.catalog_category_name || "").trim() ||
+            "Furniture Template",
+          category_label:
+            String(row.catalog_category_name || "").trim() ||
+            "Furniture Template",
+          catalog_category_id: Number(row.catalog_category_id) || null,
+          catalog_category_name: String(
+            row.catalog_category_name || "",
+          ).trim(),
+          is_template: row.is_template,
+          is_gallery: row.is_gallery,
+          stage: row.stage,
+          source: row.source,
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+          creator_name: row.creator_name,
+          has_saved_3d: Number(row.has_saved_3d || 0) === 1,
+          preview_revision:
+            row.preview_revision ||
+            row.updated_at ||
+            row.created_at ||
+            String(row.id),
+          blueprint_preview_revision:
+            row.preview_revision ||
+            row.updated_at ||
+            row.created_at ||
+            String(row.id),
+          is_summary: true,
+        }))
+      : rows.map((row) => {
+          const mapped = enrichBlueprintForCustomer(row);
 
-      return {
-        id: mapped.id,
-        title: mapped.title,
-        description: mapped.description,
-        base_price: mapped.base_price,
-        wood_type: mapped.wood_type,
-        thumbnail_url: mapped.thumbnail_url || mapped.preview_image_url || "",
-        preview_image_url:
-          mapped.preview_image_url || mapped.thumbnail_url || "",
-        furniture_type: mapped.furniture_type || mapped.furnitureType || "",
-        furnitureType: mapped.furnitureType || mapped.furniture_type || "",
-        template_type: mapped.template_type || mapped.templateType || "",
-        templateType: mapped.templateType || mapped.template_type || "",
-        preview_template_type: mapped.preview_template_type,
-        category: mapped.category,
-        category_label: mapped.category_label || mapped.category,
-        catalog_category_id: Number(mapped.catalog_category_id) || null,
-        catalog_category_name: String(mapped.catalog_category_name || "").trim(),
-        is_template: mapped.is_template,
-        is_gallery: mapped.is_gallery,
-        stage: mapped.stage,
-        source: mapped.source,
-        created_at: mapped.created_at,
-        updated_at: mapped.updated_at,
-        creator_name: mapped.creator_name,
-        scene_bounds: mapped.scene_bounds,
-        default_dimensions: mapped.default_dimensions,
-        dimensions: mapped.dimensions,
-        import_dimensions: mapped.import_dimensions,
-        width_mm: mapped.width_mm,
-        height_mm: mapped.height_mm,
-        depth_mm: mapped.depth_mm,
-        customization_rules: mapped.customization_rules,
-        primary_material: mapped.primary_material,
-        finish_color: mapped.finish_color,
-        hardware: mapped.hardware,
-        door_style: mapped.door_style,
-        has_saved_3d: mapped.has_saved_3d,
-        design_data: mapped.design_data,
-        view_3d_data: mapped.view_3d_data,
-      };
-    });
+          return {
+            id: mapped.id,
+            title: mapped.title,
+            description: mapped.description,
+            base_price: mapped.base_price,
+            wood_type: mapped.wood_type,
+            thumbnail_url:
+              mapped.thumbnail_url || mapped.preview_image_url || "",
+            preview_image_url:
+              mapped.preview_image_url || mapped.thumbnail_url || "",
+            furniture_type:
+              mapped.furniture_type || mapped.furnitureType || "",
+            furnitureType:
+              mapped.furnitureType || mapped.furniture_type || "",
+            template_type: mapped.template_type || mapped.templateType || "",
+            templateType: mapped.templateType || mapped.template_type || "",
+            preview_template_type: mapped.preview_template_type,
+            category: mapped.category,
+            category_label: mapped.category_label || mapped.category,
+            catalog_category_id: Number(mapped.catalog_category_id) || null,
+            catalog_category_name: String(
+              mapped.catalog_category_name || "",
+            ).trim(),
+            is_template: mapped.is_template,
+            is_gallery: mapped.is_gallery,
+            stage: mapped.stage,
+            source: mapped.source,
+            created_at: mapped.created_at,
+            updated_at: mapped.updated_at,
+            creator_name: mapped.creator_name,
+            scene_bounds: mapped.scene_bounds,
+            default_dimensions: mapped.default_dimensions,
+            dimensions: mapped.dimensions,
+            import_dimensions: mapped.import_dimensions,
+            width_mm: mapped.width_mm,
+            height_mm: mapped.height_mm,
+            depth_mm: mapped.depth_mm,
+            customization_rules: mapped.customization_rules,
+            primary_material: mapped.primary_material,
+            finish_color: mapped.finish_color,
+            hardware: mapped.hardware,
+            door_style: mapped.door_style,
+            has_saved_3d: mapped.has_saved_3d,
+            design_data: mapped.design_data,
+            view_3d_data: mapped.view_3d_data,
+          };
+        });
 
-    // ── FIXED: Using .query here too for total count ──
     const [countRows] = await db.query(
       `SELECT COUNT(*) AS total
        FROM blueprints b
@@ -668,23 +770,28 @@ exports.getAllBlueprints = async (req, res) => {
       params,
     );
 
-    // ── FIXED: Using .query for wood types dropdown ──
-    const [woodTypes] = await db.query(
-      `SELECT DISTINCT b.wood_type
-       FROM blueprints b
-       WHERE b.is_deleted = 0
-         AND (b.is_gallery = 1 OR b.is_template = 1)
-         AND b.wood_type IS NOT NULL
-         AND b.wood_type != ''
-         AND EXISTS (
-           SELECT 1
-           FROM products p
-           WHERE p.blueprint_id = b.id
-             AND p.is_published = 1
-             AND p.is_active = 1
-         )`,
-      [], // Pass empty array for query safety
-    );
+    let woodTypes = [];
+
+    if (!summaryMode) {
+      const [rows] = await db.query(
+        `SELECT DISTINCT b.wood_type
+         FROM blueprints b
+         WHERE b.is_deleted = 0
+           AND (b.is_gallery = 1 OR b.is_template = 1)
+           AND b.wood_type IS NOT NULL
+           AND b.wood_type != ''
+           AND EXISTS (
+             SELECT 1
+             FROM products p
+             WHERE p.blueprint_id = b.id
+               AND p.is_published = 1
+               AND p.is_active = 1
+           )`,
+        [],
+      );
+
+      woodTypes = rows;
+    }
 
     res.json({
       blueprints,
