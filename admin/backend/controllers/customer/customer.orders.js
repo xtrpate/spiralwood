@@ -763,6 +763,274 @@ exports.createOrder = async (req, res) => {
 /* ── List My Orders ── */
 exports.getOrders = async (req, res) => {
   try {
+    const summaryMode = String(req.query?.summary || "")
+      .trim()
+      .toLowerCase();
+
+    // WISDOM CUSTOMER ORDERS LIGHTWEIGHT COUNT P7.6A
+    // The customer header needs one number, not the complete My Orders payload.
+    if (summaryMode === "count") {
+      const [[countRow]] = await db.query(
+        `SELECT COUNT(*) AS active_orders_count
+         FROM orders
+         WHERE customer_id = ?
+           AND status NOT IN ('completed', 'cancelled')`,
+        [req.user.id],
+      );
+
+      return res.json({
+        active_orders_count: Number(countRow?.active_orders_count || 0),
+      });
+    }
+
+    // WISDOM CUSTOMER ORDERS LIGHTWEIGHT LIST P7.6A
+    // Summary mode deliberately excludes customization_json, design_data,
+    // view_3d_data, and blueprint_components. Exact custom 3D is requested
+    // only by the ownership-checked preview endpoint when a cold card nears
+    // the viewport.
+    if (["1", "true", "summary"].includes(summaryMode)) {
+      const [orders] = await db.query(
+        `SELECT
+            o.id,
+            o.order_number,
+            o.status,
+            o.payment_method,
+            o.payment_status,
+            o.subtotal,
+            o.total,
+            o.payment_url,
+            o.order_type,
+            o.blueprint_id,
+            o.created_at,
+            b.title AS blueprint_title,
+            COALESCE(
+              CAST(b.updated_at AS CHAR),
+              CAST(o.updated_at AS CHAR),
+              CAST(o.id AS CHAR)
+            ) AS blueprint_preview_revision
+         FROM orders o
+         LEFT JOIN blueprints b ON b.id = o.blueprint_id
+         WHERE o.customer_id = ?
+         ORDER BY o.created_at DESC, o.id DESC`,
+        [req.user.id],
+      );
+
+      if (!orders.length) {
+        return res.json([]);
+      }
+
+      const orderIds = orders
+        .map((order) => Number(order.id))
+        .filter((id) => Number.isInteger(id) && id > 0);
+
+      const placeholders = orderIds.map(() => "?").join(",");
+
+      // MySQL 8 window functions let the database return only the first two
+      // visual rows per order while still returning the complete line-count
+      // and quantity total. Large JSON stays inside MySQL.
+      const [previewRows] = await db.query(
+        `WITH ranked_items AS (
+           SELECT
+             oi.id AS order_item_id,
+             oi.order_id,
+             oi.product_name,
+             oi.quantity,
+             oi.unit_price,
+             p.image_url,
+             ROW_NUMBER() OVER (
+               PARTITION BY oi.order_id
+               ORDER BY oi.id ASC
+             ) AS preview_rank,
+             COUNT(*) OVER (
+               PARTITION BY oi.order_id
+             ) AS item_count,
+             SUM(oi.quantity) OVER (
+               PARTITION BY oi.order_id
+             ) AS total_qty,
+             CASE
+               WHEN JSON_VALID(oi.customization_json) THEN
+                 NULLIF(
+                   JSON_UNQUOTE(
+                     JSON_EXTRACT(
+                       oi.customization_json,
+                       '$.base_blueprint_title'
+                     )
+                   ),
+                   'null'
+                 )
+               ELSE NULL
+             END AS custom_blueprint_title,
+             CASE
+               WHEN JSON_VALID(oi.customization_json) THEN
+                 CASE
+                   WHEN COALESCE(
+                     JSON_LENGTH(
+                       JSON_EXTRACT(
+                         oi.customization_json,
+                         '$.editor_snapshot.components'
+                       )
+                     ),
+                     0
+                   ) > 0
+                   THEN 1
+                   ELSE 0
+                 END
+               ELSE 0
+             END AS has_submitted_3d,
+             CASE
+               WHEN JSON_VALID(oi.customization_json) THEN
+                 CASE
+                   WHEN CHAR_LENGTH(
+                     COALESCE(
+                       NULLIF(
+                         JSON_UNQUOTE(
+                           JSON_EXTRACT(
+                             oi.customization_json,
+                             '$.preview_image_url'
+                           )
+                         ),
+                         'null'
+                       ),
+                       NULLIF(
+                         JSON_UNQUOTE(
+                           JSON_EXTRACT(
+                             oi.customization_json,
+                             '$.image_url'
+                           )
+                         ),
+                         'null'
+                       ),
+                       ''
+                     )
+                   ) > 0
+                   THEN 1
+                   ELSE 0
+                 END
+               ELSE 0
+             END AS has_submitted_image
+           FROM order_items oi
+           LEFT JOIN products p ON p.id = oi.product_id
+           WHERE oi.order_id IN (${placeholders})
+         )
+         SELECT
+           order_item_id,
+           order_id,
+           product_name,
+           quantity,
+           unit_price,
+           image_url,
+           item_count,
+           total_qty,
+           custom_blueprint_title,
+           has_submitted_3d,
+           has_submitted_image
+         FROM ranked_items
+         WHERE preview_rank <= 2
+         ORDER BY order_id ASC, order_item_id ASC`,
+        orderIds,
+      );
+
+      const orderById = new Map(
+        orders.map((order) => [Number(order.id), order]),
+      );
+      const itemsByOrderId = new Map();
+      const statsByOrderId = new Map();
+
+      for (const row of previewRows) {
+        const orderId = Number(row.order_id);
+        const order = orderById.get(orderId);
+        if (!order) continue;
+
+        if (!itemsByOrderId.has(orderId)) {
+          itemsByOrderId.set(orderId, []);
+        }
+
+        if (!statsByOrderId.has(orderId)) {
+          statsByOrderId.set(orderId, {
+            item_count: Number(row.item_count || 0),
+            total_qty: Number(row.total_qty || 0),
+          });
+        }
+
+        const isBlueprintOrder =
+          String(order.order_type || "")
+            .trim()
+            .toLowerCase() === "blueprint";
+
+        const hasSubmitted3D =
+          isBlueprintOrder && Number(row.has_submitted_3d || 0) === 1;
+        const hasSubmittedImage =
+          isBlueprintOrder && Number(row.has_submitted_image || 0) === 1;
+
+        let previewSource = "none";
+        let previewId = null;
+        let previewRevision = null;
+
+        if (isBlueprintOrder && hasSubmitted3D) {
+          previewSource = "submitted_scene";
+          previewId = `order-item-${row.order_item_id}`;
+          previewRevision = `submitted-order-item-${row.order_item_id}`;
+        } else if (isBlueprintOrder && hasSubmittedImage) {
+          previewSource = "submitted_image";
+          previewId = `order-item-${row.order_item_id}`;
+          previewRevision = `submitted-order-item-${row.order_item_id}`;
+        } else if (isBlueprintOrder && Number(order.blueprint_id) > 0) {
+          previewSource = "linked_blueprint";
+          previewId = Number(order.blueprint_id);
+          previewRevision =
+            order.blueprint_preview_revision || String(order.blueprint_id);
+        }
+
+        const blueprintTitle = String(
+          row.custom_blueprint_title ||
+            row.product_name ||
+            order.blueprint_title ||
+            "Custom Furniture",
+        ).trim();
+
+        itemsByOrderId.get(orderId).push({
+          order_item_id: row.order_item_id,
+          product_name: row.product_name,
+          quantity: row.quantity,
+          unit_price: row.unit_price,
+          image_url: isBlueprintOrder ? null : row.image_url,
+          is_custom_blueprint: isBlueprintOrder,
+          blueprint_title: isBlueprintOrder ? blueprintTitle : null,
+          blueprint_preview_source: previewSource,
+          blueprint_preview_id: previewId,
+          blueprint_preview_revision: previewRevision,
+          has_blueprint_preview: previewSource !== "none",
+        });
+      }
+
+      for (const order of orders) {
+        const stats = statsByOrderId.get(Number(order.id)) || {
+          item_count: 0,
+          total_qty: 0,
+        };
+
+        order.item_count = stats.item_count;
+        order.total_qty = stats.total_qty;
+        order.items_preview =
+          itemsByOrderId.get(Number(order.id)) || [];
+
+        const blueprintId = Number(order.blueprint_id);
+        order.blueprint_preview =
+          Number.isInteger(blueprintId) && blueprintId > 0
+            ? {
+                id: blueprintId,
+                title: order.blueprint_title || null,
+                blueprint_preview_revision:
+                  order.blueprint_preview_revision || String(blueprintId),
+              }
+            : null;
+
+        delete order.blueprint_title;
+      }
+
+      return res.json(orders);
+    }
+
     // WISDOM CUSTOMER ORDERS BATCH READ V1
     // Keep the response shape unchanged while avoiding one or more
     // database round-trips for every order on the page.
@@ -965,6 +1233,229 @@ exports.getOrders = async (req, res) => {
     return res.json(orders);
   } catch (err) {
     console.error("[customer.orders GET]", err);
+    return res.status(500).json({
+      message: "Server error.",
+      error: err.message,
+    });
+  }
+};
+
+// WISDOM CUSTOMER ORDER EXACT SUBMITTED PREVIEW P7.6A
+// Cold My Orders cards call this endpoint only when near the viewport.
+// Ownership is checked before any scene/customization JSON leaves the server.
+exports.getOrderPreview = async (req, res) => {
+  try {
+    const orderId = Number.parseInt(req.params.id, 10);
+
+    if (!Number.isInteger(orderId) || orderId <= 0) {
+      return res.status(400).json({ message: "Invalid order id." });
+    }
+
+    const [[order]] = await db.query(
+      `SELECT
+         id,
+         order_type,
+         blueprint_id,
+         created_at,
+         updated_at
+       FROM orders
+       WHERE id = ?
+         AND customer_id = ?
+       LIMIT 1`,
+      [orderId, req.user.id],
+    );
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found." });
+    }
+
+    if (
+      String(order.order_type || "")
+        .trim()
+        .toLowerCase() !== "blueprint"
+    ) {
+      return res.status(404).json({
+        message: "No custom Blueprint preview is available for this order.",
+      });
+    }
+
+    const [[item]] = await db.query(
+      `SELECT id, product_name, customization_json
+       FROM order_items
+       WHERE order_id = ?
+       ORDER BY id ASC
+       LIMIT 1`,
+      [order.id],
+    );
+
+    let customization = {};
+    if (item?.customization_json) {
+      try {
+        const parsed =
+          typeof item.customization_json === "object"
+            ? item.customization_json
+            : JSON.parse(item.customization_json);
+
+        if (
+          parsed &&
+          typeof parsed === "object" &&
+          !Array.isArray(parsed)
+        ) {
+          customization = parsed;
+        }
+      } catch {
+        customization = {};
+      }
+    }
+
+    const editorSnapshot =
+      customization?.editor_snapshot &&
+      typeof customization.editor_snapshot === "object" &&
+      !Array.isArray(customization.editor_snapshot)
+        ? customization.editor_snapshot
+        : {};
+
+    const components = Array.isArray(editorSnapshot.components)
+      ? editorSnapshot.components
+      : [];
+
+    const worldSize =
+      editorSnapshot?.worldSize &&
+      typeof editorSnapshot.worldSize === "object" &&
+      !Array.isArray(editorSnapshot.worldSize)
+        ? editorSnapshot.worldSize
+        : null;
+
+    const title = String(
+      customization?.base_blueprint_title ||
+        item?.product_name ||
+        "Custom Furniture",
+    ).trim();
+
+    if (item?.id && components.length > 0) {
+      const previewRevision = `submitted-order-item-${item.id}`;
+
+      return res.json({
+        kind: "scene",
+        order_id: order.id,
+        order_item_id: item.id,
+        blueprint_preview_revision: previewRevision,
+        blueprint: {
+          id: `order-item-${item.id}`,
+          title,
+          preview_revision: previewRevision,
+          blueprint_preview_revision: previewRevision,
+          thumbnail_url: null,
+          components,
+          view_3d_data: {
+            components,
+            worldSize,
+          },
+        },
+      });
+    }
+
+    const submittedImage = String(
+      customization?.preview_image_url ||
+        customization?.image_url ||
+        "",
+    ).trim();
+
+    if (item?.id && submittedImage) {
+      return res.json({
+        kind: "image",
+        order_id: order.id,
+        order_item_id: item.id,
+        blueprint_preview_revision:
+          `submitted-order-item-${item.id}`,
+        title,
+        image_url: submittedImage,
+      });
+    }
+
+    const blueprintId = Number(order.blueprint_id);
+    if (Number.isInteger(blueprintId) && blueprintId > 0) {
+      const [[blueprint]] = await db.query(
+        `SELECT
+           id,
+           title,
+           thumbnail_url,
+           source,
+           file_url,
+           file_type,
+           design_data,
+           view_3d_data,
+           updated_at
+         FROM blueprints
+         WHERE id = ?
+         LIMIT 1`,
+        [blueprintId],
+      );
+
+      if (blueprint) {
+        const [componentRows] = await db.query(
+          `SELECT *
+           FROM blueprint_components
+           WHERE blueprint_id = ?
+           ORDER BY id ASC`,
+          [blueprintId],
+        );
+
+        const previewRevision = String(
+          blueprint.updated_at ||
+            order.updated_at ||
+            order.created_at ||
+            blueprint.id,
+        );
+
+        const hasScenePayload =
+          Boolean(blueprint.design_data) ||
+          Boolean(blueprint.view_3d_data) ||
+          componentRows.length > 0;
+
+        if (hasScenePayload) {
+          return res.json({
+            kind: "scene",
+            order_id: order.id,
+            order_item_id: item?.id || null,
+            blueprint_preview_revision: previewRevision,
+            blueprint: {
+              ...blueprint,
+              preview_revision: previewRevision,
+              blueprint_preview_revision: previewRevision,
+              components: componentRows,
+            },
+          });
+        }
+
+        const importedImage =
+          String(blueprint.thumbnail_url || "").trim() ||
+          (["jpg", "jpeg", "png", "webp"].includes(
+            String(blueprint.file_type || "")
+              .trim()
+              .toLowerCase(),
+          )
+            ? String(blueprint.file_url || "").trim()
+            : "");
+
+        if (importedImage) {
+          return res.json({
+            kind: "image",
+            order_id: order.id,
+            order_item_id: item?.id || null,
+            blueprint_preview_revision: previewRevision,
+            title: blueprint.title || title,
+            image_url: importedImage,
+          });
+        }
+      }
+    }
+
+    return res.status(404).json({
+      message: "No Blueprint preview is available for this order.",
+    });
+  } catch (err) {
+    console.error("[customer.orders/:id/preview]", err);
     return res.status(500).json({
       message: "Server error.",
       error: err.message,

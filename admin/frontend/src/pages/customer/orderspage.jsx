@@ -1,12 +1,24 @@
-import { useState, useEffect, useRef } from "react";
+import { lazy, Suspense, useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import { getSocket, subscribeSocketReady } from "../../services/socket";
 import "./orders.css";
 import { PackageSearch, ShoppingBag } from "lucide-react";
-import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
+import {
+  buildCompactPreviewCacheKey,
+  readGeneratedCompactPreview,
+} from "./customerBlueprintPreviewCache";
 import { DeliveryReceiptButton } from "../../components/delivery/DeliveryReceiptModal";
 import DownloadFileButton from "../../components/delivery/DownloadFileButton";
+
+const LazyCustomerBlueprintViewer = lazy(
+  () => import("./CustomerBlueprintViewer"),
+);
+
+const MY_ORDERS_PREVIEW_PRESET = "isometric";
+const MY_ORDERS_PREVIEW_HEIGHT = 64;
+const MY_ORDERS_PREVIEW_PREFETCH_MARGIN = "240px 0px";
+
 
 const STATUS_META = {
   pending: {
@@ -264,24 +276,280 @@ function TrackingList({ order }) {
   );
 }
 
+function OrderBlueprintPlaceholder() {
+  return (
+    <div className="wisdom-order-blueprint-placeholder">
+      <svg
+        viewBox="0 0 48 48"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <rect x="8" y="5" width="32" height="38" />
+        <path d="M14 14h20M14 20h20M14 26h9M27 26h7M14 32h20M18 10v28M31 10v28" />
+      </svg>
+      <span>Blueprint</span>
+    </div>
+  );
+}
+
+function DeferredCustomerBlueprintViewer({
+  compactHeight = MY_ORDERS_PREVIEW_HEIGHT,
+  ...props
+}) {
+  return (
+    <Suspense
+      fallback={
+        <div
+          aria-hidden="true"
+          style={{
+            width: "100%",
+            height: compactHeight,
+            background: "#f7f2ea",
+          }}
+        />
+      }
+    >
+      <LazyCustomerBlueprintViewer
+        {...props}
+        compactHeight={compactHeight}
+      />
+    </Suspense>
+  );
+}
+
+const resolveOrderPreviewAsset = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  if (/^(https?:|data:|blob:)/i.test(raw)) {
+    return raw;
+  }
+
+  return buildAssetUrl(raw);
+};
+
+function OrderBlueprintPreview({ order, item }) {
+  const hostRef = useRef(null);
+  const requestedKeyRef = useRef("");
+
+  const previewSource = String(
+    item?.blueprint_preview_source || "none",
+  ).trim();
+
+  const previewIdentity = {
+    id:
+      item?.blueprint_preview_id ||
+      order?.blueprint_preview?.id ||
+      order?.blueprint_id ||
+      `order-${order?.id || "unknown"}`,
+    blueprint_preview_revision:
+      item?.blueprint_preview_revision ||
+      order?.blueprint_preview?.blueprint_preview_revision ||
+      order?.blueprint_preview_revision ||
+      String(order?.id || ""),
+  };
+
+  const cacheKey = buildCompactPreviewCacheKey(
+    previewIdentity,
+    MY_ORDERS_PREVIEW_PRESET,
+    MY_ORDERS_PREVIEW_HEIGHT,
+  );
+
+  const canReadGeneratedCache =
+    previewSource === "submitted_scene" ||
+    previewSource === "linked_blueprint";
+
+  const [cachedPreview, setCachedPreview] = useState(() =>
+    canReadGeneratedCache
+      ? readGeneratedCompactPreview(cacheKey)
+      : "",
+  );
+  const [nearVisible, setNearVisible] = useState(false);
+  const [previewPayload, setPreviewPayload] = useState(null);
+  const [staticPreview, setStaticPreview] = useState("");
+  const [previewFailed, setPreviewFailed] = useState(false);
+
+  useEffect(() => {
+    requestedKeyRef.current = "";
+    setPreviewPayload(null);
+    setStaticPreview("");
+    setPreviewFailed(false);
+    setCachedPreview(
+      canReadGeneratedCache
+        ? readGeneratedCompactPreview(cacheKey)
+        : "",
+    );
+  }, [cacheKey, canReadGeneratedCache]);
+
+  useEffect(() => {
+    const node = hostRef.current;
+
+    if (!node || previewSource === "none") {
+      return undefined;
+    }
+
+    if (typeof IntersectionObserver === "undefined") {
+      setNearVisible(true);
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return;
+        setNearVisible(true);
+        observer.disconnect();
+      },
+      {
+        root: null,
+        rootMargin: MY_ORDERS_PREVIEW_PREFETCH_MARGIN,
+        threshold: 0.01,
+      },
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [order?.id, previewSource]);
+
+  useEffect(() => {
+    if (
+      !nearVisible ||
+      cachedPreview ||
+      previewSource === "none" ||
+      !order?.id
+    ) {
+      return undefined;
+    }
+
+    if (requestedKeyRef.current === cacheKey) {
+      return undefined;
+    }
+
+    requestedKeyRef.current = cacheKey;
+
+    const controller = new AbortController();
+    let active = true;
+
+    api
+      .get(`/customer/orders/${order.id}/preview`, {
+        signal: controller.signal,
+      })
+      .then(({ data }) => {
+        if (!active) return;
+
+        if (data?.kind === "image" && data?.image_url) {
+          setStaticPreview(resolveOrderPreviewAsset(data.image_url));
+          setPreviewPayload(null);
+          return;
+        }
+
+        if (data?.kind === "scene" && data?.blueprint) {
+          setPreviewPayload(data.blueprint);
+          setStaticPreview("");
+          return;
+        }
+
+        setPreviewFailed(true);
+      })
+      .catch((err) => {
+        if (
+          !active ||
+          controller.signal.aborted ||
+          err?.code === "ERR_CANCELED"
+        ) {
+          return;
+        }
+
+        console.error(
+          "Failed to load exact customer order Blueprint preview:",
+          err?.response?.data || err,
+        );
+        setPreviewFailed(true);
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [
+    cacheKey,
+    cachedPreview,
+    nearVisible,
+    order?.id,
+    previewSource,
+  ]);
+
+  return (
+    <div ref={hostRef} className="wisdom-order-blueprint-live">
+      {cachedPreview ? (
+        <img
+          src={cachedPreview}
+          alt={item?.blueprint_title || "Custom Blueprint preview"}
+          loading="lazy"
+          decoding="async"
+          style={{
+            display: "block",
+            width: "100%",
+            height: MY_ORDERS_PREVIEW_HEIGHT,
+            objectFit: "contain",
+            background: "#f7f2ea",
+          }}
+        />
+      ) : staticPreview ? (
+        <img
+          src={staticPreview}
+          alt={item?.blueprint_title || "Custom Blueprint preview"}
+          loading="lazy"
+          decoding="async"
+          style={{
+            display: "block",
+            width: "100%",
+            height: MY_ORDERS_PREVIEW_HEIGHT,
+            objectFit: "contain",
+            background: "#f7f2ea",
+          }}
+        />
+      ) : previewPayload ? (
+        <DeferredCustomerBlueprintViewer
+          key={cacheKey}
+          blueprint={previewPayload}
+          compactCacheKey={cacheKey}
+          readOnly
+          showHumanControls={false}
+          compact
+          compactHeight={MY_ORDERS_PREVIEW_HEIGHT}
+          defaultPreset={MY_ORDERS_PREVIEW_PRESET}
+          defaultShowHuman={false}
+        />
+      ) : (
+        <OrderBlueprintPlaceholder
+          aria-label={
+            previewFailed
+              ? "Blueprint preview unavailable"
+              : "Blueprint preview loading"
+          }
+        />
+      )}
+    </div>
+  );
+}
+
 function OrderModal({
   orderId,
-  initialOrder = null,
   onClose,
   onConfirmOrder,
   onCancelOrder,
 }) {
   const navigate = useNavigate();
-  const [order, setOrder] = useState(initialOrder);
-  const [loading, setLoading] = useState(!initialOrder);
+  const [order, setOrder] = useState(null);
+  const [loading, setLoading] = useState(true);
   const orderRequestRef = useRef(0);
 
   useEffect(() => {
     let active = true;
     const requestId = ++orderRequestRef.current;
 
-    setOrder(initialOrder || null);
-    setLoading(!initialOrder);
+    setOrder(null);
+    setLoading(true);
 
     api
       .get(`/customer/orders/${orderId}`)
@@ -302,9 +570,7 @@ function OrderModal({
           err?.response?.data || err,
         );
 
-        if (!initialOrder) {
-          setOrder(null);
-        }
+        setOrder(null);
       })
       .finally(() => {
         if (active && requestId === orderRequestRef.current) {
@@ -390,20 +656,31 @@ function OrderModal({
     const handleBlueprintUpdated = (payload) => {
       const updatedOrderId = Number(payload?.order_id);
 
-      if (!Number.isInteger(updatedOrderId)) {
+      if (
+        !Number.isInteger(updatedOrderId) ||
+        updatedOrderId !== Number(orderId)
+      ) {
         return;
       }
 
-      api
-        .get("/customer/orders")
-        .then((response) => {
-          const nextOrders = Array.isArray(response.data) ? response.data : [];
+      const requestId = ++orderRequestRef.current;
 
-          setOrders(nextOrders);
+      api
+        .get(`/customer/orders/${orderId}`)
+        .then((response) => {
+          if (requestId !== orderRequestRef.current) {
+            return;
+          }
+
+          setOrder(response.data || null);
         })
         .catch((err) => {
+          if (requestId !== orderRequestRef.current) {
+            return;
+          }
+
           console.error(
-            "Failed to refresh customer orders after realtime blueprint update:",
+            "Failed to refresh customer order after realtime blueprint update:",
             err?.response?.data || err,
           );
         });
@@ -412,9 +689,12 @@ function OrderModal({
     const handleDeliveryUpdated = (payload) => {
       console.log("[SOCKET RECEIVED] delivery:updated", payload);
 
-      const orderId = Number(payload?.order_id);
+      const updatedOrderId = Number(payload?.order_id);
 
-      if (!Number.isInteger(orderId)) {
+      if (
+        !Number.isInteger(updatedOrderId) ||
+        updatedOrderId !== Number(orderId)
+      ) {
         return;
       }
 
@@ -422,16 +702,24 @@ function OrderModal({
         return;
       }
 
-      api
-        .get("/customer/orders")
-        .then((response) => {
-          const nextOrders = Array.isArray(response.data) ? response.data : [];
+      const requestId = ++orderRequestRef.current;
 
-          setOrders(nextOrders);
+      api
+        .get(`/customer/orders/${orderId}`)
+        .then((response) => {
+          if (requestId !== orderRequestRef.current) {
+            return;
+          }
+
+          setOrder(response.data || null);
         })
         .catch((err) => {
+          if (requestId !== orderRequestRef.current) {
+            return;
+          }
+
           console.error(
-            "Failed to refresh customer orders after realtime delivery update:",
+            "Failed to refresh customer order after realtime delivery update:",
             err?.response?.data || err,
           );
         });
@@ -630,7 +918,7 @@ function OrderModal({
                             i === 0 &&
                             order.blueprint_detail_preview ? (
                               <div className="wisdom-order-blueprint-detail-live">
-                                <CustomerBlueprintViewer
+                                <DeferredCustomerBlueprintViewer
                                   blueprint={{
                                     ...order.blueprint_detail_preview,
                                     thumbnail_url: null,
@@ -647,6 +935,8 @@ function OrderModal({
                               <img
                                 src={buildAssetUrl(item.image_url)}
                                 alt={item.product_name || "Order item"}
+                                loading="lazy"
+                                decoding="async"
                               />
                             ) : order.blueprint_detail_preview
                                 ?.thumbnail_url ? (
@@ -949,7 +1239,7 @@ export default function OrdersPage() {
       }
 
       api
-        .get("/customer/orders")
+        .get("/customer/orders", { params: { summary: 1 } })
         .then((response) => {
           const nextOrders = Array.isArray(response.data) ? response.data : [];
 
@@ -973,7 +1263,7 @@ export default function OrdersPage() {
       }
 
       api
-        .get("/customer/orders")
+        .get("/customer/orders", { params: { summary: 1 } })
         .then((response) => {
           const nextOrders = Array.isArray(response.data) ? response.data : [];
 
@@ -988,23 +1278,24 @@ export default function OrdersPage() {
     };
 
     const handleBlueprintUpdated = (payload) => {
-      const updatedOrderId = Number(payload?.order_id);
+      const orderId = Number(payload?.order_id);
 
-      if (
-        !Number.isInteger(updatedOrderId) ||
-        updatedOrderId !== Number(orderId)
-      ) {
+      if (!Number.isInteger(orderId)) {
         return;
       }
 
       api
-        .get(`/customer/orders/${orderId}`)
+        .get("/customer/orders", { params: { summary: 1 } })
         .then((response) => {
-          setOrder(response.data);
+          const nextOrders = Array.isArray(response.data)
+            ? response.data
+            : [];
+
+          setOrders(nextOrders);
         })
         .catch((err) => {
           console.error(
-            "Failed to refresh customer order after realtime blueprint update:",
+            "Failed to refresh customer orders after realtime blueprint update:",
             err?.response?.data || err,
           );
         });
@@ -1024,7 +1315,7 @@ export default function OrdersPage() {
       }
 
       api
-        .get("/customer/orders")
+        .get("/customer/orders", { params: { summary: 1 } })
         .then((response) => {
           const nextOrders = Array.isArray(response.data) ? response.data : [];
           setOrders(nextOrders);
@@ -1083,7 +1374,7 @@ export default function OrdersPage() {
     setLoading(true);
 
     api
-      .get("/customer/orders")
+      .get("/customer/orders", { params: { summary: 1 } })
       .then((ordersRes) => {
         if (requestId !== ordersRequestRef.current) {
           return;
@@ -1450,29 +1741,18 @@ export default function OrdersPage() {
                           className="wisdom-order-item"
                         >
                           <div className="wisdom-order-item-image">
-                            {item.blueprint_preview ||
-                            (order.blueprint_id &&
-                              index === 0 &&
-                              order.blueprint_preview) ? (
-                              <div className="wisdom-order-blueprint-live">
-                                <CustomerBlueprintViewer
-                                  blueprint={{
-                                    ...(item.blueprint_preview ||
-                                      order.blueprint_preview),
-                                    thumbnail_url: null,
-                                  }}
-                                  readOnly
-                                  showHumanControls={false}
-                                  compact
-                                  compactHeight={64}
-                                  defaultPreset="isometric"
-                                  defaultShowHuman={false}
-                                />
-                              </div>
+                            {item.is_custom_blueprint ||
+                            (order.blueprint_id && index === 0) ? (
+                              <OrderBlueprintPreview
+                                order={order}
+                                item={item}
+                              />
                             ) : item.image_url ? (
                               <img
                                 src={buildAssetUrl(item.image_url)}
                                 alt={item.product_name || "Order item"}
+                                loading="lazy"
+                                decoding="async"
                               />
                             ) : order.blueprint_preview?.thumbnail_url ? (
                               <img
@@ -1639,9 +1919,6 @@ export default function OrdersPage() {
       {selectedId && (
         <OrderModal
           orderId={selectedId}
-          initialOrder={orders.find(
-            (order) => Number(order?.id) === Number(selectedId),
-          )}
           onClose={() => setSelectedId(null)}
           onConfirmOrder={confirmOrderById}
           onCancelOrder={cancelOrderById}
