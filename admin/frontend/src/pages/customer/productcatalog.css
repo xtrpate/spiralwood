@@ -1527,22 +1527,31 @@
 }
 
 .detail-main-image {
-  height: 500px;
+  height: 400px;
   border: 0;
   background: #f3f3f0;
 }
 
 .detail-thumb-row {
   margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
 }
 
 .detail-thumb {
-  width: 90px;
-  height: 90px;
+  width: 100%;
+  min-width: 0;
+  aspect-ratio: 1 / 1;
+  height: auto;
+  padding: 0;
   border: 0;
   background: #ffffff;
   outline: 1px solid #d8d8d4;
   outline-offset: -1px;
+  overflow: hidden;
+  cursor: pointer;
 }
 
 .detail-thumb.active {
@@ -3466,5 +3475,42 @@ button.detail-thumb.active {
     min-width: 32px !important;
     max-width: 32px !important;
     height: 28px !important;
+  }
+}
+
+/* ==========================================================================
+   WISDOM PRODUCT GALLERY THUMBNAILS - FIX
+   Keep thumbnails compact when there are only 1-2 images.
+   Six images should fit across the full gallery width.
+   ========================================================================== */
+
+.detail-thumb-row.product-gallery-row {
+  display: grid !important;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+  width: 100% !important;
+  margin-top: 12px !important;
+}
+
+button.detail-thumb {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: auto !important;
+  aspect-ratio: 1 / 1 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+button.detail-thumb img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+/* Mobile */
+@media (max-width: 640px) {
+  .detail-thumb-row.product-gallery-row {
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    gap: 6px !important;
   }
 }

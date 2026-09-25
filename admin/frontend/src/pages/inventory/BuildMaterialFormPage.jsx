@@ -14,7 +14,7 @@ const DEFAULT = {
   walkin_price: "",
   production_cost: "",
   stock: 0,
-  reorder_point: 0,
+  reorder_point: "",
   is_featured: false,
 };
 
@@ -32,6 +32,7 @@ export default function BuildMaterialFormPage() {
   const [form, setForm] = useState(DEFAULT);
   const [galleryItems, setGalleryItems] = useState([]);
   const [galleryMessage, setGalleryMessage] = useState("");
+  const [errors, setErrors] = useState({});
   const [bom, setBom] = useState([]);
   const [saving, setSaving] = useState(false);
   const [categories, setCategories] = useState([]);
@@ -65,75 +66,195 @@ export default function BuildMaterialFormPage() {
   useEffect(() => {
     if (!isEdit) return;
 
-    api.get(`/products/${id}`).then((response) => {
-      const {
-        bill_of_materials: savedBom,
-        images: savedImages,
-        ...rest
-      } = response.data;
-      const unifiedPrice = rest.online_price ?? rest.walkin_price ?? "";
+    let active = true;
 
-      setForm((current) => ({
-        ...current,
-        ...rest,
-        online_price: unifiedPrice,
-        walkin_price: unifiedPrice,
-      }));
-      setBom(savedBom || []);
+    const loadProduct = async () => {
+      try {
+        const response = await api.get(`/products/${id}`);
 
-      if (rest.category_id && rest.category_name) {
-        setCategories((current) => {
-          const exists = current.some(
-            (category) => String(category.id) === String(rest.category_id),
-          );
+        if (!active) return;
 
-          if (exists) return current;
+        const {
+          bill_of_materials: savedBom,
+          images: savedImages,
+          ...rest
+        } = response.data;
 
-          return [
-            ...current,
-            { id: rest.category_id, name: rest.category_name },
-          ].sort((a, b) => String(a.name).localeCompare(String(b.name)));
-        });
+        const unifiedPrice = rest.online_price ?? rest.walkin_price ?? "";
+
+        setForm((current) => ({
+          ...current,
+          ...rest,
+          online_price: unifiedPrice,
+          walkin_price: unifiedPrice,
+        }));
+
+        setBom(savedBom || []);
+
+        if (rest.category_id && rest.category_name) {
+          setCategories((current) => {
+            const exists = current.some(
+              (category) => String(category.id) === String(rest.category_id),
+            );
+
+            if (exists) return current;
+
+            return [
+              ...current,
+              {
+                id: rest.category_id,
+                name: rest.category_name,
+              },
+            ].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+          });
+        }
+
+        const normalizedGallery = Array.isArray(savedImages)
+          ? [...savedImages]
+              .sort(
+                (a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0),
+              )
+              .filter((item) => item?.image_url)
+              .slice(0, MAX_PRODUCT_IMAGES)
+              .map((item) => ({
+                key: item.id
+                  ? `existing-${item.id}`
+                  : `legacy-${rest.id || id}`,
+                kind: item.id ? "existing" : "legacy",
+                id: item.id || null,
+                image_url: item.image_url,
+                preview: buildAssetUrl(item.image_url),
+                name: item.id ? `Saved image ${item.id}` : "Current image",
+              }))
+          : [];
+
+        if (normalizedGallery.length > 0) {
+          setGalleryItems(normalizedGallery);
+        } else if (rest.image_url) {
+          setGalleryItems([
+            {
+              key: `legacy-${rest.id || id}`,
+              kind: "legacy",
+              id: null,
+              image_url: rest.image_url,
+              preview: buildAssetUrl(rest.image_url),
+              name: "Current image",
+            },
+          ]);
+        } else {
+          setGalleryItems([]);
+        }
+      } catch (err) {
+        if (!active) return;
+
+        toast.error(
+          err?.response?.data?.message || "Failed to load the build material.",
+        );
       }
+    };
 
-      const normalizedGallery = Array.isArray(savedImages)
-        ? [...savedImages]
-            .sort(
-              (a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0),
-            )
-            .filter((item) => item?.image_url)
-            .slice(0, MAX_PRODUCT_IMAGES)
-            .map((item) => ({
-              key: item.id ? `existing-${item.id}` : `legacy-${rest.id || id}`,
-              kind: item.id ? "existing" : "legacy",
-              id: item.id || null,
-              image_url: item.image_url,
-              preview: buildAssetUrl(item.image_url),
-              name: item.id ? `Saved image ${item.id}` : "Current image",
-            }))
-        : [];
+    loadProduct();
 
-      if (normalizedGallery.length > 0) {
-        setGalleryItems(normalizedGallery);
-      } else if (rest.image_url) {
-        setGalleryItems([
-          {
-            key: `legacy-${rest.id || id}`,
-            kind: "legacy",
-            id: null,
-            image_url: rest.image_url,
-            preview: buildAssetUrl(rest.image_url),
-            name: "Current image",
-          },
-        ]);
-      } else {
-        setGalleryItems([]);
-      }
-    });
+    return () => {
+      active = false;
+    };
   }, [id, isEdit]);
 
-  const set = (key, value) =>
+  const set = (key, value) => {
     setForm((current) => ({ ...current, [key]: value }));
+
+    setErrors((current) => {
+      if (!current[key]) return current;
+
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const validateForm = () => {
+    const nextErrors = {};
+
+    const name = String(form.name || "").trim();
+    const barcode = String(form.barcode || "").trim();
+    const description = String(form.description || "").trim();
+    const categoryId = String(form.category_id || "").trim();
+    const sellingPrice = String(form.online_price ?? "").trim();
+    const productCost = String(form.production_cost ?? "").trim();
+    const reorderPoint = String(form.reorder_point ?? "").trim();
+
+    // Product name
+    if (!name) {
+      nextErrors.name = "Product name is required.";
+    } else if (name.length < 2) {
+      nextErrors.name = "Product name must be at least 2 characters.";
+    } else if (name.length > 200) {
+      nextErrors.name = "Product name must not exceed 200 characters.";
+    }
+
+    // Barcode
+    if (barcode) {
+      if (barcode.length > 100) {
+        nextErrors.barcode = "Barcode must not exceed 100 characters.";
+      } else if (!/^[A-Za-z0-9._\-\/]+$/.test(barcode)) {
+        nextErrors.barcode =
+          "Barcode may contain letters, numbers, dots, dashes, underscores, or slashes only.";
+      }
+    }
+
+    // Description
+    if (description.length > 2000) {
+      nextErrors.description = "Description must not exceed 2,000 characters.";
+    }
+
+    // Category
+    if (!categoryId) {
+      nextErrors.category_id = "Please select a category.";
+    }
+
+    // Selling price
+    if (!sellingPrice) {
+      nextErrors.online_price = "Selling price is required.";
+    } else {
+      const value = Number(sellingPrice);
+
+      if (!Number.isFinite(value)) {
+        nextErrors.online_price = "Selling price must be a valid number.";
+      } else if (value <= 0) {
+        nextErrors.online_price = "Selling price must be greater than 0.";
+      }
+    }
+
+    // Product cost
+    if (productCost) {
+      const value = Number(productCost);
+
+      if (!Number.isFinite(value)) {
+        nextErrors.production_cost = "Product cost must be a valid number.";
+      } else if (value < 0) {
+        nextErrors.production_cost = "Product cost cannot be negative.";
+      }
+    }
+
+    // Reorder point
+    if (!reorderPoint) {
+      nextErrors.reorder_point = "Reorder point must be 0 or greater.";
+    } else {
+      const value = Number(reorderPoint);
+
+      if (!Number.isFinite(value)) {
+        nextErrors.reorder_point =
+          "Reorder point must be a valid whole number.";
+      } else if (!Number.isInteger(value) || value < 0) {
+        nextErrors.reorder_point =
+          "Reorder point must be a whole number 0 or greater.";
+      }
+    }
+
+    setErrors(nextErrors);
+
+    return Object.keys(nextErrors).length === 0;
+  };
 
   const moveGalleryItem = (fromIndex, toIndex) => {
     setGalleryItems((current) => {
@@ -212,6 +333,12 @@ export default function BuildMaterialFormPage() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+
+    if (!validateForm()) {
+      toast.error("Please correct the highlighted fields.");
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -328,20 +455,48 @@ export default function BuildMaterialFormPage() {
             <Field label="Material / Product name" required>
               <input
                 required
+                maxLength={200}
                 value={form.name}
                 onChange={(event) => set("name", event.target.value)}
-                style={input}
+                style={{
+                  ...input,
+                  borderColor: errors.name
+                    ? "#b42318"
+                    : input.border.split?.(" ")[2] || "#d4d4d8",
+                }}
                 placeholder="Example: Modern Oak Dining Table"
+                aria-invalid={Boolean(errors.name)}
+                aria-describedby={errors.name ? "build-name-error" : undefined}
               />
+
+              {errors.name ? (
+                <div id="build-name-error" style={fieldErrorStyle}>
+                  {errors.name}
+                </div>
+              ) : null}
             </Field>
 
             <Field label="Barcode">
               <input
                 value={form.barcode || ""}
+                maxLength={100}
                 onChange={(event) => set("barcode", event.target.value)}
-                style={input}
+                style={{
+                  ...input,
+                  borderColor: errors.barcode ? "#b42318" : "#d4d4d8",
+                }}
                 placeholder="Optional"
+                aria-invalid={Boolean(errors.barcode)}
+                aria-describedby={
+                  errors.barcode ? "build-barcode-error" : undefined
+                }
               />
+
+              {errors.barcode ? (
+                <div id="build-barcode-error" style={fieldErrorStyle}>
+                  {errors.barcode}
+                </div>
+              ) : null}
             </Field>
           </Row>
 
@@ -351,7 +506,10 @@ export default function BuildMaterialFormPage() {
                 required
                 value={form.category_id}
                 onChange={(event) => set("category_id", event.target.value)}
-                style={input}
+                style={{
+                  ...input,
+                  borderColor: errors.category_id ? "#b42318" : "#d4d4d8",
+                }}
                 disabled={categoriesLoading || categories.length === 0}
               >
                 <option value="">
@@ -367,6 +525,9 @@ export default function BuildMaterialFormPage() {
                   </option>
                 ))}
               </select>
+              {errors.category_id ? (
+                <div style={fieldErrorStyle}>{errors.category_id}</div>
+              ) : null}
             </Field>
 
             <Field label="Type">
@@ -397,14 +558,19 @@ export default function BuildMaterialFormPage() {
               value={form.description || ""}
               onChange={(event) => set("description", event.target.value)}
               rows={3}
+              maxLength={2000}
               style={{
                 ...input,
                 minHeight: 82,
                 paddingTop: 10,
                 resize: "vertical",
+                borderColor: errors.description ? "#b42318" : "#d4d4d8",
               }}
               placeholder="Describe the material, product, or key features"
             />
+            {errors.description ? (
+              <div style={fieldErrorStyle}>{errors.description}</div>
+            ) : null}
           </Field>
         </Section>
 
@@ -542,13 +708,22 @@ export default function BuildMaterialFormPage() {
             <Field label="Selling Price" required>
               <MoneyInput
                 value={form.online_price}
-                onChange={(value) =>
+                onChange={(value) => {
                   setForm((current) => ({
                     ...current,
                     online_price: value,
                     walkin_price: value,
-                  }))
-                }
+                  }));
+
+                  setErrors((current) => {
+                    if (!current.online_price) return current;
+
+                    const next = { ...current };
+                    delete next.online_price;
+                    return next;
+                  });
+                }}
+                error={errors.online_price}
               />
             </Field>
 
@@ -557,6 +732,7 @@ export default function BuildMaterialFormPage() {
                 value={form.production_cost}
                 onChange={(value) => set("production_cost", value)}
                 required={false}
+                error={errors.production_cost}
               />
               <div style={helperText}>
                 Cost per item. Used to calculate profit.
@@ -573,7 +749,8 @@ export default function BuildMaterialFormPage() {
                 style={readOnlyInput}
               />
               <div style={helperText}>
-                Read-only. New products start at 0; use Stock Movement to receive or adjust physical stock.
+                Read-only. New products start at 0; use Stock Movement to
+                receive or adjust physical stock.
               </div>
             </Field>
 
@@ -581,11 +758,25 @@ export default function BuildMaterialFormPage() {
               <input
                 type="number"
                 min="0"
+                step="1"
                 value={form.reorder_point ?? 0}
                 onChange={(event) => set("reorder_point", event.target.value)}
-                style={input}
-                placeholder="0"
+                style={{
+                  ...input,
+                  borderColor: errors.reorder_point ? "#b42318" : "#d4d4d8",
+                }}
+                placeholder="Enter reorder point"
+                aria-invalid={Boolean(errors.reorder_point)}
+                aria-describedby={
+                  errors.reorder_point ? "build-reorder-error" : undefined
+                }
               />
+
+              {errors.reorder_point ? (
+                <div id="build-reorder-error" style={fieldErrorStyle}>
+                  {errors.reorder_point}
+                </div>
+              ) : null}
               <div style={helperText}>Low-stock reminder level.</div>
             </Field>
           </Row>
@@ -647,23 +838,42 @@ function Field({ label, required, children }) {
   );
 }
 
-function MoneyInput({ value, onChange, required = true }) {
+function MoneyInput({ value, onChange, required = true, error = "" }) {
   return (
-    <div style={moneyField}>
-      <span style={moneyPrefix}>₱</span>
-      <input
-        type="number"
-        step="0.01"
-        min="0"
-        required={required}
-        value={value ?? ""}
-        onChange={(event) => onChange(event.target.value)}
-        style={moneyInput}
-        placeholder="0.00"
-      />
-    </div>
+    <>
+      <div
+        style={{
+          ...moneyField,
+          borderColor: error ? "#b42318" : "#d4d4d8",
+        }}
+      >
+        <span style={moneyPrefix}>₱</span>
+
+        <input
+          type="number"
+          step="0.01"
+          min="0"
+          required={required}
+          value={value ?? ""}
+          onChange={(event) => onChange(event.target.value)}
+          style={moneyInput}
+          placeholder="0.00"
+          aria-invalid={Boolean(error)}
+        />
+      </div>
+
+      {error ? <div style={fieldErrorStyle}>{error}</div> : null}
+    </>
   );
 }
+
+const fieldErrorStyle = {
+  marginTop: 5,
+  color: "#b42318",
+  fontSize: 10.5,
+  fontWeight: 500,
+  lineHeight: 1.35,
+};
 
 const page = {
   width: "min(1040px, 100%)",
