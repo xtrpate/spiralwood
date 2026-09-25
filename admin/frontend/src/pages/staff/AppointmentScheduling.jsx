@@ -3,15 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import api from "../../services/api";
 import useAuthStore from "../../store/authStore";
 import { getSocket, subscribeSocketReady } from "../../services/socket";
-import {
-  Plus,
-  Search,
-  UserCheck,
-  CheckCircle2,
-  Ban,
-  Check,
-  Calendar,
-} from "lucide-react";
+import { Plus, Search, CheckCircle2, Ban, Check, Calendar } from "lucide-react";
 
 const PURPOSE_LABELS = {
   consultation: "Consultation",
@@ -736,7 +728,8 @@ export default function AppointmentScheduling() {
   const [adminSearch, setAdminSearch] = useState("");
   const [adminServiceFilter, setAdminServiceFilter] = useState("all");
   const [adminDateFilter, setAdminDateFilter] = useState("");
-  const [adminActiveTab, setAdminActiveTab] = useState("new");
+
+  const [staffAppointmentTab, setStaffAppointmentTab] = useState("assigned");
 
   const [form, setForm] = useState({
     order_id: "",
@@ -1050,30 +1043,103 @@ export default function AppointmentScheduling() {
     [appointments],
   );
 
-  // Staff assignments now use the normal confirmed status.
-  // Unaccepted confirmed appointments are handled in Active Appointments.
-
-  const staffConfirmedAppointments = useMemo(() => {
+  const staffAssignedAppointments = useMemo(() => {
     if (!isIndoorStaff) return [];
 
     return appointments.filter(
       (a) =>
-        ["confirmed", "in_progress"].includes(
-          String(a.status || "").toLowerCase(),
-        ) && isAssignedToCurrentIndoorStaff(a),
+        String(a.status || "").toLowerCase() === "confirmed" &&
+        isAssignedToCurrentIndoorStaff(a),
     );
   }, [appointments, isIndoorStaff, isAssignedToCurrentIndoorStaff]);
 
-  const staffClosedAppointments = useMemo(() => {
+  const staffInProgressAppointments = useMemo(() => {
     if (!isIndoorStaff) return [];
 
     return appointments.filter(
       (a) =>
-        ["completed", "cancelled", "rejected"].includes(
-          String(a.status || "").toLowerCase(),
-        ) && isAssignedToCurrentIndoorStaff(a),
+        String(a.status || "").toLowerCase() === "in_progress" &&
+        isAssignedToCurrentIndoorStaff(a),
     );
   }, [appointments, isIndoorStaff, isAssignedToCurrentIndoorStaff]);
+
+  const staffCompletedAppointments = useMemo(() => {
+    if (!isIndoorStaff) return [];
+
+    return appointments.filter(
+      (a) =>
+        String(a.status || "").toLowerCase() === "completed" &&
+        isAssignedToCurrentIndoorStaff(a),
+    );
+  }, [appointments, isIndoorStaff, isAssignedToCurrentIndoorStaff]);
+
+  const staffCancelledAppointments = useMemo(() => {
+    if (!isIndoorStaff) return [];
+
+    return appointments.filter(
+      (a) =>
+        String(a.status || "").toLowerCase() === "cancelled" &&
+        isAssignedToCurrentIndoorStaff(a),
+    );
+  }, [appointments, isIndoorStaff, isAssignedToCurrentIndoorStaff]);
+
+  const staffAllAppointments = useMemo(() => {
+    if (!isIndoorStaff) return [];
+
+    return appointments.filter((a) => {
+      const status = String(a.status || "").toLowerCase();
+
+      return (
+        ["confirmed", "in_progress", "completed", "cancelled"].includes(
+          status,
+        ) && isAssignedToCurrentIndoorStaff(a)
+      );
+    });
+  }, [appointments, isIndoorStaff, isAssignedToCurrentIndoorStaff]);
+
+  const staffFilteredAppointments = useMemo(() => {
+    switch (staffAppointmentTab) {
+      case "assigned":
+        return staffAssignedAppointments;
+
+      case "in_progress":
+        return staffInProgressAppointments;
+
+      case "completed":
+        return staffCompletedAppointments;
+
+      case "cancelled":
+        return staffCancelledAppointments;
+
+      case "all":
+        return staffAllAppointments;
+
+      default:
+        return staffAssignedAppointments;
+    }
+  }, [
+    staffAppointmentTab,
+    staffAssignedAppointments,
+    staffInProgressAppointments,
+    staffCompletedAppointments,
+    staffCancelledAppointments,
+    staffAllAppointments,
+  ]);
+
+  const staffSummary = [
+    {
+      label: "Active Appointments",
+      count:
+        staffAssignedAppointments.length + staffInProgressAppointments.length,
+      hint: "Appointments you are handling",
+    },
+    {
+      label: "History",
+      count:
+        staffCompletedAppointments.length + staffCancelledAppointments.length,
+      hint: "Completed and cancelled records",
+    },
+  ];
 
   const weekDays = Array.from({ length: 7 }).map((_, i) => {
     const d = new Date(weekStart);
@@ -1428,18 +1494,6 @@ export default function AppointmentScheduling() {
       </td>
     );
   };
-  const staffSummary = [
-    {
-      label: "Active Appointments",
-      count: staffConfirmedAppointments.length,
-      hint: "Appointments you are handling",
-    },
-    {
-      label: "History",
-      count: staffClosedAppointments.length,
-      hint: "Completed and closed records",
-    },
-  ];
 
   return (
     <div
@@ -2925,6 +2979,54 @@ export default function AppointmentScheduling() {
             ))}
           </div>
 
+          <div
+            style={{
+              display: "flex",
+              alignItems: "stretch",
+              flexWrap: "wrap",
+              borderBottom: "1px solid #dcdde1",
+              marginBottom: 14,
+              background: "#ffffff",
+            }}
+            role="tablist"
+            aria-label="Appointment filters"
+          >
+            {[
+              { key: "assigned", label: "Assigned" },
+              { key: "in_progress", label: "In Progress" },
+              { key: "completed", label: "Completed" },
+              { key: "cancelled", label: "Cancelled" },
+              { key: "all", label: "All" },
+            ].map((tab) => {
+              const active = staffAppointmentTab === tab.key;
+
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setStaffAppointmentTab(tab.key)}
+                  style={{
+                    border: "none",
+                    borderBottom: active
+                      ? "2px solid #18181b"
+                      : "2px solid transparent",
+                    background: "transparent",
+                    color: active ? "#18181b" : "#71717a",
+                    padding: "10px 15px",
+                    fontSize: 11.5,
+                    fontWeight: active ? 700 : 500,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+
           {error ? (
             <div
               style={{
@@ -2960,14 +3062,34 @@ export default function AppointmentScheduling() {
           ) : null}
 
           <IndoorAppointmentSection
-            title="Active Appointments"
-            subtitle="Confirmed appointments assigned to you."
+            title={
+              staffAppointmentTab === "assigned"
+                ? "Assigned Appointments"
+                : staffAppointmentTab === "in_progress"
+                  ? "In Progress Appointments"
+                  : staffAppointmentTab === "completed"
+                    ? "Completed Appointments"
+                    : staffAppointmentTab === "cancelled"
+                      ? "Cancelled Appointments"
+                      : "All Appointments"
+            }
+            subtitle={
+              staffAppointmentTab === "assigned"
+                ? "Confirmed appointments assigned to you."
+                : staffAppointmentTab === "in_progress"
+                  ? "Appointments currently being handled."
+                  : staffAppointmentTab === "completed"
+                    ? "Appointments you have completed."
+                    : staffAppointmentTab === "cancelled"
+                      ? "Appointments cancelled from your assigned work."
+                      : "All appointments assigned to you."
+            }
           >
-            {staffConfirmedAppointments.length === 0 ? (
+            {staffFilteredAppointments.length === 0 ? (
               <div style={indoorEmptyStyle}>No active appointments.</div>
             ) : (
               <div style={indoorAppointmentListStyle}>
-                {staffConfirmedAppointments.map((a) => {
+                {staffFilteredAppointments.map((a) => {
                   const scope = cleanIndoorWorkNote(getScope(a));
 
                   return (
@@ -3102,7 +3224,7 @@ export default function AppointmentScheduling() {
                               handleAction(
                                 a.id,
                                 { status: "completed" },
-                                "Appointment marked as done.",
+                                "Appointment marked as completed.",
                               )
                             }
                           >
@@ -3110,7 +3232,7 @@ export default function AppointmentScheduling() {
 
                             {actionLoadingId === a.id
                               ? "Saving..."
-                              : "Mark Done"}
+                              : "Mark Completed"}
                           </button>
                         )}
 
@@ -3141,97 +3263,6 @@ export default function AppointmentScheduling() {
                     </article>
                   );
                 })}
-              </div>
-            )}
-          </IndoorAppointmentSection>
-
-          <IndoorAppointmentSection
-            title="Appointment History"
-            subtitle="Completed and closed appointments for reference."
-          >
-            {staffClosedAppointments.length === 0 ? (
-              <div style={indoorEmptyStyle}>No appointment history yet.</div>
-            ) : (
-              <div
-                className="indoor-appointment-history-wrap"
-                style={{ overflowX: "auto" }}
-              >
-                <table
-                  className="indoor-appointment-history-table"
-                  style={indoorHistoryTableStyle}
-                >
-                  <thead>
-                    <tr style={indoorHistoryHeadStyle}>
-                      <th style={indoorHistoryThStyle}>Appointment</th>
-                      <th style={indoorHistoryThStyle}>Customer</th>
-                      <th style={indoorHistoryThStyle}>Service</th>
-                      <th style={indoorHistoryThStyle}>Schedule</th>
-                      <th style={indoorHistoryThStyle}>Location</th>
-                      <th style={indoorHistoryThStyle}>Status</th>
-                      <th style={indoorHistoryThStyle}>Updated</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {[...staffClosedAppointments]
-                      .sort(
-                        (a, b) =>
-                          new Date(
-                            b.updated_at || b.scheduled_date || 0,
-                          ).getTime() -
-                          new Date(
-                            a.updated_at || a.scheduled_date || 0,
-                          ).getTime(),
-                      )
-                      .map((a) => (
-                        <tr
-                          key={a.id}
-                          id={`appointment-row-${a.id}`}
-                          style={
-                            focusedAppointmentId === a.id
-                              ? {
-                                  boxShadow: "inset 0 0 0 2px #18181b",
-                                }
-                              : undefined
-                          }
-                        >
-                          <td
-                            style={{
-                              ...indoorHistoryTdStyle,
-                              fontWeight: 750,
-                              color: "#18181b",
-                            }}
-                          >
-                            {formatRequestNumber(a.id)}
-                          </td>
-                          <td
-                            style={{
-                              ...indoorHistoryTdStyle,
-                              fontWeight: 600,
-                              color: "#2b2b2f",
-                            }}
-                          >
-                            {a.customer_name || "Customer"}
-                          </td>
-                          <td style={indoorHistoryTdStyle}>
-                            {humanizePurpose(a.purpose)}
-                          </td>
-                          <td style={indoorHistoryTdStyle}>
-                            {formatAppointmentDateTime(
-                              a.scheduled_date || a.preferred_date,
-                            )}
-                          </td>
-                          <td style={indoorHistoryTdStyle}>{getAddress(a)}</td>
-                          <td style={indoorHistoryTdStyle}>
-                            <IndoorStatusBadge status={a.status} />
-                          </td>
-                          <td style={indoorHistoryTdStyle}>
-                            {formatDateTime(a.updated_at)}
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
               </div>
             )}
           </IndoorAppointmentSection>
