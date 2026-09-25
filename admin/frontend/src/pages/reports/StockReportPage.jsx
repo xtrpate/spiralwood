@@ -713,6 +713,7 @@ export default function StockReportPage() {
     EMPTY_TRANSFER_SUMMARY,
   );
   const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [generatedAt, setGeneratedAt] = useState("");
 
@@ -757,6 +758,7 @@ export default function StockReportPage() {
       setMovementSummary(EMPTY_MOVEMENT_SUMMARY);
     } finally {
       setLoading(false);
+      setInitialLoading(false);
     }
   }, [
     page,
@@ -799,15 +801,9 @@ export default function StockReportPage() {
       setTransferSummary(EMPTY_TRANSFER_SUMMARY);
     } finally {
       setLoading(false);
+      setInitialLoading(false);
     }
-  }, [
-    page,
-    debouncedSearch,
-    dateFilter,
-    customStart,
-    customEnd,
-  ]);
-
+  }, [page, debouncedSearch, dateFilter, customStart, customEnd]);
 
   const loadReport = useCallback(() => {
     if (reportType === "movements") {
@@ -818,16 +814,24 @@ export default function StockReportPage() {
   }, [loadMovements, loadTransfers, reportType]);
 
   useEffect(() => {
+    if (dateFilter === "custom" && (!customStart || !customEnd)) {
+      return;
+    }
+
     if (reportType === "movements") {
       loadMovements();
     }
-  }, [loadMovements, reportType]);
+  }, [reportType, dateFilter, customStart, customEnd, loadMovements]);
 
   useEffect(() => {
+    if (dateFilter === "custom" && (!customStart || !customEnd)) {
+      return;
+    }
+
     if (reportType === "transfers") {
       loadTransfers();
     }
-  }, [loadTransfers, reportType]);
+  }, [reportType, dateFilter, customStart, customEnd, loadTransfers]);
 
   const filteredRows = rows;
 
@@ -836,10 +840,7 @@ export default function StockReportPage() {
 
   const paginatedRows = rows;
 
-  const totalPages = Math.max(
-    1,
-    Math.ceil(reportRecordCount / PAGE_SIZE),
-  );
+  const totalPages = Math.max(1, Math.ceil(reportRecordCount / PAGE_SIZE));
 
   const summary = useMemo(() => {
     if (reportType === "movements") {
@@ -1037,7 +1038,6 @@ export default function StockReportPage() {
         ]);
       }
 
-
       const titleStyle = {
         font: { bold: true, sz: 16, color: { rgb: "111827" } },
         alignment: { horizontal: "center", vertical: "center" },
@@ -1233,6 +1233,7 @@ export default function StockReportPage() {
           <input
             type="search"
             value={search}
+            maxLength={100}
             onChange={(e) => {
               setSearch(e.target.value);
               setPage(1);
@@ -1337,7 +1338,7 @@ export default function StockReportPage() {
         )}
       </div>
 
-      {!loading ? (
+      {!initialLoading ? (
         <>
           <div
             className="stk-summary-grid"
@@ -1404,6 +1405,7 @@ export default function StockReportPage() {
                         <th>Source</th>
                         <th>Item</th>
                         <th>Quantity</th>
+                        <th>Order</th>
                         <th>Recorded By</th>
                       </>
                     ) : (

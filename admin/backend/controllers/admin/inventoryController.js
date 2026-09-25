@@ -324,7 +324,6 @@ const getRawMaterialCategoryById = async (db, categoryId) => {
   return row || null;
 };
 
-
 const findDuplicateRawMaterial = async (
   db,
   {
@@ -402,7 +401,9 @@ exports.createRawMaterialCategory = async (req, res) => {
       return res.status(400).json({ message: "Category name is required." });
     }
     if (name.length > 100) {
-      return res.status(400).json({ message: "Category name must be 100 characters or less." });
+      return res
+        .status(400)
+        .json({ message: "Category name must be 100 characters or less." });
     }
 
     const [[existing]] = await pool.query(
@@ -421,8 +422,14 @@ exports.createRawMaterialCategory = async (req, res) => {
       [name],
     );
     const category = { id: result.insertId, name };
-    req.auditRecord = { id: result.insertId, old: null, new: { ...category, type: "raw" } };
-    return res.status(201).json({ message: "Raw material category added.", category });
+    req.auditRecord = {
+      id: result.insertId,
+      old: null,
+      new: { ...category, type: "raw" },
+    };
+    return res
+      .status(201)
+      .json({ message: "Raw material category added.", category });
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
@@ -486,12 +493,11 @@ exports.getRawMaterials = async (req, res) => {
       ) usage_summary ON usage_summary.material_id = rm.id`;
     const onHandQuantitySql = "COALESCE(rm.quantity, 0)";
     const reservedQuantitySql = "COALESCE(bmr_summary.reserved_quantity, 0)";
-    const pendingNeedQuantitySql = "COALESCE(bmr_summary.pending_need_quantity, 0)";
-    const availableQuantitySql =
-      `GREATEST(${onHandQuantitySql} - ${reservedQuantitySql}, 0)`;
+    const pendingNeedQuantitySql =
+      "COALESCE(bmr_summary.pending_need_quantity, 0)";
+    const availableQuantitySql = `GREATEST(${onHandQuantitySql} - ${reservedQuantitySql}, 0)`;
     const avgDailyUsageSql = "COALESCE(usage_summary.avg_daily_usage_30d, 0)";
-    const leadTimeNeedSql =
-      `(${avgDailyUsageSql} * GREATEST(COALESCE(rm.lead_time_days, 0), 0))`;
+    const leadTimeNeedSql = `(${avgDailyUsageSql} * GREATEST(COALESCE(rm.lead_time_days, 0), 0))`;
     const availabilityStatusSql = `CASE
       WHEN ${onHandQuantitySql} <= 0 THEN 'out_of_stock'
       WHEN ${pendingNeedQuantitySql} > 0 THEN 'critical_stock'
@@ -851,10 +857,14 @@ exports.createRawMaterialsBulk = async (req, res) => {
   try {
     const materials = req.body?.materials;
     if (!Array.isArray(materials) || materials.length === 0) {
-      return res.status(400).json({ message: "Add at least one raw material." });
+      return res
+        .status(400)
+        .json({ message: "Add at least one raw material." });
     }
     if (materials.length > 50) {
-      return res.status(400).json({ message: "You can add up to 50 raw materials at a time." });
+      return res
+        .status(400)
+        .json({ message: "You can add up to 50 raw materials at a time." });
     }
 
     await conn.beginTransaction();
@@ -921,7 +931,11 @@ exports.createRawMaterialsBulk = async (req, res) => {
         fail(`${prefix}${quantityRuleMessage(unit)}`, 400, index);
       }
       if (!hasAtMostTwoDecimalPlaces(unit_cost)) {
-        fail(`${prefix}Supplier price can have up to 2 decimal places.`, 400, index);
+        fail(
+          `${prefix}Supplier price can have up to 2 decimal places.`,
+          400,
+          index,
+        );
       }
       if (!hasWholeNumberFormat(lead_time_days)) {
         fail(`${prefix}Lead time must be a whole number of days.`, 400, index);
@@ -936,8 +950,15 @@ exports.createRawMaterialsBulk = async (req, res) => {
       }
 
       let supplierId = null;
-      if (supplier_id !== null && supplier_id !== undefined && supplier_id !== "") {
-        if (!isValidNonNegativeInteger(supplier_id) || Number(supplier_id) <= 0) {
+      if (
+        supplier_id !== null &&
+        supplier_id !== undefined &&
+        supplier_id !== ""
+      ) {
+        if (
+          !isValidNonNegativeInteger(supplier_id) ||
+          Number(supplier_id) <= 0
+        ) {
           fail(`${prefix}Supplier must be a valid selection.`, 400, index);
         }
         supplierId = Number(supplier_id);
@@ -959,15 +980,10 @@ exports.createRawMaterialsBulk = async (req, res) => {
         thicknessMm: physicalSpec.thicknessMm,
       });
       if (duplicate) {
-        fail(
-          `${prefix}${duplicateRawMaterialMessage(duplicate)}`,
-          409,
-          index,
-          {
-            duplicate_material_id: duplicate.id,
-            duplicate_is_active: Number(duplicate.is_active) === 1,
-          },
-        );
+        fail(`${prefix}${duplicateRawMaterialMessage(duplicate)}`, 409, index, {
+          duplicate_material_id: duplicate.id,
+          duplicate_is_active: Number(duplicate.is_active) === 1,
+        });
       }
 
       const quantity = 0;
@@ -1498,11 +1514,7 @@ const shiftStockReportDateKey = (dateKey, days) => {
   );
 };
 
-const buildStockMovementReportDateRange = ({
-  dateFilter,
-  from,
-  to,
-}) => {
+const buildStockMovementReportDateRange = ({ dateFilter, from, to }) => {
   const normalizedFilter = String(dateFilter || "all")
     .trim()
     .toLowerCase();
@@ -1521,20 +1533,35 @@ const buildStockMovementReportDateRange = ({
     const fromKey = String(from || "").trim();
     const toKey = String(to || "").trim();
 
-    if (fromKey && toKey && fromKey > toKey) {
+    if (!fromKey || !toKey) {
+      const error = new Error(
+        "Both Start Date and End Date are required for a custom date range.",
+      );
+      error.status = 400;
+      throw error;
+    }
+
+    if (fromKey > toKey) {
       const error = new Error("Start date cannot be after end date.");
       error.status = 400;
       throw error;
     }
 
+    const todayKey = getPhilippineDateKey();
+
+    if (fromKey > todayKey || toKey > todayKey) {
+      const error = new Error("Stock report dates cannot be in the future.");
+      error.status = 400;
+      throw error;
+    }
+
     try {
+      const fromBounds = getPhilippineDateBoundsUtc(fromKey);
+      const toBounds = getPhilippineDateBoundsUtc(toKey);
+
       return {
-        startUtc: fromKey
-          ? getPhilippineDateBoundsUtc(fromKey).startUtc
-          : null,
-        endUtc: toKey
-          ? getPhilippineDateBoundsUtc(toKey).nextStartUtc
-          : null,
+        startUtc: fromBounds.startUtc,
+        endUtc: toBounds.nextStartUtc,
       };
     } catch {
       const error = new Error(
@@ -1565,9 +1592,7 @@ const buildStockMovementReportDateRange = ({
       String(month).padStart(2, "0"),
       "01",
     ].join("-");
-    endKey = formatUtcDateKeyForStockReport(
-      new Date(Date.UTC(year, month, 1)),
-    );
+    endKey = formatUtcDateKeyForStockReport(new Date(Date.UTC(year, month, 1)));
   } else if (normalizedFilter === "this_year") {
     startKey = `${String(year).padStart(4, "0")}-01-01`;
     endKey = `${String(year + 1).padStart(4, "0")}-01-01`;
@@ -1596,14 +1621,27 @@ exports.getStockMovements = async (req, res) => {
       limit = 30,
     } = req.query;
 
-    const pageNumber = Math.max(1, parseInt(page, 10) || 1);
-    const limitNumber = Math.min(
-      200,
-      Math.max(1, parseInt(limit, 10) || 30),
-    );
+    const pageNumber = Number(page);
+    const limitNumber = Number(limit);
+
+    if (!Number.isInteger(pageNumber) || pageNumber < 1) {
+      return res.status(400).json({
+        message: "Page must be a positive integer.",
+      });
+    }
+
+    if (
+      !Number.isInteger(limitNumber) ||
+      limitNumber < 1 ||
+      limitNumber > 200
+    ) {
+      return res.status(400).json({
+        message: "Limit must be a positive integer not greater than 200.",
+      });
+    }
+
     const offset = (pageNumber - 1) * limitNumber;
-    const includeSummary =
-      String(include_summary || "1").trim() !== "0";
+    const includeSummary = String(include_summary || "1").trim() !== "0";
     const where = ["1=1"];
     const params = [];
 
@@ -1734,31 +1772,39 @@ exports.getStockMovements = async (req, res) => {
       }
     }
 
-    if (search && String(search).trim()) {
-      const pattern = `%${String(search).trim()}%`;
+    const normalizedSearch = String(search || "").trim();
+
+    if (normalizedSearch.length > 100) {
+      return res.status(400).json({
+        message: "Search must be 100 characters or less.",
+      });
+    }
+
+    if (normalizedSearch) {
+      const pattern = `%${normalizedSearch}%`;
 
       where.push(`(
-        CAST(sm.id AS CHAR) LIKE ?
-        OR COALESCE(sm.type, '') LIKE ?
-        OR (${movementSourceSql}) LIKE ?
-        OR COALESCE(rm.name, '') LIKE ?
-        OR COALESCE(rm.unit, '') LIKE ?
-        OR COALESCE(p.name, '') LIKE ?
-        OR COALESCE(s.name, '') LIKE ?
-        OR COALESCE(u.name, '') LIKE ?
-        OR COALESCE(o.order_number, '') LIKE ?
-        OR COALESCE(o.order_type, '') LIKE ?
-        OR COALESCE(o.status, '') LIKE ?
-        OR COALESCE(o.payment_status, '') LIKE ?
-        OR COALESCE(customer.name, '') LIKE ?
-        OR COALESCE(o.walkin_customer_name, '') LIKE ?
-        OR COALESCE(sm.reference, '') LIKE ?
-        OR COALESCE(sm.notes, '') LIKE ?
-        OR CAST(COALESCE(sm.quantity, 0) AS CHAR) LIKE ?
-        OR CAST(COALESCE(sm.material_id, 0) AS CHAR) LIKE ?
-        OR CAST(COALESCE(sm.product_id, 0) AS CHAR) LIKE ?
-        OR CAST(COALESCE(sm.order_id, 0) AS CHAR) LIKE ?
-      )`);
+    CAST(sm.id AS CHAR) LIKE ?
+    OR COALESCE(sm.type, '') LIKE ?
+    OR (${movementSourceSql}) LIKE ?
+    OR COALESCE(rm.name, '') LIKE ?
+    OR COALESCE(rm.unit, '') LIKE ?
+    OR COALESCE(p.name, '') LIKE ?
+    OR COALESCE(s.name, '') LIKE ?
+    OR COALESCE(u.name, '') LIKE ?
+    OR COALESCE(o.order_number, '') LIKE ?
+    OR COALESCE(o.order_type, '') LIKE ?
+    OR COALESCE(o.status, '') LIKE ?
+    OR COALESCE(o.payment_status, '') LIKE ?
+    OR COALESCE(customer.name, '') LIKE ?
+    OR COALESCE(o.walkin_customer_name, '') LIKE ?
+    OR COALESCE(sm.reference, '') LIKE ?
+    OR COALESCE(sm.notes, '') LIKE ?
+    OR CAST(COALESCE(sm.quantity, 0) AS CHAR) LIKE ?
+    OR CAST(COALESCE(sm.material_id, 0) AS CHAR) LIKE ?
+    OR CAST(COALESCE(sm.product_id, 0) AS CHAR) LIKE ?
+    OR CAST(COALESCE(sm.order_id, 0) AS CHAR) LIKE ?
+  )`);
 
       params.push(...Array(20).fill(pattern));
     }
@@ -1836,15 +1882,9 @@ exports.getStockMovements = async (req, res) => {
         blueprint_production_count: Number(
           summary?.blueprint_production_count || 0,
         ),
-        legacy_production_count: Number(
-          summary?.legacy_production_count || 0,
-        ),
-        ready_made_stock_count: Number(
-          summary?.ready_made_stock_count || 0,
-        ),
-        order_fulfillment_count: Number(
-          summary?.order_fulfillment_count || 0,
-        ),
+        legacy_production_count: Number(summary?.legacy_production_count || 0),
+        ready_made_stock_count: Number(summary?.ready_made_stock_count || 0),
+        order_fulfillment_count: Number(summary?.order_fulfillment_count || 0),
         manual_count: Number(summary?.manual_count || 0),
       };
     }
