@@ -33,6 +33,8 @@ const CUSTOMIZE_GALLERY_PREVIEW_PRESET = "iso";
 const CUSTOMIZE_GALLERY_PREVIEW_HEIGHT = 232;
 const CUSTOMIZE_GALLERY_PREFETCH_MARGIN = "360px 0px";
 const CUSTOMIZE_GALLERY_SEARCH_DEBOUNCE_MS = 300;
+const CUSTOMIZE_GALLERY_BATCH_SETTLE_MS = 120;
+const CUSTOMIZE_GALLERY_BATCH_MAX_WAIT_MS = 1800;
 
 const FALLBACK_WOOD_TYPES = [
   "Oak",
@@ -1238,7 +1240,159 @@ const buildGalleryPreviewMetadata = (product = {}) => ({
     String(product?.id || ""),
 });
 
-function ProductCard({ product, onCustomize }) {
+function useCustomizeGalleryHydrationBatch(scopeKey) {
+  const coordinatorRef = useRef({
+    eligible: new Set(),
+    resolved: new Set(),
+    released: new Set(),
+    quietTimer: null,
+    quietTimerScope: "",
+    maxTimer: null,
+    maxTimerScope: "",
+  });
+  const [releaseVersion, setReleaseVersion] = useState(0);
+
+  const releaseBatch = useCallback((scope, force = false) => {
+    const state = coordinatorRef.current;
+    const prefix = `${scope}::`;
+
+    const pending = Array.from(state.eligible).filter(
+      (key) => key.startsWith(prefix) && !state.released.has(key),
+    );
+
+    if (!pending.length) {
+      if (state.maxTimer && state.maxTimerScope === scope) {
+        window.clearTimeout(state.maxTimer);
+        state.maxTimer = null;
+        state.maxTimerScope = "";
+      }
+      return;
+    }
+
+    const ready = pending.filter((key) => state.resolved.has(key));
+    const allReady = ready.length === pending.length;
+
+    if (!allReady && !force) return;
+
+    const toRelease = allReady ? pending : ready;
+    if (!toRelease.length) return;
+
+    let changed = false;
+    toRelease.forEach((key) => {
+      if (state.released.has(key)) return;
+      state.released.add(key);
+      changed = true;
+    });
+
+    if (allReady && state.maxTimer && state.maxTimerScope === scope) {
+      window.clearTimeout(state.maxTimer);
+      state.maxTimer = null;
+      state.maxTimerScope = "";
+    }
+
+    if (changed) {
+      setReleaseVersion((version) => version + 1);
+    }
+  }, []);
+
+  const scheduleBatchRelease = useCallback(
+    (scope) => {
+      const state = coordinatorRef.current;
+
+      if (state.quietTimer) {
+        window.clearTimeout(state.quietTimer);
+      }
+
+      state.quietTimerScope = scope;
+      state.quietTimer = window.setTimeout(() => {
+        if (state.quietTimerScope === scope) {
+          state.quietTimer = null;
+          state.quietTimerScope = "";
+        }
+        releaseBatch(scope, false);
+      }, CUSTOMIZE_GALLERY_BATCH_SETTLE_MS);
+
+      if (state.maxTimer && state.maxTimerScope !== scope) {
+        window.clearTimeout(state.maxTimer);
+        state.maxTimer = null;
+        state.maxTimerScope = "";
+      }
+
+      if (!state.maxTimer) {
+        state.maxTimerScope = scope;
+        state.maxTimer = window.setTimeout(() => {
+          if (state.maxTimerScope === scope) {
+            state.maxTimer = null;
+            state.maxTimerScope = "";
+          }
+          releaseBatch(scope, true);
+        }, CUSTOMIZE_GALLERY_BATCH_MAX_WAIT_MS);
+      }
+    },
+    [releaseBatch],
+  );
+
+  const markEligible = useCallback(
+    (productId) => {
+      if (!productId) return;
+
+      const key = `${scopeKey}::${productId}`;
+      const state = coordinatorRef.current;
+
+      if (!state.eligible.has(key)) {
+        state.eligible.add(key);
+      }
+
+      scheduleBatchRelease(scopeKey);
+    },
+    [scopeKey, scheduleBatchRelease],
+  );
+
+  const markResolved = useCallback(
+    (productId) => {
+      if (!productId) return;
+
+      const key = `${scopeKey}::${productId}`;
+      const state = coordinatorRef.current;
+
+      state.eligible.add(key);
+      state.resolved.add(key);
+      scheduleBatchRelease(scopeKey);
+    },
+    [scopeKey, scheduleBatchRelease],
+  );
+
+  const isReleased = useCallback(
+    (productId) =>
+      coordinatorRef.current.released.has(
+        `${scopeKey}::${productId}`,
+      ),
+    [scopeKey, releaseVersion],
+  );
+
+  useEffect(
+    () => () => {
+      const state = coordinatorRef.current;
+      if (state.quietTimer) window.clearTimeout(state.quietTimer);
+      if (state.maxTimer) window.clearTimeout(state.maxTimer);
+    },
+    [],
+  );
+
+  return {
+    markEligible,
+    markResolved,
+    isReleased,
+  };
+}
+
+function ProductCard({
+  product,
+  onCustomize,
+  batchReleased = false,
+  onBatchEligible,
+  onBatchResolved,
+}) {
   const cardRef = useRef(null);
 
   const previewMetadata = useMemo(
@@ -1268,6 +1422,7 @@ function ProductCard({ product, onCustomize }) {
     readGeneratedCompactPreview(compactPreviewCacheKey),
   );
   const [previewEligible, setPreviewEligible] = useState(false);
+  const [batchVisible, setBatchVisible] = useState(false);
   const [hydratedProduct, setHydratedProduct] = useState(() =>
     hasEmbeddedGalleryScene(product) ? product : null,
   );
@@ -1286,6 +1441,7 @@ function ProductCard({ product, onCustomize }) {
     setDetailResolved(embedded);
     setDetailFailed(false);
     setPreviewEligible(false);
+    setBatchVisible(false);
   }, [product?.id, compactPreviewCacheKey]);
 
   useEffect(() => {
@@ -1313,6 +1469,47 @@ function ProductCard({ product, onCustomize }) {
     observer.observe(node);
     return () => observer.disconnect();
   }, [product?.id]);
+
+  useEffect(() => {
+    const node = cardRef.current;
+    if (!node || !product?.id) return undefined;
+
+    if (typeof IntersectionObserver === "undefined") {
+      setBatchVisible(true);
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return;
+        setBatchVisible(true);
+        observer.disconnect();
+      },
+      {
+        root: null,
+        rootMargin: "0px",
+        threshold: 0.01,
+      },
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [product?.id]);
+
+  useEffect(() => {
+    if (!batchVisible || !product?.id) return;
+    onBatchEligible?.(product.id);
+  }, [batchVisible, onBatchEligible, product?.id]);
+
+  useEffect(() => {
+    if (!batchVisible || !detailResolved || !product?.id) return;
+    onBatchResolved?.(product.id);
+  }, [
+    batchVisible,
+    detailResolved,
+    onBatchResolved,
+    product?.id,
+  ]);
 
   useEffect(() => {
     if (!previewEligible || detailResolved || !product?.id) {
@@ -1346,8 +1543,11 @@ function ProductCard({ product, onCustomize }) {
   }, [detailResolved, previewEligible, product?.id]);
 
   const detailsReady = Boolean(hydratedProduct);
+  const batchDetailsReady = detailsReady && batchReleased;
   const detailUnavailable =
     detailResolved && detailFailed && !detailsReady;
+  const batchDetailUnavailable =
+    detailUnavailable && batchReleased;
   const cardProduct = hydratedProduct || product;
 
   const profile = detectTemplateProfile(cardProduct || {});
@@ -1480,7 +1680,7 @@ function ProductCard({ product, onCustomize }) {
         </div>
 
         <aside className="cust-mini-panel-v21" aria-hidden="true">
-          {detailsReady ? (
+          {batchDetailsReady ? (
             <>
               <section className="cust-mini-panel-section-v21">
                 <strong>WHOLE FURNITURE</strong>
@@ -1535,7 +1735,7 @@ function ProductCard({ product, onCustomize }) {
               <div className="cust-mini-add-v21">Add to Cart</div>
             </>
           ) : (
-            <MiniPanelHydrationState unavailable={detailUnavailable} />
+            <MiniPanelHydrationState unavailable={batchDetailUnavailable} />
           )}
         </aside>
 
@@ -1545,11 +1745,11 @@ function ProductCard({ product, onCustomize }) {
             <small>{categoryLabel}</small>
           </div>
           <span>
-            {detailsReady
+            {batchDetailsReady
               ? `${Math.round(Number(dimensions.width_mm) || 0)} × ${Math.round(
                   Number(dimensions.height_mm) || 0,
                 )} × ${Math.round(Number(dimensions.depth_mm) || 0)} mm`
-              : detailUnavailable
+              : batchDetailUnavailable
                 ? "Details unavailable"
                 : "Loading details…"}
           </span>
@@ -1907,6 +2107,20 @@ export default function CustomizePage() {
     );
   }, [products, categoryFilter]);
 
+  const hydrationBatchScope = useMemo(
+    () =>
+      `${categoryFilter}|${filteredProducts
+        .map((product) => String(product?.id || ""))
+        .join(",")}`,
+    [categoryFilter, filteredProducts],
+  );
+
+  const {
+    markEligible: markHydrationBatchEligible,
+    markResolved: markHydrationBatchResolved,
+    isReleased: isHydrationBatchReleased,
+  } = useCustomizeGalleryHydrationBatch(hydrationBatchScope);
+
   const visibleDesignCount =
     categoryFilter === "all" ? total : filteredProducts.length;
 
@@ -1931,13 +2145,24 @@ export default function CustomizePage() {
       <ProductCard
         key={product.id}
         product={product}
+        batchReleased={isHydrationBatchReleased(product.id)}
+        onBatchEligible={markHydrationBatchEligible}
+        onBatchResolved={markHydrationBatchResolved}
         onCustomize={(selectedProduct) => {
           if (!requireCustomerLogin(selectedProduct)) return;
           setCustomizingProduct(selectedProduct);
         }}
       />
     ));
-  }, [loading, filteredProducts, categoryFilter, requireCustomerLogin]);
+  }, [
+    loading,
+    filteredProducts,
+    categoryFilter,
+    requireCustomerLogin,
+    isHydrationBatchReleased,
+    markHydrationBatchEligible,
+    markHydrationBatchResolved,
+  ]);
 
   return (
     <div className="cust-page">
