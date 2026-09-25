@@ -7,12 +7,57 @@ import React, {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
+import {
+  buildCompactPreviewCacheKey,
+  readGeneratedCompactPreview,
+} from "../customer/customerBlueprintPreviewCache";
 import { formatPHDate } from "../../utils/dateTime";
 import { getSocket, subscribeSocketReady } from "../../services/socket";
 import toast from "react-hot-toast";
 import { Package2, Search } from "lucide-react";
-import CustomerBlueprintViewer from "../customer/CustomerBlueprintViewer";
 import "./OrdersPage.css";
+
+const CustomerBlueprintViewer = React.lazy(() =>
+  import("../customer/CustomerBlueprintViewer"),
+);
+
+const ADMIN_ORDER_PREVIEW_PRESET = "isometric";
+const ADMIN_ORDER_PREVIEW_CACHE_HEIGHT = 46;
+
+// Visible and near-visible rows still start first. Rows farther down the
+// current 20-order page also warm automatically in the background so the
+// user does not have to scroll just to trigger their previews.
+const ADMIN_ORDER_PREVIEW_PREFETCH_MARGIN = "720px 0px";
+const ADMIN_ORDER_PREVIEW_BACKGROUND_DELAY_MS = 900;
+const ADMIN_ORDER_PREVIEW_BACKGROUND_STEP_MS = 150;
+
+const ADMIN_ORDER_PREVIEW_SHELL_STYLE = {
+  width: ADMIN_ORDER_PREVIEW_CACHE_HEIGHT,
+  height: ADMIN_ORDER_PREVIEW_CACHE_HEIGHT,
+  minWidth: ADMIN_ORDER_PREVIEW_CACHE_HEIGHT,
+  minHeight: ADMIN_ORDER_PREVIEW_CACHE_HEIGHT,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  overflow: "hidden",
+  border: "none",
+  borderRadius: 0,
+  background: "transparent",
+  boxShadow: "none",
+  padding: 0,
+};
+
+const ADMIN_ORDER_PREVIEW_IMAGE_STYLE = {
+  display: "block",
+  width: "100%",
+  height: "100%",
+  objectFit: "contain",
+  border: "none",
+  borderRadius: 0,
+  background: "transparent",
+  boxShadow: "none",
+  padding: 0,
+};
 
 const getStatusColor = (status) => {
   const s = String(status || "")
@@ -138,19 +183,6 @@ const normalize = (value) => {
   return String(value).trim().toLowerCase();
 };
 
-const safeParseOrderJson = (value, fallback = {}) => {
-  try {
-    if (!value) return fallback;
-    if (typeof value === "object" && !Array.isArray(value)) return value;
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? parsed
-      : fallback;
-  } catch {
-    return fallback;
-  }
-};
-
 const formatMoney = (value) =>
   `₱ ${Number(value || 0).toLocaleString("en-PH", {
     minimumFractionDigits: 2,
@@ -207,136 +239,204 @@ const OrderThumbnail = ({ src, alt }) => {
   );
 };
 
-// WISDOM PENDING ORDER DRAFT CACHE V1.0.6
-const ORDER_DRAFT_PREVIEW_CACHE_PREFIX =
-  "wisdom:pending-order-draft-preview:v1:";
-
-const readOrderDraftPreviewCache = (orderId) => {
-  if (!orderId || typeof window === "undefined") return null;
-
-  try {
-    const raw = window.localStorage.getItem(
-      `${ORDER_DRAFT_PREVIEW_CACHE_PREFIX}${orderId}`,
-    );
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-};
-
-const writeOrderDraftPreviewCache = (orderId, preview) => {
-  if (!orderId || !preview || typeof window === "undefined") return;
-
-  try {
-    window.localStorage.setItem(
-      `${ORDER_DRAFT_PREVIEW_CACHE_PREFIX}${orderId}`,
-      JSON.stringify(preview),
-    );
-  } catch {
-    // Non-critical display cache only.
-  }
-};
-
-const buildOrderDraftPreview = (data, orderId, title) => {
-  const customItems = Array.isArray(data?.custom_request_items)
-    ? data.custom_request_items
-    : Array.isArray(data?.items)
-      ? data.items
-      : [];
-
-  const sourceItem = customItems.find(
-    (item) =>
-      item?.editor_snapshot &&
-      Array.isArray(item.editor_snapshot.components) &&
-      item.editor_snapshot.components.length > 0,
-  );
-
-  if (!sourceItem) return null;
-
-  const editorSnapshot = sourceItem.editor_snapshot;
-  const components = editorSnapshot.components;
-
-  return {
-    id: `order-draft-${orderId}`,
-    title:
-      sourceItem?.requested_base_blueprint_title ||
-      sourceItem?.display_name ||
-      sourceItem?.product_name ||
-      title ||
-      "Custom Furniture",
-    thumbnail_url: null,
-    components,
-    design_data: {
-      components,
-      worldSize: editorSnapshot?.worldSize || null,
-    },
-    view_3d_data: {
-      components,
-      worldSize: editorSnapshot?.worldSize || null,
-    },
-  };
-};
-
-const OrderBlueprintPreview = ({
-  blueprint,
+const AdminOrderBlueprintPreview = ({
+  order,
   title,
-  orderId = null,
-  loadOrderDraft = false,
+  preloadDelayMs = ADMIN_ORDER_PREVIEW_BACKGROUND_DELAY_MS,
 }) => {
-  const [resolvedBlueprint, setResolvedBlueprint] = useState(
-    () =>
-      blueprint ||
-      (loadOrderDraft ? readOrderDraftPreviewCache(orderId) : null),
+  const previewRef = useRef(null);
+
+  const previewMetadata = useMemo(
+    () => ({
+      id:
+        order?.blueprint_id ||
+        `order-draft-${order?.id || "preview"}`,
+      preview_revision:
+        order?.blueprint_preview_revision ||
+        order?.created_at ||
+        `order-${order?.id || "preview"}`,
+    }),
+    [
+      order?.blueprint_id,
+      order?.blueprint_preview_revision,
+      order?.created_at,
+      order?.id,
+    ],
   );
 
-  useEffect(() => {
-    setResolvedBlueprint(
-      blueprint ||
-        (loadOrderDraft ? readOrderDraftPreviewCache(orderId) : null),
-    );
-  }, [blueprint, loadOrderDraft, orderId]);
+  const compactPreviewCacheKey = useMemo(
+    () =>
+      buildCompactPreviewCacheKey(
+        previewMetadata,
+        ADMIN_ORDER_PREVIEW_PRESET,
+        ADMIN_ORDER_PREVIEW_CACHE_HEIGHT,
+      ),
+    [previewMetadata],
+  );
+
+  const [cachedStaticPreview, setCachedStaticPreview] = useState(() =>
+    readGeneratedCompactPreview(compactPreviewCacheKey),
+  );
+  const [previewEligible, setPreviewEligible] = useState(false);
+  const [blueprint, setBlueprint] = useState(null);
 
   useEffect(() => {
-    if (!loadOrderDraft || !orderId || blueprint) return undefined;
+    setCachedStaticPreview(
+      readGeneratedCompactPreview(compactPreviewCacheKey),
+    );
+    setBlueprint(null);
+    setPreviewEligible(false);
+  }, [compactPreviewCacheKey]);
+
+  useEffect(() => {
+    if (cachedStaticPreview || !order?.id) return undefined;
+
+    const node = previewRef.current;
+    if (!node) return undefined;
+
+    let completed = false;
+    let observer = null;
+    let timerId = null;
+
+    const markPreviewEligible = () => {
+      if (completed) return;
+      completed = true;
+
+      setPreviewEligible(true);
+      observer?.disconnect();
+
+      if (timerId !== null) {
+        window.clearTimeout(timerId);
+        timerId = null;
+      }
+    };
+
+    // Even rows below the fold on the current paginated result eventually
+    // warm without requiring user scroll. The delay is staggered per row.
+    timerId = window.setTimeout(
+      markPreviewEligible,
+      Math.max(0, Number(preloadDelayMs) || 0),
+    );
+
+    if (typeof IntersectionObserver !== "undefined") {
+      observer = new IntersectionObserver(
+        (entries) => {
+          if (!entries[0]?.isIntersecting) return;
+          markPreviewEligible();
+        },
+        {
+          rootMargin: ADMIN_ORDER_PREVIEW_PREFETCH_MARGIN,
+          threshold: 0.01,
+        },
+      );
+
+      observer.observe(node);
+    }
+
+    return () => {
+      completed = true;
+      observer?.disconnect();
+
+      if (timerId !== null) {
+        window.clearTimeout(timerId);
+      }
+    };
+  }, [
+    cachedStaticPreview,
+    order?.id,
+    preloadDelayMs,
+  ]);
+
+  useEffect(() => {
+    if (
+      cachedStaticPreview ||
+      !previewEligible ||
+      !order?.id ||
+      blueprint
+    ) {
+      return undefined;
+    }
 
     let active = true;
 
     api
-      .get(`/orders/${orderId}`)
+      .get(`/orders/${order.id}`, {
+        params: { blueprint_preview: 1 },
+      })
       .then(({ data }) => {
         if (!active) return;
-
-        const draftPreview = buildOrderDraftPreview(data, orderId, title);
-        if (draftPreview) {
-          setResolvedBlueprint(draftPreview);
-          writeOrderDraftPreviewCache(orderId, draftPreview);
-        }
+        setBlueprint(data?.blueprint_preview || null);
       })
       .catch(() => {
-        // Keep a clean blank preview when no live furniture scene exists.
+        // Keep the lightweight thumbnail if the preview-only request fails.
       });
 
     return () => {
       active = false;
     };
-  }, [blueprint, loadOrderDraft, orderId, title]);
+  }, [
+    blueprint,
+    cachedStaticPreview,
+    order?.id,
+    previewEligible,
+  ]);
+
+  if (cachedStaticPreview) {
+    return (
+      <div
+        ref={previewRef}
+        style={ADMIN_ORDER_PREVIEW_SHELL_STYLE}
+        aria-label={title || "Furniture preview"}
+      >
+        <img
+          src={cachedStaticPreview}
+          alt={title || "Furniture preview"}
+          decoding="async"
+          style={ADMIN_ORDER_PREVIEW_IMAGE_STYLE}
+        />
+      </div>
+    );
+  }
+
+  if (blueprint) {
+    return (
+      <div
+        ref={previewRef}
+        style={ADMIN_ORDER_PREVIEW_SHELL_STYLE}
+        aria-label={title || "Furniture preview"}
+      >
+        <React.Suspense
+          fallback={
+            <OrderThumbnail
+              src={order?.thumbnail_url}
+              alt={title}
+            />
+          }
+        >
+          <CustomerBlueprintViewer
+            blueprint={blueprint}
+            compactCacheKey={compactPreviewCacheKey}
+            readOnly
+            showHumanControls={false}
+            compact
+            compactHeight={ADMIN_ORDER_PREVIEW_CACHE_HEIGHT}
+            defaultPreset={ADMIN_ORDER_PREVIEW_PRESET}
+            defaultShowHuman={false}
+          />
+        </React.Suspense>
+      </div>
+    );
+  }
 
   return (
     <div
-      className="orders-blueprint-preview"
-      aria-label={title || "Furniture preview"}
+      ref={previewRef}
+      style={ADMIN_ORDER_PREVIEW_SHELL_STYLE}
     >
-      {resolvedBlueprint ? (
-        <CustomerBlueprintViewer
-          blueprint={resolvedBlueprint}
-          readOnly
-          showHumanControls={false}
-          compact
-          compactHeight={58}
-          defaultPreset="isometric"
-          defaultShowHuman={false}
-        />
-      ) : null}
+      <OrderThumbnail
+        src={order?.thumbnail_url}
+        alt={title}
+      />
     </div>
   );
 };
@@ -789,7 +889,7 @@ export default function OrdersPage() {
                   </td>
                 </tr>
               ) : (
-                orders.map((order) => {
+                orders.map((order, orderIndex) => {
                   const normalizedStatus = normalize(order.status);
                   const statusTone =
                     STATUS_STYLE[normalizedStatus] || STATUS_STYLE.pending;
@@ -820,59 +920,6 @@ export default function OrdersPage() {
                     order.item_name ||
                     (customRequest ? "Custom Furniture" : "Order item");
                   const itemCount = Number(order.item_count || 0);
-                  const draftCustomization = customRequest
-                    ? safeParseOrderJson(
-                        order.blueprint_item_customization_json,
-                        {},
-                      )
-                    : {};
-                  const draftEditorSnapshot = safeParseOrderJson(
-                    draftCustomization?.editor_snapshot,
-                    {},
-                  );
-                  const draftComponents = Array.isArray(
-                    draftEditorSnapshot?.components,
-                  )
-                    ? draftEditorSnapshot.components
-                    : [];
-
-                  const linkedBlueprintPreview = order.blueprint_id
-                    ? {
-                        id: order.blueprint_id,
-                        title: order.blueprint_title || itemName,
-                        thumbnail_url: null,
-                        design_data: order.blueprint_design_data || null,
-                        view_3d_data: order.blueprint_view_3d_data || null,
-                        components: Array.isArray(order.blueprint_components)
-                          ? order.blueprint_components
-                          : [],
-                      }
-                    : null;
-
-                  const draftBlueprintPreview =
-                    customRequest && draftComponents.length > 0
-                      ? {
-                          id: `order-draft-${order.id}`,
-                          title:
-                            draftCustomization?.base_blueprint_title ||
-                            itemName ||
-                            "Custom Furniture",
-                          thumbnail_url: null,
-                          components: draftComponents,
-                          design_data: {
-                            components: draftComponents,
-                            worldSize: draftEditorSnapshot?.worldSize || null,
-                          },
-                          view_3d_data: {
-                            components: draftComponents,
-                            worldSize: draftEditorSnapshot?.worldSize || null,
-                          },
-                        }
-                      : null;
-
-                  const blueprintPreview =
-                    linkedBlueprintPreview || draftBlueprintPreview;
-
                   return (
                     <tr
                       key={order.id}
@@ -882,11 +929,14 @@ export default function OrdersPage() {
                       <td>
                         <div className="orders-product-cell">
                           {customRequest ? (
-                            <OrderBlueprintPreview
-                              blueprint={blueprintPreview || null}
+                            <AdminOrderBlueprintPreview
+                              order={order}
                               title={itemName}
-                              orderId={order.id}
-                              loadOrderDraft={!blueprintPreview}
+                              preloadDelayMs={
+                                ADMIN_ORDER_PREVIEW_BACKGROUND_DELAY_MS +
+                                orderIndex *
+                                  ADMIN_ORDER_PREVIEW_BACKGROUND_STEP_MS
+                              }
                             />
                           ) : (
                             <OrderThumbnail
