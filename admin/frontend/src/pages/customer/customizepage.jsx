@@ -952,13 +952,13 @@ function CustomizeModal({ product, onClose, onAdd }) {
       variant="customize"
     >
       {loading ? (
-        <div className="cust-modal-state">Loading customization options…</div>
+        <div className="cust-modal-state cust-modal-loading-state">Loading customization options…</div>
       ) : error ? (
         <div className="cust-modal-error">{error}</div>
       ) : (
         <Suspense
           fallback={
-            <div className="cust-modal-state">
+            <div className="cust-modal-state cust-modal-loading-state">
               Loading customization workspace…
             </div>
           }
@@ -1173,6 +1173,54 @@ function MiniFinishRow({ selected }) {
   );
 }
 
+function MiniPanelHydrationState({ unavailable = false }) {
+  if (unavailable) {
+    return (
+      <div className="cust-mini-panel-unavailable-v21">
+        <strong>DESIGN DETAILS</strong>
+        <small>Preview details unavailable</small>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="cust-mini-panel-loading-v21"
+      aria-label="Loading exact design details"
+    >
+      {[0, 1, 2, 3].map((index) => (
+        <div
+          key={index}
+          className="cust-mini-panel-loading-section-v21"
+          aria-hidden="true"
+        >
+          <span className="cust-mini-panel-loading-line-v21 cust-mini-panel-loading-line-v21--title" />
+          <span className="cust-mini-panel-loading-line-v21 cust-mini-panel-loading-line-v21--copy" />
+          <div className="cust-mini-panel-loading-dots-v21">
+            <i />
+            <i />
+            <i />
+            <i />
+          </div>
+        </div>
+      ))}
+
+      <div className="cust-mini-panel-loading-size-v21" aria-hidden="true">
+        <span />
+        <div>
+          <i />
+          <i />
+          <i />
+        </div>
+      </div>
+
+      <div className="cust-mini-panel-loading-bar-v21" aria-hidden="true" />
+      <div className="cust-mini-panel-loading-bar-v21" aria-hidden="true" />
+      <div className="cust-mini-panel-loading-cta-v21" aria-hidden="true" />
+    </div>
+  );
+}
+
 const hasEmbeddedGalleryScene = (product = {}) =>
   Boolean(
     product?.design_data ||
@@ -1226,6 +1274,7 @@ function ProductCard({ product, onCustomize }) {
   const [detailResolved, setDetailResolved] = useState(() =>
     hasEmbeddedGalleryScene(product),
   );
+  const [detailFailed, setDetailFailed] = useState(false);
 
   useEffect(() => {
     const embedded = hasEmbeddedGalleryScene(product);
@@ -1235,6 +1284,7 @@ function ProductCard({ product, onCustomize }) {
     );
     setHydratedProduct(embedded ? product : null);
     setDetailResolved(embedded);
+    setDetailFailed(false);
     setPreviewEligible(false);
   }, [product?.id, compactPreviewCacheKey]);
 
@@ -1270,6 +1320,7 @@ function ProductCard({ product, onCustomize }) {
     }
 
     let active = true;
+    setDetailFailed(false);
 
     api
       .get(`/customer/blueprints/${product.id}`, {
@@ -1278,9 +1329,12 @@ function ProductCard({ product, onCustomize }) {
       .then(({ data }) => {
         if (!active) return;
         setHydratedProduct(data || null);
+        setDetailFailed(!data);
       })
       .catch(() => {
-        if (active) setHydratedProduct(null);
+        if (!active) return;
+        setHydratedProduct(null);
+        setDetailFailed(true);
       })
       .finally(() => {
         if (active) setDetailResolved(true);
@@ -1291,6 +1345,9 @@ function ProductCard({ product, onCustomize }) {
     };
   }, [detailResolved, previewEligible, product?.id]);
 
+  const detailsReady = Boolean(hydratedProduct);
+  const detailUnavailable =
+    detailResolved && detailFailed && !detailsReady;
   const cardProduct = hydratedProduct || product;
 
   const profile = detectTemplateProfile(cardProduct || {});
@@ -1314,10 +1371,15 @@ function ProductCard({ product, onCustomize }) {
   );
 
   const categoryLabel = String(
-    profile.category ||
-      cardProduct?.catalog_category_name ||
-      cardProduct?.category_label ||
-      "Furniture Template",
+    detailsReady
+      ? profile.category ||
+          cardProduct?.catalog_category_name ||
+          cardProduct?.category_label ||
+          "Furniture Template"
+      : product?.catalog_category_name ||
+          product?.category_label ||
+          product?.category ||
+          "Furniture Template",
   ).replace(" Template", " Design");
 
   const customColor = useMemo(() => {
@@ -1333,6 +1395,7 @@ function ProductCard({ product, onCustomize }) {
   }, [components]);
 
   const hasLiveBlueprintPreview =
+    detailsReady &&
     Boolean(cardProduct?.has_saved_3d) &&
     hasEmbeddedGalleryScene(cardProduct);
 
@@ -1417,57 +1480,63 @@ function ProductCard({ product, onCustomize }) {
         </div>
 
         <aside className="cust-mini-panel-v21" aria-hidden="true">
-          <section className="cust-mini-panel-section-v21">
-            <strong>WHOLE FURNITURE</strong>
-            <small>Apply one wood finish to the complete design</small>
-            <MiniFinishRow selected={wholeSelected} />
-          </section>
+          {detailsReady ? (
+            <>
+              <section className="cust-mini-panel-section-v21">
+                <strong>WHOLE FURNITURE</strong>
+                <small>Apply one wood finish to the complete design</small>
+                <MiniFinishRow selected={wholeSelected} />
+              </section>
 
-          {parts.map((part) => (
-            <section
-              key={part.label}
-              className="cust-mini-panel-section-v21 cust-mini-panel-section-v21--part"
-            >
-              <strong>{part.label}</strong>
-              <small>{part.label === "LEGS" ? "4 parts" : "1 part"}</small>
-              <MiniFinishRow selected={part.selected} />
-            </section>
-          ))}
+              {parts.map((part) => (
+                <section
+                  key={part.label}
+                  className="cust-mini-panel-section-v21 cust-mini-panel-section-v21--part"
+                >
+                  <strong>{part.label}</strong>
+                  <small>{part.label === "LEGS" ? "4 parts" : "1 part"}</small>
+                  <MiniFinishRow selected={part.selected} />
+                </section>
+              ))}
 
-          <section className="cust-mini-panel-section-v21 cust-mini-custom-color-v21">
-            <strong>CUSTOM COLOR</strong>
-            <small>Applies to the whole furniture</small>
-            <div className="cust-mini-color-field-v21">
-              <span style={{ backgroundColor: customColor }} />
-              <em>{customColor}</em>
-            </div>
-          </section>
+              <section className="cust-mini-panel-section-v21 cust-mini-custom-color-v21">
+                <strong>CUSTOM COLOR</strong>
+                <small>Applies to the whole furniture</small>
+                <div className="cust-mini-color-field-v21">
+                  <span style={{ backgroundColor: customColor }} />
+                  <em>{customColor}</em>
+                </div>
+              </section>
 
-          <section className="cust-mini-size-v21">
-            <div className="cust-mini-size-title-v21">
-              <strong>Furniture Size (mm)</strong>
-              <small>Keeps proportions</small>
-            </div>
-            <div className="cust-mini-size-labels-v21">
-              <span>Width</span><span>Height</span><span>Depth</span>
-            </div>
-            <div className="cust-mini-size-fields-v21">
-              <span>{Math.round(Number(dimensions.width_mm) || 0)}</span>
-              <span>{Math.round(Number(dimensions.height_mm) || 0)}</span>
-              <span>{Math.round(Number(dimensions.depth_mm) || 0)}</span>
-            </div>
-          </section>
+              <section className="cust-mini-size-v21">
+                <div className="cust-mini-size-title-v21">
+                  <strong>Furniture Size (mm)</strong>
+                  <small>Keeps proportions</small>
+                </div>
+                <div className="cust-mini-size-labels-v21">
+                  <span>Width</span><span>Height</span><span>Depth</span>
+                </div>
+                <div className="cust-mini-size-fields-v21">
+                  <span>{Math.round(Number(dimensions.width_mm) || 0)}</span>
+                  <span>{Math.round(Number(dimensions.height_mm) || 0)}</span>
+                  <span>{Math.round(Number(dimensions.depth_mm) || 0)}</span>
+                </div>
+              </section>
 
-          <div className="cust-mini-human-v21">
-            <strong>Human Size Reference</strong>
-            <span>☑ Show</span>
-          </div>
+              <div className="cust-mini-human-v21">
+                <strong>Human Size Reference</strong>
+                <span>☑ Show</span>
+              </div>
 
-          <div className="cust-mini-request-v21">
-            <span>Request details</span><strong>+</strong>
-          </div>
+              <div className="cust-mini-request-v21">
+                <span>Request details</span><strong>+</strong>
+              </div>
 
-          <div className="cust-mini-add-v21">Add to Cart</div>
+              <div className="cust-mini-add-v21">Add to Cart</div>
+            </>
+          ) : (
+            <MiniPanelHydrationState unavailable={detailUnavailable} />
+          )}
         </aside>
 
         <div className="cust-mini-footer-v21">
@@ -1476,7 +1545,13 @@ function ProductCard({ product, onCustomize }) {
             <small>{categoryLabel}</small>
           </div>
           <span>
-            {Math.round(Number(dimensions.width_mm) || 0)} × {Math.round(Number(dimensions.height_mm) || 0)} × {Math.round(Number(dimensions.depth_mm) || 0)} mm
+            {detailsReady
+              ? `${Math.round(Number(dimensions.width_mm) || 0)} × ${Math.round(
+                  Number(dimensions.height_mm) || 0,
+                )} × ${Math.round(Number(dimensions.depth_mm) || 0)} mm`
+              : detailUnavailable
+                ? "Details unavailable"
+                : "Loading details…"}
           </span>
         </div>
       </div>
