@@ -1,12 +1,32 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import toast from "react-hot-toast";
 import { ArrowLeft, RefreshCw, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import api from "../../services/api";
+import api, { buildAssetUrl } from "../../services/api";
 import { getSocket, subscribeSocketReady } from "../../services/socket";
-import CustomerBlueprintViewer from "../customer/CustomerBlueprintViewer";
 import { downloadPickupAcknowledgementPdf } from "../../utils/pickupAcknowledgementPdf";
+import {
+  buildCompactPreviewCacheKey,
+  readGeneratedCompactPreview,
+} from "../customer/customerBlueprintPreviewCache";
 import "./BlueprintPayments.css";
+
+const CustomerBlueprintViewer = lazy(() =>
+  import("../customer/CustomerBlueprintViewer"),
+);
+
+const BLUEPRINT_PAYMENT_PREVIEW_PRESET = "isometric";
+const BLUEPRINT_PAYMENT_LIST_PREVIEW_HEIGHT = 56;
+const BLUEPRINT_PAYMENT_DETAIL_PREVIEW_HEIGHT = 64;
+const BLUEPRINT_PAYMENT_PREVIEW_PREFETCH_MARGIN = "180px 0px";
 
 const formatMoney = (value) =>
   `\u20B1${Number(value || 0).toLocaleString("en-PH", {
@@ -116,9 +136,11 @@ function PaymentBadge({ status }) {
   );
 }
 
-function BlueprintPreview({ blueprint, title, size = "list" }) {
-  const designData = blueprint?.blueprint_design_data || null;
-  const view3dData = blueprint?.blueprint_view_3d_data || null;
+const buildBlueprintViewerData = (blueprint, title) => {
+  const designData =
+    blueprint?.blueprint_design_data ?? blueprint?.design_data ?? null;
+  const view3dData =
+    blueprint?.blueprint_view_3d_data ?? blueprint?.view_3d_data ?? null;
   const draftEditorSnapshot = blueprint?.draft_editor_snapshot || null;
   const draftComponents = Array.isArray(draftEditorSnapshot?.components)
     ? draftEditorSnapshot.components
@@ -127,28 +149,17 @@ function BlueprintPreview({ blueprint, title, size = "list" }) {
   const hasSavedSceneSource = Boolean(
     designData || view3dData || hasDraftScene,
   );
-  const compactHeight = size === "detail" ? 64 : 56;
 
-  if (!hasSavedSceneSource) {
-    return (
-      <div
-        className={`bp-thumb bp-thumb-${size} bp-thumb-fallback`}
-        aria-label="Blueprint preview unavailable"
-        title="Blueprint preview unavailable"
-      >
-        <span aria-hidden="true">—</span>
-      </div>
-    );
-  }
+  if (!hasSavedSceneSource) return null;
 
-  const liveBlueprint = {
+  return {
     id:
       blueprint?.blueprint_id ||
       blueprint?.order_id ||
       blueprint?.id ||
       `blueprint-payment-${blueprint?.order_number || "preview"}`,
     title: title || blueprint?.blueprint_title || "Blueprint",
-    thumbnail_url: null,
+    thumbnail_url: blueprint?.thumbnail_url || null,
     components: hasDraftScene ? draftComponents : undefined,
     design_data:
       designData ||
@@ -167,18 +178,232 @@ function BlueprintPreview({ blueprint, title, size = "list" }) {
           }
         : null),
   };
+};
+
+function BlueprintPreview({ blueprint, title, size = "list" }) {
+  const previewRef = useRef(null);
+  const isListPreview = size === "list";
+  const compactHeight = isListPreview
+    ? BLUEPRINT_PAYMENT_LIST_PREVIEW_HEIGHT
+    : BLUEPRINT_PAYMENT_DETAIL_PREVIEW_HEIGHT;
+
+  const embeddedBlueprint = useMemo(
+    () => buildBlueprintViewerData(blueprint, title),
+    [blueprint, title],
+  );
+
+  const listPreviewMetadata = useMemo(
+    () => ({
+      id: blueprint?.blueprint_id
+        ? `blueprint-${blueprint.blueprint_id}`
+        : `order-draft-${blueprint?.order_id || "preview"}`,
+      preview_revision:
+        blueprint?.blueprint_preview_revision ||
+        blueprint?.created_at ||
+        `order-${blueprint?.order_id || "preview"}`,
+    }),
+    [
+      blueprint?.blueprint_id,
+      blueprint?.blueprint_preview_revision,
+      blueprint?.created_at,
+      blueprint?.order_id,
+    ],
+  );
+
+  const listPreviewCacheKey = useMemo(
+    () =>
+      isListPreview
+        ? buildCompactPreviewCacheKey(
+            listPreviewMetadata,
+            BLUEPRINT_PAYMENT_PREVIEW_PRESET,
+            compactHeight,
+          )
+        : "",
+    [compactHeight, isListPreview, listPreviewMetadata],
+  );
+
+  const [cachedStaticPreview, setCachedStaticPreview] = useState(() =>
+    isListPreview
+      ? readGeneratedCompactPreview(listPreviewCacheKey)
+      : "",
+  );
+  const [previewEligible, setPreviewEligible] = useState(!isListPreview);
+  const [remoteBlueprint, setRemoteBlueprint] = useState(null);
+  const [previewResolved, setPreviewResolved] = useState(false);
+
+  useEffect(() => {
+    if (!isListPreview) return;
+
+    setCachedStaticPreview(
+      readGeneratedCompactPreview(listPreviewCacheKey),
+    );
+    setRemoteBlueprint(null);
+    setPreviewResolved(false);
+    setPreviewEligible(false);
+  }, [isListPreview, listPreviewCacheKey]);
+
+  useEffect(() => {
+    if (
+      !isListPreview ||
+      cachedStaticPreview ||
+      embeddedBlueprint ||
+      !blueprint?.order_id
+    ) {
+      return undefined;
+    }
+
+    const node = previewRef.current;
+    if (!node) return undefined;
+
+    if (typeof IntersectionObserver === "undefined") {
+      setPreviewEligible(true);
+      return undefined;
+    }
+
+    const listRoot = node.closest(".bp-order-list");
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return;
+        setPreviewEligible(true);
+        observer.disconnect();
+      },
+      {
+        root: listRoot || null,
+        rootMargin: BLUEPRINT_PAYMENT_PREVIEW_PREFETCH_MARGIN,
+        threshold: 0.01,
+      },
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [
+    blueprint?.order_id,
+    cachedStaticPreview,
+    embeddedBlueprint,
+    isListPreview,
+  ]);
+
+  useEffect(() => {
+    if (
+      !isListPreview ||
+      cachedStaticPreview ||
+      embeddedBlueprint ||
+      !previewEligible ||
+      !blueprint?.order_id ||
+      previewResolved
+    ) {
+      return undefined;
+    }
+
+    let active = true;
+
+    api
+      .get(
+        `/pos/blueprint-cash-payments/${blueprint.order_id}/preview`,
+      )
+      .then(({ data }) => {
+        if (!active) return;
+        setRemoteBlueprint(data?.blueprint_preview || null);
+      })
+      .catch(() => {
+        // Keep the lightweight thumbnail/fallback when preview loading fails.
+      })
+      .finally(() => {
+        if (active) setPreviewResolved(true);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    blueprint?.order_id,
+    cachedStaticPreview,
+    embeddedBlueprint,
+    isListPreview,
+    previewEligible,
+    previewResolved,
+  ]);
+
+  const liveBlueprint = useMemo(
+    () =>
+      embeddedBlueprint ||
+      buildBlueprintViewerData(remoteBlueprint, title),
+    [embeddedBlueprint, remoteBlueprint, title],
+  );
+
+  const fallbackThumbnail = buildAssetUrl(blueprint?.thumbnail_url);
+
+  if (isListPreview && cachedStaticPreview) {
+    return (
+      <div
+        ref={previewRef}
+        className="bp-thumb bp-thumb-list bp-thumb-cached"
+        aria-label={title || "Furniture preview"}
+      >
+        <img
+          src={cachedStaticPreview}
+          alt={title || "Furniture preview"}
+          decoding="async"
+        />
+      </div>
+    );
+  }
+
+  if (liveBlueprint) {
+    return (
+      <div
+        ref={previewRef}
+        className={`bp-thumb bp-thumb-${size} bp-thumb-live`}
+      >
+        <Suspense
+          fallback={
+            fallbackThumbnail ? (
+              <img
+                src={fallbackThumbnail}
+                alt={title || "Blueprint preview"}
+                decoding="async"
+              />
+            ) : (
+              <span className="bp-thumb-loading" aria-hidden="true">
+                —
+              </span>
+            )
+          }
+        >
+          <CustomerBlueprintViewer
+            blueprint={liveBlueprint}
+            compactCacheKey={
+              isListPreview ? listPreviewCacheKey : ""
+            }
+            readOnly
+            showHumanControls={false}
+            compact
+            compactHeight={compactHeight}
+            defaultPreset={BLUEPRINT_PAYMENT_PREVIEW_PRESET}
+            defaultShowHuman={false}
+          />
+        </Suspense>
+      </div>
+    );
+  }
 
   return (
-    <div className={`bp-thumb bp-thumb-${size} bp-thumb-live`}>
-      <CustomerBlueprintViewer
-        blueprint={liveBlueprint}
-        readOnly
-        showHumanControls={false}
-        compact
-        compactHeight={compactHeight}
-        defaultPreset="isometric"
-        defaultShowHuman={false}
-      />
+    <div
+      ref={previewRef}
+      className={`bp-thumb bp-thumb-${size} bp-thumb-fallback`}
+      aria-label="Blueprint preview unavailable"
+      title="Blueprint preview unavailable"
+    >
+      {fallbackThumbnail ? (
+        <img
+          src={fallbackThumbnail}
+          alt={title || "Blueprint preview"}
+          decoding="async"
+        />
+      ) : (
+        <span aria-hidden="true">—</span>
+      )}
     </div>
   );
 }
