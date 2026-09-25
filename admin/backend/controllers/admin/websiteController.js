@@ -108,19 +108,14 @@ const normalizeToggleSetting = (value, key) => {
   if (normalized === "true") return "true";
   if (normalized === "false") return "false";
 
-  throw makeValidationError(
-    `${key} must be a true/false setting value.`,
-  );
+  throw makeValidationError(`${key} must be a true/false setting value.`);
 };
 
 const validateEmailSetting = (value, label) => {
   const text = String(value ?? "").trim();
   if (!text) return;
 
-  if (
-    text.length > 254 ||
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)
-  ) {
+  if (text.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)) {
     throw makeValidationError(`${label} must be a valid email address.`);
   }
 };
@@ -194,12 +189,12 @@ const normalizeAndValidateSettingsPayload = (body, existingMap) => {
     const latitudeRaw = String(
       hasOwn(normalized, "business_latitude")
         ? normalized.business_latitude
-        : existingMap.get("business_latitude")?.value ?? "",
+        : (existingMap.get("business_latitude")?.value ?? ""),
     ).trim();
     const longitudeRaw = String(
       hasOwn(normalized, "business_longitude")
         ? normalized.business_longitude
-        : existingMap.get("business_longitude")?.value ?? "",
+        : (existingMap.get("business_longitude")?.value ?? ""),
     ).trim();
 
     if ((latitudeRaw && !longitudeRaw) || (!latitudeRaw && longitudeRaw)) {
@@ -320,10 +315,7 @@ const applyPageVisibilityToPublicSettings = (grouped, pageRows) => {
   grouped.display = grouped.display || {};
 
   const visibilityBySlug = new Map(
-    (pageRows || []).map((row) => [
-      row.slug,
-      Number(row.is_visible) === 1,
-    ]),
+    (pageRows || []).map((row) => [row.slug, Number(row.is_visible) === 1]),
   );
 
   for (const [slug, settingKey] of Object.entries(
@@ -644,7 +636,9 @@ exports.updateSettings = async (req, res) => {
       }
     }
 
-    res.status(err.statusCode || err.status || 500).json({ message: err.message });
+    res
+      .status(err.statusCode || err.status || 500)
+      .json({ message: err.message });
   } finally {
     conn.release();
   }
@@ -694,42 +688,186 @@ exports.getAdminFaqs = async (req, res) => {
   }
 };
 
+const normalizeFaqText = (value) => String(value ?? "").trim();
+
+const normalizeFaqQuestionForCompare = (value) =>
+  normalizeFaqText(value).replace(/\s+/g, " ").toLowerCase();
+
+const validateFaqInput = ({ question, answer, sort_order, is_visible }) => {
+  const normalizedQuestion = normalizeFaqText(question);
+  const normalizedAnswer = normalizeFaqText(answer);
+
+  if (!normalizedQuestion) {
+    throw Object.assign(new Error("Question is required."), {
+      statusCode: 400,
+    });
+  }
+
+  if (normalizedQuestion.length < 3) {
+    throw Object.assign(new Error("Question must be at least 3 characters."), {
+      statusCode: 400,
+    });
+  }
+
+  if (normalizedQuestion.length > 200) {
+    throw Object.assign(new Error("Question must not exceed 200 characters."), {
+      statusCode: 400,
+    });
+  }
+
+  if (!normalizedAnswer) {
+    throw Object.assign(new Error("Answer is required."), { statusCode: 400 });
+  }
+
+  if (normalizedAnswer.length < 5) {
+    throw Object.assign(new Error("Answer must be at least 5 characters."), {
+      statusCode: 400,
+    });
+  }
+
+  if (normalizedAnswer.length > 2000) {
+    throw Object.assign(new Error("Answer must not exceed 2,000 characters."), {
+      statusCode: 400,
+    });
+  }
+
+  const numericSortOrder = Number(sort_order);
+
+  if (!Number.isInteger(numericSortOrder) || numericSortOrder < 1) {
+    throw Object.assign(
+      new Error("Display order must be a whole number 1 or greater."),
+      { statusCode: 400 },
+    );
+  }
+
+  if (
+    typeof is_visible !== "boolean" &&
+    ![0, 1, "0", "1"].includes(is_visible)
+  ) {
+    throw Object.assign(new Error("Visibility must be true or false."), {
+      statusCode: 400,
+    });
+  }
+
+  return {
+    question: normalizedQuestion,
+    answer: normalizedAnswer,
+    sort_order: numericSortOrder,
+    is_visible: is_visible === true || is_visible === 1 || is_visible === "1",
+  };
+};
+
 exports.createFaq = async (req, res) => {
   try {
-    const { question, answer, sort_order = 0, is_visible = true } = req.body;
+    const validated = validateFaqInput(req.body);
+
+    const normalizedQuestion = normalizeFaqQuestionForCompare(
+      validated.question,
+    );
+
+    const [existing] = await pool.query(
+      "SELECT id FROM faqs WHERE LOWER(TRIM(question)) = ? LIMIT 1",
+      [normalizedQuestion],
+    );
+
+    if (existing.length > 0) {
+      return res.status(409).json({
+        message: "A FAQ with the same question already exists.",
+      });
+    }
+
     const [r] = await pool.query(
-      "INSERT INTO faqs (question, answer, sort_order, is_visible, created_by) VALUES (?,?,?,?,?)",
-      [question, answer, sort_order, is_visible ? 1 : 0, parseInt(req.user.id)],
+      `INSERT INTO faqs
+        (question, answer, sort_order, is_visible, created_by)
+       VALUES (?, ?, ?, ?, ?)`,
+      [
+        validated.question,
+        validated.answer,
+        validated.sort_order,
+        validated.is_visible ? 1 : 0,
+        parseInt(req.user.id, 10),
+      ],
     );
 
     req.auditRecord = {
       id: r.insertId,
-      new: { is_visible: Boolean(is_visible) },
+      new: {
+        is_visible: validated.is_visible,
+      },
     };
 
-    res.status(201).json({ message: "FAQ created.", id: r.insertId });
+    res.status(201).json({
+      message: "FAQ created.",
+      id: r.insertId,
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(err.statusCode || 500).json({
+      message: err.message,
+    });
   }
 };
 
 exports.updateFaq = async (req, res) => {
   try {
-    const { question, answer, sort_order, is_visible } = req.body;
-    const faqId = parseInt(req.params.id);
+    const faqId = Number(req.params.id);
+
+    if (!Number.isInteger(faqId) || faqId <= 0) {
+      return res.status(400).json({
+        message: "Invalid FAQ ID.",
+      });
+    }
+
+    const validated = validateFaqInput(req.body);
 
     const [[oldFaq]] = await pool.query(
-      "SELECT question, answer, sort_order, is_visible FROM faqs WHERE id = ?",
+      `SELECT question, answer, sort_order, is_visible
+       FROM faqs
+       WHERE id = ?`,
       [faqId],
     );
 
-    // ── FIXED: Parsed ID ──
-    const [updateResult] = await pool.query(
-      "UPDATE faqs SET question=?,answer=?,sort_order=?,is_visible=? WHERE id=?",
-      [question, answer, sort_order, is_visible ? 1 : 0, faqId],
+    if (!oldFaq) {
+      return res.status(404).json({
+        message: "FAQ not found.",
+      });
+    }
+
+    const normalizedQuestion = normalizeFaqQuestionForCompare(
+      validated.question,
     );
 
-    if (oldFaq && updateResult.affectedRows > 0) {
+    const [duplicateRows] = await pool.query(
+      `SELECT id
+       FROM faqs
+       WHERE LOWER(TRIM(question)) = ?
+         AND id <> ?
+       LIMIT 1`,
+      [normalizedQuestion, faqId],
+    );
+
+    if (duplicateRows.length > 0) {
+      return res.status(409).json({
+        message: "A FAQ with the same question already exists.",
+      });
+    }
+
+    const [updateResult] = await pool.query(
+      `UPDATE faqs
+       SET question = ?,
+           answer = ?,
+           sort_order = ?,
+           is_visible = ?
+       WHERE id = ?`,
+      [
+        validated.question,
+        validated.answer,
+        validated.sort_order,
+        validated.is_visible ? 1 : 0,
+        faqId,
+      ],
+    );
+
+    if (updateResult.affectedRows > 0) {
       req.auditRecord = {
         id: faqId,
         old: {
@@ -737,44 +875,71 @@ exports.updateFaq = async (req, res) => {
           sort_order: oldFaq.sort_order ?? null,
         },
         new: {
-          is_visible: Boolean(is_visible),
-          sort_order: sort_order ?? null,
-          question_changed: oldFaq.question !== question,
-          answer_changed: oldFaq.answer !== answer,
+          is_visible: validated.is_visible,
+          sort_order: validated.sort_order,
+          question_changed: oldFaq.question !== validated.question,
+          answer_changed: oldFaq.answer !== validated.answer,
         },
       };
     }
 
-    res.json({ message: "FAQ updated." });
+    return res.json({
+      message: "FAQ updated.",
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    return res.status(err.statusCode || 500).json({
+      message: err.message,
+    });
   }
 };
 
 exports.deleteFaq = async (req, res) => {
   try {
-    const faqId = parseInt(req.params.id);
+    const faqId = Number(req.params.id);
+
+    if (!Number.isInteger(faqId) || faqId <= 0) {
+      return res.status(400).json({
+        message: "Invalid FAQ ID.",
+      });
+    }
 
     const [[oldFaq]] = await pool.query(
-      "SELECT is_visible FROM faqs WHERE id = ?",
+      `SELECT is_visible
+       FROM faqs
+       WHERE id = ?`,
       [faqId],
     );
 
-    // ── FIXED: Parsed ID ──
+    if (!oldFaq) {
+      return res.status(404).json({
+        message: "FAQ not found.",
+      });
+    }
+
     const [deleteResult] = await pool.query("DELETE FROM faqs WHERE id = ?", [
       faqId,
     ]);
 
-    if (oldFaq && deleteResult.affectedRows > 0) {
-      req.auditRecord = {
-        id: faqId,
-        old: { is_visible: Boolean(oldFaq.is_visible) },
-      };
+    if (deleteResult.affectedRows !== 1) {
+      return res.status(500).json({
+        message: "FAQ could not be deleted.",
+      });
     }
 
-    res.json({ message: "FAQ deleted." });
+    req.auditRecord = {
+      id: faqId,
+      old: {
+        is_visible: Boolean(oldFaq.is_visible),
+      },
+    };
+
+    return res.json({
+      message: "FAQ deleted.",
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    return res.status(err.statusCode || 500).json({
+      message: err.message,
+    });
   }
 };
 
@@ -900,11 +1065,7 @@ exports.updatePage = async (req, res) => {
           ? 1
           : 0;
     } else {
-      nextVisible = oldPage
-        ? Number(oldPage.is_visible) === 1
-          ? 1
-          : 0
-        : 1;
+      nextVisible = oldPage ? (Number(oldPage.is_visible) === 1 ? 1 : 0) : 1;
     }
 
     const isNew = !oldPage;
@@ -986,8 +1147,7 @@ exports.getBackupLogs = async (req, res) => {
 
     res.json(
       rows.map((row) => {
-        const successful =
-          String(row.status || "").toLowerCase() === "success";
+        const successful = String(row.status || "").toLowerCase() === "success";
         const storedInR2 = isR2StoragePath(row.storage_path);
         const downloadAvailable =
           successful && (storedInR2 || localBackupExists(row.file_name));
