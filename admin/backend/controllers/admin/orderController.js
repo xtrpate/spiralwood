@@ -904,17 +904,11 @@ exports.getAll = async (req, res) => {
                   LIMIT 1
                 )
               ) AS thumbnail_url,
-              b.title AS blueprint_title,
-              b.design_data AS blueprint_design_data,
-              b.view_3d_data AS blueprint_view_3d_data,
-              (
-                SELECT oi3.customization_json
-                FROM order_items oi3
-                WHERE oi3.order_id = o.id
-                  AND oi3.customization_json IS NOT NULL
-                ORDER BY oi3.id ASC
-                LIMIT 1
-              ) AS blueprint_item_customization_json
+              COALESCE(
+                CAST(b.updated_at AS CHAR),
+                CAST(o.created_at AS CHAR),
+                CAST(o.id AS CHAR)
+              ) AS blueprint_preview_revision
        FROM orders o
        LEFT JOIN users u ON u.id = o.customer_id
        LEFT JOIN blueprints b ON b.id = o.blueprint_id
@@ -923,48 +917,6 @@ exports.getAll = async (req, res) => {
        LIMIT ? OFFSET ?`,
       [...params, parseInt(limit), parseInt(offset)],
     );
-
-    // WISDOM ADMIN ORDER SAVED COMPONENT PREVIEW FALLBACK V1
-    const orderBlueprintIds = [
-      ...new Set(
-        orders
-          .map((order) => Number(order.blueprint_id))
-          .filter((id) => Number.isInteger(id) && id > 0),
-      ),
-    ];
-
-    if (orderBlueprintIds.length > 0) {
-      const componentPlaceholders = orderBlueprintIds.map(() => "?").join(",");
-      const [componentRows] = await pool.query(
-        `SELECT *
-         FROM blueprint_components
-         WHERE blueprint_id IN (${componentPlaceholders})
-         ORDER BY blueprint_id ASC, id ASC`,
-        orderBlueprintIds,
-      );
-
-      const componentsByBlueprintId = new Map();
-
-      for (const component of componentRows) {
-        const blueprintId = Number(component.blueprint_id);
-        if (!componentsByBlueprintId.has(blueprintId)) {
-          componentsByBlueprintId.set(blueprintId, []);
-        }
-        componentsByBlueprintId.get(blueprintId).push(component);
-      }
-
-      for (const order of orders) {
-        const blueprintId = Number(order.blueprint_id);
-        order.blueprint_components =
-          Number.isInteger(blueprintId) && blueprintId > 0
-            ? componentsByBlueprintId.get(blueprintId) || []
-            : [];
-      }
-    } else {
-      for (const order of orders) {
-        order.blueprint_components = [];
-      }
-    }
 
     let total;
     let summary;
@@ -1093,6 +1045,135 @@ exports.getOne = async (req, res) => {
 
     if (!order) {
       return res.status(404).json({ message: "Order not found." });
+    }
+
+    if (String(req.query.blueprint_preview || "").trim() === "1") {
+      const buildPreviewPayload = ({
+        id,
+        title,
+        thumbnailUrl = null,
+        revision = "",
+        designData = null,
+        view3dData = null,
+        components = [],
+      }) => ({
+        id,
+        title: title || "Custom Furniture",
+        thumbnail_url: thumbnailUrl,
+        preview_revision: String(revision || ""),
+        design_data: designData,
+        view_3d_data: view3dData,
+        components: Array.isArray(components) ? components : [],
+      });
+
+      if (order.blueprint_id) {
+        const [[linkedBlueprint]] = await pool.query(
+          `SELECT
+              id,
+              title,
+              thumbnail_url,
+              design_data,
+              view_3d_data,
+              updated_at
+           FROM blueprints
+           WHERE id = ?
+           LIMIT 1`,
+          [order.blueprint_id],
+        );
+
+        if (linkedBlueprint) {
+          const [linkedComponents] = await pool.query(
+            `SELECT *
+             FROM blueprint_components
+             WHERE blueprint_id = ?
+             ORDER BY id ASC`,
+            [order.blueprint_id],
+          );
+
+          const hasLinkedScene =
+            Boolean(linkedBlueprint.design_data) ||
+            Boolean(linkedBlueprint.view_3d_data) ||
+            linkedComponents.length > 0;
+
+          if (hasLinkedScene) {
+            return res.json({
+              order_id: orderId,
+              blueprint_preview: buildPreviewPayload({
+                id: linkedBlueprint.id,
+                title: linkedBlueprint.title,
+                thumbnailUrl: linkedBlueprint.thumbnail_url,
+                revision:
+                  linkedBlueprint.updated_at ||
+                  order.created_at ||
+                  order.id,
+                designData: linkedBlueprint.design_data,
+                view3dData: linkedBlueprint.view_3d_data,
+                components: linkedComponents,
+              }),
+            });
+          }
+        }
+      }
+
+      const [[previewItem]] = await pool.query(
+        `SELECT id, product_name, customization_json
+         FROM order_items
+         WHERE order_id = ?
+           AND customization_json IS NOT NULL
+         ORDER BY id ASC
+         LIMIT 1`,
+        [orderId],
+      );
+
+      const customization =
+        safeParseJson(previewItem?.customization_json, {}) || {};
+      const editorSnapshot =
+        customization?.editor_snapshot &&
+        typeof customization.editor_snapshot === "object" &&
+        !Array.isArray(customization.editor_snapshot)
+          ? customization.editor_snapshot
+          : {};
+      const components = Array.isArray(editorSnapshot.components)
+        ? editorSnapshot.components
+        : [];
+
+      if (components.length > 0) {
+        const worldSize =
+          editorSnapshot?.worldSize &&
+          typeof editorSnapshot.worldSize === "object"
+            ? editorSnapshot.worldSize
+            : null;
+
+        return res.json({
+          order_id: orderId,
+          blueprint_preview: buildPreviewPayload({
+            id: `order-draft-${orderId}`,
+            title:
+              customization?.base_blueprint_title ||
+              previewItem?.product_name ||
+              "Custom Furniture",
+            thumbnailUrl:
+              customization?.preview_image_url ||
+              customization?.image_url ||
+              null,
+            revision: order.created_at || order.id,
+            designData: {
+              components,
+              worldSize,
+            },
+            view3dData: {
+              components,
+              worldSize,
+            },
+            components,
+          }),
+        });
+      }
+
+      return res.json({
+        order_id: orderId,
+        blueprint_preview: null,
+      });
     }
 
     const [rawItems] = await pool.query(
