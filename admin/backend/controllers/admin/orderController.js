@@ -1,6 +1,7 @@
 // controllers/orderController.js – Order Management (Admin) [SCHEMA-CORRECTED]
-// controllers/orderController.js – Order Management (Admin) [SCHEMA-CORRECTED]
 const pool = require("../../config/db");
+
+const MAX_PAGE_SIZE = 100;
 const {
   getPhilippineDateBoundsUtc,
   getPhilippineDateKey,
@@ -665,11 +666,7 @@ const shiftDateKey = (dateKey, days) => {
   return formatUtcDateKey(new Date(Date.UTC(year, month - 1, day + days)));
 };
 
-const buildTransactionReportDateRange = ({
-  dateFilter,
-  from,
-  to,
-}) => {
+const buildTransactionReportDateRange = ({ dateFilter, from, to }) => {
   const normalizedFilter = String(dateFilter || "all")
     .trim()
     .toLowerCase();
@@ -688,27 +685,48 @@ const buildTransactionReportDateRange = ({
     const fromKey = String(from || "").trim();
     const toKey = String(to || "").trim();
 
-    if (fromKey && toKey && fromKey > toKey) {
+    if (!fromKey || !toKey) {
+      const error = new Error(
+        "Both Start Date and End Date are required for a custom date range.",
+      );
+      error.status = 400;
+      throw error;
+    }
+
+    if (fromKey > toKey) {
       const error = new Error("Start date cannot be after end date.");
       error.status = 400;
       throw error;
     }
 
     try {
+      const todayKey = getPhilippineDateKey();
+
+      getPhilippineDateBoundsUtc(fromKey);
+      getPhilippineDateBoundsUtc(toKey);
+
+      if (fromKey > todayKey || toKey > todayKey) {
+        const error = new Error(
+          "Transaction report dates cannot be in the future.",
+        );
+        error.status = 400;
+        throw error;
+      }
+
       return {
-        startUtc: fromKey
-          ? getPhilippineDateBoundsUtc(fromKey).startUtc
-          : null,
-        endUtc: toKey
-          ? getPhilippineDateBoundsUtc(toKey).nextStartUtc
-          : null,
+        startUtc: getPhilippineDateBoundsUtc(fromKey).startUtc,
+        endUtc: getPhilippineDateBoundsUtc(toKey).nextStartUtc,
       };
-    } catch {
-      const error = new Error(
+    } catch (error) {
+      if (Number(error?.status) === 400) {
+        throw error;
+      }
+
+      const validationError = new Error(
         "Transaction report dates must use valid YYYY-MM-DD values.",
       );
-      error.status = 400;
-      throw error;
+      validationError.status = 400;
+      throw validationError;
     }
   }
 
@@ -759,13 +777,34 @@ exports.getAll = async (req, res) => {
       page = 1,
       limit = 20,
     } = req.query;
-    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    const pageNumber = Number(page);
+    const limitNumber = Number(limit);
+
+    if (!Number.isInteger(pageNumber) || pageNumber < 1) {
+      const error = new Error("Page must be a positive integer.");
+      error.status = 400;
+      throw error;
+    }
+
+    if (
+      !Number.isInteger(limitNumber) ||
+      limitNumber < 1 ||
+      limitNumber > MAX_PAGE_SIZE
+    ) {
+      const error = new Error(
+        `Limit must be a positive integer not greater than ${MAX_PAGE_SIZE}.`,
+      );
+      error.status = 400;
+      throw error;
+    }
+
+    const offset = (pageNumber - 1) * limitNumber;
     const where = ["1=1"];
     const params = [];
     const transactionReportMode =
       String(transaction_report || "").trim() === "1";
-    const includeSummary =
-      String(include_summary || "1").trim() !== "0";
+    const includeSummary = String(include_summary || "1").trim() !== "0";
 
     if (status) {
       where.push("o.status = ?");
@@ -802,8 +841,16 @@ exports.getAll = async (req, res) => {
       where.push("o.created_at >= ? AND o.created_at < ?");
       params.push(startUtc, nextStartUtc);
     }
-    if (search && String(search).trim()) {
-      const term = String(search).trim();
+    const normalizedSearch = String(search || "").trim();
+
+    if (normalizedSearch.length > 100) {
+      const error = new Error("What are you even searching?");
+      error.status = 400;
+      throw error;
+    }
+
+    if (normalizedSearch) {
+      const term = normalizedSearch;
       const pattern = `%${term}%`;
       const clauses = [
         "COALESCE(u.name, o.walkin_customer_name) LIKE ?",
@@ -822,14 +869,7 @@ exports.getAll = async (req, res) => {
           "LOWER(COALESCE(o.order_type, '')) LIKE LOWER(?)",
           "CAST(COALESCE(o.total, 0) AS CHAR) LIKE ?",
         );
-        searchParams.push(
-          pattern,
-          pattern,
-          pattern,
-          pattern,
-          pattern,
-          pattern,
-        );
+        searchParams.push(pattern, pattern, pattern, pattern, pattern, pattern);
       }
 
       const rawDigits = term.replace(/\D/g, "");
@@ -915,7 +955,7 @@ exports.getAll = async (req, res) => {
        WHERE ${where.join(" AND ")}
        ORDER BY o.created_at DESC
        LIMIT ? OFFSET ?`,
-      [...params, parseInt(limit), parseInt(offset)],
+      [...params, limitNumber, offset],
     );
 
     let total;
@@ -1103,9 +1143,7 @@ exports.getOne = async (req, res) => {
                 title: linkedBlueprint.title,
                 thumbnailUrl: linkedBlueprint.thumbnail_url,
                 revision:
-                  linkedBlueprint.updated_at ||
-                  order.created_at ||
-                  order.id,
+                  linkedBlueprint.updated_at || order.created_at || order.id,
                 designData: linkedBlueprint.design_data,
                 view3dData: linkedBlueprint.view_3d_data,
                 components: linkedComponents,

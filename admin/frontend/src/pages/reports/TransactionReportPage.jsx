@@ -502,7 +502,7 @@ const formatMoney = (value) =>
   })}`;
 
 const PAGE_SIZE = 20;
-const EXPORT_PAGE_SIZE = 250;
+const EXPORT_PAGE_SIZE = 100;
 
 const EMPTY_ORDER_SUMMARY = {
   completed_or_delivered: 0,
@@ -581,7 +581,6 @@ const buildCancellationReportParams = ({
 };
 
 const humanize = (value) =>
-
   String(value || "—")
     .replace(/_/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
@@ -630,6 +629,7 @@ export default function TransactionReportPage() {
     EMPTY_CANCELLATION_SUMMARY,
   );
   const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [generatedAt, setGeneratedAt] = useState("");
 
@@ -672,22 +672,15 @@ export default function TransactionReportPage() {
       });
       setGeneratedAt(new Date().toISOString());
     } catch (err) {
-      toast.error(
-        err?.response?.data?.message || "Failed to load orders.",
-      );
+      toast.error(err?.response?.data?.message || "Failed to load orders.");
       setRows([]);
       setOrderTotal(0);
       setOrderSummary(EMPTY_ORDER_SUMMARY);
     } finally {
       setLoading(false);
+      setInitialLoading(false);
     }
-  }, [
-    page,
-    debouncedSearch,
-    dateFilter,
-    customStart,
-    customEnd,
-  ]);
+  }, [page, debouncedSearch, dateFilter, customStart, customEnd]);
 
   const loadCancellations = useCallback(async () => {
     setLoading(true);
@@ -720,26 +713,29 @@ export default function TransactionReportPage() {
       setCancellationSummary(EMPTY_CANCELLATION_SUMMARY);
     } finally {
       setLoading(false);
+      setInitialLoading(false);
     }
-  }, [
-    page,
-    debouncedSearch,
-    dateFilter,
-    customStart,
-    customEnd,
-  ]);
+  }, [page, debouncedSearch, dateFilter, customStart, customEnd]);
 
   useEffect(() => {
+    if (dateFilter === "custom" && (!customStart || !customEnd)) {
+      return;
+    }
+
     if (reportType === "orders") {
       loadOrders();
     }
-  }, [reportType, loadOrders]);
+  }, [reportType, dateFilter, customStart, customEnd, loadOrders]);
 
   useEffect(() => {
+    if (dateFilter === "custom" && (!customStart || !customEnd)) {
+      return;
+    }
+
     if (reportType === "cancellations") {
       loadCancellations();
     }
-  }, [reportType, loadCancellations]);
+  }, [reportType, dateFilter, customStart, customEnd, loadCancellations]);
 
   const loadReport = () => {
     if (reportType === "orders") {
@@ -754,10 +750,7 @@ export default function TransactionReportPage() {
   const reportRecordCount =
     reportType === "orders" ? orderTotal : cancellationTotal;
 
-  const totalPages = Math.max(
-    1,
-    Math.ceil(reportRecordCount / PAGE_SIZE),
-  );
+  const totalPages = Math.max(1, Math.ceil(reportRecordCount / PAGE_SIZE));
 
   const summary = useMemo(() => {
     if (reportType === "orders") {
@@ -782,8 +775,13 @@ export default function TransactionReportPage() {
   ]);
 
   const exportExcel = async () => {
+    if (dateFilter === "custom" && (!customStart || !customEnd)) {
+      toast.error("Select both Start Date and End Date before exporting.");
+      return;
+    }
 
     setExporting(true);
+
     try {
       let exportRows = [];
 
@@ -882,7 +880,6 @@ export default function TransactionReportPage() {
       }
 
       if (exportRows.length === 0) {
-
         toast.error("No records match the current filters.");
         return;
       }
@@ -1050,7 +1047,12 @@ export default function TransactionReportPage() {
             type="button"
             className="trx-button trx-button-primary"
             onClick={exportExcel}
-            disabled={loading || reportRecordCount === 0 || exporting}
+            disabled={
+              loading ||
+              reportRecordCount === 0 ||
+              exporting ||
+              (dateFilter === "custom" && (!customStart || !customEnd))
+            }
           >
             {exporting ? "Exporting..." : "Export Excel"}
           </button>
@@ -1117,6 +1119,7 @@ export default function TransactionReportPage() {
           <input
             type="search"
             value={search}
+            maxLength={100}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search references, customers, or amounts..."
           />
@@ -1173,7 +1176,7 @@ export default function TransactionReportPage() {
         )}
       </div>
 
-      {!loading ? (
+      {!initialLoading ? (
         <>
           <div
             className="trx-summary-grid"
@@ -1263,7 +1266,12 @@ export default function TransactionReportPage() {
                     />
                   ) : (
                     paginatedRows.map((row) => (
-                      <tr key={row.record_key || `${reportType}:${row.id || row.order_id}`}>
+                      <tr
+                        key={
+                          row.record_key ||
+                          `${reportType}:${row.id || row.order_id}`
+                        }
+                      >
                         {reportType === "orders" ? (
                           <>
                             <td className="trx-primary-text">
