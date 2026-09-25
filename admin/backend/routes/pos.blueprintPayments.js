@@ -19,6 +19,13 @@ router.get(
   controller.lookupByOrderNumber,
 );
 
+router.get(
+  "/:id/preview",
+  authenticate,
+  requireCashierOrAdmin,
+  controller.getOrderPreview,
+);
+
 router.post(
   "/:id/picked-up",
   authenticate,

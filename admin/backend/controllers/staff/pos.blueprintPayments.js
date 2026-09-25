@@ -251,8 +251,11 @@ exports.listOrders = async (req, res) => {
         ) AS blueprint_title,
 
         b.thumbnail_url,
-        b.design_data AS blueprint_design_data,
-        b.view_3d_data AS blueprint_view_3d_data,
+        COALESCE(
+          CAST(b.updated_at AS CHAR),
+          CAST(o.created_at AS CHAR),
+          CAST(o.id AS CHAR)
+        ) AS blueprint_preview_revision,
 
         COALESCE(
           SUM(
@@ -302,18 +305,12 @@ exports.listOrders = async (req, res) => {
         customer.name,
         b.title,
         b.thumbnail_url,
-        b.design_data,
-        b.view_3d_data
+        b.updated_at
 
       ORDER BY o.updated_at DESC, o.id DESC
       LIMIT 200
       `,
       [],
-    );
-
-    const draftPreviewByOrderId = await getOrderDraftPreviewMap(
-      pool,
-      rows.map((row) => row.order_id),
     );
 
     const orders = rows.map((row) => {
@@ -346,10 +343,10 @@ exports.listOrders = async (req, res) => {
         blueprint_id: row.blueprint_id,
         blueprint_title: row.blueprint_title,
         thumbnail_url: row.thumbnail_url || null,
-        blueprint_design_data: row.blueprint_design_data || null,
-        blueprint_view_3d_data: row.blueprint_view_3d_data || null,
-        draft_editor_snapshot:
-          draftPreviewByOrderId.get(Number(row.order_id)) || null,
+        blueprint_preview_revision:
+          row.blueprint_preview_revision ||
+          row.created_at ||
+          String(row.order_id),
         created_at: row.created_at,
       };
     });
@@ -362,6 +359,84 @@ exports.listOrders = async (req, res) => {
     });
   }
 };
+exports.getOrderPreview = async (req, res) => {
+  const orderId = parseStrictPositiveInt(req.params.id);
+  if (!orderId) {
+    return res.status(400).json({ message: "Invalid order id." });
+  }
+
+  try {
+    const [[row]] = await pool.query(
+      `
+      SELECT
+        o.id AS order_id,
+        o.order_number,
+        o.blueprint_id,
+        o.created_at,
+        COALESCE(
+          NULLIF(TRIM(b.title), ''),
+          'Blueprint'
+        ) AS blueprint_title,
+        b.thumbnail_url,
+        b.design_data AS blueprint_design_data,
+        b.view_3d_data AS blueprint_view_3d_data,
+        b.updated_at AS blueprint_updated_at
+      FROM orders o
+      LEFT JOIN blueprints b
+        ON b.id = o.blueprint_id
+      WHERE o.id = ?
+        AND o.order_type = 'blueprint'
+      LIMIT 1
+      `,
+      [orderId],
+    );
+
+    if (!row) {
+      return res.status(404).json({ message: "Blueprint order not found." });
+    }
+
+    const draftPreviewByOrderId = await getOrderDraftPreviewMap(pool, [orderId]);
+    const draftEditorSnapshot =
+      draftPreviewByOrderId.get(Number(orderId)) || null;
+
+    const hasDraftScene =
+      Array.isArray(draftEditorSnapshot?.components) &&
+      draftEditorSnapshot.components.length > 0;
+
+    const hasSavedSceneSource = Boolean(
+      row.blueprint_design_data ||
+      row.blueprint_view_3d_data ||
+      hasDraftScene,
+    );
+
+    if (!hasSavedSceneSource) {
+      return res.json({ blueprint_preview: null });
+    }
+
+    return res.json({
+      blueprint_preview: {
+        order_id: row.order_id,
+        order_number: row.order_number,
+        blueprint_id: row.blueprint_id || null,
+        blueprint_title: row.blueprint_title,
+        thumbnail_url: row.thumbnail_url || null,
+        blueprint_design_data: row.blueprint_design_data || null,
+        blueprint_view_3d_data: row.blueprint_view_3d_data || null,
+        draft_editor_snapshot: draftEditorSnapshot,
+        blueprint_preview_revision:
+          row.blueprint_updated_at ||
+          row.created_at ||
+          String(row.order_id),
+      },
+    });
+  } catch (err) {
+    console.error("[pos.blueprintPayments getOrderPreview]", err);
+    return res.status(500).json({
+      message: "Failed to load blueprint preview.",
+    });
+  }
+};
+
 exports.lookupByOrderNumber = async (req, res) => {
   const rawOrderNumber = req.query.order_number;
 

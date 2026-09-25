@@ -1,15 +1,40 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import {
+  lazy,
+  Suspense,
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import { Search, X, CheckCircle2, Smartphone, Undo2, Redo2, List, Ruler, Box, RotateCcw, Maximize2, Camera } from "lucide-react";
 import { useCustomCart } from "./customcartcontext";
 import { useCart } from "./cartcontext";
 import useAuthStore from "../../store/authStore";
-import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
 import { WOOD_FINISHES } from "../blueprints/data/furnitureTypes";
 import "./customizepage.css";
-import CustomerTemplateWorkbench from "./CustomerTemplateWorkbench";
 import { saveCustomReferencePhotos } from "../../utils/customReferencePhotoStore";
+import {
+  buildCompactPreviewCacheKey,
+  readGeneratedCompactPreview,
+} from "./customerBlueprintPreviewCache";
+
+const CustomerBlueprintViewer = lazy(() =>
+  import("./CustomerBlueprintViewer"),
+);
+
+const CustomerTemplateWorkbench = lazy(() =>
+  import("./CustomerTemplateWorkbench"),
+);
+
+const CUSTOMIZE_GALLERY_PREVIEW_PRESET = "iso";
+const CUSTOMIZE_GALLERY_PREVIEW_HEIGHT = 232;
+const CUSTOMIZE_GALLERY_PREFETCH_MARGIN = "360px 0px";
+const CUSTOMIZE_GALLERY_SEARCH_DEBOUNCE_MS = 300;
+const CUSTOMIZE_GALLERY_BATCH_SETTLE_MS = 120;
+const CUSTOMIZE_GALLERY_BATCH_MAX_WAIT_MS = 1800;
 
 const FALLBACK_WOOD_TYPES = [
   "Oak",
@@ -929,16 +954,24 @@ function CustomizeModal({ product, onClose, onAdd }) {
       variant="customize"
     >
       {loading ? (
-        <div className="cust-modal-state">Loading customization options…</div>
+        <div className="cust-modal-state cust-modal-loading-state">Loading customization options…</div>
       ) : error ? (
         <div className="cust-modal-error">{error}</div>
       ) : (
-        <CustomerTemplateWorkbench
-          blueprint={blueprint}
-          readOnly={false}
-          confirmLabel="Add to Cart"
-          onConfirm={(draft) => onAdd(blueprint, draft)}
-        />
+        <Suspense
+          fallback={
+            <div className="cust-modal-state cust-modal-loading-state">
+              Loading customization workspace…
+            </div>
+          }
+        >
+          <CustomerTemplateWorkbench
+            blueprint={blueprint}
+            readOnly={false}
+            confirmLabel="Add to Cart"
+            onConfirm={(draft) => onAdd(blueprint, draft)}
+          />
+        </Suspense>
       )}
     </ModalShell>
   );
@@ -1142,23 +1175,411 @@ function MiniFinishRow({ selected }) {
   );
 }
 
-function ProductCard({ product, onCustomize }) {
-  const profile = detectTemplateProfile(product || {});
+function MiniPanelHydrationState({ unavailable = false }) {
+  if (unavailable) {
+    return (
+      <div className="cust-mini-panel-unavailable-v21">
+        <strong>DESIGN DETAILS</strong>
+        <small>Preview details unavailable</small>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="cust-mini-panel-loading-v21"
+      aria-label="Loading exact design details"
+    >
+      {[0, 1, 2, 3].map((index) => (
+        <div
+          key={index}
+          className="cust-mini-panel-loading-section-v21"
+          aria-hidden="true"
+        >
+          <span className="cust-mini-panel-loading-line-v21 cust-mini-panel-loading-line-v21--title" />
+          <span className="cust-mini-panel-loading-line-v21 cust-mini-panel-loading-line-v21--copy" />
+          <div className="cust-mini-panel-loading-dots-v21">
+            <i />
+            <i />
+            <i />
+            <i />
+          </div>
+        </div>
+      ))}
+
+      <div className="cust-mini-panel-loading-size-v21" aria-hidden="true">
+        <span />
+        <div>
+          <i />
+          <i />
+          <i />
+        </div>
+      </div>
+
+      <div className="cust-mini-panel-loading-bar-v21" aria-hidden="true" />
+      <div className="cust-mini-panel-loading-bar-v21" aria-hidden="true" />
+      <div className="cust-mini-panel-loading-cta-v21" aria-hidden="true" />
+    </div>
+  );
+}
+
+const hasEmbeddedGalleryScene = (product = {}) =>
+  Boolean(
+    product?.design_data ||
+      product?.view_3d_data ||
+      (Array.isArray(product?.components) && product.components.length > 0),
+  );
+
+const buildGalleryPreviewMetadata = (product = {}) => ({
+  id: product?.id || "",
+  preview_revision:
+    product?.preview_revision ||
+    product?.blueprint_preview_revision ||
+    product?.updated_at ||
+    product?.created_at ||
+    String(product?.id || ""),
+});
+
+function useCustomizeGalleryHydrationBatch(scopeKey) {
+  const coordinatorRef = useRef({
+    eligible: new Set(),
+    resolved: new Set(),
+    released: new Set(),
+    quietTimer: null,
+    quietTimerScope: "",
+    maxTimer: null,
+    maxTimerScope: "",
+  });
+  const [releaseVersion, setReleaseVersion] = useState(0);
+
+  const releaseBatch = useCallback((scope, force = false) => {
+    const state = coordinatorRef.current;
+    const prefix = `${scope}::`;
+
+    const pending = Array.from(state.eligible).filter(
+      (key) => key.startsWith(prefix) && !state.released.has(key),
+    );
+
+    if (!pending.length) {
+      if (state.maxTimer && state.maxTimerScope === scope) {
+        window.clearTimeout(state.maxTimer);
+        state.maxTimer = null;
+        state.maxTimerScope = "";
+      }
+      return;
+    }
+
+    const ready = pending.filter((key) => state.resolved.has(key));
+    const allReady = ready.length === pending.length;
+
+    if (!allReady && !force) return;
+
+    const toRelease = allReady ? pending : ready;
+    if (!toRelease.length) return;
+
+    let changed = false;
+    toRelease.forEach((key) => {
+      if (state.released.has(key)) return;
+      state.released.add(key);
+      changed = true;
+    });
+
+    if (allReady && state.maxTimer && state.maxTimerScope === scope) {
+      window.clearTimeout(state.maxTimer);
+      state.maxTimer = null;
+      state.maxTimerScope = "";
+    }
+
+    if (changed) {
+      setReleaseVersion((version) => version + 1);
+    }
+  }, []);
+
+  const scheduleBatchRelease = useCallback(
+    (scope) => {
+      const state = coordinatorRef.current;
+
+      if (state.quietTimer) {
+        window.clearTimeout(state.quietTimer);
+      }
+
+      state.quietTimerScope = scope;
+      state.quietTimer = window.setTimeout(() => {
+        if (state.quietTimerScope === scope) {
+          state.quietTimer = null;
+          state.quietTimerScope = "";
+        }
+        releaseBatch(scope, false);
+      }, CUSTOMIZE_GALLERY_BATCH_SETTLE_MS);
+
+      if (state.maxTimer && state.maxTimerScope !== scope) {
+        window.clearTimeout(state.maxTimer);
+        state.maxTimer = null;
+        state.maxTimerScope = "";
+      }
+
+      if (!state.maxTimer) {
+        state.maxTimerScope = scope;
+        state.maxTimer = window.setTimeout(() => {
+          if (state.maxTimerScope === scope) {
+            state.maxTimer = null;
+            state.maxTimerScope = "";
+          }
+          releaseBatch(scope, true);
+        }, CUSTOMIZE_GALLERY_BATCH_MAX_WAIT_MS);
+      }
+    },
+    [releaseBatch],
+  );
+
+  const markEligible = useCallback(
+    (productId) => {
+      if (!productId) return;
+
+      const key = `${scopeKey}::${productId}`;
+      const state = coordinatorRef.current;
+
+      if (!state.eligible.has(key)) {
+        state.eligible.add(key);
+      }
+
+      scheduleBatchRelease(scopeKey);
+    },
+    [scopeKey, scheduleBatchRelease],
+  );
+
+  const markResolved = useCallback(
+    (productId) => {
+      if (!productId) return;
+
+      const key = `${scopeKey}::${productId}`;
+      const state = coordinatorRef.current;
+
+      state.eligible.add(key);
+      state.resolved.add(key);
+      scheduleBatchRelease(scopeKey);
+    },
+    [scopeKey, scheduleBatchRelease],
+  );
+
+  const isReleased = useCallback(
+    (productId) =>
+      coordinatorRef.current.released.has(
+        `${scopeKey}::${productId}`,
+      ),
+    [scopeKey, releaseVersion],
+  );
+
+  useEffect(
+    () => () => {
+      const state = coordinatorRef.current;
+      if (state.quietTimer) window.clearTimeout(state.quietTimer);
+      if (state.maxTimer) window.clearTimeout(state.maxTimer);
+    },
+    [],
+  );
+
+  return {
+    markEligible,
+    markResolved,
+    isReleased,
+  };
+}
+
+function ProductCard({
+  product,
+  onCustomize,
+  batchReleased = false,
+  onBatchEligible,
+  onBatchResolved,
+}) {
+  const cardRef = useRef(null);
+
+  const previewMetadata = useMemo(
+    () => buildGalleryPreviewMetadata(product),
+    [
+      product?.id,
+      product?.preview_revision,
+      product?.blueprint_preview_revision,
+      product?.updated_at,
+      product?.created_at,
+    ],
+  );
+
+  const compactPreviewCacheKey = useMemo(
+    () =>
+      previewMetadata?.id
+        ? buildCompactPreviewCacheKey(
+            previewMetadata,
+            CUSTOMIZE_GALLERY_PREVIEW_PRESET,
+            CUSTOMIZE_GALLERY_PREVIEW_HEIGHT,
+          )
+        : "",
+    [previewMetadata],
+  );
+
+  const [cachedStaticPreview, setCachedStaticPreview] = useState(() =>
+    readGeneratedCompactPreview(compactPreviewCacheKey),
+  );
+  const [previewEligible, setPreviewEligible] = useState(false);
+  const [batchVisible, setBatchVisible] = useState(false);
+  const [hydratedProduct, setHydratedProduct] = useState(() =>
+    hasEmbeddedGalleryScene(product) ? product : null,
+  );
+  const [detailResolved, setDetailResolved] = useState(() =>
+    hasEmbeddedGalleryScene(product),
+  );
+  const [detailFailed, setDetailFailed] = useState(false);
+
+  useEffect(() => {
+    const embedded = hasEmbeddedGalleryScene(product);
+
+    setCachedStaticPreview(
+      readGeneratedCompactPreview(compactPreviewCacheKey),
+    );
+    setHydratedProduct(embedded ? product : null);
+    setDetailResolved(embedded);
+    setDetailFailed(false);
+    setPreviewEligible(false);
+    setBatchVisible(false);
+  }, [product?.id, compactPreviewCacheKey]);
+
+  useEffect(() => {
+    const node = cardRef.current;
+    if (!node || !product?.id) return undefined;
+
+    if (typeof IntersectionObserver === "undefined") {
+      setPreviewEligible(true);
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return;
+        setPreviewEligible(true);
+        observer.disconnect();
+      },
+      {
+        root: null,
+        rootMargin: CUSTOMIZE_GALLERY_PREFETCH_MARGIN,
+        threshold: 0.01,
+      },
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [product?.id]);
+
+  useEffect(() => {
+    const node = cardRef.current;
+    if (!node || !product?.id) return undefined;
+
+    if (typeof IntersectionObserver === "undefined") {
+      setBatchVisible(true);
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return;
+        setBatchVisible(true);
+        observer.disconnect();
+      },
+      {
+        root: null,
+        rootMargin: "0px",
+        threshold: 0.01,
+      },
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [product?.id]);
+
+  useEffect(() => {
+    if (!batchVisible || !product?.id) return;
+    onBatchEligible?.(product.id);
+  }, [batchVisible, onBatchEligible, product?.id]);
+
+  useEffect(() => {
+    if (!batchVisible || !detailResolved || !product?.id) return;
+    onBatchResolved?.(product.id);
+  }, [
+    batchVisible,
+    detailResolved,
+    onBatchResolved,
+    product?.id,
+  ]);
+
+  useEffect(() => {
+    if (!previewEligible || detailResolved || !product?.id) {
+      return undefined;
+    }
+
+    let active = true;
+    setDetailFailed(false);
+
+    api
+      .get(`/customer/blueprints/${product.id}`, {
+        params: { preview: 1 },
+      })
+      .then(({ data }) => {
+        if (!active) return;
+        setHydratedProduct(data || null);
+        setDetailFailed(!data);
+      })
+      .catch(() => {
+        if (!active) return;
+        setHydratedProduct(null);
+        setDetailFailed(true);
+      })
+      .finally(() => {
+        if (active) setDetailResolved(true);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [detailResolved, previewEligible, product?.id]);
+
+  const detailsReady = Boolean(hydratedProduct);
+  const batchDetailsReady = detailsReady && batchReleased;
+  const detailUnavailable =
+    detailResolved && detailFailed && !detailsReady;
+  const batchDetailUnavailable =
+    detailUnavailable && batchReleased;
+  const cardProduct = hydratedProduct || product;
+
+  const profile = detectTemplateProfile(cardProduct || {});
   const dimensionConfig = resolveDimensionConfig(
-    product,
-    product?.customization_rules?.dimensions || {},
+    cardProduct,
+    cardProduct?.customization_rules?.dimensions || {},
     profile,
   );
   const dimensions = dimensionConfig.defaultDimensions;
-  const components = useMemo(() => miniSceneComponents(product), [product]);
-  const parts = useMemo(() => miniPartSections(product), [product]);
+  const components = useMemo(
+    () => miniSceneComponents(cardProduct),
+    [cardProduct],
+  );
+  const parts = useMemo(
+    () => miniPartSections(cardProduct),
+    [cardProduct],
+  );
   const wholeSelected = useMemo(
     () => (components.length ? miniFinishInfo(components[0]) : null),
     [components],
   );
 
   const categoryLabel = String(
-    profile.category || "Furniture Template",
+    detailsReady
+      ? profile.category ||
+          cardProduct?.catalog_category_name ||
+          cardProduct?.category_label ||
+          "Furniture Template"
+      : product?.catalog_category_name ||
+          product?.category_label ||
+          product?.category ||
+          "Furniture Template",
   ).replace(" Template", " Design");
 
   const customColor = useMemo(() => {
@@ -1173,8 +1594,16 @@ function ProductCard({ product, onCustomize }) {
     );
   }, [components]);
 
+  const hasLiveBlueprintPreview =
+    detailsReady &&
+    Boolean(cardProduct?.has_saved_3d) &&
+    hasEmbeddedGalleryScene(cardProduct);
+
   return (
-    <article className="cust-product-card cust-product-card--roomle cust-mini-card-v21">
+    <article
+      ref={cardRef}
+      className="cust-product-card cust-product-card--roomle cust-mini-card-v21"
+    >
       <div className="cust-mini-configurator-v21">
         <div className="cust-mini-tools-v21" aria-hidden="true">
           <span className="cust-mini-close-v21"><X size={10} strokeWidth={1.6} /></span>
@@ -1195,89 +1624,134 @@ function ProductCard({ product, onCustomize }) {
             {categoryLabel}
           </div>
 
-          {product.has_saved_3d ? (
+          {cachedStaticPreview ? (
             <div className="cust-mini-preview-stage-v21">
-              <CustomerBlueprintViewer
-                blueprint={product}
-                targetDimensionsMm={{
-                  widthMm: dimensions.width_mm,
-                  heightMm: dimensions.height_mm,
-                  depthMm: dimensions.depth_mm,
+              <img
+                src={cachedStaticPreview}
+                alt={cardProduct?.title || "Furniture preview"}
+                decoding="async"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "contain",
+                  display: "block",
                 }}
-                readOnly
-                showHumanControls={false}
-                compact
-                defaultPreset="iso"
-                defaultShowHuman={false}
-                compactHeight={232}
               />
+            </div>
+          ) : hasLiveBlueprintPreview ? (
+            <div className="cust-mini-preview-stage-v21">
+              <Suspense
+                fallback={
+                  <ProductImage
+                    src={
+                      cardProduct?.preview_image_url ||
+                      cardProduct?.thumbnail_url
+                    }
+                    alt={cardProduct?.title}
+                  />
+                }
+              >
+                <CustomerBlueprintViewer
+                  blueprint={cardProduct}
+                  compactCacheKey={compactPreviewCacheKey}
+                  targetDimensionsMm={{
+                    widthMm: dimensions.width_mm,
+                    heightMm: dimensions.height_mm,
+                    depthMm: dimensions.depth_mm,
+                  }}
+                  readOnly
+                  showHumanControls={false}
+                  compact
+                  defaultPreset={CUSTOMIZE_GALLERY_PREVIEW_PRESET}
+                  defaultShowHuman={false}
+                  compactHeight={CUSTOMIZE_GALLERY_PREVIEW_HEIGHT}
+                />
+              </Suspense>
             </div>
           ) : (
             <ProductImage
-              src={product.preview_image_url || product.thumbnail_url}
-              alt={product.title}
+              src={
+                cardProduct?.preview_image_url ||
+                cardProduct?.thumbnail_url
+              }
+              alt={cardProduct?.title}
             />
           )}
         </div>
 
         <aside className="cust-mini-panel-v21" aria-hidden="true">
-          <section className="cust-mini-panel-section-v21">
-            <strong>WHOLE FURNITURE</strong>
-            <small>Apply one wood finish to the complete design</small>
-            <MiniFinishRow selected={wholeSelected} />
-          </section>
+          {batchDetailsReady ? (
+            <>
+              <section className="cust-mini-panel-section-v21">
+                <strong>WHOLE FURNITURE</strong>
+                <small>Apply one wood finish to the complete design</small>
+                <MiniFinishRow selected={wholeSelected} />
+              </section>
 
-          {parts.map((part) => (
-            <section key={part.label} className="cust-mini-panel-section-v21 cust-mini-panel-section-v21--part">
-              <strong>{part.label}</strong>
-              <small>{part.label === "LEGS" ? "4 parts" : "1 part"}</small>
-              <MiniFinishRow selected={part.selected} />
-            </section>
-          ))}
+              {parts.map((part) => (
+                <section
+                  key={part.label}
+                  className="cust-mini-panel-section-v21 cust-mini-panel-section-v21--part"
+                >
+                  <strong>{part.label}</strong>
+                  <small>{part.label === "LEGS" ? "4 parts" : "1 part"}</small>
+                  <MiniFinishRow selected={part.selected} />
+                </section>
+              ))}
 
-          <section className="cust-mini-panel-section-v21 cust-mini-custom-color-v21">
-            <strong>CUSTOM COLOR</strong>
-            <small>Applies to the whole furniture</small>
-            <div className="cust-mini-color-field-v21">
-              <span style={{ backgroundColor: customColor }} />
-              <em>{customColor}</em>
-            </div>
-          </section>
+              <section className="cust-mini-panel-section-v21 cust-mini-custom-color-v21">
+                <strong>CUSTOM COLOR</strong>
+                <small>Applies to the whole furniture</small>
+                <div className="cust-mini-color-field-v21">
+                  <span style={{ backgroundColor: customColor }} />
+                  <em>{customColor}</em>
+                </div>
+              </section>
 
-          <section className="cust-mini-size-v21">
-            <div className="cust-mini-size-title-v21">
-              <strong>Furniture Size (mm)</strong>
-              <small>Keeps proportions</small>
-            </div>
-            <div className="cust-mini-size-labels-v21">
-              <span>Width</span><span>Height</span><span>Depth</span>
-            </div>
-            <div className="cust-mini-size-fields-v21">
-              <span>{Math.round(Number(dimensions.width_mm) || 0)}</span>
-              <span>{Math.round(Number(dimensions.height_mm) || 0)}</span>
-              <span>{Math.round(Number(dimensions.depth_mm) || 0)}</span>
-            </div>
-          </section>
+              <section className="cust-mini-size-v21">
+                <div className="cust-mini-size-title-v21">
+                  <strong>Furniture Size (mm)</strong>
+                  <small>Keeps proportions</small>
+                </div>
+                <div className="cust-mini-size-labels-v21">
+                  <span>Width</span><span>Height</span><span>Depth</span>
+                </div>
+                <div className="cust-mini-size-fields-v21">
+                  <span>{Math.round(Number(dimensions.width_mm) || 0)}</span>
+                  <span>{Math.round(Number(dimensions.height_mm) || 0)}</span>
+                  <span>{Math.round(Number(dimensions.depth_mm) || 0)}</span>
+                </div>
+              </section>
 
-          <div className="cust-mini-human-v21">
-            <strong>Human Size Reference</strong>
-            <span>☑ Show</span>
-          </div>
+              <div className="cust-mini-human-v21">
+                <strong>Human Size Reference</strong>
+                <span>☑ Show</span>
+              </div>
 
-          <div className="cust-mini-request-v21">
-            <span>Request details</span><strong>+</strong>
-          </div>
+              <div className="cust-mini-request-v21">
+                <span>Request details</span><strong>+</strong>
+              </div>
 
-          <div className="cust-mini-add-v21">Add to Cart</div>
+              <div className="cust-mini-add-v21">Add to Cart</div>
+            </>
+          ) : (
+            <MiniPanelHydrationState unavailable={batchDetailUnavailable} />
+          )}
         </aside>
 
         <div className="cust-mini-footer-v21">
           <div>
-            <strong>{product.title || categoryLabel}</strong>
+            <strong>{cardProduct?.title || categoryLabel}</strong>
             <small>{categoryLabel}</small>
           </div>
           <span>
-            {Math.round(Number(dimensions.width_mm) || 0)} × {Math.round(Number(dimensions.height_mm) || 0)} × {Math.round(Number(dimensions.depth_mm) || 0)} mm
+            {batchDetailsReady
+              ? `${Math.round(Number(dimensions.width_mm) || 0)} × ${Math.round(
+                  Number(dimensions.height_mm) || 0,
+                )} × ${Math.round(Number(dimensions.depth_mm) || 0)} mm`
+              : batchDetailUnavailable
+                ? "Details unavailable"
+                : "Loading details…"}
           </span>
         </div>
       </div>
@@ -1286,8 +1760,8 @@ function ProductCard({ product, onCustomize }) {
         <button
           type="button"
           className="cust-customize-btn cust-customize-btn--roomle"
-          onClick={() => onCustomize(product)}
-          aria-label={"Customize " + (product.title || "furniture")}
+          onClick={() => onCustomize(cardProduct)}
+          aria-label={"Customize " + (cardProduct?.title || "furniture")}
         >
           Customize
         </button>
@@ -1315,6 +1789,7 @@ export default function CustomizePage() {
   const [customizingProduct, setCustomizingProduct] = useState(null);
   const [toastMessage, setToastMessage] = useState("");
   const [isHiding, setIsHiding] = useState(false);
+  const galleryRequestRef = useRef(0);
 
   const requireCustomerLogin = useCallback(
     (product = null) => {
@@ -1359,30 +1834,34 @@ export default function CustomizePage() {
     }
   }, [location.pathname, location.search, navigate]);
 
-  const fetchProducts = useCallback(
-    async (query = search) => {
-      setLoading(true);
+  const fetchProducts = useCallback(async (query, requestId) => {
+    setLoading(true);
 
-      try {
-        const response = await api.get("/customer/blueprints", {
-          params: {
-            q: query || undefined,
-            limit: 50,
-          },
-        });
+    try {
+      const response = await api.get("/customer/blueprints", {
+        params: {
+          q: query || undefined,
+          limit: 50,
+          summary: 1,
+        },
+      });
 
-        setProducts(response.data?.blueprints || []);
-        setTotal(response.data?.total || 0);
-      } catch (err) {
-        console.error(err);
-        setProducts([]);
-        setTotal(0);
-      } finally {
+      if (requestId !== galleryRequestRef.current) return;
+
+      setProducts(response.data?.blueprints || []);
+      setTotal(response.data?.total || 0);
+    } catch (err) {
+      if (requestId !== galleryRequestRef.current) return;
+
+      console.error(err);
+      setProducts([]);
+      setTotal(0);
+    } finally {
+      if (requestId === galleryRequestRef.current) {
         setLoading(false);
       }
-    },
-    [search],
-  );
+    }
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -1391,7 +1870,18 @@ export default function CustomizePage() {
   }, [location.search]);
 
   useEffect(() => {
-    fetchProducts(search);
+    const requestId = galleryRequestRef.current + 1;
+    galleryRequestRef.current = requestId;
+
+    const delay = search.trim()
+      ? CUSTOMIZE_GALLERY_SEARCH_DEBOUNCE_MS
+      : 0;
+
+    const timer = window.setTimeout(() => {
+      fetchProducts(search, requestId);
+    }, delay);
+
+    return () => window.clearTimeout(timer);
   }, [fetchProducts, search]);
 
   useEffect(() => {
@@ -1617,6 +2107,20 @@ export default function CustomizePage() {
     );
   }, [products, categoryFilter]);
 
+  const hydrationBatchScope = useMemo(
+    () =>
+      `${categoryFilter}|${filteredProducts
+        .map((product) => String(product?.id || ""))
+        .join(",")}`,
+    [categoryFilter, filteredProducts],
+  );
+
+  const {
+    markEligible: markHydrationBatchEligible,
+    markResolved: markHydrationBatchResolved,
+    isReleased: isHydrationBatchReleased,
+  } = useCustomizeGalleryHydrationBatch(hydrationBatchScope);
+
   const visibleDesignCount =
     categoryFilter === "all" ? total : filteredProducts.length;
 
@@ -1641,13 +2145,24 @@ export default function CustomizePage() {
       <ProductCard
         key={product.id}
         product={product}
+        batchReleased={isHydrationBatchReleased(product.id)}
+        onBatchEligible={markHydrationBatchEligible}
+        onBatchResolved={markHydrationBatchResolved}
         onCustomize={(selectedProduct) => {
           if (!requireCustomerLogin(selectedProduct)) return;
           setCustomizingProduct(selectedProduct);
         }}
       />
     ));
-  }, [loading, filteredProducts, categoryFilter, requireCustomerLogin]);
+  }, [
+    loading,
+    filteredProducts,
+    categoryFilter,
+    requireCustomerLogin,
+    isHydrationBatchReleased,
+    markHydrationBatchEligible,
+    markHydrationBatchResolved,
+  ]);
 
   return (
     <div className="cust-page">

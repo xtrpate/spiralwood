@@ -85,11 +85,21 @@ exports.getAllProducts = async (req, res) => {
     sort = "name_asc",
     page = 1,
     limit = 24,
+    summary = "",
   } = req.query;
+
+  const summaryMode = ["1", "true", "yes"].includes(
+    String(summary || "")
+      .trim()
+      .toLowerCase(),
+  );
 
   try {
     const safePage = Math.max(toInt(page, 1), 1);
-    const safeLimit = Math.min(Math.max(toInt(limit, 24), 1), 60);
+    const requestedLimit = Math.max(toInt(limit, 24), 1);
+    const safeLimit = summaryMode
+      ? Math.min(requestedLimit, 10)
+      : Math.min(requestedLimit, 60);
     const offset = (safePage - 1) * safeLimit;
 
     const { where, params } = buildWhereClause({
@@ -102,16 +112,6 @@ exports.getAllProducts = async (req, res) => {
       includePrice: true,
     });
 
-    const { where: statsWhere, params: statsParams } = buildWhereClause({
-      q,
-      category_id,
-      type,
-      stock_status,
-      price_min,
-      price_max,
-      includePrice: false,
-    });
-
     const sortMap = {
       name_asc: "p.name ASC",
       name_desc: "p.name DESC",
@@ -121,6 +121,52 @@ exports.getAllProducts = async (req, res) => {
     };
 
     const orderBy = sortMap[sort] || "p.name ASC";
+
+    // Header/autocomplete summary mode intentionally skips catalog-only
+    // aggregates (count, category facets, and price stats).
+    if (summaryMode) {
+      const [products] = await db.query(
+        `
+        SELECT
+          p.id,
+          p.name,
+          p.category_id,
+          p.type,
+          p.image_url,
+          p.online_price,
+          c.name AS category
+        FROM products p
+        LEFT JOIN categories c ON c.id = p.category_id
+        ${where}
+        ORDER BY ${orderBy}
+        LIMIT ? OFFSET ?
+        `,
+        [...params, safeLimit, offset],
+      );
+
+      return res.json({
+        products,
+        categories: [],
+        total: products.length,
+        page: safePage,
+        limit: safeLimit,
+        priceRange: {
+          min: 0,
+          max: 0,
+        },
+        is_summary: true,
+      });
+    }
+
+    const { where: statsWhere, params: statsParams } = buildWhereClause({
+      q,
+      category_id,
+      type,
+      stock_status,
+      price_min,
+      price_max,
+      includePrice: false,
+    });
 
     const [products] = await db.query(
       `

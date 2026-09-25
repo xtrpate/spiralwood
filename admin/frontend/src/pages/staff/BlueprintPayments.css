@@ -796,19 +796,38 @@
 }
 
 .bp-thumb-live .cust-viewer-card,
-.bp-thumb-live .cust-viewer-stage {
-  width: 100%;
-  height: 100%;
-  min-height: 100% !important;
-  border: 0 !important;
-  background: #f7f2ea !important;
-}
-
 .bp-thumb-live .cust-viewer-stage,
 .bp-thumb-live .cust-viewer-canvas,
+.bp-thumb-live canvas,
 .bp-thumb-live .cust-viewer-runtime-snapshot {
   width: 100% !important;
   height: 100% !important;
+  min-width: 100% !important;
+  min-height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  border: 0 !important;
+  background: #f7f2ea !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.bp-thumb-live canvas,
+.bp-thumb-live .cust-viewer-runtime-snapshot {
+  display: block !important;
+  object-fit: contain !important;
+}
+
+.bp-thumb-loading {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  color: #a1a1aa;
+  font-size: 18px;
+  line-height: 1;
 }
 
 .bp-thumb-fallback > span {
