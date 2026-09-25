@@ -336,16 +336,15 @@ export default function CustomerLayout() {
 
     (async () => {
       try {
-        const res = await api.get("/customer/orders");
-        const orders = Array.isArray(res.data) ? res.data : [];
-        const activeOrders = orders.filter(
-          (o) =>
-            !["completed", "cancelled"].includes(
-              String(o.status || "").toLowerCase(),
-            ),
-        );
+        const res = await api.get("/customer/orders", {
+          params: { summary: "count" },
+        });
 
-        if (active) setActiveOrdersCount(activeOrders.length);
+        if (active) {
+          setActiveOrdersCount(
+            Number(res.data?.active_orders_count || 0),
+          );
+        }
       } catch (err) {
         console.error("Failed to load active orders count", err);
         if (active) setActiveOrdersCount(0);

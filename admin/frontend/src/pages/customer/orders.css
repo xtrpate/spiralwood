@@ -2522,3 +2522,78 @@
   word-break: normal !important;
   overflow-wrap: normal !important;
 }
+
+/* WISDOM P7.6A-F1 MOBILE ORDER ITEM ROW FIX V1 */
+/*
+  The older <=580px grid was later overridden by desktop-size rules lower in
+  this stylesheet. That left the product title squeezed into a tiny column.
+  Re-assert the intended phone layout at the end of the cascade:
+  [image] [title] [price]
+          [qty]
+  The title can wrap naturally; desktop/tablet behavior is untouched.
+*/
+@media (max-width: 580px) {
+  .wisdom-order-item {
+    grid-template-columns: 54px minmax(0, 1fr) auto !important;
+    grid-template-areas:
+      "image copy price"
+      "image qty price" !important;
+    column-gap: 10px !important;
+    row-gap: 4px !important;
+    align-items: center !important;
+  }
+
+  .wisdom-order-item-image {
+    grid-area: image !important;
+    width: 54px !important;
+    height: 54px !important;
+    min-width: 54px !important;
+    min-height: 54px !important;
+    align-self: center !important;
+  }
+
+  .wisdom-order-item-copy {
+    grid-area: copy !important;
+    min-width: 0 !important;
+    align-self: end !important;
+  }
+
+  .wisdom-order-item-name {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    overflow-wrap: anywhere !important;
+    word-break: normal !important;
+  }
+
+  .wisdom-order-item-qty {
+    grid-area: qty !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
+    text-align: left !important;
+    align-self: start !important;
+  }
+
+  .wisdom-order-item-price {
+    grid-area: price !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
+    text-align: right !important;
+    align-self: center !important;
+  }
+
+  .wisdom-order-blueprint-live,
+  .wisdom-order-blueprint-live .cust-viewer-card,
+  .wisdom-order-blueprint-live .cust-viewer-stage,
+  .wisdom-order-blueprint-live .cust-viewer-canvas,
+  .wisdom-order-blueprint-live canvas,
+  .wisdom-order-blueprint-live .cust-viewer-fallback,
+  .wisdom-order-blueprint-live .cust-viewer-fallback-img,
+  .wisdom-order-blueprint-live .cust-viewer-empty,
+  .wisdom-order-blueprint-live > img {
+    width: 54px !important;
+    height: 54px !important;
+    min-height: 54px !important;
+  }
+}
+/* WISDOM P7.6A-F1 MOBILE ORDER ITEM ROW FIX V1 END */
