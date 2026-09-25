@@ -728,6 +728,7 @@ export default function AppointmentScheduling() {
   const [adminSearch, setAdminSearch] = useState("");
   const [adminServiceFilter, setAdminServiceFilter] = useState("all");
   const [adminDateFilter, setAdminDateFilter] = useState("");
+  const [adminActiveTab, setAdminActiveTab] = useState("new");
 
   const [staffAppointmentTab, setStaffAppointmentTab] = useState("assigned");
 
