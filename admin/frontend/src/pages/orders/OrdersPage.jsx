@@ -22,7 +22,8 @@ const CustomerBlueprintViewer = React.lazy(() =>
 );
 
 const ADMIN_ORDER_PREVIEW_PRESET = "isometric";
-const ADMIN_ORDER_PREVIEW_CACHE_HEIGHT = 46;
+// P7.4A R7.1: keep the Admin Orders compact render square and deterministic.
+const ADMIN_ORDER_PREVIEW_CACHE_HEIGHT = 58;
 
 // Visible and near-visible rows still start first. Rows farther down the
 // current 20-order page also warm automatically in the background so the
@@ -385,6 +386,7 @@ const AdminOrderBlueprintPreview = ({
     return (
       <div
         ref={previewRef}
+        className="orders-blueprint-preview orders-blueprint-preview-r7"
         style={ADMIN_ORDER_PREVIEW_SHELL_STYLE}
         aria-label={title || "Furniture preview"}
       >
@@ -402,6 +404,7 @@ const AdminOrderBlueprintPreview = ({
     return (
       <div
         ref={previewRef}
+        className="orders-blueprint-preview orders-blueprint-preview-r7"
         style={ADMIN_ORDER_PREVIEW_SHELL_STYLE}
         aria-label={title || "Furniture preview"}
       >
@@ -431,6 +434,7 @@ const AdminOrderBlueprintPreview = ({
   return (
     <div
       ref={previewRef}
+      className="orders-blueprint-preview orders-blueprint-preview-r7"
       style={ADMIN_ORDER_PREVIEW_SHELL_STYLE}
     >
       <OrderThumbnail

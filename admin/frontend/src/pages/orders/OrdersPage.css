@@ -586,6 +586,53 @@
 }
 
 
+/* WISDOM P7.4A R7.1 ADMIN ORDERS 3D PREVIEW SIZE CONTRACT
+   Guarantee a real square layout before CustomerBlueprintViewer measures its
+   compact mount. This preserves the one-time real 3D snapshot while avoiding
+   the shared viewer's 640px full-view fallback during Admin Orders capture. */
+.orders-admin-v2 .orders-blueprint-preview.orders-blueprint-preview-r7 {
+  width: 58px !important;
+  height: 58px !important;
+  min-width: 58px !important;
+  min-height: 58px !important;
+  max-width: 58px !important;
+  max-height: 58px !important;
+  flex: 0 0 58px !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.orders-admin-v2 .orders-blueprint-preview-r7 .cust-viewer-card,
+.orders-admin-v2 .orders-blueprint-preview-r7 .cust-viewer-stage,
+.orders-admin-v2 .orders-blueprint-preview-r7 .cust-viewer-canvas,
+.orders-admin-v2 .orders-blueprint-preview-r7 canvas,
+.orders-admin-v2 .orders-blueprint-preview-r7 .cust-viewer-runtime-snapshot,
+.orders-admin-v2 .orders-blueprint-preview-r7 .cust-viewer-fallback,
+.orders-admin-v2 .orders-blueprint-preview-r7 .cust-viewer-fallback-img,
+.orders-admin-v2 .orders-blueprint-preview-r7 .cust-viewer-empty {
+  width: 58px !important;
+  height: 58px !important;
+  min-width: 58px !important;
+  min-height: 58px !important;
+  max-width: 58px !important;
+  max-height: 58px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.orders-admin-v2 .orders-blueprint-preview-r7 canvas,
+.orders-admin-v2 .orders-blueprint-preview-r7 .cust-viewer-runtime-snapshot {
+  display: block !important;
+  object-fit: contain !important;
+}
+
 /* WISDOM ORDERS VIEWPORT FILL FINAL V1.0.6 */
 @media (min-width: 1024px) {
   .orders-admin-v2 {
