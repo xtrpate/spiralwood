@@ -515,7 +515,6 @@ exports.getDeliverableOrders = async (req, res) => {
   }
 };
 
-
 const OPERATIONS_DELIVERY_DATE_FILTERS = new Set([
   "all",
   "today",
@@ -540,11 +539,7 @@ const shiftOperationsDeliveryDateKey = (dateKey, days) => {
   );
 };
 
-const buildOperationsDeliveryDateRange = ({
-  dateFilter,
-  from,
-  to,
-}) => {
+const buildOperationsDeliveryDateRange = ({ dateFilter, from, to }) => {
   const normalizedFilter = String(dateFilter || "all")
     .trim()
     .toLowerCase();
@@ -575,9 +570,7 @@ const buildOperationsDeliveryDateRange = ({
     }
 
     try {
-      const startBounds = fromKey
-        ? getPhilippineDateBoundsUtc(fromKey)
-        : null;
+      const startBounds = fromKey ? getPhilippineDateBoundsUtc(fromKey) : null;
       const endBounds = toKey ? getPhilippineDateBoundsUtc(toKey) : null;
 
       return {
@@ -691,16 +684,12 @@ const getOperationsDeliveryReport = async (req, res) => {
       params.push(...Array(23).fill(pattern));
     }
 
-    const {
-      startKey,
-      endKey,
-      startUtc,
-      endUtc,
-    } = buildOperationsDeliveryDateRange({
-      dateFilter: req.query.date_filter,
-      from: req.query.from,
-      to: req.query.to,
-    });
+    const { startKey, endKey, startUtc, endUtc } =
+      buildOperationsDeliveryDateRange({
+        dateFilter: req.query.date_filter,
+        from: req.query.from,
+        to: req.query.to,
+      });
 
     // Preserve Operations Report's previous date priority:
     // scheduled_date first; otherwise updated_at.
@@ -1031,7 +1020,9 @@ exports.getDeliveries = async (req, res) => {
     }
 
     rows.forEach((row) => {
-      const paymentSummary = orderPaymentSummaries.get(Number(row.order_id)) || {
+      const paymentSummary = orderPaymentSummaries.get(
+        Number(row.order_id),
+      ) || {
         verifiedCents: 0,
         pendingCount: 0,
         pendingRows: [],
@@ -1047,14 +1038,15 @@ exports.getDeliveries = async (req, res) => {
       row.payment_verified_total = centsToAmount(verifiedCents);
       row.payment_balance = centsToAmount(remainingCents);
       row.pending_payment_count = paymentSummary.pendingCount;
-      row.delivery_has_reusable_pending_collection = paymentSummary.pendingRows.some(
-        ({ row: pendingRow, amountCents }) =>
-          amountCents !== null &&
-          amountCents === remainingCents &&
-          isRiderDeliveryCollectionPayment(pendingRow),
-      )
-        ? 1
-        : 0;
+      row.delivery_has_reusable_pending_collection =
+        paymentSummary.pendingRows.some(
+          ({ row: pendingRow, amountCents }) =>
+            amountCents !== null &&
+            amountCents === remainingCents &&
+            isRiderDeliveryCollectionPayment(pendingRow),
+        )
+          ? 1
+          : 0;
       const choices =
         orderAssemblyChoices.get(Number(row.order_id)) || new Set();
 
@@ -3915,18 +3907,35 @@ const buildDeliveryReportFilterState = (req) => {
 
   if (search) {
     const like = `%${search}%`;
+    const normalizedStatusSearch = `%${search
+      .replace(/_/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase()}%`;
+
     where.push(`(
-      o.order_number LIKE ?
-      OR COALESCE(
-        NULLIF(TRIM(o.walkin_customer_name), ''),
-        NULLIF(TRIM(customer.name), ''),
-        'Walk-in Customer'
-      ) LIKE ?
-      OR COALESCE(d.address, '') LIKE ?
-      OR COALESCE(driver.name, '') LIKE ?
-      OR COALESCE(da.receipt_number, '') LIKE ?
-    )`);
-    params.push(like, like, like, like, like);
+    o.order_number LIKE ?
+    OR COALESCE(
+      NULLIF(TRIM(o.walkin_customer_name), ''),
+      NULLIF(TRIM(customer.name), ''),
+      'Walk-in Customer'
+    ) LIKE ?
+    OR COALESCE(d.address, '') LIKE ?
+    OR COALESCE(driver.name, '') LIKE ?
+    OR COALESCE(da.receipt_number, '') LIKE ?
+    OR LOWER(REPLACE(COALESCE(d.status, ''), '_', ' ')) LIKE ?
+    OR LOWER(REPLACE(${DELIVERY_REPORT_STATUS_SQL}, '_', ' ')) LIKE ?
+  )`);
+
+    params.push(
+      like,
+      like,
+      like,
+      like,
+      like,
+      normalizedStatusSearch,
+      normalizedStatusSearch,
+    );
   }
 
   if (fromDate) {

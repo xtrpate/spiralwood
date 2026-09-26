@@ -206,10 +206,10 @@ const NAV_ITEMS = [
   },
   {
     label: "Delivery Report",
-    path: "/admin/reports/deliveries",
+    path: "/admin/reports/operations/deliveries",
     icon: Truck,
     permission: "delivery_scheduling.view",
-    roles: ["admin"],
+    roles: ["admin", "staff"],
   },
   {
     label: "Operations Report",

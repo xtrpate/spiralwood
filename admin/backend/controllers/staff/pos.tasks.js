@@ -290,7 +290,6 @@ exports.getUnreadCount = async (req, res) => {
   }
 };
 
-
 const OPERATIONS_TASK_DATE_FILTERS = new Set([
   "all",
   "today",
@@ -342,12 +341,8 @@ const buildOperationsTaskDateRange = ({ dateFilter, from, to }) => {
 
     try {
       return {
-        startUtc: fromKey
-          ? getPhilippineDateBoundsUtc(fromKey).startUtc
-          : null,
-        endUtc: toKey
-          ? getPhilippineDateBoundsUtc(toKey).nextStartUtc
-          : null,
+        startUtc: fromKey ? getPhilippineDateBoundsUtc(fromKey).startUtc : null,
+        endUtc: toKey ? getPhilippineDateBoundsUtc(toKey).nextStartUtc : null,
       };
     } catch {
       const error = new Error(
@@ -446,7 +441,31 @@ const getOperationsTaskReport = async (req, res) => {
       params.push(staffId, staffId, staffId);
     }
 
+    const status = String(req.query.status || "all")
+      .trim()
+      .toLowerCase();
+
+    const validStatusFilters = new Set([
+      "all",
+      "pending",
+      "in_progress",
+      "blocked",
+      "completed",
+    ]);
+
+    if (!validStatusFilters.has(status)) {
+      return res.status(400).json({
+        message: "Invalid task status filter.",
+      });
+    }
+
+    if (status !== "all") {
+      where.push("LOWER(COALESCE(t.status, '')) = ?");
+      params.push(status);
+    }
+
     const search = String(req.query.search || "").trim();
+
     if (search.length > 100) {
       return res
         .status(400)
@@ -1670,8 +1689,7 @@ exports.undoTaskCompletion = async (req, res) => {
     }
 
     const taskRoleKey = normalize(existing.task_role);
-    const currentStepIndex =
-      REQUIRED_PRODUCTION_STEP_KEYS.indexOf(taskRoleKey);
+    const currentStepIndex = REQUIRED_PRODUCTION_STEP_KEYS.indexOf(taskRoleKey);
 
     if (currentStepIndex === -1) {
       await conn.rollback();
@@ -1688,9 +1706,7 @@ exports.undoTaskCompletion = async (req, res) => {
       normalize(existing.fulfillment_method) === "pickup";
 
     const canRollbackPickupReady =
-      isPacking &&
-      isPickupOrder &&
-      orderStatus === "ready_for_pickup";
+      isPacking && isPickupOrder && orderStatus === "ready_for_pickup";
 
     if (orderStatus !== "production" && !canRollbackPickupReady) {
       await conn.rollback();

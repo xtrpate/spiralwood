@@ -605,6 +605,31 @@ const getOperationsAppointmentReport = async (req, res) => {
       params.push(req.user.id);
     }
 
+    const status = String(req.query.status || "all")
+      .trim()
+      .toLowerCase();
+
+    const validStatusFilters = new Set([
+      "all",
+      "pending",
+      "awaiting_staff_acceptance",
+      "confirmed",
+      "in_progress",
+      "completed",
+      "cancelled",
+    ]);
+
+    if (!validStatusFilters.has(status)) {
+      return res.status(400).json({
+        message: "Invalid appointment status filter.",
+      });
+    }
+
+    if (status !== "all") {
+      where.push("LOWER(COALESCE(a.status, '')) = ?");
+      params.push(status);
+    }
+
     const search = String(req.query.search || "").trim();
 
     if (search.length > 100) {

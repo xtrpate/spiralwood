@@ -13,10 +13,12 @@ const {
 } = require("../../services/warrantyInventoryService");
 
 const splitStoredProofs = (value) => {
-  const parts = String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
+  const parts = String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
   return { photo_url: parts[0] || null, proof_url: parts[1] || null };
 };
-
 
 const OPERATIONS_WARRANTY_DATE_FILTERS = new Set([
   "all",
@@ -69,12 +71,8 @@ const buildOperationsWarrantyDateRange = ({ dateFilter, from, to }) => {
 
     try {
       return {
-        startUtc: fromKey
-          ? getPhilippineDateBoundsUtc(fromKey).startUtc
-          : null,
-        endUtc: toKey
-          ? getPhilippineDateBoundsUtc(toKey).nextStartUtc
-          : null,
+        startUtc: fromKey ? getPhilippineDateBoundsUtc(fromKey).startUtc : null,
+        endUtc: toKey ? getPhilippineDateBoundsUtc(toKey).nextStartUtc : null,
       };
     } catch {
       const error = new Error(
@@ -148,6 +146,30 @@ const getOperationsWarrantyReport = async (req, res) => {
 
     const where = ["1=1"];
     const params = [];
+
+    const status = String(req.query.status || "all")
+      .trim()
+      .toLowerCase();
+
+    const validStatusFilters = new Set([
+      "all",
+      "pending",
+      "approved",
+      "rejected",
+      "fulfilled",
+      "cancelled",
+    ]);
+
+    if (!validStatusFilters.has(status)) {
+      return res.status(400).json({
+        message: "Invalid warranty status filter.",
+      });
+    }
+
+    if (status !== "all") {
+      where.push("LOWER(COALESCE(w.status, '')) = ?");
+      params.push(status);
+    }
 
     const search = String(req.query.search || "").trim();
 
@@ -342,35 +364,48 @@ exports.getClaims = async (req, res) => {
       [],
     );
 
-    return res.json(rows.map((row) => {
-      const { photo_url, proof_url } = splitStoredProofs(row.proof_url);
-      return {
-        ...row,
-        claim_quantity: Number(row.claim_quantity || 1),
-        ordered_quantity: Number(row.ordered_quantity || 0),
-        description: row.reason,
-        photo_url: signUploadPath(photo_url),
-        proof_url: signUploadPath(proof_url),
-        replacement_receipt: signUploadPath(row.replacement_receipt),
-        reason: undefined,
-      };
-    }));
+    return res.json(
+      rows.map((row) => {
+        const { photo_url, proof_url } = splitStoredProofs(row.proof_url);
+        return {
+          ...row,
+          claim_quantity: Number(row.claim_quantity || 1),
+          ordered_quantity: Number(row.ordered_quantity || 0),
+          description: row.reason,
+          photo_url: signUploadPath(photo_url),
+          proof_url: signUploadPath(proof_url),
+          replacement_receipt: signUploadPath(row.replacement_receipt),
+          reason: undefined,
+        };
+      }),
+    );
   } catch (err) {
     console.error("[admin.warranty GET]", err);
-    return res.status(500).json({ message: "Server error.", error: err.message });
+    return res
+      .status(500)
+      .json({ message: "Server error.", error: err.message });
   }
 };
 
 exports.decideClaim = async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  const decision = String(req.body?.decision || "").trim().toLowerCase();
+  const decision = String(req.body?.decision || "")
+    .trim()
+    .toLowerCase();
   const adminNote = String(req.body?.admin_note || "").trim();
-  if (!id) return res.status(400).json({ message: "Valid warranty claim ID is required." });
+  if (!id)
+    return res
+      .status(400)
+      .json({ message: "Valid warranty claim ID is required." });
   if (!["approved", "rejected"].includes(decision)) {
-    return res.status(400).json({ message: "Decision must be either approved or rejected." });
+    return res
+      .status(400)
+      .json({ message: "Decision must be either approved or rejected." });
   }
   if (decision === "rejected" && !adminNote) {
-    return res.status(400).json({ message: "Please provide the rejection reason or admin note." });
+    return res
+      .status(400)
+      .json({ message: "Please provide the rejection reason or admin note." });
   }
 
   try {
@@ -380,13 +415,23 @@ exports.decideClaim = async (req, res) => {
        WHERE w.id = ? LIMIT 1`,
       [id],
     );
-    if (!claim) return res.status(404).json({ message: "Warranty claim not found." });
+    if (!claim)
+      return res.status(404).json({ message: "Warranty claim not found." });
     const currentStatus = String(claim.status || "").toLowerCase();
     if (currentStatus === "fulfilled") {
-      return res.status(400).json({ message: "This warranty claim is already fulfilled and can no longer be changed." });
+      return res
+        .status(400)
+        .json({
+          message:
+            "This warranty claim is already fulfilled and can no longer be changed.",
+        });
     }
     if (currentStatus !== "pending") {
-      return res.status(400).json({ message: "Only pending warranty claims can be approved or rejected." });
+      return res
+        .status(400)
+        .json({
+          message: "Only pending warranty claims can be approved or rejected.",
+        });
     }
 
     await db.query(
@@ -399,19 +444,36 @@ exports.decideClaim = async (req, res) => {
       await createNotificationSafe(db, {
         userId: claim.customer_id,
         type: "warranty_update",
-        title: decision === "approved" ? "Warranty Claim Approved" : "Warranty Claim Not Approved",
-        message: decision === "approved"
-          ? `Your warranty claim for ${claim.product_name} from Order ${orderLabel} has been approved. Our team will proceed with the warranty service.`
-          : `We could not approve your warranty claim for ${claim.product_name} from Order ${orderLabel}. Reason: ${adminNote}`,
-        targetType: "warranty", targetId: claim.id, targetOrderId: claim.order_id,
+        title:
+          decision === "approved"
+            ? "Warranty Claim Approved"
+            : "Warranty Claim Not Approved",
+        message:
+          decision === "approved"
+            ? `Your warranty claim for ${claim.product_name} from Order ${orderLabel} has been approved. Our team will proceed with the warranty service.`
+            : `We could not approve your warranty claim for ${claim.product_name} from Order ${orderLabel}. Reason: ${adminNote}`,
+        targetType: "warranty",
+        targetId: claim.id,
+        targetOrderId: claim.order_id,
       });
     }
 
-    req.auditRecord = { id, old: { status: currentStatus }, new: { status: decision, has_admin_note: Boolean(adminNote) } };
-    return res.json({ message: decision === "approved" ? "Warranty claim approved successfully." : "Warranty claim rejected successfully." });
+    req.auditRecord = {
+      id,
+      old: { status: currentStatus },
+      new: { status: decision, has_admin_note: Boolean(adminNote) },
+    };
+    return res.json({
+      message:
+        decision === "approved"
+          ? "Warranty claim approved successfully."
+          : "Warranty claim rejected successfully.",
+    });
   } catch (err) {
     console.error("[admin.warranty decide]", err);
-    return res.status(500).json({ message: "Server error.", error: err.message });
+    return res
+      .status(500)
+      .json({ message: "Server error.", error: err.message });
   }
 };
 
@@ -421,15 +483,27 @@ exports.getResolutionOptions = async (req, res) => {
     return res.json(data);
   } catch (err) {
     const status = Number(err?.status) || 500;
-    return res.status(status).json({ message: err?.message || "Failed to load warranty resolution options.", ...(err?.details ? { details: err.details } : {}) });
+    return res
+      .status(status)
+      .json({
+        message: err?.message || "Failed to load warranty resolution options.",
+        ...(err?.details ? { details: err.details } : {}),
+      });
   }
 };
 
 exports.fulfillClaim = async (req, res) => {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Valid warranty claim ID is required." });
+  if (!Number.isInteger(id) || id <= 0)
+    return res
+      .status(400)
+      .json({ message: "Valid warranty claim ID is required." });
 
-  const uploadedReceipt = req.file?.path || (req.file?.filename ? `uploads/warranty-replacements/${req.file.filename}` : null);
+  const uploadedReceipt =
+    req.file?.path ||
+    (req.file?.filename
+      ? `uploads/warranty-replacements/${req.file.filename}`
+      : null);
   try {
     const result = await fulfillClaimWithInventory({
       claimId: id,
@@ -450,7 +524,9 @@ exports.fulfillClaim = async (req, res) => {
         type: "warranty_update",
         title: "Warranty Service Completed",
         message: `Your warranty claim for ${claim.product_name} x${claim.claim_quantity} from Order ${orderLabel} has been completed. You can view the fulfillment proof in your warranty details.`,
-        targetType: "warranty", targetId: claim.id, targetOrderId: claim.order_id,
+        targetType: "warranty",
+        targetId: claim.id,
+        targetOrderId: claim.order_id,
       });
     }
 
@@ -467,10 +543,17 @@ exports.fulfillClaim = async (req, res) => {
         receipt_uploaded_this_update: Boolean(uploadedReceipt),
       },
     };
-    return res.json({ message: "Warranty claim resolved and fulfilled successfully." });
+    return res.json({
+      message: "Warranty claim resolved and fulfilled successfully.",
+    });
   } catch (err) {
     console.error("[admin.warranty fulfill]", err);
     const status = Number(err?.status) || 500;
-    return res.status(status).json({ message: err?.message || "Warranty fulfillment failed.", ...(err?.details ? { details: err.details } : {}) });
+    return res
+      .status(status)
+      .json({
+        message: err?.message || "Warranty fulfillment failed.",
+        ...(err?.details ? { details: err.details } : {}),
+      });
   }
 };

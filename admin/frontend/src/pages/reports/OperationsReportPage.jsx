@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Eye, X, FileDown, Download } from "lucide-react";
 import toast from "react-hot-toast";
 import * as XLSX from "xlsx-js-style";
@@ -92,10 +98,49 @@ const OPERATION_TYPES = [
   {
     value: "delivery",
     label: "Deliveries",
-    endpoint: "/pos/deliveries",
+    endpoint: "/pos/deliveries/report",
   },
   { value: "warranty", label: "Warranty Claims", endpoint: "/warranty" },
 ];
+
+const STATUS_OPTIONS_BY_OPERATION = {
+  tasks: [
+    { value: "all", label: "All Statuses" },
+    { value: "pending", label: "Pending" },
+    { value: "in_progress", label: "In Progress" },
+    { value: "blocked", label: "Blocked" },
+    { value: "completed", label: "Completed" },
+  ],
+
+  appointments: [
+    { value: "all", label: "All Statuses" },
+    { value: "pending", label: "Pending" },
+    {
+      value: "awaiting_staff_acceptance",
+      label: "Awaiting Staff Acceptance",
+    },
+    { value: "confirmed", label: "Confirmed" },
+    { value: "in_progress", label: "In Progress" },
+    { value: "completed", label: "Completed" },
+    { value: "cancelled", label: "Cancelled" },
+  ],
+
+  delivery: [
+    { value: "all", label: "All Statuses" },
+    { value: "scheduled", label: "Scheduled" },
+    { value: "in_transit", label: "In Transit" },
+    { value: "delivered", label: "Delivered" },
+    { value: "failed", label: "Failed" },
+  ],
+
+  warranty: [
+    { value: "all", label: "All Statuses" },
+    { value: "pending", label: "Pending" },
+    { value: "approved", label: "Approved" },
+    { value: "rejected", label: "Rejected" },
+    { value: "fulfilled", label: "Fulfilled" },
+  ],
+};
 
 const PAGE_SIZE = 20;
 const TASK_EXPORT_PAGE_SIZE = 200;
@@ -116,6 +161,7 @@ const buildOperationsAppointmentParams = ({
   page,
   limit,
   search,
+  status = "all",
   dateFilter,
   customStart,
   customEnd,
@@ -132,6 +178,14 @@ const buildOperationsAppointmentParams = ({
 
   if (normalizedSearch) {
     params.search = normalizedSearch;
+  }
+
+  const normalizedStatus = String(status || "all")
+    .trim()
+    .toLowerCase();
+
+  if (normalizedStatus !== "all") {
+    params.status = normalizedStatus;
   }
 
   if (dateFilter === "custom") {
@@ -150,6 +204,7 @@ const buildOperationsTaskParams = ({
   page,
   limit,
   search,
+  status = "all",
   dateFilter,
   customStart,
   customEnd,
@@ -168,6 +223,14 @@ const buildOperationsTaskParams = ({
     params.search = normalizedSearch;
   }
 
+  const normalizedStatus = String(status || "all")
+    .trim()
+    .toLowerCase();
+
+  if (normalizedStatus !== "all") {
+    params.status = normalizedStatus;
+  }
+
   if (dateFilter === "custom") {
     if (customStart) params.from = customStart;
     if (customEnd) params.to = customEnd;
@@ -180,28 +243,139 @@ const buildOperationsTaskParams = ({
   return params;
 };
 
-
-const DELIVERY_EXPORT_PAGE_SIZE = 200;
+const DELIVERY_EXPORT_PAGE_SIZE = 100;
 
 const EMPTY_DELIVERY_SUMMARY = {
   pending: 0,
   completed: 0,
 };
 
+const getPhilippineDateKey = (date = new Date()) => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+
+  return `${values.year}-${values.month}-${values.day}`;
+};
+
+const shiftDateKey = (dateKey, days) => {
+  const [year, month, day] = String(dateKey).split("-").map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1, day + days));
+
+  return [
+    String(shifted.getUTCFullYear()).padStart(4, "0"),
+    String(shifted.getUTCMonth() + 1).padStart(2, "0"),
+    String(shifted.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+};
+
+const getDeliveryReportDateRange = (dateFilter) => {
+  const normalizedFilter = String(dateFilter || "all")
+    .trim()
+    .toLowerCase();
+
+  if (normalizedFilter === "all") {
+    return {
+      from: "",
+      to: "",
+    };
+  }
+
+  if (normalizedFilter === "custom") {
+    return {
+      from: "",
+      to: "",
+    };
+  }
+
+  const todayKey = getPhilippineDateKey();
+
+  if (normalizedFilter === "today") {
+    return {
+      from: todayKey,
+      to: todayKey,
+    };
+  }
+
+  if (normalizedFilter === "yesterday") {
+    const yesterdayKey = shiftDateKey(todayKey, -1);
+
+    return {
+      from: yesterdayKey,
+      to: yesterdayKey,
+    };
+  }
+
+  const [year, month, day] = todayKey.split("-").map(Number);
+
+  if (normalizedFilter === "this_week") {
+    const dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+
+    const startOfWeek = shiftDateKey(todayKey, -dayOfWeek);
+    const endOfWeek = shiftDateKey(startOfWeek, 6);
+
+    return {
+      from: startOfWeek,
+      to: endOfWeek,
+    };
+  }
+
+  if (normalizedFilter === "this_month") {
+    const startOfMonth = `${String(year).padStart(4, "0")}-${String(
+      month,
+    ).padStart(2, "0")}-01`;
+
+    const firstOfNextMonth = new Date(Date.UTC(year, month, 1));
+    const endOfMonth = shiftDateKey(
+      [
+        String(firstOfNextMonth.getUTCFullYear()).padStart(4, "0"),
+        String(firstOfNextMonth.getUTCMonth() + 1).padStart(2, "0"),
+        String(firstOfNextMonth.getUTCDate()).padStart(2, "0"),
+      ].join("-"),
+      -1,
+    );
+
+    return {
+      from: startOfMonth,
+      to: endOfMonth,
+    };
+  }
+
+  if (normalizedFilter === "this_year") {
+    return {
+      from: `${String(year).padStart(4, "0")}-01-01`,
+      to: `${String(year).padStart(4, "0")}-12-31`,
+    };
+  }
+
+  return {
+    from: "",
+    to: "",
+  };
+};
+
 const buildOperationsDeliveryParams = ({
   page,
   limit,
   search,
+  status = "all",
   dateFilter,
   customStart,
   customEnd,
   includeSummary = true,
 }) => {
   const params = {
-    operations_report: 1,
     page,
     limit,
-    date_filter: dateFilter,
   };
 
   const normalizedSearch = String(search || "").trim();
@@ -210,9 +384,22 @@ const buildOperationsDeliveryParams = ({
     params.search = normalizedSearch;
   }
 
+  const normalizedStatus = String(status || "all")
+    .trim()
+    .toLowerCase();
+
+  if (normalizedStatus !== "all") {
+    params.status = normalizedStatus;
+  }
+
   if (dateFilter === "custom") {
     if (customStart) params.from = customStart;
     if (customEnd) params.to = customEnd;
+  } else {
+    const range = getDeliveryReportDateRange(dateFilter);
+
+    if (range.from) params.from = range.from;
+    if (range.to) params.to = range.to;
   }
 
   if (!includeSummary) {
@@ -221,7 +408,6 @@ const buildOperationsDeliveryParams = ({
 
   return params;
 };
-
 
 const WARRANTY_EXPORT_PAGE_SIZE = 200;
 
@@ -234,6 +420,7 @@ const buildOperationsWarrantyParams = ({
   page,
   limit,
   search,
+  status = "all",
   dateFilter,
   customStart,
   customEnd,
@@ -250,6 +437,14 @@ const buildOperationsWarrantyParams = ({
 
   if (normalizedSearch) {
     params.search = normalizedSearch;
+  }
+
+  const normalizedStatus = String(status || "all")
+    .trim()
+    .toLowerCase();
+
+  if (normalizedStatus !== "all") {
+    params.status = normalizedStatus;
   }
 
   if (dateFilter === "custom") {
@@ -322,18 +517,6 @@ const pdfSanitizeFilename = (value) =>
     .trim()
     .replace(/[^A-Za-z0-9._-]+/g, "_")
     .replace(/^_+|_+$/g, "") || "record";
-
-const pdfFormatValue = (value) => {
-  if (value === null || value === undefined || value === "") {
-    return "—";
-  }
-
-  if (typeof value === "number") {
-    return value.toLocaleString("en-PH");
-  }
-
-  return String(value);
-};
 
 const createOperationsRecordPdf = ({
   recordType,
@@ -602,7 +785,7 @@ const createOperationsRecordPdf = ({
     addField("Customer", record.customer_name);
   }
 
-  addField("Status", humanize(record.status || "completed"));
+  addField("Status", humanize(record.report_status || record.status));
 
   /*
    * Main operation-specific details.
@@ -850,81 +1033,6 @@ const exportOperationsRecordPdf = (record = {}, operationType) => {
   }
 };
 
-// Helper to extract the correct date field based on operation type
-const getRowDate = (row, opType) => {
-  if (opType === "appointments")
-    return new Date(
-      row.scheduled_date ||
-        row.preferred_date ||
-        row.appointment_date ||
-        row.created_at ||
-        row.updated_at,
-    );
-  if (opType === "delivery")
-    return new Date(
-      row.scheduled_date ||
-        row.delivery_date ||
-        row.created_at ||
-        row.updated_at,
-    );
-  return new Date(row.created_at || row.updated_at);
-};
-
-// Helper to evaluate date ranges
-const isDateInRange = (dateObj, filterType, customStart, customEnd) => {
-  if (filterType === "all") return true;
-  if (!dateObj || Number.isNaN(dateObj.getTime())) return false;
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const target = new Date(dateObj);
-  target.setHours(0, 0, 0, 0);
-
-  if (filterType === "today") {
-    return target.getTime() === today.getTime();
-  }
-
-  if (filterType === "yesterday") {
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    return target.getTime() === yesterday.getTime();
-  }
-
-  if (filterType === "this_week") {
-    const startOfWeek = new Date(today);
-    startOfWeek.setDate(today.getDate() - today.getDay()); // Sunday
-    const endOfWeek = new Date(startOfWeek);
-    endOfWeek.setDate(endOfWeek.getDate() + 6); // Saturday
-    return target >= startOfWeek && target <= endOfWeek;
-  }
-
-  if (filterType === "this_month") {
-    return (
-      target.getMonth() === today.getMonth() &&
-      target.getFullYear() === today.getFullYear()
-    );
-  }
-
-  if (filterType === "this_year") {
-    return target.getFullYear() === today.getFullYear();
-  }
-
-  if (filterType === "custom") {
-    if (customStart) {
-      const sDate = new Date(`${customStart}T00:00:00`);
-      if (target < sDate) return false;
-    }
-    if (customEnd) {
-      const eDate = new Date(`${customEnd}T00:00:00`);
-      if (target > eDate) return false;
-    }
-    return true;
-  }
-
-  return true;
-};
-
 function SummaryCard({ label, value, note }) {
   return (
     <div className="opr-summary-card">
@@ -945,12 +1053,15 @@ function EmptyRow({ colSpan, text }) {
   );
 }
 
-export default function OperationsReportPage() {
+export default function OperationsReportPage({ fixedOperationType = null }) {
   const { user } = useAuthStore();
   const navigate = useNavigate();
-  const [operationType, setOperationType] = useState("tasks");
+  const [operationType, setOperationType] = useState(
+    fixedOperationType || "tasks",
+  );
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   // Date filter state
   const [dateFilter, setDateFilter] = useState("all");
@@ -995,6 +1106,14 @@ export default function OperationsReportPage() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [generatedAt, setGeneratedAt] = useState("");
+  const [silentLoading, setSilentLoading] = useState(false);
+
+  const reportRequestIdRef = useRef(0);
+  const hasLoadedReportRef = useRef(false);
+
+  const detailRequestIdRef = useRef(0);
+  const receiptRequestIdRef = useRef(0);
+  const signatureRequestIdRef = useRef(0);
 
   const activeOperation = useMemo(
     () => OPERATION_TYPES.find((op) => op.value === operationType),
@@ -1009,8 +1128,24 @@ export default function OperationsReportPage() {
     return () => window.clearTimeout(timer);
   }, [search]);
 
+  useEffect(() => {
+    if (!fixedOperationType || fixedOperationType === operationType) return;
+
+    setOperationType(fixedOperationType);
+    setSearch("");
+    setDebouncedSearch("");
+    setStatusFilter("all");
+    setPage(1);
+  }, [fixedOperationType, operationType]);
+
   const loadTaskReport = useCallback(async () => {
-    setLoading(true);
+    const requestId = ++reportRequestIdRef.current;
+
+    if (hasLoadedReportRef.current) {
+      setSilentLoading(true);
+    } else {
+      setLoading(true);
+    }
 
     try {
       const { data } = await api.get("/tasks", {
@@ -1018,11 +1153,14 @@ export default function OperationsReportPage() {
           page,
           limit: PAGE_SIZE,
           search: debouncedSearch,
+          status: statusFilter,
           dateFilter,
           customStart,
           customEnd,
         }),
       });
+
+      if (requestId !== reportRequestIdRef.current) return;
 
       setRows(Array.isArray(data?.tasks) ? data.tasks : []);
       setTaskTotal(Number(data?.total || 0));
@@ -1032,6 +1170,8 @@ export default function OperationsReportPage() {
       });
       setGeneratedAt(new Date().toISOString());
     } catch (err) {
+      if (requestId !== reportRequestIdRef.current) return;
+
       toast.error(
         err?.response?.data?.message || "Failed to load task assignments.",
       );
@@ -1039,18 +1179,22 @@ export default function OperationsReportPage() {
       setTaskTotal(0);
       setTaskSummary(EMPTY_TASK_SUMMARY);
     } finally {
-      setLoading(false);
+      if (requestId === reportRequestIdRef.current) {
+        setLoading(false);
+        setSilentLoading(false);
+        hasLoadedReportRef.current = true;
+      }
     }
-  }, [
-    page,
-    debouncedSearch,
-    dateFilter,
-    customStart,
-    customEnd,
-  ]);
+  }, [page, debouncedSearch, statusFilter, dateFilter, customStart, customEnd]);
 
   const loadAppointmentReport = useCallback(async () => {
-    setLoading(true);
+    const requestId = ++reportRequestIdRef.current;
+
+    if (hasLoadedReportRef.current) {
+      setSilentLoading(true);
+    } else {
+      setLoading(true);
+    }
 
     try {
       const { data } = await api.get("/pos/appointments", {
@@ -1058,11 +1202,14 @@ export default function OperationsReportPage() {
           page,
           limit: PAGE_SIZE,
           search: debouncedSearch,
+          status: statusFilter,
           dateFilter,
           customStart,
           customEnd,
         }),
       });
+
+      if (requestId !== reportRequestIdRef.current) return;
 
       setRows(Array.isArray(data?.appointments) ? data.appointments : []);
       setAppointmentTotal(Number(data?.total || 0));
@@ -1072,6 +1219,8 @@ export default function OperationsReportPage() {
       });
       setGeneratedAt(new Date().toISOString());
     } catch (err) {
+      if (requestId !== reportRequestIdRef.current) return;
+
       toast.error(
         err?.response?.data?.message || "Failed to load appointments.",
       );
@@ -1079,58 +1228,77 @@ export default function OperationsReportPage() {
       setAppointmentTotal(0);
       setAppointmentSummary(EMPTY_APPOINTMENT_SUMMARY);
     } finally {
-      setLoading(false);
+      if (requestId === reportRequestIdRef.current) {
+        setLoading(false);
+        setSilentLoading(false);
+        hasLoadedReportRef.current = true;
+      }
     }
-  }, [
-    page,
-    debouncedSearch,
-    dateFilter,
-    customStart,
-    customEnd,
-  ]);
+  }, [page, debouncedSearch, statusFilter, dateFilter, customStart, customEnd]);
 
   const loadDeliveryReport = useCallback(async () => {
-    setLoading(true);
+    const requestId = ++reportRequestIdRef.current;
+
+    if (hasLoadedReportRef.current) {
+      setSilentLoading(true);
+    } else {
+      setLoading(true);
+    }
 
     try {
-      const { data } = await api.get("/pos/deliveries", {
+      const { data } = await api.get("/pos/deliveries/report", {
         params: buildOperationsDeliveryParams({
           page,
           limit: PAGE_SIZE,
           search: debouncedSearch,
+          status: statusFilter,
           dateFilter,
           customStart,
           customEnd,
         }),
       });
 
-      setRows(Array.isArray(data?.deliveries) ? data.deliveries : []);
-      setDeliveryTotal(Number(data?.total || 0));
+      if (requestId !== reportRequestIdRef.current) return;
+
+      setRows(Array.isArray(data?.records) ? data.records : []);
+
+      const paginationTotal = Number(data?.pagination?.total || 0);
+
+      setDeliveryTotal(paginationTotal);
+
       setDeliverySummary({
         ...EMPTY_DELIVERY_SUMMARY,
-        ...(data?.summary || {}),
+        pending: Number(data?.summary?.active || 0),
+        completed: Number(data?.summary?.delivered || 0),
       });
+
       setGeneratedAt(new Date().toISOString());
     } catch (err) {
+      if (requestId !== reportRequestIdRef.current) return;
+
       toast.error(
-        err?.response?.data?.message || "Failed to load deliveries.",
+        err?.response?.data?.message || "Failed to load Delivery Report.",
       );
       setRows([]);
       setDeliveryTotal(0);
       setDeliverySummary(EMPTY_DELIVERY_SUMMARY);
     } finally {
-      setLoading(false);
+      if (requestId === reportRequestIdRef.current) {
+        setLoading(false);
+        setSilentLoading(false);
+        hasLoadedReportRef.current = true;
+      }
     }
-  }, [
-    page,
-    debouncedSearch,
-    dateFilter,
-    customStart,
-    customEnd,
-  ]);
+  }, [page, debouncedSearch, statusFilter, dateFilter, customStart, customEnd]);
 
   const loadWarrantyReport = useCallback(async () => {
-    setLoading(true);
+    const requestId = ++reportRequestIdRef.current;
+
+    if (hasLoadedReportRef.current) {
+      setSilentLoading(true);
+    } else {
+      setLoading(true);
+    }
 
     try {
       const { data } = await api.get("/warranty", {
@@ -1138,11 +1306,14 @@ export default function OperationsReportPage() {
           page,
           limit: PAGE_SIZE,
           search: debouncedSearch,
+          status: statusFilter,
           dateFilter,
           customStart,
           customEnd,
         }),
       });
+
+      if (requestId !== reportRequestIdRef.current) return;
 
       setRows(Array.isArray(data?.claims) ? data.claims : []);
       setWarrantyTotal(Number(data?.total || 0));
@@ -1152,6 +1323,8 @@ export default function OperationsReportPage() {
       });
       setGeneratedAt(new Date().toISOString());
     } catch (err) {
+      if (requestId !== reportRequestIdRef.current) return;
+
       toast.error(
         err?.response?.data?.message || "Failed to load warranty claims.",
       );
@@ -1159,15 +1332,13 @@ export default function OperationsReportPage() {
       setWarrantyTotal(0);
       setWarrantySummary(EMPTY_WARRANTY_SUMMARY);
     } finally {
-      setLoading(false);
+      if (requestId === reportRequestIdRef.current) {
+        setLoading(false);
+        setSilentLoading(false);
+        hasLoadedReportRef.current = true;
+      }
     }
-  }, [
-    page,
-    debouncedSearch,
-    dateFilter,
-    customStart,
-    customEnd,
-  ]);
+  }, [page, debouncedSearch, statusFilter, dateFilter, customStart, customEnd]);
 
   const loadReport = useCallback(() => {
     if (operationType === "tasks") return loadTaskReport();
@@ -1198,12 +1369,6 @@ export default function OperationsReportPage() {
     if (operationType === "warranty") loadWarrantyReport();
   }, [loadWarrantyReport, operationType]);
 
-  const filteredRows = rows;
-
-  useEffect(() => {
-    setPage(1);
-  }, [search, operationType, dateFilter, customStart, customEnd]);
-
   const reportRecordCount =
     operationType === "tasks"
       ? taskTotal
@@ -1215,12 +1380,18 @@ export default function OperationsReportPage() {
 
   const paginatedRows = rows;
 
-  const totalPages = Math.max(
-    1,
-    Math.ceil(reportRecordCount / PAGE_SIZE),
-  );
+  const totalPages = Math.max(1, Math.ceil(reportRecordCount / PAGE_SIZE));
+
+  useEffect(() => {
+    setPage((currentPage) => Math.min(currentPage, totalPages));
+  }, [totalPages]);
 
   const openDetail = async (row) => {
+    const requestId = ++detailRequestIdRef.current;
+
+    receiptRequestIdRef.current += 1;
+    signatureRequestIdRef.current += 1;
+
     if (operationType === "delivery") {
       setDetail({ open: true, data: null, loading: true, error: "" });
       setReceiptModal({ open: false, loading: false, data: null, error: "" });
@@ -1232,9 +1403,16 @@ export default function OperationsReportPage() {
       });
 
       try {
-        const { data } = await api.get(`/pos/deliveries/report/${row.id}`);
+        const { data } = await api.get(
+          `/pos/deliveries/report/${row.delivery_id || row.id}`,
+        );
+
+        if (requestId !== detailRequestIdRef.current) return;
+
         setDetail({ open: true, loading: false, data, error: "" });
       } catch (err) {
+        if (requestId !== detailRequestIdRef.current) return;
+
         setDetail({
           open: true,
           loading: false,
@@ -1243,11 +1421,17 @@ export default function OperationsReportPage() {
         });
       }
     } else {
+      if (requestId !== detailRequestIdRef.current) return;
+
       setDetail({ open: true, data: row, loading: false, error: "" });
     }
   };
 
   const closeDetail = () => {
+    detailRequestIdRef.current += 1;
+    receiptRequestIdRef.current += 1;
+    signatureRequestIdRef.current += 1;
+
     setDetail({ open: false, loading: false, data: null, error: "" });
     setReceiptModal({ open: false, loading: false, data: null, error: "" });
     setSignatureViewer({ open: false, loading: false, data: null, error: "" });
@@ -1268,11 +1452,19 @@ export default function OperationsReportPage() {
     const deliveryId = Number(detail.data?.delivery_id || 0);
     if (!deliveryId || receiptModal.loading) return;
 
+    const requestId = ++receiptRequestIdRef.current;
+
     setReceiptModal({ open: true, loading: true, data: null, error: "" });
+
     try {
       const { data } = await api.get(`/pos/deliveries/${deliveryId}/receipt`);
+
+      if (requestId !== receiptRequestIdRef.current) return;
+
       setReceiptModal({ open: true, loading: false, data, error: "" });
     } catch (err) {
+      if (requestId !== receiptRequestIdRef.current) return;
+
       setReceiptModal({
         open: true,
         loading: false,
@@ -1288,13 +1480,21 @@ export default function OperationsReportPage() {
     const deliveryId = Number(detail.data?.delivery_id || 0);
     if (!deliveryId || signatureViewer.loading) return;
 
+    const requestId = ++signatureRequestIdRef.current;
+
     setSignatureViewer({ open: true, loading: true, data: null, error: "" });
+
     try {
       const { data } = await api.get(
         `/pos/deliveries/${deliveryId}/acknowledgement`,
       );
+
+      if (requestId !== signatureRequestIdRef.current) return;
+
       setSignatureViewer({ open: true, loading: false, data, error: "" });
     } catch (err) {
+      if (requestId !== signatureRequestIdRef.current) return;
+
       setSignatureViewer({
         open: true,
         loading: false,
@@ -1399,14 +1599,15 @@ export default function OperationsReportPage() {
 
       let headers = [];
       let mappedData = [];
-      let exportRows = filteredRows;
+      let exportRows = [];
 
       if (operationType === "tasks") {
         const firstResponse = await api.get("/tasks", {
           params: buildOperationsTaskParams({
             page: 1,
             limit: TASK_EXPORT_PAGE_SIZE,
-            search,
+            search: debouncedSearch,
+            status: statusFilter,
             dateFilter,
             customStart,
             customEnd,
@@ -1428,7 +1629,8 @@ export default function OperationsReportPage() {
             params: buildOperationsTaskParams({
               page: exportPage,
               limit: TASK_EXPORT_PAGE_SIZE,
-              search,
+              search: debouncedSearch,
+              status: statusFilter,
               dateFilter,
               customStart,
               customEnd,
@@ -1467,7 +1669,8 @@ export default function OperationsReportPage() {
           params: buildOperationsAppointmentParams({
             page: 1,
             limit: APPOINTMENT_EXPORT_PAGE_SIZE,
-            search,
+            search: debouncedSearch,
+            status: statusFilter,
             dateFilter,
             customStart,
             customEnd,
@@ -1489,7 +1692,8 @@ export default function OperationsReportPage() {
             params: buildOperationsAppointmentParams({
               page: exportPage,
               limit: APPOINTMENT_EXPORT_PAGE_SIZE,
-              search,
+              search: debouncedSearch,
+              status: statusFilter,
               dateFilter,
               customStart,
               customEnd,
@@ -1532,43 +1736,43 @@ export default function OperationsReportPage() {
           ),
         ]);
       } else if (operationType === "delivery") {
-        const firstResponse = await api.get("/pos/deliveries", {
+        const firstResponse = await api.get("/pos/deliveries/report", {
           params: buildOperationsDeliveryParams({
             page: 1,
             limit: DELIVERY_EXPORT_PAGE_SIZE,
-            search,
+            search: debouncedSearch,
+            status: statusFilter,
             dateFilter,
             customStart,
             customEnd,
           }),
         });
 
-        exportRows = Array.isArray(firstResponse.data?.deliveries)
-          ? [...firstResponse.data.deliveries]
+        exportRows = Array.isArray(firstResponse.data?.records)
+          ? [...firstResponse.data.records]
           : [];
 
-        const exportTotal = Number(firstResponse.data?.total || 0);
+        const exportTotal = Number(firstResponse.data?.pagination?.total || 0);
+
         const exportPages = Math.max(
           1,
           Math.ceil(exportTotal / DELIVERY_EXPORT_PAGE_SIZE),
         );
 
         for (let exportPage = 2; exportPage <= exportPages; exportPage += 1) {
-          const { data } = await api.get("/pos/deliveries", {
+          const { data } = await api.get("/pos/deliveries/report", {
             params: buildOperationsDeliveryParams({
               page: exportPage,
               limit: DELIVERY_EXPORT_PAGE_SIZE,
-              search,
+              search: debouncedSearch,
+              status: statusFilter,
               dateFilter,
               customStart,
               customEnd,
-              includeSummary: false,
             }),
           });
 
-          const batch = Array.isArray(data?.deliveries)
-            ? data.deliveries
-            : [];
+          const batch = Array.isArray(data?.records) ? data.records : [];
 
           exportRows.push(...batch);
 
@@ -1589,18 +1793,24 @@ export default function OperationsReportPage() {
           "Delivery Date",
         ];
         mappedData = exportRows.map((r) => [
-          r.id,
+          r.delivery_id || r.id,
           r.order_number || "—",
           r.driver_name || "Unassigned",
-          humanize(r.status),
-          formatDateTime(r.scheduled_date || r.delivery_date || r.created_at),
+          humanize(r.report_status || r.status),
+          formatDateTime(
+            r.activity_date ||
+              r.delivered_date ||
+              r.scheduled_date ||
+              r.created_at,
+          ),
         ]);
       } else if (operationType === "warranty") {
         const firstResponse = await api.get("/warranty", {
           params: buildOperationsWarrantyParams({
             page: 1,
             limit: WARRANTY_EXPORT_PAGE_SIZE,
-            search,
+            search: debouncedSearch,
+            status: statusFilter,
             dateFilter,
             customStart,
             customEnd,
@@ -1622,7 +1832,8 @@ export default function OperationsReportPage() {
             params: buildOperationsWarrantyParams({
               page: exportPage,
               limit: WARRANTY_EXPORT_PAGE_SIZE,
-              search,
+              search: debouncedSearch,
+              status: statusFilter,
               dateFilter,
               customStart,
               customEnd,
@@ -1725,7 +1936,11 @@ export default function OperationsReportPage() {
     <div className="operations-report">
       <div className="opr-page-header">
         <div>
-          <h1>Operations Report</h1>
+          <h1>
+            {fixedOperationType
+              ? `${activeOperation?.label || "Operation"} Report`
+              : "Operations Report"}
+          </h1>
           <p>
             Review historical performance, assignments, and fulfillment metrics
             across all service and operational channels.
@@ -1737,7 +1952,7 @@ export default function OperationsReportPage() {
             type="button"
             className="opr-button opr-button-secondary"
             onClick={loadReport}
-            disabled={loading}
+            disabled={loading || silentLoading}
           >
             {loading ? "Refreshing..." : "Refresh"}
           </button>
@@ -1764,49 +1979,53 @@ export default function OperationsReportPage() {
         </span>
       </div>
 
-      <div
-        className="opr-report-tabs opr-no-print"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "4px",
-          margin: "12px 0 0",
-          overflowX: "auto",
-        }}
-      >
-        {OPERATION_TYPES.map((item) => (
-          <button
-            key={item.value}
-            type="button"
-            onClick={() => {
-              setOperationType(item.value);
-              setSearch("");
-              setDebouncedSearch("");
-              setPage(1);
-            }}
-            style={{
-              padding: "10px 18px",
-              border: "none",
-              borderBottom:
-                operationType === item.value
-                  ? "2px solid #18181b"
-                  : "2px solid transparent",
-              background: operationType === item.value ? "#18181b" : "#f1f1f3",
-              color: operationType === item.value ? "#ffffff" : "#3f3f46",
-              fontWeight: 600,
-              cursor: "pointer",
-              borderRadius: "4px 4px 0 0",
-              boxShadow:
-                operationType === item.value
-                  ? "0 2px 0 #18181b"
-                  : "0 2px 4px rgba(24, 24, 27, 0.14)",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+      {!fixedOperationType && (
+        <div
+          className="opr-report-tabs opr-no-print"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            margin: "12px 0 0",
+            overflowX: "auto",
+          }}
+        >
+          {OPERATION_TYPES.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              onClick={() => {
+                setOperationType(item.value);
+                setSearch("");
+                setDebouncedSearch("");
+                setStatusFilter("all");
+                setPage(1);
+              }}
+              style={{
+                padding: "10px 18px",
+                border: "none",
+                borderBottom:
+                  operationType === item.value
+                    ? "2px solid #18181b"
+                    : "2px solid transparent",
+                background:
+                  operationType === item.value ? "#18181b" : "#f1f1f3",
+                color: operationType === item.value ? "#ffffff" : "#3f3f46",
+                fontWeight: 600,
+                cursor: "pointer",
+                borderRadius: "4px 4px 0 0",
+                boxShadow:
+                  operationType === item.value
+                    ? "0 2px 0 #18181b"
+                    : "0 2px 4px rgba(24, 24, 27, 0.14)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="opr-toolbar opr-no-print">
         {/* SEARCH BAR PLACED FIRST TO EXPAND ON LEFT */}
@@ -1815,9 +2034,34 @@ export default function OperationsReportPage() {
           <input
             type="search"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            maxLength={100}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             placeholder="Search ID, customer, status..."
           />
+        </label>
+
+        {/* STATUS FILTER */}
+        <label className="opr-filter-field" style={{ minWidth: 160 }}>
+          <span>Status</span>
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setPage(1);
+            }}
+          >
+            {(
+              STATUS_OPTIONS_BY_OPERATION[operationType] ||
+              STATUS_OPTIONS_BY_OPERATION.tasks
+            ).map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         </label>
 
         {/* NEW DATE RANGE FILTER */}
@@ -1829,6 +2073,7 @@ export default function OperationsReportPage() {
               setDateFilter(e.target.value);
               setCustomStart("");
               setCustomEnd("");
+              setPage(1);
             }}
           >
             <option value="all">All Time</option>
@@ -1852,7 +2097,10 @@ export default function OperationsReportPage() {
               <input
                 type="date"
                 value={customStart}
-                onChange={(e) => setCustomStart(e.target.value)}
+                onChange={(e) => {
+                  setCustomStart(e.target.value);
+                  setPage(1);
+                }}
               />
             </label>
             <label
@@ -1864,7 +2112,10 @@ export default function OperationsReportPage() {
                 type="date"
                 value={customEnd}
                 min={customStart}
-                onChange={(e) => setCustomEnd(e.target.value)}
+                onChange={(e) => {
+                  setCustomEnd(e.target.value);
+                  setPage(1);
+                }}
               />
             </label>
           </>
@@ -1954,12 +2205,12 @@ export default function OperationsReportPage() {
                 <tbody>
                   {paginatedRows.length === 0 ? (
                     <EmptyRow
-                      colSpan={5}
+                      colSpan={6}
                       text={`No ${activeOperation.label.toLowerCase()} match the current filters.`}
                     />
                   ) : (
                     paginatedRows.map((row) => (
-                      <tr key={row.id}>
+                      <tr key={row.delivery_id || row.id}>
                         {operationType === "tasks" && (
                           <>
                             <td className="opr-primary-text">#{row.id}</td>
@@ -1994,14 +2245,17 @@ export default function OperationsReportPage() {
                         )}
                         {operationType === "delivery" && (
                           <>
-                            <td className="opr-primary-text">#{row.id}</td>
+                            <td className="opr-primary-text">
+                              #{row.delivery_id || row.id}
+                            </td>
                             <td>{row.order_number || "—"}</td>
                             <td>{row.driver_name || "Unassigned"}</td>
-                            <td>{humanize(row.status)}</td>
+                            <td>{humanize(row.report_status || row.status)}</td>
                             <td>
                               {formatDateTime(
-                                row.scheduled_date ||
-                                  row.delivery_date ||
+                                row.activity_date ||
+                                  row.delivered_date ||
+                                  row.scheduled_date ||
                                   row.created_at,
                               )}
                             </td>

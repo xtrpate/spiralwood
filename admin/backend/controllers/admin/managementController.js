@@ -14,7 +14,11 @@ const {
   getPhoneLookupVariants,
   phoneDigitsSql,
 } = require("../../utils/phone");
-const { getPhilippineDateBoundsUtc } = require("../../utils/philippineTime");
+const {
+  getPhilippineDateBoundsUtc,
+  getPhilippineDateKey,
+} = require("../../utils/philippineTime");
+
 const {
   normalizeInternalAccess,
   isSuperAdminAccount,
@@ -25,7 +29,381 @@ const {
 } = require("../../utils/internalAccessPolicy");
 
 // ══ WARRANTY ══════════════════════════════════════════════════════════════════
+// ══ WARRANTY ══════════════════════════════════════════════════════════════════
+
+const OPERATIONS_WARRANTY_DATE_FILTERS = new Set([
+  "all",
+  "today",
+  "yesterday",
+  "this_week",
+  "this_month",
+  "this_year",
+  "custom",
+]);
+
+const formatUtcDateKeyForOperationsWarrantyReport = (date) =>
+  [
+    String(date.getUTCFullYear()).padStart(4, "0"),
+    String(date.getUTCMonth() + 1).padStart(2, "0"),
+    String(date.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+
+const shiftOperationsWarrantyDateKey = (dateKey, days) => {
+  const [year, month, day] = String(dateKey).split("-").map(Number);
+
+  return formatUtcDateKeyForOperationsWarrantyReport(
+    new Date(Date.UTC(year, month - 1, day + days)),
+  );
+};
+
+const buildOperationsWarrantyDateRange = ({ dateFilter, from, to }) => {
+  const normalizedFilter = String(dateFilter || "all")
+    .trim()
+    .toLowerCase();
+
+  if (!OPERATIONS_WARRANTY_DATE_FILTERS.has(normalizedFilter)) {
+    const error = new Error("Invalid operations warranty date filter.");
+    error.status = 400;
+    throw error;
+  }
+
+  if (normalizedFilter === "all") {
+    return {
+      startUtc: null,
+      endUtc: null,
+    };
+  }
+
+  if (normalizedFilter === "custom") {
+    const fromKey = String(from || "").trim();
+    const toKey = String(to || "").trim();
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+    if (!fromKey || !toKey) {
+      const error = new Error(
+        "Both Start Date and End Date are required for a custom date range.",
+      );
+      error.status = 400;
+      throw error;
+    }
+
+    if (!datePattern.test(fromKey) || !datePattern.test(toKey)) {
+      const error = new Error(
+        "Warranty report dates must use valid YYYY-MM-DD values.",
+      );
+      error.status = 400;
+      throw error;
+    }
+
+    if (fromKey > toKey) {
+      const error = new Error("Start date cannot be after end date.");
+      error.status = 400;
+      throw error;
+    }
+
+    try {
+      getPhilippineDateBoundsUtc(fromKey);
+      getPhilippineDateBoundsUtc(toKey);
+
+      const todayKey = getPhilippineDateKey();
+
+      if (fromKey > todayKey || toKey > todayKey) {
+        const error = new Error(
+          "Warranty report dates cannot be in the future.",
+        );
+        error.status = 400;
+        throw error;
+      }
+
+      return {
+        startUtc: getPhilippineDateBoundsUtc(fromKey).startUtc,
+        endUtc: getPhilippineDateBoundsUtc(toKey).nextStartUtc,
+      };
+    } catch (error) {
+      if (Number(error?.status) === 400) {
+        throw error;
+      }
+
+      const validationError = new Error(
+        "Warranty report dates must use valid YYYY-MM-DD values.",
+      );
+      validationError.status = 400;
+      throw validationError;
+    }
+  }
+
+  const todayKey = getPhilippineDateKey();
+  const [year, month, day] = todayKey.split("-").map(Number);
+
+  let startKey = todayKey;
+  let endKey = shiftOperationsWarrantyDateKey(todayKey, 1);
+
+  if (normalizedFilter === "yesterday") {
+    startKey = shiftOperationsWarrantyDateKey(todayKey, -1);
+    endKey = todayKey;
+  } else if (normalizedFilter === "this_week") {
+    // Keep the Operations Report week Sunday through Saturday.
+    const dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+
+    startKey = shiftOperationsWarrantyDateKey(todayKey, -dayOfWeek);
+    endKey = shiftOperationsWarrantyDateKey(startKey, 7);
+  } else if (normalizedFilter === "this_month") {
+    startKey = [
+      String(year).padStart(4, "0"),
+      String(month).padStart(2, "0"),
+      "01",
+    ].join("-");
+
+    endKey = formatUtcDateKeyForOperationsWarrantyReport(
+      new Date(Date.UTC(year, month, 1)),
+    );
+  } else if (normalizedFilter === "this_year") {
+    startKey = `${String(year).padStart(4, "0")}-01-01`;
+    endKey = `${String(year + 1).padStart(4, "0")}-01-01`;
+  }
+
+  return {
+    startUtc: getPhilippineDateBoundsUtc(startKey).startUtc,
+    endUtc: getPhilippineDateBoundsUtc(endKey).startUtc,
+  };
+};
+
+const getOperationsWarrantyReport = async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+
+    const limit = Math.min(
+      200,
+      Math.max(1, parseInt(req.query.limit, 10) || 20),
+    );
+
+    const offset = (page - 1) * limit;
+
+    const includeSummary =
+      String(req.query.include_summary || "1").trim() !== "0";
+
+    const search = String(req.query.search || "").trim();
+
+    if (search.length > 100) {
+      return res.status(400).json({
+        message: "Search must be 100 characters or less.",
+      });
+    }
+
+    const { startUtc, endUtc } = buildOperationsWarrantyDateRange({
+      dateFilter: req.query.date_filter,
+      from: req.query.from,
+      to: req.query.to,
+    });
+
+    const where = ["1 = 1"];
+    const params = [];
+
+    if (startUtc) {
+      where.push("w.created_at >= ?");
+      params.push(startUtc);
+    }
+
+    if (endUtc) {
+      where.push("w.created_at < ?");
+      params.push(endUtc);
+    }
+
+    if (search) {
+      const pattern = `%${search}%`;
+
+      where.push(`
+        (
+          CAST(w.id AS CHAR) LIKE ?
+          OR CAST(COALESCE(w.order_id, 0) AS CHAR) LIKE ?
+          OR COALESCE(o.order_number, '') LIKE ?
+          OR COALESCE(u.name, '') LIKE ?
+          OR COALESCE(u.email, '') LIKE ?
+          OR COALESCE(w.product_name, '') LIKE ?
+          OR COALESCE(w.reason, '') LIKE ?
+          OR COALESCE(w.admin_note, '') LIKE ?
+          OR COALESCE(w.status, '') LIKE ?
+        )
+      `);
+
+      params.push(
+        pattern,
+        pattern,
+        pattern,
+        pattern,
+        pattern,
+        pattern,
+        pattern,
+        pattern,
+        pattern,
+      );
+    }
+
+    const whereSql = where.join(" AND ");
+
+    const [claims] = await pool.query(
+      `
+      SELECT
+        w.id,
+        w.order_id,
+        w.customer_id,
+        w.product_name,
+        w.reason,
+        w.reason AS issue_description,
+        w.admin_note,
+        w.proof_url,
+        w.warranty_expiry,
+        w.status,
+        w.replacement_receipt,
+        w.fulfilled_at,
+        w.fulfilled_by,
+        w.created_at,
+        w.updated_at,
+
+        o.order_number,
+        u.name AS customer_name,
+        u.email AS customer_email,
+        fa.name AS fulfilled_by_name
+
+      FROM warranties w
+      INNER JOIN users u
+        ON u.id = w.customer_id
+      LEFT JOIN orders o
+        ON o.id = w.order_id
+      LEFT JOIN users fa
+        ON fa.id = w.fulfilled_by
+
+      WHERE ${whereSql}
+
+      ORDER BY
+        w.created_at DESC,
+        w.id DESC
+
+      LIMIT ? OFFSET ?
+      `,
+      [...params, limit, offset],
+    );
+
+    const [[countRow]] = await pool.query(
+      `
+      SELECT COUNT(*) AS total
+      FROM warranties w
+      INNER JOIN users u
+        ON u.id = w.customer_id
+      LEFT JOIN orders o
+        ON o.id = w.order_id
+      WHERE ${whereSql}
+      `,
+      params,
+    );
+
+    const total = Number(countRow?.total || 0);
+
+    const response = {
+      claims,
+      total,
+      page,
+      limit,
+    };
+
+    if (includeSummary) {
+      const [[summaryRow]] = await pool.query(
+        `
+        SELECT
+          COUNT(*) AS total,
+
+          COALESCE(
+            SUM(
+              CASE
+                WHEN LOWER(COALESCE(w.status, '')) IN (
+                  'pending',
+                  'approved'
+                )
+                THEN 1
+                ELSE 0
+              END
+            ),
+            0
+          ) AS pending,
+
+          COALESCE(
+            SUM(
+              CASE
+                WHEN LOWER(COALESCE(w.status, '')) IN (
+                  'fulfilled',
+                  'rejected'
+                )
+                THEN 1
+                ELSE 0
+              END
+            ),
+            0
+          ) AS completed,
+
+          COALESCE(
+            SUM(
+              CASE
+                WHEN LOWER(COALESCE(w.status, '')) = 'rejected'
+                THEN 1
+                ELSE 0
+              END
+            ),
+            0
+          ) AS rejected,
+
+          COALESCE(
+            SUM(
+              CASE
+                WHEN LOWER(COALESCE(w.status, '')) = 'fulfilled'
+                THEN 1
+                ELSE 0
+              END
+            ),
+            0
+          ) AS fulfilled
+
+        FROM warranties w
+        INNER JOIN users u
+          ON u.id = w.customer_id
+        LEFT JOIN orders o
+          ON o.id = w.order_id
+
+        WHERE ${whereSql}
+        `,
+        params,
+      );
+
+      response.summary = {
+        pending: Number(summaryRow?.pending || 0),
+        completed: Number(summaryRow?.completed || 0),
+        rejected: Number(summaryRow?.rejected || 0),
+        fulfilled: Number(summaryRow?.fulfilled || 0),
+      };
+    } else {
+      response.summary = null;
+    }
+
+    return res.json(response);
+  } catch (err) {
+    if (Number(err?.status) === 400) {
+      return res.status(400).json({
+        message: err.message,
+      });
+    }
+
+    console.error("[admin.warranty GET operations report]", err);
+
+    return res.status(500).json({
+      message: "Failed to load warranty report.",
+    });
+  }
+};
+
 exports.getAll = async (req, res) => {
+  if (String(req.query.operations_report || "").trim() === "1") {
+    return getOperationsWarrantyReport(req, res);
+  }
+
   try {
     const { status, type, from, to, search, page = 1, limit = 20 } = req.query;
     const where = ["1=1"];

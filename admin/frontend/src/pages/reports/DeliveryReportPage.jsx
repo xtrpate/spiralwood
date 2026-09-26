@@ -20,7 +20,10 @@ import "./DeliveryReportPage.css";
 
 const PAGE_SIZE = 25;
 
-const normalize = (value) => String(value || "").trim().toLowerCase();
+const normalize = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
 
 const formatStatus = (value) => {
   const status = normalize(value);
@@ -51,7 +54,11 @@ const formatDateOnly = (value) => {
   const raw = String(value).trim();
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
   if (match) {
-    const local = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    const local = new Date(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]),
+    );
     if (!Number.isNaN(local.getTime())) {
       return local.toLocaleDateString("en-PH", {
         year: "numeric",
@@ -75,7 +82,9 @@ const formatRecipientType = (value) => {
 const getOutcomeDate = (record = {}) => {
   const status = normalize(record.report_status || record.status);
   if (status === "delivered" || status === "completed") {
-    return record.delivered_date || record.activity_date || record.updated_at || null;
+    return (
+      record.delivered_date || record.activity_date || record.updated_at || null
+    );
   }
   if (status === "failed") {
     return record.activity_date || record.updated_at || null;
@@ -160,7 +169,10 @@ export default function DeliveryReportPage() {
 
   const selectedRiderName = useMemo(() => {
     if (!riderId) return "All";
-    return riders.find((rider) => String(rider.id) === String(riderId))?.name || "Selected Rider";
+    return (
+      riders.find((rider) => String(rider.id) === String(riderId))?.name ||
+      "Selected Rider"
+    );
   }, [riderId, riders]);
 
   const buildParams = useCallback(
@@ -241,8 +253,7 @@ export default function DeliveryReportPage() {
         open: true,
         loading: false,
         data: null,
-        error:
-          err?.response?.data?.message || "Failed to load the attempt.",
+        error: err?.response?.data?.message || "Failed to load the attempt.",
       });
     }
   };
@@ -260,7 +271,12 @@ export default function DeliveryReportPage() {
       if (event.key !== "Escape") return;
       setDetail({ open: false, loading: false, data: null, error: "" });
       setReceiptModal({ open: false, loading: false, data: null, error: "" });
-      setSignatureViewer({ open: false, loading: false, data: null, error: "" });
+      setSignatureViewer({
+        open: false,
+        loading: false,
+        data: null,
+        error: "",
+      });
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -281,7 +297,8 @@ export default function DeliveryReportPage() {
         loading: false,
         data: null,
         error:
-          err?.response?.data?.message || "Failed to load the Delivery Receipt.",
+          err?.response?.data?.message ||
+          "Failed to load the Delivery Receipt.",
       });
     }
   };
@@ -302,7 +319,8 @@ export default function DeliveryReportPage() {
         loading: false,
         data: null,
         error:
-          err?.response?.data?.message || "Failed to load the recipient e-signature.",
+          err?.response?.data?.message ||
+          "Failed to load the recipient e-signature.",
       });
     }
   };
@@ -360,7 +378,8 @@ export default function DeliveryReportPage() {
       exportDeliveryRecordPdf({ delivery: detailData });
     } catch (exportError) {
       setError(
-        exportError?.message || "Failed to export the selected delivery record.",
+        exportError?.message ||
+          "Failed to export the selected delivery record.",
       );
     }
   };
@@ -484,7 +503,8 @@ export default function DeliveryReportPage() {
       </section>
 
       <div className="delivery-report-filter-note">
-        Date filters use the scheduled date for active attempts and the outcome date for finished attempts.
+        Date filters use the scheduled date for active attempts and the outcome
+        date for finished attempts.
       </div>
 
       {error ? (
@@ -497,15 +517,21 @@ export default function DeliveryReportPage() {
         <div className="delivery-report-table-head">
           <div>
             <h2>Attempts</h2>
-            <p>Each row represents one attempt. Redeliveries remain separate.</p>
+            <p>
+              Each row represents one attempt. Redeliveries remain separate.
+            </p>
           </div>
-          <span>{pagination.total} attempt{pagination.total === 1 ? "" : "s"}</span>
+          <span>
+            {pagination.total} attempt{pagination.total === 1 ? "" : "s"}
+          </span>
         </div>
 
         {loading ? (
           <div className="delivery-report-empty">Loading report...</div>
         ) : records.length === 0 ? (
-          <div className="delivery-report-empty">No attempts match these filters.</div>
+          <div className="delivery-report-empty">
+            No attempts match these filters.
+          </div>
         ) : (
           <>
             <div className="delivery-report-table-scroll">
@@ -531,14 +557,19 @@ export default function DeliveryReportPage() {
                     >
                       <td>{formatDateOnly(record.scheduled_date)}</td>
                       <td>{formatDateTime(getOutcomeDate(record))}</td>
-                      <td className="delivery-report-order">{record.order_number || "—"}</td>
+                      <td className="delivery-report-order">
+                        {record.order_number || "—"}
+                      </td>
                       <td>{record.customer_name || "Walk-in Customer"}</td>
                       <td>{record.driver_name || "Unassigned"}</td>
                       <td>
-                        {Number(record.attempt_number || 1)} of {Number(record.attempt_count || 1)}
+                        {Number(record.attempt_number || 1)} of{" "}
+                        {Number(record.attempt_count || 1)}
                       </td>
                       <td>
-                        <span className={`delivery-report-status delivery-report-status-${normalize(record.report_status)}`}>
+                        <span
+                          className={`delivery-report-status delivery-report-status-${normalize(record.report_status)}`}
+                        >
                           {formatStatus(record.report_status)}
                         </span>
                       </td>
@@ -574,7 +605,10 @@ export default function DeliveryReportPage() {
                   type="button"
                   onClick={() =>
                     setPage((current) =>
-                      Math.min(Math.max(1, pagination.total_pages), current + 1),
+                      Math.min(
+                        Math.max(1, pagination.total_pages),
+                        current + 1,
+                      ),
                     )
                   }
                   disabled={pagination.page >= pagination.total_pages}
@@ -599,7 +633,9 @@ export default function DeliveryReportPage() {
             <div className="delivery-report-detail-head">
               <div>
                 <span>Attempt Details</span>
-                <h2 id="delivery-report-detail-title">{detailData.order_number || "Attempt Details"}</h2>
+                <h2 id="delivery-report-detail-title">
+                  {detailData.order_number || "Attempt Details"}
+                </h2>
                 <p>{detailData.customer_name || "Customer"}</p>
               </div>
               <button type="button" aria-label="Close" onClick={closeDetail}>
@@ -608,7 +644,9 @@ export default function DeliveryReportPage() {
             </div>
 
             {detail.loading ? (
-              <div className="delivery-report-detail-loading">Loading attempt...</div>
+              <div className="delivery-report-detail-loading">
+                Loading attempt...
+              </div>
             ) : detail.error ? (
               <div className="delivery-report-alert" role="alert">
                 {detail.error}
@@ -616,21 +654,46 @@ export default function DeliveryReportPage() {
             ) : (
               <>
                 <div className="delivery-report-detail-status-row">
-                  <span className={`delivery-report-status delivery-report-status-${normalize(detailData.report_status)}`}>
+                  <span
+                    className={`delivery-report-status delivery-report-status-${normalize(detailData.report_status)}`}
+                  >
                     {formatStatus(detailData.report_status)}
                   </span>
                   <span>
-                    Attempt {Number(detailData.attempt_number || 1)} of {Number(detailData.attempt_count || 1)}
+                    Attempt {Number(detailData.attempt_number || 1)} of{" "}
+                    {Number(detailData.attempt_count || 1)}
                   </span>
                 </div>
 
                 <section className="delivery-report-detail-grid">
-                  <div><span>Order Type</span><strong>{formatStatus(detailData.order_type)}</strong></div>
-                  <div><span>Rider</span><strong>{detailData.driver_name || "Unassigned"}</strong></div>
-                  <div><span>Assigned On</span><strong>{formatDateTime(detailData.assigned_at)}</strong></div>
-                  <div><span>Scheduled</span><strong>{formatDateOnly(detailData.scheduled_date)}</strong></div>
-                  <div><span>Outcome Date</span><strong>{formatDateTime(getOutcomeDate(detailData))}</strong></div>
-                  <div><span>DR Number</span><strong>{detailData.delivery_receipt_number || "Not available"}</strong></div>
+                  <div>
+                    <span>Order Type</span>
+                    <strong>{formatStatus(detailData.order_type)}</strong>
+                  </div>
+                  <div>
+                    <span>Rider</span>
+                    <strong>{detailData.driver_name || "Unassigned"}</strong>
+                  </div>
+                  <div>
+                    <span>Assigned On</span>
+                    <strong>{formatDateTime(detailData.assigned_at)}</strong>
+                  </div>
+                  <div>
+                    <span>Scheduled</span>
+                    <strong>{formatDateOnly(detailData.scheduled_date)}</strong>
+                  </div>
+                  <div>
+                    <span>Outcome Date</span>
+                    <strong>
+                      {formatDateTime(getOutcomeDate(detailData))}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>DR Number</span>
+                    <strong>
+                      {detailData.delivery_receipt_number || "Not available"}
+                    </strong>
+                  </div>
                 </section>
 
                 <section className="delivery-report-detail-section">
@@ -653,8 +716,12 @@ export default function DeliveryReportPage() {
                         </thead>
                         <tbody>
                           {detailItems.map((item, index) => (
-                            <tr key={`${item.order_item_id || item.client_code || item.description || "item"}-${index}`}>
-                              {detailHasItemCode ? <td>{item.client_code || "—"}</td> : null}
+                            <tr
+                              key={`${item.order_item_id || item.client_code || item.description || "item"}-${index}`}
+                            >
+                              {detailHasItemCode ? (
+                                <td>{item.client_code || "—"}</td>
+                              ) : null}
                               <td>{Number(item.quantity || 0)}</td>
                               <td>{item.unit || "pc"}</td>
                               <td>{item.description || "Item"}</td>
@@ -664,7 +731,9 @@ export default function DeliveryReportPage() {
                       </table>
                     </div>
                   ) : (
-                    <p>No item details are available for this delivery record.</p>
+                    <p>
+                      No item details are available for this delivery record.
+                    </p>
                   )}
                 </section>
 
@@ -672,17 +741,41 @@ export default function DeliveryReportPage() {
                   <section className="delivery-report-detail-section">
                     <h3>Recorded Handoff</h3>
                     <div className="delivery-report-handoff-grid">
-                      <div><span>Received By</span><strong>{detailData.delivery_received_by_name || "—"}</strong></div>
-                      <div><span>Recipient</span><strong>{formatRecipientType(detailData.delivery_recipient_type)}</strong></div>
-                      <div><span>Received On</span><strong>{formatDateTime(detailData.delivery_acknowledged_at)}</strong></div>
-                      <div><span>Proof of Delivery</span><strong>{proofUrl ? "Recorded" : "Unavailable"}</strong></div>
+                      <div>
+                        <span>Received By</span>
+                        <strong>
+                          {detailData.delivery_received_by_name || "—"}
+                        </strong>
+                      </div>
+                      <div>
+                        <span>Recipient</span>
+                        <strong>
+                          {formatRecipientType(
+                            detailData.delivery_recipient_type,
+                          )}
+                        </strong>
+                      </div>
+                      <div>
+                        <span>Received On</span>
+                        <strong>
+                          {formatDateTime(detailData.delivery_acknowledged_at)}
+                        </strong>
+                      </div>
+                      <div>
+                        <span>Proof of Delivery</span>
+                        <strong>{proofUrl ? "Recorded" : "Unavailable"}</strong>
+                      </div>
                     </div>
                   </section>
                 ) : null}
 
                 {detailData.notes ? (
                   <section className="delivery-report-detail-section">
-                    <h3>{normalize(detailData.report_status) === "failed" ? "Failure Details" : "Notes"}</h3>
+                    <h3>
+                      {normalize(detailData.report_status) === "failed"
+                        ? "Failure Details"
+                        : "Notes"}
+                    </h3>
                     <p className="delivery-report-notes">{detailData.notes}</p>
                   </section>
                 ) : null}
@@ -728,7 +821,9 @@ export default function DeliveryReportPage() {
                         disabled={receiptModal.loading}
                       >
                         <Download size={14} />
-                        {receiptModal.loading ? "Loading Receipt..." : "View Receipt"}
+                        {receiptModal.loading
+                          ? "Loading Receipt..."
+                          : "View Receipt"}
                       </button>
                     ) : null}
 
@@ -737,7 +832,9 @@ export default function DeliveryReportPage() {
                     ) : null}
                   </div>
                   {receiptModal.error ? (
-                    <div className="delivery-report-inline-error">{receiptModal.error}</div>
+                    <div className="delivery-report-inline-error">
+                      {receiptModal.error}
+                    </div>
                   ) : null}
                 </section>
 
@@ -752,7 +849,9 @@ export default function DeliveryReportPage() {
                   <button
                     type="button"
                     className="delivery-report-button delivery-report-button-primary"
-                    onClick={() => navigate(`/admin/orders/${detailData.order_id}`)}
+                    onClick={() =>
+                      navigate(`/admin/orders/${detailData.order_id}`)
+                    }
                   >
                     Open Order
                   </button>
@@ -774,7 +873,12 @@ export default function DeliveryReportPage() {
         <DeliveryReceiptModal
           receipt={receiptModal.data}
           onClose={() =>
-            setReceiptModal({ open: false, loading: false, data: null, error: "" })
+            setReceiptModal({
+              open: false,
+              loading: false,
+              data: null,
+              error: "",
+            })
           }
         />
       ) : null}
@@ -783,7 +887,12 @@ export default function DeliveryReportPage() {
         <div
           className="delivery-report-signature-overlay"
           onClick={() =>
-            setSignatureViewer({ open: false, loading: false, data: null, error: "" })
+            setSignatureViewer({
+              open: false,
+              loading: false,
+              data: null,
+              error: "",
+            })
           }
         >
           <div
@@ -799,7 +908,12 @@ export default function DeliveryReportPage() {
                 type="button"
                 aria-label="Close signature"
                 onClick={() =>
-                  setSignatureViewer({ open: false, loading: false, data: null, error: "" })
+                  setSignatureViewer({
+                    open: false,
+                    loading: false,
+                    data: null,
+                    error: "",
+                  })
                 }
               >
                 <X size={18} />
@@ -809,14 +923,25 @@ export default function DeliveryReportPage() {
               {signatureViewer.loading ? (
                 <p>Loading e-signature...</p>
               ) : signatureViewer.error ? (
-                <div className="delivery-report-alert">{signatureViewer.error}</div>
+                <div className="delivery-report-alert">
+                  {signatureViewer.error}
+                </div>
               ) : signatureViewer.data?.signature_data ? (
                 <>
-                  <img src={signatureViewer.data.signature_data} alt="Recipient e-signature" />
+                  <img
+                    src={signatureViewer.data.signature_data}
+                    alt="Recipient e-signature"
+                  />
                   <div className="delivery-report-signature-meta">
-                    <strong>{signatureViewer.data.received_by_name || "Recipient"}</strong>
-                    <span>{formatRecipientType(signatureViewer.data.recipient_type)}</span>
-                    <span>{formatDateTime(signatureViewer.data.acknowledged_at)}</span>
+                    <strong>
+                      {signatureViewer.data.received_by_name || "Recipient"}
+                    </strong>
+                    <span>
+                      {formatRecipientType(signatureViewer.data.recipient_type)}
+                    </span>
+                    <span>
+                      {formatDateTime(signatureViewer.data.acknowledged_at)}
+                    </span>
                   </div>
                 </>
               ) : (
