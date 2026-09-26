@@ -13,6 +13,29 @@ const {
 const DECIMAL_QUANTITY_UNITS = new Set(["meter", "kg", "liter", "gallon"]);
 const EPSILON = 0.0000001;
 
+const normalizeComparableText = (value) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase();
+
+const sameNullableNumber = (left, right) => {
+  const normalize = (value) => {
+    if (value === null || value === undefined || value === "") return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : Number.NaN;
+  };
+
+  const leftNumber = normalize(left);
+  const rightNumber = normalize(right);
+  if (leftNumber === null || rightNumber === null) {
+    return leftNumber === rightNumber;
+  }
+  if (!Number.isFinite(leftNumber) || !Number.isFinite(rightNumber)) {
+    return false;
+  }
+  return Math.abs(leftNumber - rightNumber) <= EPSILON;
+};
+
 const normalizeQuantity = (value) => {
   const number = Number(value);
   if (!Number.isFinite(number)) return Number.NaN;
@@ -842,7 +865,7 @@ exports.finalizePhysicalInventory = async (req, res) => {
 
     const [materials] = await connection.query(
       `SELECT
-         id, name, unit, quantity, reorder_point, safety_stock, is_active
+         id, name, unit, material_form, length_mm, width_mm, thickness_mm, quantity, reorder_point, safety_stock, is_active
        FROM raw_materials
        WHERE id IN (${placeholders})
        ORDER BY id
@@ -870,6 +893,38 @@ exports.finalizePhysicalInventory = async (req, res) => {
         },
       });
     }
+
+    const definitionChanged = countedItems.filter((item) => {
+      const material = materialById.get(Number(item.material_id));
+      if (!material) return true;
+
+      return (
+        normalizeComparableText(material.unit) !==
+          normalizeComparableText(item.unit_snapshot) ||
+        normalizeComparableText(material.material_form || "other") !==
+          normalizeComparableText(item.material_form_snapshot || "other") ||
+        !sameNullableNumber(material.length_mm, item.length_mm_snapshot) ||
+        !sameNullableNumber(material.width_mm, item.width_mm_snapshot) ||
+        !sameNullableNumber(material.thickness_mm, item.thickness_mm_snapshot)
+      );
+    });
+
+    if (definitionChanged.length > 0) {
+      await connection.rollback();
+      return res.status(409).json({
+        message:
+          "A selected raw material definition changed after this physical count started. No quantities were overwritten. Cancel this count and start a fresh count for those materials.",
+        details: {
+          definition_changed_count: definitionChanged.length,
+          definition_changed_items: definitionChanged.slice(0, 50).map((item) => ({
+            item_id: item.id,
+            material_id: item.material_id,
+            material_name: item.material_name_snapshot,
+          })),
+        },
+      });
+    }
+
     const stockChanged = [];
     for (const item of countedItems) {
       const material = materialById.get(Number(item.material_id));

@@ -418,7 +418,7 @@ router.post(
 router.get(
   "/inventory/physical-inventory/report",
   adminStaff,
-  requirePermission("stock_movements.view"),
+  requirePermission("stock_movements.export"),
   physicalInventory.getPhysicalInventoryReport,
 );
 router.get(

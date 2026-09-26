@@ -99,7 +99,7 @@ export default function POSLayout() {
       to: "/staff/admin/physical-inventory",
       icon: Package,
       label: "Physical Inventory",
-      permission: "physical_inventory.view",
+      permission: "stock_movements.view",
     },
     {
       to: "/staff/admin/orders",
@@ -262,18 +262,21 @@ export default function POSLayout() {
         .filter(
           (item) => !baseItems.some((baseItem) => baseItem.to === item.to),
         );
-    } else if (hasPermission("stock_movements.manage")) {
-      const standardStockTransferItem = permissionNavItems.find(
-        (item) => item.to === "/staff/admin/stock-transfer",
-      );
-
-      if (
-        standardStockTransferItem &&
-        !baseItems.some(
-          (baseItem) => baseItem.to === standardStockTransferItem.to,
+    } else {
+      const standardPermissionItems = permissionNavItems
+        .filter((item) =>
+          [
+            "/staff/admin/stock-transfer",
+            "/staff/admin/physical-inventory",
+          ].includes(item.to),
         )
-      ) {
-        return [...baseItems, standardStockTransferItem];
+        .filter((item) => hasPermission(item.permission))
+        .filter(
+          (item) => !baseItems.some((baseItem) => baseItem.to === item.to),
+        );
+
+      if (standardPermissionItems.length > 0) {
+        return [...baseItems, ...standardPermissionItems];
       }
     }
 
