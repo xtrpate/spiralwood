@@ -89,23 +89,27 @@ const buildSalesReportFilters = (query = {}) => {
     const from = String(query.from || "").trim();
     const to = String(query.to || "").trim();
 
-    // Preserve the old UI behavior while the user is still filling the range:
-    // custom filtering begins only after both endpoints are present.
-    if (from && to) {
-      if (from > to) {
-        const error = new Error("Start date cannot be after end date.");
-        error.status = 400;
-        throw error;
-      }
+    if (!from || !to) {
+      const error = new Error(
+        "Both start and end dates are required for a custom date range.",
+      );
+      error.status = 400;
+      throw error;
+    }
 
-      try {
-        startUtc = getPhilippineDateBoundsUtc(from).startUtc;
-        endUtc = getPhilippineDateBoundsUtc(to).nextStartUtc;
-      } catch {
-        const error = new Error("Custom dates must use valid YYYY-MM-DD values.");
-        error.status = 400;
-        throw error;
-      }
+    if (from > to) {
+      const error = new Error("Start date cannot be after end date.");
+      error.status = 400;
+      throw error;
+    }
+
+    try {
+      startUtc = getPhilippineDateBoundsUtc(from).startUtc;
+      endUtc = getPhilippineDateBoundsUtc(to).nextStartUtc;
+    } catch {
+      const error = new Error("Custom dates must use valid YYYY-MM-DD values.");
+      error.status = 400;
+      throw error;
     }
   }
 
@@ -126,9 +130,10 @@ const SALES_REPORT_COGS_SQL = `
         ELSE 0
       END
     ELSE COALESCE((
-      SELECT SUM(oi.quantity * p.production_cost)
+      SELECT SUM(
+        oi.quantity * COALESCE(oi.production_cost, 0)
+      )
       FROM order_items oi
-      LEFT JOIN products p ON p.id = oi.product_id
       WHERE oi.order_id = o.id
     ), 0)
   END
@@ -188,8 +193,7 @@ exports.getSalesProfitabilityReport = async (req, res) => {
       const revenue = Number(row.revenue || 0);
       const cogs = Number(row.cogs || 0);
       const grossProfit = revenue - cogs;
-      const marginPercentage =
-        revenue > 0 ? (grossProfit / revenue) * 100 : 0;
+      const marginPercentage = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
 
       return {
         ...row,

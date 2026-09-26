@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FileDown, Search, Eye, X } from "lucide-react";
 import toast from "react-hot-toast";
@@ -134,7 +134,14 @@ export default function SalesProfitabilityReportPage() {
     error: "",
   });
 
+  const reportRequestIdRef = useRef(0);
+  const detailRequestIdRef = useRef(0);
+
   const closeDetail = () => {
+    // Invalidate the current detail request so its response
+    // cannot reopen or modify the modal after it is closed.
+    detailRequestIdRef.current += 1;
+
     setDetail({
       open: false,
       data: null,
@@ -158,6 +165,10 @@ export default function SalesProfitabilityReportPage() {
       return;
     }
 
+    // Generate a unique request ID for this detail request.
+    // Any older request becomes stale automatically.
+    const requestId = ++detailRequestIdRef.current;
+
     setDetail({
       open: true,
       data: row,
@@ -165,9 +176,18 @@ export default function SalesProfitabilityReportPage() {
       fullOrder: null,
       error: "",
     });
+
     try {
       // row.order_id correctly maps to the orders.id primary key.
       const { data } = await api.get(`/orders/${row.order_id}`);
+
+      // Ignore the response if:
+      // 1. another order-detail request has started, or
+      // 2. the modal was closed while this request was running.
+      if (requestId !== detailRequestIdRef.current) {
+        return;
+      }
+
       setDetail({
         open: true,
         data: row,
@@ -176,11 +196,17 @@ export default function SalesProfitabilityReportPage() {
         error: "",
       });
     } catch (err) {
+      // Do not display an error from an obsolete request.
+      if (requestId !== detailRequestIdRef.current) {
+        return;
+      }
+
       console.error(
         `[SalesProfitability] API Error fetching /orders/${row.order_id}:`,
         err,
       );
       toast.error("Failed to load full order details.");
+
       setDetail({
         open: true,
         data: row,
@@ -223,23 +249,46 @@ export default function SalesProfitabilityReportPage() {
   const [summary, setSummary] = useState(EMPTY_SUMMARY);
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [generatedAt, setGeneratedAt] = useState("");
+
+  const hasLoadedReportRef = useRef(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setDebouncedSearch(search.trim());
+      setPage(1);
     }, 300);
 
     return () => window.clearTimeout(timer);
   }, [search]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [debouncedSearch, orderType, dateFilter, customStart, customEnd]);
-
   const loadReport = useCallback(async () => {
-    setLoading(true);
+    // Every invocation invalidates the previous report request.
+    // This prevents older responses from overwriting newer filter/page results.
+    const requestId = ++reportRequestIdRef.current;
+
+    // Only the first successful report load uses the full-page loading state.
+    // Later requests use the silent refreshing state instead.
+    const isInitialLoad = !hasLoadedReportRef.current;
+
+    // Do not request the report until both dates are provided.
+    // This prevents an incomplete custom range from becoming an unbounded report.
+    if (dateFilter === "custom" && (!customStart || !customEnd)) {
+      if (requestId === reportRequestIdRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+      return;
+    }
+
+    if (isInitialLoad) {
+      setLoading(true);
+    }
+
+    setRefreshing(true);
+
     try {
       const { data } = await api.get("/reports/sales-profitability", {
         params: buildReportParams({
@@ -253,29 +302,39 @@ export default function SalesProfitabilityReportPage() {
         }),
       });
 
+      // Ignore a response if a newer report request has already started.
+      if (requestId !== reportRequestIdRef.current) {
+        return;
+      }
+
       setRows(Array.isArray(data?.records) ? data.records : []);
       setTotal(Number(data?.total || 0));
       setSummary({ ...EMPTY_SUMMARY, ...(data?.summary || {}) });
       setGeneratedAt(new Date().toISOString());
+
+      // From this point onward, report updates should be silent.
+      hasLoadedReportRef.current = true;
     } catch (err) {
+      // Ignore errors belonging to older requests.
+      if (requestId !== reportRequestIdRef.current) {
+        return;
+      }
+
       toast.error(
         err?.response?.data?.message ||
           "Failed to load Sales & Profitability report.",
       );
-      setRows([]);
-      setTotal(0);
-      setSummary(EMPTY_SUMMARY);
     } finally {
-      setLoading(false);
+      // Only the latest request is allowed to control loading states.
+      if (requestId === reportRequestIdRef.current) {
+        setRefreshing(false);
+
+        if (isInitialLoad) {
+          setLoading(false);
+        }
+      }
     }
-  }, [
-    page,
-    debouncedSearch,
-    orderType,
-    dateFilter,
-    customStart,
-    customEnd,
-  ]);
+  }, [page, debouncedSearch, orderType, dateFilter, customStart, customEnd]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -294,7 +353,7 @@ export default function SalesProfitabilityReportPage() {
         params: buildReportParams({
           page: 1,
           limit: EXPORT_PAGE_SIZE,
-          search,
+          search: debouncedSearch,
           orderType,
           dateFilter,
           customStart,
@@ -322,7 +381,7 @@ export default function SalesProfitabilityReportPage() {
           params: buildReportParams({
             page: exportPage,
             limit: EXPORT_PAGE_SIZE,
-            search,
+            search: debouncedSearch,
             orderType,
             dateFilter,
             customStart,
@@ -333,8 +392,24 @@ export default function SalesProfitabilityReportPage() {
 
         const batch = Array.isArray(data?.records) ? data.records : [];
         exportRows.push(...batch);
+      }
 
-        if (batch.length < EXPORT_PAGE_SIZE) break;
+      // Verify that the export contains the complete dataset that was reported
+      // by the first request. A changing dataset must not silently produce a
+      // partial or duplicated financial export.
+      const uniqueExportOrderIds = new Set(
+        exportRows
+          .map((row) => row?.order_id)
+          .filter((orderId) => orderId !== undefined && orderId !== null),
+      );
+
+      if (
+        exportRows.length !== exportTotal ||
+        uniqueExportOrderIds.size !== exportTotal
+      ) {
+        throw new Error(
+          "The report data changed while the export was being generated. Please export again.",
+        );
       }
 
       const workbook = XLSX.utils.book_new();
@@ -426,7 +501,7 @@ export default function SalesProfitabilityReportPage() {
 
       toast.success("Sales Profitability report exported.");
     } catch (err) {
-      toast.error("Failed to export report.");
+      toast.error(err?.message || "Failed to export report.");
     } finally {
       setExporting(false);
     }
@@ -448,15 +523,15 @@ export default function SalesProfitabilityReportPage() {
             type="button"
             className="sales-button sales-button-secondary"
             onClick={loadReport}
-            disabled={loading}
+            disabled={loading || refreshing}
           >
-            {loading ? "Refreshing..." : "Refresh"}
+            {refreshing ? "Refreshing..." : "Refresh"}
           </button>
           <button
             type="button"
             className="sales-button sales-button-primary"
             onClick={exportExcel}
-            disabled={loading || total === 0 || exporting}
+            disabled={loading || refreshing || total === 0 || exporting}
           >
             <FileDown size={14} style={{ marginRight: 6 }} />
             {exporting ? "Exporting..." : "Export Excel"}
@@ -528,6 +603,7 @@ export default function SalesProfitabilityReportPage() {
               setDateFilter(e.target.value);
               setCustomStart("");
               setCustomEnd("");
+              setPage(1);
             }}
           >
             <option value="all">All Time</option>
@@ -540,21 +616,33 @@ export default function SalesProfitabilityReportPage() {
 
         {dateFilter === "custom" && (
           <>
-            <label className="sales-filter-field" style={{ minWidth: 130 }}>
+            <label
+              className="sales-filter-field sales-custom-date-field"
+              style={{ minWidth: 130 }}
+            >
               <span>Start Date</span>
               <input
                 type="date"
                 value={customStart}
-                onChange={(e) => setCustomStart(e.target.value)}
+                onChange={(e) => {
+                  setCustomStart(e.target.value);
+                  setPage(1);
+                }}
               />
             </label>
-            <label className="sales-filter-field" style={{ minWidth: 130 }}>
+            <label
+              className="sales-filter-field sales-custom-date-field"
+              style={{ minWidth: 130 }}
+            >
               <span>End Date</span>
               <input
                 type="date"
                 value={customEnd}
                 min={customStart}
-                onChange={(e) => setCustomEnd(e.target.value)}
+                onChange={(e) => {
+                  setCustomEnd(e.target.value);
+                  setPage(1);
+                }}
               />
             </label>
           </>
@@ -598,9 +686,7 @@ export default function SalesProfitabilityReportPage() {
                 <h2>Sales Ledger</h2>
                 <p>Detailed financial breakdown of every fulfilled order.</p>
               </div>
-              <div className="sales-section-count">
-                {total} record(s)
-              </div>
+              <div className="sales-section-count">{total} record(s)</div>
             </div>
 
             <div className="sales-table-scroll">

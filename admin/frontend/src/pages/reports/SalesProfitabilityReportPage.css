@@ -53,7 +53,7 @@
 
 .sales-button:disabled {
   opacity: 0.6;
-  cursor: "not-allowed";
+  cursor: not-allowed;
 }
 
 .sales-button-primary {
@@ -103,6 +103,8 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  flex: 0 0 auto;
+  min-width: 0;
 }
 
 .sales-filter-field span {
@@ -126,8 +128,10 @@
 }
 
 .sales-search-field {
-  flex: 1;
-  min-width: 260px;
+  flex: 0 1 520px;
+  width: 520px;
+  max-width: 520px;
+  min-width: 280px;
 }
 
 .sales-summary-grid {
@@ -597,4 +601,42 @@
   .sales-detail-footer .sales-button {
     width: 100% !important;
   }
+}
+
+@media (max-width: 1100px) {
+  .sales-search-field {
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .sales-filter-field {
+    flex: 1 1 160px;
+  }
+}
+
+@media (max-width: 760px) {
+  .sales-filter-field {
+    width: 100%;
+    flex: 1 1 100%;
+  }
+
+  .sales-search-field {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+.sales-custom-date-field {
+  flex: 0 0 150px;
+}
+
+.sales-custom-date-field + .sales-custom-date-field {
+  margin-left: 20px;
+}
+
+.sales-custom-date-field input[type="date"] {
+  width: 100%;
+  min-width: 0;
 }
