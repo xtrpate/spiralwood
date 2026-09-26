@@ -1063,6 +1063,19 @@ export default function CustomRequestDetailPage() {
   // backend already sends `{}`-shaped defaults when there's nothing to
   // report.
   const paymentSummary = requestData?.payment_summary || {};
+  const paymentMethodAvailability =
+    paymentSummary.payment_method_availability || {};
+
+  // Defaults preserve compatibility with an older backend response, while
+  // every write endpoint remains server-authoritative.
+  const initialCashAvailable =
+    paymentMethodAvailability.initial_cash !== false;
+  const initialPaymongoAvailable =
+    paymentMethodAvailability.initial_paymongo !== false;
+  const remainingCashAvailable =
+    paymentMethodAvailability.remaining_cash !== false;
+  const remainingPaymongoAvailable =
+    paymentMethodAvailability.remaining_paymongo !== false;
 
   // Lifecycle-safe fallback chain — order.total is NEVER used here. When
   // the backend deliberately blocks/hides a quotation it returns
@@ -1093,7 +1106,8 @@ export default function CustomRequestDetailPage() {
     requestData?.payment_status === "unpaid" &&
     Number(verifiedPaymentTotal || 0) <= 0 &&
     !hasPendingPaymentTransaction &&
-    !paymentMethodChangeLocked;
+    !paymentMethodChangeLocked &&
+    (initialCashAvailable || initialPaymongoAvailable);
 
   const initialOnlineTotalCents =
     quotedTotal > 0
@@ -1337,15 +1351,26 @@ export default function CustomRequestDetailPage() {
   );
   const remainingPaymentMethod =
     storedRemainingPaymentMethod ||
-    (canSelectRemainingPaymentMethod ? "cash" : "");
+    (canSelectRemainingPaymentMethod && remainingCashAvailable ? "cash" : "");
   const remainingPaymentMethodDefaulted =
     !storedRemainingPaymentMethod &&
     canSelectRemainingPaymentMethod &&
+    remainingCashAvailable &&
     remainingPaymentMethod === "cash";
   const REMAINING_METHOD_LABELS = {
     cash: isPickup ? "Cash at Store" : "Cash on Delivery",
     paymongo: "Online Payment",
   };
+  const remainingPaymentMethodLabel =
+    REMAINING_METHOD_LABELS[remainingPaymentMethod] || "Choose payment method";
+  const remainingPaymentDescription =
+    remainingPaymentMethod === "paymongo"
+      ? "Pay the remaining balance securely online."
+      : remainingPaymentMethod === "cash"
+        ? isPickup
+          ? "Pay the remaining balance at the Spiral Wood store before collecting your furniture."
+          : "Pay the remaining balance directly to the rider upon delivery."
+        : "Choose an available payment method for the remaining balance.";
 
   // PHASE 5B — Blueprint Remaining Balance Online Payment. The backend
   // (createRemainingBalancePayMongoCheckout) re-derives and locks every
@@ -1355,6 +1380,7 @@ export default function CustomRequestDetailPage() {
   // safely replaces, if expired) the existing session server-side.
   const canPayRemainingBalanceOnline =
     remainingPaymentMethod === "paymongo" &&
+    (remainingPaymongoAvailable || paymentMethodChangeLocked) &&
     String(requestData?.payment_status || "")
       .trim()
       .toLowerCase() !== "paid" &&
@@ -3282,49 +3308,57 @@ export default function CustomRequestDetailPage() {
                             <h4>Step 1: Select payment method</h4>
 
                             <div className="crd-grid-split">
-                              <div className="crd-panel crd-panel-soft">
-                                <h4>Cash at Store</h4>
-                                <p className="crd-panel-copy muted">
-                                  Pay the required down payment at the Spiral
-                                  Wood store.
-                                </p>
-                                <div className="summary-row">
-                                  <span>Minimum Down Payment (30%)</span>
-                                  <strong>{formatMoney(downPaymentDue)}</strong>
+                              {initialCashAvailable ? (
+                                <div className="crd-panel crd-panel-soft">
+                                  <h4>Cash at Store</h4>
+                                  <p className="crd-panel-copy muted">
+                                    Pay the required down payment at the Spiral
+                                    Wood store.
+                                  </p>
+                                  <div className="summary-row">
+                                    <span>Minimum Down Payment (30%)</span>
+                                    <strong>
+                                      {formatMoney(downPaymentDue)}
+                                    </strong>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="btn btn-primary"
+                                    disabled={selectingMethod}
+                                    onClick={() =>
+                                      handleSelectPaymentMethod("cash")
+                                    }
+                                  >
+                                    Select Cash at Store
+                                  </button>
                                 </div>
-                                <button
-                                  type="button"
-                                  className="btn btn-primary"
-                                  disabled={selectingMethod}
-                                  onClick={() =>
-                                    handleSelectPaymentMethod("cash")
-                                  }
-                                >
-                                  Select Cash at Store
-                                </button>
-                              </div>
+                              ) : null}
 
-                              <div className="crd-panel crd-panel-soft">
-                                <h4>Online Payment</h4>
-                                <p className="crd-panel-copy muted">
-                                  Pay securely with GCash, Maya, or credit/debit
-                                  card.
-                                </p>
-                                <div className="summary-row">
-                                  <span>Minimum Down Payment (30%)</span>
-                                  <strong>{formatMoney(downPaymentDue)}</strong>
+                              {initialPaymongoAvailable ? (
+                                <div className="crd-panel crd-panel-soft">
+                                  <h4>Online Payment</h4>
+                                  <p className="crd-panel-copy muted">
+                                    Pay securely with GCash, Maya, or
+                                    credit/debit card.
+                                  </p>
+                                  <div className="summary-row">
+                                    <span>Minimum Down Payment (30%)</span>
+                                    <strong>
+                                      {formatMoney(downPaymentDue)}
+                                    </strong>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="btn btn-primary"
+                                    disabled={selectingMethod}
+                                    onClick={() =>
+                                      handleSelectPaymentMethod("paymongo")
+                                    }
+                                  >
+                                    Select Online Payment
+                                  </button>
                                 </div>
-                                <button
-                                  type="button"
-                                  className="btn btn-primary"
-                                  disabled={selectingMethod}
-                                  onClick={() =>
-                                    handleSelectPaymentMethod("paymongo")
-                                  }
-                                >
-                                  Select Online Payment
-                                </button>
-                              </div>
+                              ) : null}
                             </div>
                           </div>
                         ) : (
@@ -3374,7 +3408,7 @@ export default function CustomRequestDetailPage() {
                             </div>
                           </div>
 
-                          {canChooseMethod ? (
+                          {canChooseMethod && initialPaymongoAvailable ? (
                             <button
                               type="button"
                               className="btn btn-secondary crd-small-btn"
@@ -3597,6 +3631,8 @@ export default function CustomRequestDetailPage() {
                             className="btn btn-primary crd-paymongo-btn"
                             disabled={
                               normalizedOrderPaymentMethod !== "paymongo" ||
+                              (!initialPaymongoAvailable &&
+                                !paymentMethodChangeLocked) ||
                               requestData.payment_status !== "unpaid" ||
                               Number(verifiedPaymentTotal || 0) > 0 ||
                               Number(paymentSummary.total_pending || 0) > 0 ||
@@ -3628,7 +3664,7 @@ export default function CustomRequestDetailPage() {
                             payment.
                           </div>
 
-                          {canChooseMethod ? (
+                          {canChooseMethod && initialCashAvailable ? (
                             <button
                               type="button"
                               className="btn btn-secondary crd-small-btn"
@@ -3660,32 +3696,36 @@ export default function CustomRequestDetailPage() {
                               className="crd-grid-split"
                               style={{ marginTop: 16 }}
                             >
-                              <div className="crd-panel crd-panel-soft">
-                                <h4>Cash at Store</h4>
-                                <button
-                                  type="button"
-                                  className="btn btn-primary"
-                                  disabled={selectingMethod}
-                                  onClick={() =>
-                                    handleSelectPaymentMethod("cash")
-                                  }
-                                >
-                                  Select Cash at Store
-                                </button>
-                              </div>
-                              <div className="crd-panel crd-panel-soft">
-                                <h4>Online Payment</h4>
-                                <button
-                                  type="button"
-                                  className="btn btn-primary"
-                                  disabled={selectingMethod}
-                                  onClick={() =>
-                                    handleSelectPaymentMethod("paymongo")
-                                  }
-                                >
-                                  Select Online Payment
-                                </button>
-                              </div>
+                              {initialCashAvailable ? (
+                                <div className="crd-panel crd-panel-soft">
+                                  <h4>Cash at Store</h4>
+                                  <button
+                                    type="button"
+                                    className="btn btn-primary"
+                                    disabled={selectingMethod}
+                                    onClick={() =>
+                                      handleSelectPaymentMethod("cash")
+                                    }
+                                  >
+                                    Select Cash at Store
+                                  </button>
+                                </div>
+                              ) : null}
+                              {initialPaymongoAvailable ? (
+                                <div className="crd-panel crd-panel-soft">
+                                  <h4>Online Payment</h4>
+                                  <button
+                                    type="button"
+                                    className="btn btn-primary"
+                                    disabled={selectingMethod}
+                                    onClick={() =>
+                                      handleSelectPaymentMethod("paymongo")
+                                    }
+                                  >
+                                    Select Online Payment
+                                  </button>
+                                </div>
+                              ) : null}
                             </div>
                           ) : null}
                         </div>
@@ -3716,8 +3756,7 @@ export default function CustomRequestDetailPage() {
                       <div>
                         <div className="wisdom-remaining-method-line-v184">
                           <h4>
-                            {REMAINING_METHOD_LABELS[remainingPaymentMethod] ||
-                              (isPickup ? "Cash at Store" : "Cash on Delivery")}
+                            {remainingPaymentMethodLabel}
                           </h4>
 
                           <span className="wisdom-remaining-method-badge-v184">
@@ -3729,13 +3768,7 @@ export default function CustomRequestDetailPage() {
                           </span>
                         </div>
 
-                        <p>
-                          {remainingPaymentMethod === "paymongo"
-                            ? "Pay the remaining balance securely online."
-                            : isPickup
-                              ? "Pay the remaining balance at the Spiral Wood store before collecting your furniture."
-                              : "Pay the remaining balance directly to the rider upon delivery."}
-                        </p>
+                        <p>{remainingPaymentDescription}</p>
                       </div>
 
                       <div className="wisdom-remaining-amount-v184">
@@ -3745,13 +3778,18 @@ export default function CustomRequestDetailPage() {
                     </div>
 
                     {!remainingPaymentMethodLocked &&
-                    remainingPaymentMethod !== "paymongo" ? (
+                    remainingPaymentMethod !== "paymongo" &&
+                    remainingPaymongoAvailable ? (
                       <div className="wisdom-remaining-online-option-v184">
                         <div>
-                          <h4>Prefer to pay online?</h4>
+                          <h4>
+                            {remainingCashAvailable
+                              ? "Prefer to pay online?"
+                              : "Online payment available"}
+                          </h4>
                           <p>
                             Pay the exact remaining balance through secure
-                            online payment instead.
+                            online payment.
                           </p>
                         </div>
 
@@ -3765,7 +3803,9 @@ export default function CustomRequestDetailPage() {
                         >
                           {selectingRemainingMethod || payingRemainingBalance
                             ? "Opening online payment..."
-                            : "Pay online instead"}
+                            : remainingCashAvailable
+                              ? "Pay online instead"
+                              : "Pay online"}
                         </button>
                       </div>
                     ) : null}
@@ -3795,7 +3835,8 @@ export default function CustomRequestDetailPage() {
                           ) : null}
 
                           {canSelectRemainingPaymentMethod &&
-                          !remainingPaymentMethodLocked ? (
+                          !remainingPaymentMethodLocked &&
+                          remainingCashAvailable ? (
                             <button
                               type="button"
                               className="btn btn-secondary"

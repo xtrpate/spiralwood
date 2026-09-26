@@ -312,12 +312,19 @@ router.post(
   customerCancellationController.requestCancellation,
 );
 
+// RETIRED: the current blueprint flow uses cashier-recorded Cash at Store or
+// PayMongo checkout. Keep a controlled response for stale/cached clients and
+// block legacy proof-upload payment methods from bypassing Site Settings.
 router.post(
   "/:id/down-payment",
   authenticate,
   requireCustomer,
-  proofUpload,
-  customOrderController.submitDownPayment,
+  (req, res) => {
+    return res.status(410).json({
+      message:
+        "This down-payment proof flow has been retired. Choose Cash at Store or Online Payment from the order page.",
+    });
+  },
 );
 
 // PHASE 5 — RETIRED (Final Decision 1): this used to accept a proof
