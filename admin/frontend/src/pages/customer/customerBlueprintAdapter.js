@@ -100,6 +100,22 @@ const normalizeComponent = (raw = {}, index = 0) => {
     color_mode: colorMode,
     hardware: raw.hardware || "",
     partCode: raw.partCode || "",
+
+    // WISDOM CUSTOMER MACHINING FIDELITY R1
+    // Preserve the exact saved machining plan until componentUtils performs
+    // the canonical normalization used by the customer/admin/staff 3D renderer.
+    machiningVersion: toNumber(
+      raw.machiningVersion ?? raw.machining_version,
+      0,
+    ),
+    machiningPlane: String(
+      raw.machiningPlane ?? raw.machining_plane ?? "",
+    ).trim(),
+    machiningCutouts:
+      raw.machiningCutouts ?? raw.machining_cutouts ?? [],
+    woodworkingOperations:
+      raw.woodworkingOperations ?? raw.woodworking_operations ?? [],
+
     visible: raw.visible !== false && Number(raw.is_deleted || 0) !== 1,
     is_main: Boolean(raw.is_main),
   };

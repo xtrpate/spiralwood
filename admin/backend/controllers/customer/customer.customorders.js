@@ -253,6 +253,103 @@ const cleanupChatCloudinaryAsset = async (asset = {}) => {
     );
   }
 };
+
+// WISDOM SUBMITTED DESIGN MACHINING FIDELITY R1
+// Customer order snapshots are immutable production evidence. Preserve only
+// the bounded, renderer-supported machining fields instead of trusting an
+// arbitrary nested client object.
+const SNAPSHOT_MACHINING_PLANES = new Set(["auto", "xy", "xz", "yz"]);
+const SNAPSHOT_MACHINING_CUTOUT_TYPES = new Set(["round", "rect"]);
+const SNAPSHOT_WOODWORKING_OPERATION_TYPES = new Set([
+  "dado",
+  "rabbet",
+  "groove",
+  "recess",
+  "bore",
+]);
+const SNAPSHOT_WOODWORKING_SURFACES = new Set(["face_a", "face_b"]);
+const SNAPSHOT_WOODWORKING_DIRECTIONS = new Set(["u", "v"]);
+const SNAPSHOT_WOODWORKING_EDGES = new Set([
+  "top",
+  "right",
+  "bottom",
+  "left",
+]);
+
+const clampSnapshotNumber = (value, min, max, fallback = min) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(min, Math.min(max, numeric));
+};
+
+const sanitizeSnapshotId = (value, fallback) => {
+  const text = String(value ?? "").trim().slice(0, 120);
+  return text || fallback;
+};
+
+const sanitizeSnapshotMachiningCutouts = (value) => {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .slice(0, 12)
+    .map((item, index) => {
+      const type = String(item?.type || "").trim().toLowerCase();
+      if (!SNAPSHOT_MACHINING_CUTOUT_TYPES.has(type)) return null;
+
+      return {
+        id: sanitizeSnapshotId(item?.id, `cutout_${index + 1}`),
+        type,
+        u: clampSnapshotNumber(item?.u, -100000, 100000, 0),
+        v: clampSnapshotNumber(item?.v, -100000, 100000, 0),
+        diameter: clampSnapshotNumber(item?.diameter, 1, 100000, 20),
+        width: clampSnapshotNumber(item?.width, 1, 100000, 30),
+        height: clampSnapshotNumber(item?.height, 1, 100000, 20),
+      };
+    })
+    .filter(Boolean);
+};
+
+const sanitizeSnapshotWoodworkingOperations = (value) => {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .slice(0, 16)
+    .map((item, index) => {
+      const type = String(item?.type || "").trim().toLowerCase();
+      if (!SNAPSHOT_WOODWORKING_OPERATION_TYPES.has(type)) return null;
+
+      const surface = String(item?.surface || "").trim().toLowerCase();
+      const direction = String(item?.direction || "").trim().toLowerCase();
+      const edge = String(item?.edge || "").trim().toLowerCase();
+
+      return {
+        id: sanitizeSnapshotId(item?.id, `woodop_${index + 1}`),
+        type,
+        surface: SNAPSHOT_WOODWORKING_SURFACES.has(surface)
+          ? surface
+          : "face_a",
+        direction: SNAPSHOT_WOODWORKING_DIRECTIONS.has(direction)
+          ? direction
+          : "u",
+        edge: SNAPSHOT_WOODWORKING_EDGES.has(edge) ? edge : "top",
+        u: clampSnapshotNumber(item?.u, -100000, 100000, 0),
+        v: clampSnapshotNumber(item?.v, -100000, 100000, 0),
+        offset: clampSnapshotNumber(item?.offset, 0, 100000, 0),
+        length: clampSnapshotNumber(item?.length, 1, 100000, 160),
+        width: clampSnapshotNumber(item?.width, 1, 100000, 18),
+        depth: clampSnapshotNumber(item?.depth, 0.1, 100000, 6),
+        diameter: clampSnapshotNumber(item?.diameter, 0.1, 100000, 8),
+        note: String(item?.note || "").slice(0, 240),
+      };
+    })
+    .filter(Boolean);
+};
+
+const sanitizeSnapshotMachiningPlane = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  return SNAPSHOT_MACHINING_PLANES.has(normalized) ? normalized : null;
+};
+
 const sanitizeEditorSnapshotForStorage = (snapshot = null) => {
   if (!snapshot || typeof snapshot !== "object") return null;
 
@@ -296,6 +393,20 @@ const sanitizeEditorSnapshotForStorage = (snapshot = null) => {
         // Exact visual production metadata that CustomerTemplateWorkbench has
         // already normalized before the customer submits the design.
         grainDirection: toTrimmedStringOrNull(comp?.grainDirection),
+
+        // Exact cutouts and machining operations must survive checkout so the
+        // submitted-design preview remains identical to the customer preview.
+        machiningVersion:
+          Math.max(0, Math.trunc(Number(comp?.machiningVersion || 0))) || 0,
+        machiningPlane: sanitizeSnapshotMachiningPlane(
+          comp?.machiningPlane ?? comp?.machining_plane,
+        ),
+        machiningCutouts: sanitizeSnapshotMachiningCutouts(
+          comp?.machiningCutouts ?? comp?.machining_cutouts,
+        ),
+        woodworkingOperations: sanitizeSnapshotWoodworkingOperations(
+          comp?.woodworkingOperations ?? comp?.woodworking_operations,
+        ),
 
         // Visual-only moving-part metadata. Keeping these values means future
         // Staff production previews use the exact same door/drawer grouping
