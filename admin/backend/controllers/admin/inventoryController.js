@@ -2386,6 +2386,28 @@ exports.createStockMovement = async (req, res) => {
 // SUPPLIERS
 // ═══════════════════════════════════════════════════════════
 
+const normalizeSupplierField = (value) =>
+  typeof value === "string" ? value.trim() : value;
+
+const findDuplicateSupplierByName = async (name, excludeId = null) => {
+  const params = [name];
+  const excludeClause = excludeId === null ? "" : " AND id <> ?";
+
+  if (excludeId !== null) {
+    params.push(excludeId);
+  }
+
+  const [[duplicate]] = await pool.query(
+    `SELECT id, name
+     FROM suppliers
+     WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))${excludeClause}
+     LIMIT 1`,
+    params,
+  );
+
+  return duplicate || null;
+};
+
 exports.getSuppliers = async (req, res) => {
   try {
     const { search } = req.query;
@@ -2403,7 +2425,10 @@ exports.getSuppliers = async (req, res) => {
 
 exports.createSupplier = async (req, res) => {
   try {
-    const { name, address, contact_number, email } = req.body;
+    const name = normalizeSupplierField(req.body?.name);
+    const address = normalizeSupplierField(req.body?.address);
+    const contact_number = normalizeSupplierField(req.body?.contact_number);
+    const email = normalizeSupplierField(req.body?.email);
 
     if (!isNonEmptyString(name)) {
       return res.status(400).json({ message: "Supplier name is required." });
@@ -2432,6 +2457,13 @@ exports.createSupplier = async (req, res) => {
         .json({ message: "Email must be a valid email address." });
     }
 
+    const duplicate = await findDuplicateSupplierByName(name);
+    if (duplicate) {
+      return res
+        .status(409)
+        .json({ message: "A supplier with this name already exists." });
+    }
+
     const [r] = await pool.query(
       "INSERT INTO suppliers (name, address, contact_number, email) VALUES (?,?,?,?)",
       [name, address, contact_number, email],
@@ -2454,7 +2486,10 @@ exports.createSupplier = async (req, res) => {
 
 exports.updateSupplier = async (req, res) => {
   try {
-    const { name, address, contact_number, email } = req.body;
+    const name = normalizeSupplierField(req.body?.name);
+    const address = normalizeSupplierField(req.body?.address);
+    const contact_number = normalizeSupplierField(req.body?.contact_number);
+    const email = normalizeSupplierField(req.body?.email);
 
     if (!isNonEmptyString(name)) {
       return res.status(400).json({ message: "Supplier name is required." });
@@ -2484,6 +2519,13 @@ exports.updateSupplier = async (req, res) => {
     }
 
     const supplierId = parseInt(req.params.id);
+
+    const duplicate = await findDuplicateSupplierByName(name, supplierId);
+    if (duplicate) {
+      return res
+        .status(409)
+        .json({ message: "A supplier with this name already exists." });
+    }
 
     const [[before]] = await pool.query(
       "SELECT id, name, address, contact_number, email FROM suppliers WHERE id = ?",

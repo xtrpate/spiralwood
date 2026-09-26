@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import api from "../../services/api";
+import api, { buildAssetUrl } from "../../services/api";
 import { WOOD_FINISHES } from "../blueprints/data/furnitureTypes";
 import { extractCustomerBlueprintScene } from "../customer/customerBlueprintAdapter";
 import StaffProductionBlueprintViewer from "./StaffProductionBlueprintViewer";
@@ -193,6 +193,11 @@ export default function ProductionBlueprintView() {
     firstText(record?.order_item?.product_name, blueprint?.title) ||
     "Assigned Furniture";
   const isOrderDesign = record?.design_source === "order_customization";
+  const referencePhotos = Array.isArray(record?.reference_photos)
+    ? record.reference_photos.filter((photo) =>
+        String(photo?.file_url || "").trim(),
+      )
+    : [];
 
   return (
     <div className="production-blueprint-page">
@@ -311,6 +316,59 @@ export default function ProductionBlueprintView() {
               </div>
             </aside>
           </div>
+
+          {referencePhotos.length > 0 ? (
+            <section className="production-blueprint-reference">
+              <div className="production-blueprint-reference-head">
+                <div>
+                  <h2>Customer Reference Photos</h2>
+                  <p>
+                    Visual references submitted by the customer for style,
+                    color, or detail guidance.
+                  </p>
+                </div>
+                <span>
+                  {referencePhotos.length}{" "}
+                  {referencePhotos.length === 1 ? "photo" : "photos"}
+                </span>
+              </div>
+
+              <div className="production-blueprint-reference-grid">
+                {referencePhotos.map((photo, index) => {
+                  const src = buildAssetUrl(photo.file_url);
+                  if (!src) return null;
+
+                  return (
+                    <a
+                      key={photo.id || `production-reference-${index}`}
+                      className="production-blueprint-reference-card"
+                      href={src}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Open full reference photo"
+                    >
+                      <img
+                        src={src}
+                        alt={
+                          photo.file_name ||
+                          `Customer reference ${index + 1}`
+                        }
+                      />
+                      <span>
+                        {photo.file_name || `Reference ${index + 1}`}
+                      </span>
+                    </a>
+                  );
+                })}
+              </div>
+
+              <p className="production-blueprint-reference-note">
+                Use these photos as visual guidance only. Follow the approved
+                design, dimensions, materials, finish, and production
+                specifications for the actual build.
+              </p>
+            </section>
+          ) : null}
 
           <section className="production-blueprint-parts">
             <div className="production-blueprint-parts-head">

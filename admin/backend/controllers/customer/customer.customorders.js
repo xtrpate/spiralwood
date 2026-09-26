@@ -119,7 +119,7 @@ const toSafeReferencePhotos = (value) => {
   if (!Array.isArray(value)) return [];
 
   return value
-    .slice(0, 4)
+    .slice(0, 5)
     .map((item) => ({
       name: String(item?.name || "").trim(),
       type: String(item?.type || "")
@@ -549,6 +549,42 @@ exports.createCustomOrder = async (req, res) => {
     });
   }
 
+  const incomingReferenceFiles = Array.isArray(req.files) ? req.files : [];
+  const legacyReferencePhotos = toSafeReferencePhotos(
+    items[0]?.reference_photos,
+  );
+  const requestedReferencePhotoCount = Array.isArray(items[0]?.reference_photos)
+    ? items[0].reference_photos.length
+    : Number(items[0]?.customization_snapshot?.reference_photo_count || 0);
+
+  if (
+    !Number.isSafeInteger(requestedReferencePhotoCount) ||
+    requestedReferencePhotoCount < 0 ||
+    requestedReferencePhotoCount > 5
+  ) {
+    return res.status(400).json({
+      message: "A custom request can contain up to 5 reference photos only.",
+    });
+  }
+
+  if (incomingReferenceFiles.length > 5) {
+    return res.status(400).json({
+      message: "A custom request can contain up to 5 reference photos only.",
+    });
+  }
+
+  if (requestedReferencePhotoCount > 0) {
+    const receivedReferencePhotoCount =
+      incomingReferenceFiles.length || legacyReferencePhotos.length;
+
+    if (receivedReferencePhotoCount !== requestedReferencePhotoCount) {
+      return res.status(400).json({
+        message:
+          "The submitted reference photos are incomplete. Please re-open the custom design and upload the photos again.",
+      });
+    }
+  }
+
   // WISDOM CUSTOM DESIGN REVIEW EDIT BEFORE SUBMIT V1.0.0
   if (design_review_confirmed !== true) {
     return res.status(400).json({
@@ -699,6 +735,8 @@ exports.createCustomOrder = async (req, res) => {
 
   const primaryBlueprintId = blueprintIds[0];
 
+  const uploadedReferenceAssets = [];
+  let requestCommitted = false;
   let conn;
   try {
     conn = await db.getConnection();
@@ -804,9 +842,12 @@ exports.createCustomOrder = async (req, res) => {
       const orderItemId = itemResult.insertId;
 
       let linkedMessageId = null;
-      const hasReferencePhotos =
+      const hasMultipartReferencePhotos = incomingReferenceFiles.length > 0;
+      const hasLegacyReferencePhotos =
         Array.isArray(item.reference_photos) &&
         item.reference_photos.length > 0;
+      const hasReferencePhotos =
+        hasMultipartReferencePhotos || hasLegacyReferencePhotos;
 
       if (item.initial_message || hasReferencePhotos) {
         linkedMessageId = await insertCustomOrderMessage(conn, {
@@ -818,35 +859,59 @@ exports.createCustomOrder = async (req, res) => {
         });
       }
 
-      for (const photo of item.reference_photos || []) {
-        let saved;
-        try {
-          saved = await saveBase64ReferencePhoto(photo);
-        } catch (photoErr) {
-          if (photoErr instanceof ReferencePhotoValidationError) {
-            await conn.rollback();
-            return res.status(400).json({ message: photoErr.message });
-          }
-          throw photoErr;
+      if (hasMultipartReferencePhotos) {
+        for (const file of incomingReferenceFiles) {
+          const saved = await storeUploadBuffer({
+            file,
+            folder: "custom-request-assets",
+          });
+
+          uploadedReferenceAssets.push(saved);
+
+          await insertCustomOrderAttachment(conn, {
+            orderId: order_id,
+            orderItemId,
+            messageId: linkedMessageId,
+            uploadedBy: req.user.id,
+            fileUrl: saved.file_url,
+            fileName: saved.file_name,
+            mimeType: saved.mime_type,
+            fileSize: saved.file_size,
+            attachmentType: "reference_photo",
+          });
         }
+      } else {
+        for (const photo of item.reference_photos || []) {
+          let saved;
+          try {
+            saved = await saveBase64ReferencePhoto(photo);
+          } catch (photoErr) {
+            if (photoErr instanceof ReferencePhotoValidationError) {
+              await conn.rollback();
+              return res.status(400).json({ message: photoErr.message });
+            }
+            throw photoErr;
+          }
 
-        if (!saved) continue;
+          if (!saved) continue;
 
-        await insertCustomOrderAttachment(conn, {
-          orderId: order_id,
-          orderItemId,
-          messageId: linkedMessageId,
-          uploadedBy: req.user.id,
-          fileUrl: saved.file_url,
-          fileName: saved.file_name,
-          mimeType: saved.mime_type,
-          fileSize: saved.file_size,
-          attachmentType: "reference_photo",
-        });
+          await insertCustomOrderAttachment(conn, {
+            orderId: order_id,
+            orderItemId,
+            messageId: linkedMessageId,
+            uploadedBy: req.user.id,
+            fileUrl: saved.file_url,
+            fileName: saved.file_name,
+            mimeType: saved.mime_type,
+            fileSize: saved.file_size,
+            attachmentType: "reference_photo",
+          });
+        }
       }
     }
 
     await conn.commit();
+    requestCommitted = true;
 
     const io = req.app.get("io");
 
@@ -946,10 +1011,23 @@ exports.createCustomOrder = async (req, res) => {
       detail_url: `/custom-requests/${order_id}`,
     });
   } catch (err) {
-    if (conn) {
+    if (conn && !requestCommitted) {
       try {
         await conn.rollback();
       } catch {}
+    }
+
+    if (!requestCommitted && uploadedReferenceAssets.length) {
+      for (const asset of [...uploadedReferenceAssets].reverse()) {
+        try {
+          await cleanupStoredUpload(asset);
+        } catch (cleanupErr) {
+          console.error(
+            "[customer.customorders POST] Reference photo cleanup failed:",
+            cleanupErr.message || cleanupErr,
+          );
+        }
+      }
     }
 
     console.error("[customer.customorders POST]", err);

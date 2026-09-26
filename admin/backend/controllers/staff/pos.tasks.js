@@ -6,6 +6,7 @@ const {
 } = require("../../utils/philippineTime");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const { createNotificationSafe } = require("../../utils/notificationHelper");
+const { signUploadPath } = require("../../utils/signedUrl");
 const {
   sendCustomerMilestoneNotificationSafe,
 } = require("../../services/customerMilestoneNotificationService");
@@ -1120,6 +1121,50 @@ exports.getAssignedOrderBlueprint = async (req, res) => {
       designSource = "order_customization";
     }
 
+    const referencePhotoParams = [orderId];
+    let referencePhotoFilter = `
+      order_id = ?
+      AND attachment_type = 'reference_photo'
+    `;
+
+    if (selectedOrderItem?.id) {
+      referencePhotoFilter += `
+        AND (order_item_id = ? OR order_item_id IS NULL)
+      `;
+      referencePhotoParams.push(Number(selectedOrderItem.id));
+    }
+
+    const [referencePhotoRows] = await db.query(
+      `SELECT
+         id,
+         order_item_id,
+         file_url,
+         file_name,
+         mime_type,
+         file_size,
+         created_at
+       FROM custom_order_attachments
+       WHERE ${referencePhotoFilter}
+       ORDER BY created_at ASC, id ASC`,
+      referencePhotoParams,
+    );
+
+    const referencePhotos = referencePhotoRows.map((row) => {
+      const rawFileUrl = String(row.file_url || "").trim();
+
+      return {
+        id: row.id,
+        order_item_id: row.order_item_id || null,
+        file_url: /^https?:\/\//i.test(rawFileUrl)
+          ? rawFileUrl
+          : signUploadPath(rawFileUrl),
+        file_name: row.file_name || "Customer reference",
+        mime_type: row.mime_type || "image/*",
+        file_size: Number(row.file_size || 0) || null,
+        created_at: row.created_at || null,
+      };
+    });
+
     return res.json({
       order: {
         id: orderId,
@@ -1129,6 +1174,7 @@ exports.getAssignedOrderBlueprint = async (req, res) => {
       order_item: selectedOrderItem,
       design_source: designSource,
       blueprint: productionBlueprint,
+      reference_photos: referencePhotos,
     });
   } catch (err) {
     console.error("[pos.tasks GET /orders/:orderId/blueprint]", err);
