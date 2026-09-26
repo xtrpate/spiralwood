@@ -633,6 +633,87 @@ const disposeObjectTree = (root) => {
   }
 };
 
+// WISDOM ADMIN SUBMITTED DESIGN R2.2 WARDROBE FRONT CLEARANCE
+// Saved wardrobe shelves can extend into the saved door slab in Z. The shared
+// builder already adds a small visual door offset, but that is not enough for
+// this submitted wardrobe. Admin preview only: trim the shelf's FRONT render
+// edge to a 1 mm gap behind the saved door back plane. Saved geometry, BOM/table
+// values, machining metadata, and Customer/Staff shared rendering stay exact.
+const ADMIN_SUBMITTED_SHELF_FRONT_GAP_MM = 1;
+
+const getAdminSubmittedShelfRenderComponent = (component, allComponents = []) => {
+  const type = String(component?.type || "").trim().toLowerCase();
+  if (type !== "wr_shelf" && type !== "wr_top_shelf") return component;
+
+  const cutouts = Array.isArray(component?.machiningCutouts)
+    ? component.machiningCutouts
+    : [];
+  const operations = Array.isArray(component?.woodworkingOperations)
+    ? component.woodworkingOperations
+    : [];
+  if (cutouts.length || operations.length) return component;
+
+  const rotationMagnitude =
+    Math.abs(Number(component?.rotationX) || 0) +
+    Math.abs(Number(component?.rotationY) || 0) +
+    Math.abs(Number(component?.rotationZ) || 0);
+  if (rotationMagnitude > 0.001) return component;
+
+  const x = Number(component?.x);
+  const y = Number(component?.y);
+  const z = Number(component?.z);
+  const width = Number(component?.width);
+  const height = Number(component?.height);
+  const depth = Number(component?.depth);
+  if (
+    ![x, y, z, width, height, depth].every(Number.isFinite) ||
+    width <= 0 ||
+    height <= 0 ||
+    depth <= 0
+  ) {
+    return component;
+  }
+
+  const groupId = String(component?.groupId || "").trim();
+  const doorZ = (Array.isArray(allComponents) ? allComponents : [])
+    .filter((candidate) => {
+      if (String(candidate?.type || "").trim().toLowerCase() !== "wr_door") {
+        return false;
+      }
+
+      const candidateGroupId = String(candidate?.groupId || "").trim();
+      if (groupId && candidateGroupId && candidateGroupId !== groupId) {
+        return false;
+      }
+
+      const dx = Number(candidate?.x);
+      const dy = Number(candidate?.y);
+      const dz = Number(candidate?.z);
+      const dw = Number(candidate?.width);
+      const dh = Number(candidate?.height);
+      if (
+        ![dx, dy, dz, dw, dh].every(Number.isFinite) ||
+        dw <= 0 ||
+        dh <= 0 ||
+        dz <= z
+      ) {
+        return false;
+      }
+
+      return x < dx + dw && x + width > dx && y < dy + dh && y + height > dy;
+    })
+    .map((candidate) => Number(candidate.z))
+    .filter(Number.isFinite)
+    .reduce((closest, value) => Math.min(closest, value), Infinity);
+
+  if (!Number.isFinite(doorZ)) return component;
+
+  const renderDepth = doorZ - z - ADMIN_SUBMITTED_SHELF_FRONT_GAP_MM;
+  if (renderDepth <= 1 || renderDepth >= depth - 0.01) return component;
+
+  return { ...component, depth: renderDepth };
+};
+
 const buildRenderableObject = (
   component,
   { receiveFurnitureShadow = true } = {},
@@ -685,6 +766,8 @@ export default function StaffProductionBlueprintViewer({
   compact = false,
   compactHeight = 122,
   cleanFurnitureSelfShadow = false,
+  showDimensionAnnotations = false,
+  cleanWardrobeDoorShelfOverlap = false,
 }) {
   const mountRef = useRef(null);
   const rendererRef = useRef(null);
@@ -695,6 +778,23 @@ export default function StaffProductionBlueprintViewer({
   const floorRef = useRef(null);
   const frameRef = useRef(0);
   const viewRef = useRef("3D");
+
+  // WISDOM ADMIN SUBMITTED DESIGN DIMENSIONS R2
+  // These annotations are opt-in so shared Staff/My Tasks viewers remain
+  // unchanged. Bounds are captured from the CLOSED submitted furniture and
+  // intentionally stay static while doors/drawers are opened for inspection.
+  const dimensionBoundsRef = useRef(new THREE.Box3());
+  const dimensionAnnotationGroupRef = useRef(null);
+  const dimensionHeightLineRef = useRef(null);
+  const dimensionWidthLabelRef = useRef(null);
+  const dimensionHeightLabelRef = useRef(null);
+  const dimensionDepthLabelRef = useRef(null);
+  const dimensionLabelScreenRef = useRef({
+    width: { x: null, y: null },
+    height: { x: null, y: null },
+    depth: { x: null, y: null },
+  });
+
   const renderedObjectMapRef = useRef(new Map());
   const doorMotionPreviewRef = useRef([]);
   const drawerMotionPreviewRef = useRef([]);
@@ -710,6 +810,29 @@ export default function StaffProductionBlueprintViewer({
     () => extractStaffProductionScene(blueprint),
     [blueprint],
   );
+
+  const submittedDimensionValues = useMemo(() => {
+    const defaults = sceneData?.defaultDimensions || {};
+    const bounds = sceneData?.bounds || {};
+
+    const pickPositive = (preferred, fallback) => {
+      const preferredNumber = Number(preferred);
+      if (Number.isFinite(preferredNumber) && preferredNumber > 0) {
+        return preferredNumber;
+      }
+
+      const fallbackNumber = Number(fallback);
+      return Number.isFinite(fallbackNumber) && fallbackNumber > 0
+        ? fallbackNumber
+        : 0;
+    };
+
+    return {
+      width: pickPositive(defaults.width_mm, bounds.width),
+      height: pickPositive(defaults.height_mm, bounds.height),
+      depth: pickPositive(defaults.depth_mm, bounds.depth),
+    };
+  }, [sceneData]);
 
   const has3D =
     Array.isArray(sceneData?.components) &&
@@ -1440,13 +1563,17 @@ export default function StaffProductionBlueprintViewer({
         case "Side":
           camera.position.set(center.x - distance, center.y, center.z);
           break;
+        // WISDOM ADMIN SUBMITTED DESIGN DIMENSIONS R2.1 TOP BOTTOM CAMERA FIX
+        // Top/Bottom fit the furniture footprint, but the camera still needs
+        // clearance beyond the cabinet's top/bottom face. Using center +/- the
+        // footprint distance alone can place the camera inside tall furniture.
         case "Top":
           camera.up.set(0, 0, -1);
-          camera.position.set(center.x, center.y + distance, center.z + 0.1);
+          camera.position.set(center.x, box.max.y + distance, center.z + 0.1);
           break;
         case "Bottom":
           camera.up.set(0, 0, 1);
-          camera.position.set(center.x, center.y - distance, center.z + 0.1);
+          camera.position.set(center.x, box.min.y - distance, center.z + 0.1);
           break;
         case "3D":
         default: {
@@ -1468,6 +1595,18 @@ export default function StaffProductionBlueprintViewer({
 
   useEffect(() => {
     viewRef.current = view;
+
+    // WISDOM ADMIN SUBMITTED DESIGN DIMENSIONS R2.2 TOP/BOTTOM CLEANUP
+    // Height is perpendicular to Top/Bottom, so those views show Width + Depth.
+    const hideHeightAnnotation = view === "Top" || view === "Bottom";
+    if (dimensionHeightLineRef.current) {
+      dimensionHeightLineRef.current.visible = !hideHeightAnnotation;
+    }
+    if (hideHeightAnnotation && dimensionHeightLabelRef.current) {
+      dimensionHeightLabelRef.current.style.display = "none";
+      dimensionLabelScreenRef.current.height = { x: null, y: null };
+    }
+
     fitCameraToFurniture(view);
   }, [view, fitCameraToFurniture]);
 
@@ -1583,10 +1722,125 @@ export default function StaffProductionBlueprintViewer({
 
     if (!compact) window.addEventListener("resize", handleResize);
 
+    const updateDimensionLabels = () => {
+      if (
+        !showDimensionAnnotations ||
+        compact ||
+        dimensionBoundsRef.current.isEmpty()
+      ) {
+        return;
+      }
+
+      const rect = renderer.domElement.getBoundingClientRect();
+      const canvasWidth = Math.max(1, rect.width);
+      const canvasHeight = Math.max(1, rect.height);
+      const box = dimensionBoundsRef.current;
+      const offset = 100;
+
+      const anchors = {
+        width: new THREE.Vector3(
+          (box.min.x + box.max.x) / 2,
+          box.min.y,
+          box.max.z + offset,
+        ),
+        height: new THREE.Vector3(
+          box.max.x + offset,
+          (box.min.y + box.max.y) / 2,
+          box.min.z - offset,
+        ),
+        depth: new THREE.Vector3(
+          box.max.x + offset,
+          box.min.y,
+          (box.min.z + box.max.z) / 2,
+        ),
+      };
+
+      const updateLabel = (elementRef, point, key) => {
+        const element = elementRef.current;
+        if (!element) return;
+
+        const projected = point.clone().project(camera);
+        const screen = dimensionLabelScreenRef.current[key];
+
+        if (
+          projected.z < -1 ||
+          projected.z > 1 ||
+          !Number.isFinite(projected.x) ||
+          !Number.isFinite(projected.y)
+        ) {
+          element.style.display = "none";
+          if (screen) {
+            screen.x = null;
+            screen.y = null;
+          }
+          return;
+        }
+
+        const rawX = (projected.x * 0.5 + 0.5) * canvasWidth;
+        const rawY = (-projected.y * 0.5 + 0.5) * canvasHeight;
+
+        // Admin preview is often narrower than the full customer configurator.
+        // Clamp by the actual canvas size so labels remain inside the stage.
+        const marginX = Math.min(44, Math.max(22, canvasWidth * 0.08));
+        const marginTop = 22;
+        const marginBottom = 28;
+        const targetX = THREE.MathUtils.clamp(
+          rawX,
+          marginX,
+          Math.max(marginX, canvasWidth - marginX),
+        );
+        const targetY = THREE.MathUtils.clamp(
+          rawY,
+          marginTop,
+          Math.max(marginTop, canvasHeight - marginBottom),
+        );
+
+        if (!screen) return;
+
+        if (!Number.isFinite(screen.x) || !Number.isFinite(screen.y)) {
+          screen.x = targetX;
+          screen.y = targetY;
+        } else {
+          const dx = targetX - screen.x;
+          const dy = targetY - screen.y;
+          const travel = Math.hypot(dx, dy);
+
+          if (travel > 0.22) {
+            const follow =
+              travel >= 32 ? 0.82 : travel >= 12 ? 0.64 : 0.42;
+            screen.x += dx * follow;
+            screen.y += dy * follow;
+          }
+        }
+
+        const x = Math.round(screen.x * 4) / 4;
+        const y = Math.round(screen.y * 4) / 4;
+
+        element.style.display = "block";
+        element.style.transform =
+          `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
+      };
+
+      updateLabel(dimensionWidthLabelRef, anchors.width, "width");
+
+      const hideHeightAnnotation =
+        viewRef.current === "Top" || viewRef.current === "Bottom";
+      if (hideHeightAnnotation) {
+        const heightLabel = dimensionHeightLabelRef.current;
+        if (heightLabel) heightLabel.style.display = "none";
+        dimensionLabelScreenRef.current.height = { x: null, y: null };
+      } else {
+        updateLabel(dimensionHeightLabelRef, anchors.height, "height");
+      }
+
+      updateLabel(dimensionDepthLabelRef, anchors.depth, "depth");
+    };
+
     const animate = () => {
       frameRef.current = requestAnimationFrame(animate);
       controls.update();
       renderer.render(scene, camera);
+      updateDimensionLabels();
     };
 
     if (!compact) animate();
@@ -1604,6 +1858,15 @@ export default function StaffProductionBlueprintViewer({
       clearDoorPreviews({ updateState: false });
       clearDrawerPreviews({ updateState: false });
       renderedObjectMapRef.current.clear();
+
+      if (dimensionAnnotationGroupRef.current) {
+        scene.remove(dimensionAnnotationGroupRef.current);
+        disposeObjectTree(dimensionAnnotationGroupRef.current);
+        dimensionAnnotationGroupRef.current = null;
+        dimensionHeightLineRef.current = null;
+      }
+      dimensionBoundsRef.current.makeEmpty();
+
       disposeObjectTree(productGroup);
       floor.geometry?.dispose?.();
       disposeMaterial(floor.material);
@@ -1645,7 +1908,11 @@ export default function StaffProductionBlueprintViewer({
     const worldD = sceneData.worldSize?.d || 5200;
 
     sceneData.components.forEach((component) => {
-      const object3D = buildRenderableObject(component, {
+      const renderComponent = cleanWardrobeDoorShelfOverlap
+        ? getAdminSubmittedShelfRenderComponent(component, sceneData.components)
+        : component;
+
+      const object3D = buildRenderableObject(renderComponent, {
         receiveFurnitureShadow: !cleanFurnitureSelfShadow,
       });
       const componentId = String(component?.id ?? "");
@@ -1661,15 +1928,18 @@ export default function StaffProductionBlueprintViewer({
       });
       renderedObjectMapRef.current.set(componentId, object3D);
 
-      const x = component.x + component.width / 2 - worldW / 2;
-      const y = worldH / 2 - (component.y + component.height / 2);
-      const z = component.z + component.depth / 2 - worldD / 2;
+      const x =
+        renderComponent.x + renderComponent.width / 2 - worldW / 2;
+      const y =
+        worldH / 2 - (renderComponent.y + renderComponent.height / 2);
+      const z =
+        renderComponent.z + renderComponent.depth / 2 - worldD / 2;
 
       object3D.position.set(x, y, z);
       object3D.rotation.set(
-        THREE.MathUtils.degToRad(component.rotationX || 0),
-        THREE.MathUtils.degToRad(component.rotationY || 0),
-        THREE.MathUtils.degToRad(component.rotationZ || 0),
+        THREE.MathUtils.degToRad(renderComponent.rotationX || 0),
+        THREE.MathUtils.degToRad(renderComponent.rotationY || 0),
+        THREE.MathUtils.degToRad(renderComponent.rotationZ || 0),
       );
       productGroup.add(object3D);
     });
@@ -1681,10 +1951,99 @@ export default function StaffProductionBlueprintViewer({
     productGroup.position.set(-center.x, -bounds.min.y, -center.z);
     productGroup.updateMatrixWorld(true);
 
+    if (dimensionAnnotationGroupRef.current) {
+      sceneRef.current?.remove(dimensionAnnotationGroupRef.current);
+      disposeObjectTree(dimensionAnnotationGroupRef.current);
+      dimensionAnnotationGroupRef.current = null;
+      dimensionHeightLineRef.current = null;
+    }
+
+    const submittedClosedBounds = new THREE.Box3().setFromObject(productGroup);
+    dimensionBoundsRef.current.copy(submittedClosedBounds);
+    dimensionLabelScreenRef.current = {
+      width: { x: null, y: null },
+      height: { x: null, y: null },
+      depth: { x: null, y: null },
+    };
+
+    if (
+      showDimensionAnnotations &&
+      !compact &&
+      sceneRef.current &&
+      !submittedClosedBounds.isEmpty()
+    ) {
+      const box = submittedClosedBounds;
+      const offset = 100;
+      const tick = 25;
+      const backZ = box.min.z - offset;
+      const widthDepthPoints = [];
+
+      // Width — front bottom.
+      widthDepthPoints.push(
+        box.min.x, box.min.y, box.max.z + offset,
+        box.max.x, box.min.y, box.max.z + offset,
+        box.min.x, box.min.y, box.max.z + offset - tick,
+        box.min.x, box.min.y, box.max.z + offset + tick,
+        box.max.x, box.min.y, box.max.z + offset - tick,
+        box.max.x, box.min.y, box.max.z + offset + tick,
+      );
+
+      // Depth — right bottom.
+      widthDepthPoints.push(
+        box.max.x + offset, box.min.y, box.min.z,
+        box.max.x + offset, box.min.y, box.max.z,
+        box.max.x + offset - tick, box.min.y, box.min.z,
+        box.max.x + offset + tick, box.min.y, box.min.z,
+        box.max.x + offset - tick, box.min.y, box.max.z,
+        box.max.x + offset + tick, box.min.y, box.max.z,
+      );
+
+      const widthDepthGeometry = new THREE.BufferGeometry();
+      widthDepthGeometry.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(widthDepthPoints, 3),
+      );
+      const lineMaterial = new THREE.LineBasicMaterial({ color: 0x334155 });
+      const widthDepthSegments = new THREE.LineSegments(
+        widthDepthGeometry,
+        lineMaterial,
+      );
+
+      // Height stays separate so Top/Bottom can hide only this axis.
+      const heightPoints = [
+        box.max.x + offset, box.min.y, backZ,
+        box.max.x + offset, box.max.y, backZ,
+        box.max.x + offset - tick, box.min.y, backZ,
+        box.max.x + offset + tick, box.min.y, backZ,
+        box.max.x + offset - tick, box.max.y, backZ,
+        box.max.x + offset + tick, box.max.y, backZ,
+      ];
+      const heightGeometry = new THREE.BufferGeometry();
+      heightGeometry.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(heightPoints, 3),
+      );
+      const heightSegments = new THREE.LineSegments(
+        heightGeometry,
+        lineMaterial.clone(),
+      );
+      heightSegments.visible =
+        viewRef.current !== "Top" && viewRef.current !== "Bottom";
+
+      const annotationGroup = new THREE.Group();
+      annotationGroup.add(widthDepthSegments, heightSegments);
+      sceneRef.current.add(annotationGroup);
+      dimensionAnnotationGroupRef.current = annotationGroup;
+      dimensionHeightLineRef.current = heightSegments;
+    }
+
     fitCameraToFurniture(viewRef.current);
     renderCurrentFrame();
   }, [
     cleanFurnitureSelfShadow,
+    cleanWardrobeDoorShelfOverlap,
+    showDimensionAnnotations,
+    compact,
     sceneData,
     has3D,
     fitCameraToFurniture,
@@ -1885,6 +2244,32 @@ export default function StaffProductionBlueprintViewer({
 
       <div className="staff-prod-viewer-stage">
         <div ref={mountRef} className="staff-prod-viewer-canvas" />
+
+        {showDimensionAnnotations && (
+          <>
+            <div
+              ref={dimensionWidthLabelRef}
+              className="staff-prod-dimension-label"
+              aria-hidden="true"
+            >
+              {Math.round(submittedDimensionValues.width).toLocaleString("en-PH")} mm
+            </div>
+            <div
+              ref={dimensionHeightLabelRef}
+              className="staff-prod-dimension-label"
+              aria-hidden="true"
+            >
+              {Math.round(submittedDimensionValues.height).toLocaleString("en-PH")} mm
+            </div>
+            <div
+              ref={dimensionDepthLabelRef}
+              className="staff-prod-dimension-label"
+              aria-hidden="true"
+            >
+              {Math.round(submittedDimensionValues.depth).toLocaleString("en-PH")} mm
+            </div>
+          </>
+        )}
       </div>
 
       <div className="staff-prod-viewer-help">

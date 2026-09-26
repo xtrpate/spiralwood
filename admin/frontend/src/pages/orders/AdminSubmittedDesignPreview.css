@@ -26,6 +26,31 @@
   height: 440px;
 }
 
+/* WISDOM ADMIN SUBMITTED DESIGN DIMENSIONS R2
+   Scoped here so shared Staff/My Tasks viewer usages remain visually unchanged. */
+.admin-submitted-design-preview .staff-prod-dimension-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 3;
+  box-sizing: border-box;
+  display: none;
+  padding: 4px 8px;
+  border: 1px solid #111111;
+  border-radius: 0;
+  background: #ffffff;
+  color: #111111;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate3d(0, 0, 0) translate(-50%, -50%);
+  transform-origin: 50% 50%;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
 .admin-submitted-design-preview .production-blueprint-details {
   padding: 15px;
 }

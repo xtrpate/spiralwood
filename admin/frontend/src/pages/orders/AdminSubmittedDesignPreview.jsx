@@ -177,6 +177,8 @@ export default function AdminSubmittedDesignPreview({
           <StaffProductionBlueprintViewer
             blueprint={blueprint}
             cleanFurnitureSelfShadow
+            cleanWardrobeDoorShelfOverlap
+            showDimensionAnnotations
           />
         </section>
 
