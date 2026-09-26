@@ -198,20 +198,6 @@ const NAV_ITEMS = [
     roles: ["admin", "staff"],
   },
   {
-    label: "Stock In Report",
-    path: "/admin/reports/daily-stock-in",
-    icon: Download,
-    permission: "stock_movements.view",
-    roles: ["admin", "staff"],
-  },
-  {
-    label: "Delivery Report",
-    path: "/admin/reports/operations/deliveries",
-    icon: Truck,
-    permission: "delivery_scheduling.view",
-    roles: ["admin", "staff"],
-  },
-  {
     label: "Operations Report",
     path: "/admin/reports/operations",
     icon: CalendarCheck2,
