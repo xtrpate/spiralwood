@@ -4368,3 +4368,35 @@
     animation-duration: 1400ms !important;
   }
 }
+
+/* WISDOM CUSTOMER BLUEPRINT NAME ABOVE CTA V1
+   The actual saved blueprint name is centered directly above Customize.
+   Internal template/category labels remain hidden from the customer card. */
+.cust-mini-card-v21 .cust-roomle-card-action {
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  padding-top: 10px !important;
+}
+
+.cust-blueprint-card-name-v1 {
+  width: 100%;
+  max-width: 100%;
+  padding: 0 12px;
+  overflow: hidden;
+  color: #111111;
+  font-size: 15px;
+  line-height: 1.25;
+  font-weight: 600;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+@media (max-width: 640px) {
+  .cust-blueprint-card-name-v1 {
+    font-size: 14px;
+  }
+}

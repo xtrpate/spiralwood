@@ -12,7 +12,7 @@ import api, { buildAssetUrl } from "../../services/api";
 import { Search, X, CheckCircle2, Smartphone, Undo2, Redo2, List, Ruler, Box, RotateCcw, Maximize2, Camera } from "lucide-react";
 import { useCustomCart } from "./customcartcontext";
 import { useCart } from "./cartcontext";
-import useAuthStore from "../../store/authStore";
+
 import { WOOD_FINISHES } from "../blueprints/data/furnitureTypes";
 import "./customizepage.css";
 import { saveCustomReferencePhotos } from "../../utils/customReferencePhotoStore";
@@ -1570,17 +1570,10 @@ function ProductCard({
     [components],
   );
 
-  const categoryLabel = String(
-    detailsReady
-      ? profile.category ||
-          cardProduct?.catalog_category_name ||
-          cardProduct?.category_label ||
-          "Furniture Template"
-      : product?.catalog_category_name ||
-          product?.category_label ||
-          product?.category ||
-          "Furniture Template",
-  ).replace(" Template", " Design");
+  const displayTitle =
+    String(cardProduct?.title || product?.title || "").trim() ||
+    "Custom Furniture";
+
 
   const customColor = useMemo(() => {
     const candidate = components.find((component) =>
@@ -1620,9 +1613,6 @@ function ProductCard({
         </div>
 
         <div className="cust-mini-preview-v21">
-          <div className="cust-roomle-category-label cust-roomle-category-label--inside-v12 cust-mini-category-v21">
-            {categoryLabel}
-          </div>
 
           {cachedStaticPreview ? (
             <div className="cust-mini-preview-stage-v21">
@@ -1740,10 +1730,7 @@ function ProductCard({
         </aside>
 
         <div className="cust-mini-footer-v21">
-          <div>
-            <strong>{cardProduct?.title || categoryLabel}</strong>
-            <small>{categoryLabel}</small>
-          </div>
+          <div aria-hidden="true" />
           <span>
             {batchDetailsReady
               ? `${Math.round(Number(dimensions.width_mm) || 0)} × ${Math.round(
@@ -1757,6 +1744,9 @@ function ProductCard({
       </div>
 
       <div className="cust-roomle-card-action">
+        <div className="cust-blueprint-card-name-v1" title={displayTitle}>
+          {displayTitle}
+        </div>
         <button
           type="button"
           className="cust-customize-btn cust-customize-btn--roomle"
@@ -1776,7 +1766,7 @@ export default function CustomizePage() {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
   const location = useLocation();
-  const { user } = useAuthStore();
+
   const { addToCustomCart } = useCustomCart();
   const { cartCount } = useCart();
 
@@ -1791,35 +1781,6 @@ export default function CustomizePage() {
   const [isHiding, setIsHiding] = useState(false);
   const galleryRequestRef = useRef(0);
 
-  const requireCustomerLogin = useCallback(
-    (product = null) => {
-      if (user?.role === "customer") return true;
-
-      const params = new URLSearchParams(location.search);
-      if (product?.id) {
-        params.set("template", String(product.id));
-      }
-
-      const searchString = params.toString();
-      const redirectTo = `${location.pathname}${
-        searchString ? `?${searchString}` : ""
-      }`;
-
-      navigate("/login", {
-        replace: false,
-        state: {
-          from: {
-            pathname: location.pathname,
-            search: searchString ? `?${searchString}` : "",
-          },
-          redirectTo,
-        },
-      });
-
-      return false;
-    },
-    [user, navigate, location.pathname, location.search],
-  );
 
   const closeCustomizeModal = useCallback(() => {
     setCustomizingProduct(null);
@@ -1900,7 +1861,7 @@ export default function CustomizePage() {
   }, [toastMessage]);
 
   useEffect(() => {
-    if (user?.role !== "customer" || !products.length) return;
+    if (!products.length) return;
 
     const params = new URLSearchParams(location.search);
     const templateId = Number(params.get("template") || 0);
@@ -1912,7 +1873,7 @@ export default function CustomizePage() {
         Number(prev?.id) === templateId ? prev : matched,
       );
     }
-  }, [user, products, location.search]);
+  }, [products, location.search]);
 
   const handleSearch = (event) => {
     event.preventDefault();
@@ -1924,8 +1885,6 @@ export default function CustomizePage() {
   };
 
   const handleAdd = async (product, draft = {}) => {
-    if (!requireCustomerLogin(product)) return;
-
     const profile = resolveSavedTemplateProfile(product || {});
     const bounds = draft?.bounds || {};
     const defaultDimensions = draft?.defaultDimensions || {};
@@ -2149,7 +2108,6 @@ export default function CustomizePage() {
         onBatchEligible={markHydrationBatchEligible}
         onBatchResolved={markHydrationBatchResolved}
         onCustomize={(selectedProduct) => {
-          if (!requireCustomerLogin(selectedProduct)) return;
           setCustomizingProduct(selectedProduct);
         }}
       />
@@ -2158,7 +2116,7 @@ export default function CustomizePage() {
     loading,
     filteredProducts,
     categoryFilter,
-    requireCustomerLogin,
+
     isHydrationBatchReleased,
     markHydrationBatchEligible,
     markHydrationBatchResolved,

@@ -21,6 +21,12 @@ export default function VerifyOtpPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const isFromLogin = location.state?.fromLogin;
+  const requestedRedirectTo = String(location.state?.redirectTo || "").trim();
+  const postVerificationRoute =
+    requestedRedirectTo.startsWith("/") &&
+    !requestedRedirectTo.startsWith("//")
+      ? requestedRedirectTo
+      : "/";
 
   // Get password passed from login page
   const [password] = useState(location.state?.password || "");
@@ -167,12 +173,22 @@ export default function VerifyOtpPage() {
           if (isFromLogin && password) {
             try {
               await login(email, password);
-              navigate("/", { replace: true });
+              navigate(postVerificationRoute, { replace: true });
             } catch (loginErr) {
-              navigate("/login");
+              navigate(
+                "/login",
+                requestedRedirectTo
+                  ? { state: { redirectTo: requestedRedirectTo } }
+                  : undefined,
+              );
             }
           } else {
-            navigate("/login");
+            navigate(
+              "/login",
+              requestedRedirectTo
+                ? { state: { redirectTo: requestedRedirectTo } }
+                : undefined,
+            );
           }
         }, 1500);
       }

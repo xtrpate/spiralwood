@@ -134,12 +134,9 @@ const cleanText = (value, maxLength) => {
 };
 
 const makeReferenceCode = () => {
-  const now = new Date();
-  const y = now.getUTCFullYear();
-  const m = String(now.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(now.getUTCDate()).padStart(2, "0");
+  const dateKey = getPhilippineDateKey().replace(/-/g, "");
   const token = crypto.randomBytes(4).toString("hex").toUpperCase();
-  return `ST-${y}${m}${d}-${token}`;
+  return `ST-${dateKey}-${token}`;
 };
 
 const oppositeDirection = (direction) =>

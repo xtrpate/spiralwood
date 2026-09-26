@@ -15,6 +15,85 @@ const getLogoUrl = (value) => {
   return buildAssetUrl(`/${cleaned}`);
 };
 
+const SITE_LOGO_MAX_BYTES = 5 * 1024 * 1024;
+const SITE_LOGO_MIME_BY_EXTENSION = {
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
+};
+
+const validateSiteLogoFile = async (file) => {
+  if (!file) return "Choose a site logo file.";
+
+  const filename = String(file.name || "").trim().toLowerCase();
+  const extension = filename.includes(".")
+    ? filename.slice(filename.lastIndexOf("."))
+    : "";
+  const expectedMime = SITE_LOGO_MIME_BY_EXTENSION[extension];
+  const actualMime = String(file.type || "")
+    .trim()
+    .toLowerCase();
+
+  if (!expectedMime || (actualMime && actualMime !== expectedMime)) {
+    return "Site logo must be a JPG, JPEG, PNG, or WEBP image.";
+  }
+
+  if (!Number.isFinite(file.size) || file.size <= 0) {
+    return "The selected site logo is empty.";
+  }
+
+  if (file.size > SITE_LOGO_MAX_BYTES) {
+    return "Site logo must be 5MB or smaller.";
+  }
+
+  let bytes;
+  try {
+    bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  } catch {
+    return "The selected site logo could not be read.";
+  }
+
+  const isJpeg =
+    bytes.length >= 3 &&
+    bytes[0] === 0xff &&
+    bytes[1] === 0xd8 &&
+    bytes[2] === 0xff;
+
+  const isPng =
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a;
+
+  const isWebp =
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50;
+
+  const signatureMatches =
+    (expectedMime === "image/jpeg" && isJpeg) ||
+    (expectedMime === "image/png" && isPng) ||
+    (expectedMime === "image/webp" && isWebp);
+
+  if (!signatureMatches) {
+    return "Site logo content does not match its image file type.";
+  }
+
+  return null;
+};
+
 const DELIVERY_LIMIT_KEYS = [
   "standard_truck_limit_width_mm",
   "standard_truck_limit_height_mm",
@@ -30,7 +109,8 @@ const SECTION_META = {
   payment: {
     label: "Payments",
     icon: "💳",
-    description: "Customer-facing payment methods for ready-made checkout.",
+    description:
+      "Customer-facing payment methods for ready-made and blueprint orders.",
   },
   email: {
     label: "Email Notifications",
@@ -139,10 +219,17 @@ const KEY_META = {
     type: "toggle",
     hint: "Allow customers to pay in cash when a ready-made order is delivered.",
   },
+  blueprint_store_cash_enabled: {
+    label: "Blueprint Cash at Store / Pickup",
+    type: "toggle",
+    hint:
+      "Allow cash payments at the Spiral Wood store for blueprint orders, including pickup balances. Delivery rider cash collection remains available separately.",
+  },
   paymongo_enabled: {
     label: "Online Payment (PayMongo)",
     type: "toggle",
-    hint: "Allow secure online payment by Card, GCash, or Maya through PayMongo.",
+    hint:
+      "Allow secure online payment by Card, GCash, or Maya through PayMongo for ready-made and blueprint orders.",
   },
 
   admin_alert_email: {
@@ -238,7 +325,11 @@ const TAB_KEYS = {
     "operating_hours",
     "checkout_note",
   ],
-  payment: ["cod_enabled", "paymongo_enabled"],
+  payment: [
+    "cod_enabled",
+    "blueprint_store_cash_enabled",
+    "paymongo_enabled",
+  ],
   email: [
     "admin_alert_email",
     "email_order_confirmed",
@@ -281,6 +372,14 @@ export default function WebsiteSettingsPage() {
 
         if (!Object.prototype.hasOwnProperty.call(flat, "cod_enabled")) {
           flat.cod_enabled = "true";
+        }
+        if (
+          !Object.prototype.hasOwnProperty.call(
+            flat,
+            "blueprint_store_cash_enabled",
+          )
+        ) {
+          flat.blueprint_store_cash_enabled = "true";
         }
         if (!Object.prototype.hasOwnProperty.call(flat, "paymongo_enabled")) {
           flat.paymongo_enabled = "true";
@@ -1016,13 +1115,21 @@ export default function WebsiteSettingsPage() {
                 preview={preview}
                 logoFile={logoFile}
                 onChange={(value) => set(key, value)}
-                onLogoChange={(file) => {
+                onLogoChange={async (file) => {
+                  const validationMessage = await validateSiteLogoFile(file);
+
+                  if (validationMessage) {
+                    toast.error(validationMessage);
+                    return false;
+                  }
+
                   setLogoFile(file);
                   setPreview(URL.createObjectURL(file));
                   setDirty((current) => ({
                     ...current,
                     site_logo: "updated",
                   }));
+                  return true;
                 }}
               />
             );
@@ -1150,10 +1257,14 @@ function SettingRow({
                   <input
                     id={`setting-${keyName}`}
                     type="file"
-                    accept="image/*"
-                    onChange={(event) => {
-                      if (event.target.files[0]) {
-                        onLogoChange(event.target.files[0]);
+                    accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                    onChange={async (event) => {
+                      const file = event.target.files[0];
+                      if (!file) return;
+
+                      const accepted = await onLogoChange(file);
+                      if (accepted === false) {
+                        event.target.value = "";
                       }
                     }}
                   />
@@ -1163,7 +1274,7 @@ function SettingRow({
                 </span>
               </div>
               <div className="website-settings-file-note">
-                PNG or JPG, maximum 5 MB
+                JPG, JPEG, PNG, or WEBP, maximum 5 MB
               </div>
             </div>
           </div>

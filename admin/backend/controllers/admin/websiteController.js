@@ -26,6 +26,7 @@ const PAYMENT_SETTING_KEYS = [
   "gcash_number",
   "cod_enabled",
   "cop_enabled",
+  "blueprint_store_cash_enabled",
   "paymongo_enabled",
 ];
 const MESSAGE_SETTING_KEYS = ["email_footer", "checkout_note"];
@@ -68,6 +69,7 @@ const TOGGLE_SETTING_KEYS = new Set([
   "show_contact_section",
   "cod_enabled",
   "cop_enabled",
+  "blueprint_store_cash_enabled",
   "paymongo_enabled",
   "gcash_enabled",
   "bank_transfer_enabled",
@@ -257,6 +259,7 @@ const SETTING_KEY_GROUPS = {
   operating_hours: "display",
   cod_enabled: "payment",
   cop_enabled: "payment",
+  blueprint_store_cash_enabled: "payment",
   paymongo_enabled: "payment",
   gcash_enabled: "payment",
   bank_transfer_enabled: "payment",

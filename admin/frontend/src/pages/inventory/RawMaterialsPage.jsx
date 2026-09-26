@@ -302,7 +302,17 @@ export default function RawMaterialsPage() {
   }, []);
 
   useEffect(() => {
-    api.get("/suppliers").then((r) => setSuppliers(r.data || []));
+    api
+      .get("/inventory/raw/supplier-options")
+      .then((response) => {
+        setSuppliers(
+          Array.isArray(response.data?.suppliers)
+            ? response.data.suppliers
+            : [],
+        );
+      })
+      .catch(() => setSuppliers([]));
+
     loadCategories().catch(() => {});
   }, [loadCategories]);
 

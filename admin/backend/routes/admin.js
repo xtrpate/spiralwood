@@ -283,6 +283,12 @@ router.get(
   requirePermission("raw_materials.view"),
   inventory.getRawMaterialCategories,
 );
+router.get(
+  "/inventory/raw/supplier-options",
+  adminStaff,
+  requirePermission("raw_materials.view"),
+  inventory.getRawMaterialSupplierOptions,
+);
 router.post(
   "/inventory/raw/categories",
   adminStaff,
@@ -317,7 +323,8 @@ router.post(
 );
 router.post(
   "/inventory/raw/bulk",
-  adminOnly,
+  adminStaff,
+  requirePermission("raw_materials.create"),
   logAction("create_raw_material_bulk", "raw_materials"),
   inventory.createRawMaterialsBulk,
 );
@@ -411,7 +418,7 @@ router.post(
 router.get(
   "/inventory/physical-inventory/report",
   adminStaff,
-  requirePermission("stock_movements.view"),
+  requirePermission("stock_movements.export"),
   physicalInventory.getPhysicalInventoryReport,
 );
 router.get(

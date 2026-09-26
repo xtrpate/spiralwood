@@ -394,6 +394,17 @@ exports.getRawMaterialCategories = async (req, res) => {
   }
 };
 
+exports.getRawMaterialSupplierOptions = async (req, res) => {
+  try {
+    const [suppliers] = await pool.query(
+      "SELECT id, name FROM suppliers ORDER BY name ASC, id ASC",
+    );
+    return res.json({ suppliers });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
 exports.createRawMaterialCategory = async (req, res) => {
   try {
     const name = String(req.body?.name || "").trim();

@@ -82,6 +82,43 @@ const toSafeObjectOrNull = (value) => {
     : null;
 };
 
+const parseStoredBlueprintPaymentToggle = (value, fallback = true) => {
+  if (value === undefined || value === null || String(value).trim() === "") {
+    return fallback;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+
+  if (["true", "1", "yes", "on"].includes(normalized)) return true;
+  if (["false", "0", "no", "off"].includes(normalized)) return false;
+
+  return fallback;
+};
+
+const getBlueprintPaymentAvailability = async (conn) => {
+  const [rows] = await conn.query(
+    `SELECT content_key, content
+     FROM website_content
+     WHERE content_type = 'setting'
+       AND content_key IN ('blueprint_store_cash_enabled', 'paymongo_enabled')`,
+  );
+
+  const values = new Map(
+    rows.map((row) => [String(row.content_key), row.content]),
+  );
+
+  return {
+    storeCash: parseStoredBlueprintPaymentToggle(
+      values.get("blueprint_store_cash_enabled"),
+      true,
+    ),
+    paymongo: parseStoredBlueprintPaymentToggle(
+      values.get("paymongo_enabled"),
+      true,
+    ),
+  };
+};
+
 // Strict coordinate parser for blueprint/custom request delivery pins.
 // Unlike a plain Number(value) cast, this explicitly rejects booleans,
 // arrays, objects, and blank/whitespace-only strings BEFORE conversion —
@@ -1127,6 +1164,20 @@ exports.getCustomOrderById = async (req, res) => {
       normalize(order.fulfillment_method) === "pickup" ? "pickup" : "delivery";
     const isPickupOrder = order.fulfillment_method === "pickup";
 
+    const blueprintPaymentAvailability =
+      await getBlueprintPaymentAvailability(conn);
+
+    const paymentMethodAvailability = {
+      initial_cash: blueprintPaymentAvailability.storeCash,
+      initial_paymongo: blueprintPaymentAvailability.paymongo,
+      // Delivery-rider cash collection intentionally remains available
+      // regardless of the store/pickup cash switch.
+      remaining_cash: isPickupOrder
+        ? blueprintPaymentAvailability.storeCash
+        : true,
+      remaining_paymongo: blueprintPaymentAvailability.paymongo,
+    };
+
     // Read once, then stripped from `order` before the response spread
     // below so the raw session id / URL are never sent to the client —
     // only the derived boolean is exposed.
@@ -1405,6 +1456,10 @@ exports.getCustomOrderById = async (req, res) => {
     // one of these itself; this is only used to show/hide the selector).
     // On-delivery choice: scheduled AND in_transit are both selectable —
     // starting transit alone must never lock this choice.
+    const hasAvailableRemainingPaymentMethod =
+      paymentMethodAvailability.remaining_cash ||
+      paymentMethodAvailability.remaining_paymongo;
+
     const canSelectRemainingPaymentMethod =
       !["cancelled", "completed"].includes(canonicalOrderStatus) &&
       normalize(order.payment_status) !== "paid" &&
@@ -1415,7 +1470,8 @@ exports.getCustomOrderById = async (req, res) => {
         : Boolean(deliveryRow) &&
           ["scheduled", "in_transit"].includes(deliveryStatus)) &&
       !hasPendingPayment &&
-      !paymentMethodChangeLocked;
+      !paymentMethodChangeLocked &&
+      hasAvailableRemainingPaymentMethod;
 
     // Locked only once a method has actually been chosen AND it can no
     // longer be changed for any reason above (delivery reached a
@@ -1506,10 +1562,19 @@ exports.getCustomOrderById = async (req, res) => {
         paymentStage = "unavailable";
         paymentActionMessage =
           "Please contact support if you need assistance with payment.";
+      } else if (
+        balanceDue > 0 &&
+        isPickupOrder &&
+        !hasAvailableRemainingPaymentMethod
+      ) {
+        paymentStage = "unavailable";
+        paymentActionMessage =
+          "Payment methods are temporarily unavailable. Please contact support.";
       } else if (balanceDue > 0) {
         canSubmitRemainingBalance = true;
         paymentStage = "remaining_balance";
-        paymentActionMessage = "Submit your remaining balance payment proof.";
+        paymentActionMessage =
+          "Choose a payment method for your remaining balance.";
       } else {
         paymentStage = "fully_paid";
         paymentActionMessage = "Your full payment has been verified.";
@@ -1578,6 +1643,7 @@ exports.getCustomOrderById = async (req, res) => {
         payment_action_message: paymentActionMessage,
         project_agreement_required: estimationApprovedForPayment,
         project_agreement_accepted: projectAgreementAccepted,
+        payment_method_availability: paymentMethodAvailability,
         // PHASE 5 — Blueprint Rider Final Cash Collection
         remaining_payment_method: order.remaining_payment_method || null,
         delivery_status: deliveryStatus,
@@ -4438,6 +4504,9 @@ exports.createPayMongoCheckout = async (req, res) => {
       });
     }
 
+    const blueprintPaymentAvailability =
+      await getBlueprintPaymentAvailability(conn);
+
     const normalizedEstimation = await normalizeLifecycleEstimation(
       conn,
       estimation,
@@ -4510,6 +4579,14 @@ exports.createPayMongoCheckout = async (req, res) => {
       return res.status(409).json({
         message:
           "The online payment session is incomplete. Please contact support.",
+      });
+    }
+
+    if (!hasCompleteSession && !blueprintPaymentAvailability.paymongo) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "Online Payment is currently unavailable.",
       });
     }
 
@@ -4603,6 +4680,14 @@ exports.createPayMongoCheckout = async (req, res) => {
           payment_amount: existingAmountResolution.amount,
           minimum_payment: existingAmountResolution.minimumAmount,
           reused: true,
+        });
+      }
+
+      if (!blueprintPaymentAvailability.paymongo) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(400).json({
+          message: "Online Payment is currently unavailable.",
         });
       }
 
@@ -4843,6 +4928,25 @@ exports.selectPaymentMethod = async (req, res) => {
       });
     }
 
+    const blueprintPaymentAvailability =
+      await getBlueprintPaymentAvailability(conn);
+
+    const requestedMethodAvailable =
+      normalizedMethod === "cash"
+        ? blueprintPaymentAvailability.storeCash
+        : blueprintPaymentAvailability.paymongo;
+
+    if (!requestedMethodAvailable) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message:
+          normalizedMethod === "cash"
+            ? "Cash at Store is currently unavailable for blueprint orders."
+            : "Online Payment is currently unavailable.",
+      });
+    }
+
     const previousMethod = order.payment_method || null;
 
     const hasSessionId = Boolean(order.paymongo_session_id);
@@ -5041,6 +5145,25 @@ const selectPickupRemainingPaymentMethod = async ({
         .json({ message: "This order has already been fully paid." });
     }
 
+    const blueprintPaymentAvailability =
+      await getBlueprintPaymentAvailability(conn);
+
+    const requestedMethodAvailable =
+      normalizedMethod === "cash"
+        ? blueprintPaymentAvailability.storeCash
+        : blueprintPaymentAvailability.paymongo;
+
+    if (!requestedMethodAvailable) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message:
+          normalizedMethod === "cash"
+            ? "Cash at Store is currently unavailable for blueprint pickup."
+            : "Online Payment is currently unavailable.",
+      });
+    }
+
     const [paymentRows] = await conn.query(
       `SELECT id, amount, status
        FROM payment_transactions
@@ -5199,6 +5322,9 @@ const createPickupRemainingBalancePayMongoCheckout = async ({
         message: "Select Online Payment for the remaining balance first.",
       });
     }
+    const blueprintPaymentAvailability =
+      await getBlueprintPaymentAvailability(conn);
+
     if (normalize(order.payment_status) === "paid") {
       await conn.rollback();
       transactionActive = false;
@@ -5258,6 +5384,15 @@ const createPickupRemainingBalancePayMongoCheckout = async ({
           "This order's payment state is inconsistent. Please contact support.",
       });
     }
+
+    if (!hasSessionId && !blueprintPaymentAvailability.paymongo) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "Online Payment is currently unavailable.",
+      });
+    }
+
     if (hasSessionId && hasPaymentUrl) {
       let session;
       try {
@@ -5280,6 +5415,15 @@ const createPickupRemainingBalancePayMongoCheckout = async ({
         transactionActive = false;
         return res.json({ payment_url: order.payment_url, reused: true });
       }
+
+      if (!blueprintPaymentAvailability.paymongo) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(400).json({
+          message: "Online Payment is currently unavailable.",
+        });
+      }
+
       await conn.execute(
         `UPDATE orders SET payment_url = NULL, paymongo_session_id = NULL
          WHERE id = ? AND customer_id = ? AND paymongo_session_id = ? AND payment_url = ?`,
@@ -5500,6 +5644,19 @@ exports.selectRemainingPaymentMethod = async (req, res) => {
       return res
         .status(400)
         .json({ message: "This order has already been fully paid." });
+    }
+
+    if (normalizedMethod === "paymongo") {
+      const blueprintPaymentAvailability =
+        await getBlueprintPaymentAvailability(conn);
+
+      if (!blueprintPaymentAvailability.paymongo) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(400).json({
+          message: "Online Payment is currently unavailable.",
+        });
+      }
     }
 
     // 3) payment_transactions rows FOR UPDATE — locked third, after both
@@ -5777,6 +5934,9 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
       });
     }
 
+    const blueprintPaymentAvailability =
+      await getBlueprintPaymentAvailability(conn);
+
     // 3) payment_transactions rows FOR UPDATE.
     const [paymentRows] = await conn.query(
       `SELECT id, amount, status
@@ -5853,6 +6013,14 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
 
     const hasCompleteSession = hasSessionId && hasPaymentUrl;
 
+    if (!hasCompleteSession && !blueprintPaymentAvailability.paymongo) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "Online Payment is currently unavailable.",
+      });
+    }
+
     if (hasCompleteSession) {
       // Live re-check with PayMongo before deciding to reuse or replace
       // the existing session — unlike the initial down-payment flow,
@@ -5897,6 +6065,14 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
         await conn.commit();
         transactionActive = false;
         return res.json({ payment_url: order.payment_url, reused: true });
+      }
+
+      if (!blueprintPaymentAvailability.paymongo) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(400).json({
+          message: "Online Payment is currently unavailable.",
+        });
       }
 
       // Stale (expired/failed/unknown) — clear the old session fields

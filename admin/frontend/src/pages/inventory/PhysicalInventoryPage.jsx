@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../../services/api";
+import useAuthStore from "../../store/authStore";
 import { formatPHDateTime, PH_TIME_ZONE } from "../../utils/dateTime";
 import toast from "react-hot-toast";
 import * as XLSX from "xlsx-js-style";
@@ -168,6 +169,9 @@ const getFinishedAt = (session = {}) =>
   session.completed_at || session.cancelled_at || null;
 
 export default function PhysicalInventoryPage() {
+  const { hasPermission } = useAuthStore();
+  const canManage = hasPermission("stock_movements.manage");
+  const canExport = hasPermission("stock_movements.export");
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
   const [items, setItems] = useState([]);
@@ -380,6 +384,8 @@ export default function PhysicalInventoryPage() {
     filteredItems.every((item) => selectedSet.has(item.id));
 
   const toggleItemSelection = (item, checked) => {
+    if (!canManage) return;
+
     setSelectedIds((current) => {
       const next = new Set(current);
       if (checked) next.add(item.id);
@@ -392,10 +398,7 @@ export default function PhysicalInventoryPage() {
       [item.id]: checked
         ? {
             ...(current[item.id] || {}),
-            physical_count:
-              String(current[item.id]?.physical_count ?? "").trim() === ""
-                ? String(item.system_quantity ?? 0)
-                : current[item.id].physical_count,
+            physical_count: current[item.id]?.physical_count ?? "",
             reason: current[item.id]?.reason || "",
           }
         : { physical_count: "", reason: "" },
@@ -403,6 +406,8 @@ export default function PhysicalInventoryPage() {
   };
 
   const toggleAllShown = (checked) => {
+    if (!canManage) return;
+
     setSelectedIds((current) => {
       const next = new Set(current);
       for (const item of filteredItems) {
@@ -417,10 +422,7 @@ export default function PhysicalInventoryPage() {
         if (checked) {
           next[item.id] = {
             ...(next[item.id] || {}),
-            physical_count:
-              String(next[item.id]?.physical_count ?? "").trim() === ""
-                ? String(item.system_quantity ?? 0)
-                : next[item.id].physical_count,
+            physical_count: next[item.id]?.physical_count ?? "",
             reason: next[item.id]?.reason || "",
           };
         } else {
@@ -503,6 +505,7 @@ export default function PhysicalInventoryPage() {
 
 
   const handleStart = async () => {
+    if (!canManage) return;
     setStarting(true);
     try {
       const { data } = await api.post("/inventory/physical-inventory/sessions", {
@@ -520,7 +523,7 @@ export default function PhysicalInventoryPage() {
   };
 
   const handleSaveDraft = async () => {
-    if (!activeSession) return;
+    if (!canManage || !activeSession) return;
     setSaving(true);
     try {
       const { data } = await api.put(
@@ -541,7 +544,7 @@ export default function PhysicalInventoryPage() {
   };
 
   const handleFinalize = async () => {
-    if (!activeSession || !validateBeforeFinalize()) return;
+    if (!canManage || !activeSession || !validateBeforeFinalize()) return;
 
     const confirmed = window.confirm(
       `Finalize ${activeSession.reference_code} for ${selectedIds.length} selected material${selectedIds.length === 1 ? "" : "s"}? Only selected rows will be reconciled. Stock Movements are created only for differences.`,
@@ -571,7 +574,7 @@ export default function PhysicalInventoryPage() {
   };
 
   const handleCancel = async () => {
-    if (!activeSession) return;
+    if (!canManage || !activeSession) return;
     if (!cancelReason.trim()) {
       toast.error("Cancellation reason is required.");
       return;
@@ -611,6 +614,7 @@ export default function PhysicalInventoryPage() {
   };
 
   const handleExportReport = async () => {
+    if (!canExport) return;
     setExporting(true);
     try {
       const params =
@@ -786,7 +790,7 @@ export default function PhysicalInventoryPage() {
             <RefreshCw size={14} />
             Refresh
           </button>
-          {!activeSession && (
+          {canManage && !activeSession && (
             <button onClick={() => setStartOpen(true)} style={btnPrimary}>
               <ClipboardCheck size={14} />
               Start physical count
@@ -868,6 +872,7 @@ export default function PhysicalInventoryPage() {
                     <input
                       type="checkbox"
                       checked={allShownSelected}
+                      disabled={!canManage}
                       onChange={(event) => toggleAllShown(event.target.checked)}
                       aria-label="Select all shown materials"
                     />
@@ -914,6 +919,7 @@ export default function PhysicalInventoryPage() {
                         <input
                           type="checkbox"
                           checked={selected}
+                          disabled={!canManage}
                           onChange={(event) =>
                             toggleItemSelection(item, event.target.checked)
                           }
@@ -954,7 +960,7 @@ export default function PhysicalInventoryPage() {
                               },
                             }));
                           }}
-                          disabled={!selected}
+                          disabled={!canManage || !selected}
                           inputMode={
                             allowsDecimal(item.unit_snapshot)
                               ? "decimal"
@@ -1005,7 +1011,7 @@ export default function PhysicalInventoryPage() {
                               },
                             }))
                           }
-                          disabled={!hasDifference}
+                          disabled={!canManage || !hasDifference}
                           placeholder={
                             hasDifference
                               ? "Required reason for difference"
@@ -1029,6 +1035,7 @@ export default function PhysicalInventoryPage() {
             <label style={fieldLabel}>Session notes · Optional</label>
             <textarea
               value={notes}
+              disabled={!canManage}
               onChange={(event) => setNotes(event.target.value.slice(0, 1000))}
               rows={3}
               placeholder="General notes about this physical inventory count"
@@ -1036,7 +1043,8 @@ export default function PhysicalInventoryPage() {
             />
           </div>
 
-          <div style={actionBar}>
+          {canManage && (
+            <div style={actionBar}>
             <button
               type="button"
               onClick={() => setCancelOpen(true)}
@@ -1069,6 +1077,7 @@ export default function PhysicalInventoryPage() {
               </button>
             </div>
           </div>
+          )}
         </>
       ) : (
         <div style={emptyCard}>
@@ -1089,15 +1098,17 @@ export default function PhysicalInventoryPage() {
               Review count sessions, reconciliation results, and audit history.
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setExportOpen(true)}
-            disabled={exporting}
-            style={btnSecondary}
-          >
-            <FileDown size={14} />
-            {exporting ? "Exporting..." : "Export Report"}
-          </button>
+          {canExport && (
+            <button
+              type="button"
+              onClick={() => setExportOpen(true)}
+              disabled={exporting}
+              style={btnSecondary}
+            >
+              <FileDown size={14} />
+              {exporting ? "Exporting..." : "Export Report"}
+            </button>
+          )}
         </div>
 
         <div style={historyFilterBar}>
@@ -1321,7 +1332,7 @@ export default function PhysicalInventoryPage() {
         </div>
       </div>
 
-      {exportOpen && (
+      {canExport && exportOpen && (
         <div style={overlay}>
           <div style={{ ...modal, width: "min(540px, 100%)" }}>
             <div style={eyebrow}>Report Generation</div>
@@ -1395,7 +1406,7 @@ export default function PhysicalInventoryPage() {
         </div>
       )}
 
-      {startOpen && (
+      {canManage && startOpen && (
         <div style={overlay}>
           <div style={modal}>
             <div style={modalTitle}>Start physical count</div>
@@ -1439,7 +1450,7 @@ export default function PhysicalInventoryPage() {
         </div>
       )}
 
-      {cancelOpen && (
+      {canManage && cancelOpen && (
         <div style={overlay}>
           <div style={modal}>
             <div style={modalTitle}>Cancel physical count</div>

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import ReCAPTCHA from "react-google-recaptcha";
 
 import "./authpages.css";
@@ -30,6 +30,15 @@ export default function RegisterPage() {
     invalidateRegistrationPhoneOtp,
   } = useAuthStore();
   const navigate = useNavigate();
+  const location = useLocation();
+  const redirectTo = String(location.state?.redirectTo || "").trim() || null;
+
+  const goToLogin = () => {
+    navigate(
+      "/login",
+      redirectTo ? { state: { redirectTo } } : undefined,
+    );
+  };
 
   const [step, setStep] = useState("form");
   const [showPw, setShowPw] = useState(false);
@@ -609,7 +618,7 @@ export default function RegisterPage() {
             <button
               className="btn-auth"
               style={{ marginTop: 8 }}
-              onClick={() => navigate("/login")}
+              onClick={goToLogin}
             >
               Go to Login
             </button>
@@ -892,7 +901,7 @@ export default function RegisterPage() {
             <button
               className="auth-tab"
               type="button"
-              onClick={() => navigate("/login")}
+              onClick={goToLogin}
             >
               Sign In
             </button>
@@ -1213,7 +1222,7 @@ export default function RegisterPage() {
 
           <div className="auth-switch">
             Already have an account?{" "}
-            <button type="button" onClick={() => navigate("/login")}>
+            <button type="button" onClick={goToLogin}>
               Sign in
             </button>
           </div>
