@@ -1221,10 +1221,66 @@ exports.getOne = async (req, res) => {
 
     const items = rawItems.map(normalizeCustomRequestItem);
 
-    const customRequestItems =
+    let customRequestItems =
       normalize(order.order_type) === "blueprint"
         ? items.filter((item) => Boolean(item.customization))
         : [];
+
+    if (customRequestItems.length > 0) {
+      const [referencePhotoRows] = await pool.query(
+        `SELECT
+            id,
+            order_item_id,
+            file_url,
+            file_name,
+            mime_type,
+            file_size,
+            created_at
+         FROM custom_order_attachments
+         WHERE order_id = ?
+           AND attachment_type = 'reference_photo'
+         ORDER BY created_at ASC, id ASC`,
+        [orderId],
+      );
+
+      const referencePhotosByItem = new Map();
+      const unscopedReferencePhotos = [];
+
+      referencePhotoRows.forEach((row) => {
+        const rawFileUrl = String(row.file_url || "").trim();
+        const photo = {
+          id: row.id,
+          order_item_id: row.order_item_id || null,
+          file_url: /^https?:\/\//i.test(rawFileUrl)
+            ? rawFileUrl
+            : signUploadPath(rawFileUrl),
+          file_name: row.file_name || "Customer reference",
+          mime_type: row.mime_type || "image/*",
+          file_size: Number(row.file_size || 0) || null,
+          created_at: row.created_at || null,
+        };
+
+        const itemId = Number(row.order_item_id || 0);
+        if (!itemId) {
+          unscopedReferencePhotos.push(photo);
+          return;
+        }
+
+        if (!referencePhotosByItem.has(itemId)) {
+          referencePhotosByItem.set(itemId, []);
+        }
+        referencePhotosByItem.get(itemId).push(photo);
+      });
+
+      const includeUnscoped = customRequestItems.length === 1;
+      customRequestItems = customRequestItems.map((item) => ({
+        ...item,
+        reference_photos: [
+          ...(referencePhotosByItem.get(Number(item.id)) || []),
+          ...(includeUnscoped ? unscopedReferencePhotos : []),
+        ],
+      }));
+    }
 
     const [paymentTransactions] = await pool.query(
       `SELECT 

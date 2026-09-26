@@ -142,7 +142,7 @@ const assetUpload = (req, res, next) => {
 /* ──────────────────────────────────────────────────────────
    Initial custom-request reference photo upload
    - memory storage: files are written only after order validation starts
-   - maximum 5 photos per custom item, 25 photos per request
+   - maximum 5 photos per custom request
 ────────────────────────────────────────────────────────── */
 const REFERENCE_PHOTO_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 
@@ -156,7 +156,7 @@ const referencePhotoUploadRaw = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 5 * 1024 * 1024,
-    files: 25,
+    files: 5,
   },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname || "").toLowerCase();
@@ -181,7 +181,7 @@ const referencePhotoUploadRaw = multer({
 });
 
 const referencePhotoUpload = (req, res, next) => {
-  referencePhotoUploadRaw.array("reference_photos", 25)(req, res, (err) => {
+  referencePhotoUploadRaw.array("reference_photos", 5)(req, res, (err) => {
     if (err) {
       if (err instanceof multer.MulterError) {
         if (err.code === "LIMIT_FILE_SIZE") {
@@ -190,9 +190,12 @@ const referencePhotoUpload = (req, res, next) => {
           });
         }
 
-        if (err.code === "LIMIT_FILE_COUNT") {
+        if (
+          err.code === "LIMIT_FILE_COUNT" ||
+          err.code === "LIMIT_UNEXPECTED_FILE"
+        ) {
           return res.status(400).json({
-            message: "Too many reference photos were uploaded.",
+            message: "You can upload up to 5 reference photos per custom request.",
           });
         }
       }

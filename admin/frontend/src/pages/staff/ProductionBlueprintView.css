@@ -365,6 +365,86 @@
   cursor: pointer;
 }
 
+.production-blueprint-reference {
+  padding: 14px;
+  border-top: 1px solid #dcdde1;
+  background: #ffffff;
+}
+
+.production-blueprint-reference-head {
+  margin-bottom: 11px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.production-blueprint-reference-head h2 {
+  margin: 0;
+  color: #18181b;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.production-blueprint-reference-head p {
+  margin: 4px 0 0;
+  max-width: 680px;
+  color: #77787e;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.production-blueprint-reference-head > span {
+  color: #77787e;
+  font-size: 9.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.production-blueprint-reference-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.production-blueprint-reference-card {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #e2e2e5;
+  background: #fafafa;
+  color: #29292d;
+  text-decoration: none;
+}
+
+.production-blueprint-reference-card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: #f4f4f5;
+}
+
+.production-blueprint-reference-card span {
+  display: block;
+  padding: 8px 9px;
+  overflow: hidden;
+  font-size: 9.5px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.production-blueprint-reference-note {
+  margin: 10px 0 0;
+  padding: 9px 10px;
+  border-left: 2px solid #18181b;
+  background: #fafafa;
+  color: #5f6065;
+  font-size: 9.5px;
+  line-height: 1.55;
+}
+
 .production-blueprint-parts {
   padding: 14px;
   border-top: 1px solid #dcdde1;
@@ -487,7 +567,11 @@
     flex-direction: column;
   }
   .production-blueprint-details,
+  .production-blueprint-reference,
   .production-blueprint-parts { padding: 11px; }
+  .production-blueprint-reference-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .staff-prod-viewer-canvas { height: 430px; }
   .staff-prod-viewer-stage { min-height: 430px; }
 }

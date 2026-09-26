@@ -10,7 +10,6 @@ const ALLOWED_REFERENCE_TYPES = new Set([
   "image/jpg",
   "image/png",
   "image/webp",
-  "application/pdf",
 ]);
 
 const toPositiveNumber = (value) => {

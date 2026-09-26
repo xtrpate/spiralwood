@@ -2101,6 +2101,11 @@ export default function OrderDetailPage() {
                 {customRequestItems.map((item) => {
                   const dims = getCustomRequestDims(item);
                   const canPreview = hasCustomEditorSnapshot(item);
+                  const referencePhotos = Array.isArray(item.reference_photos)
+                    ? item.reference_photos.filter((photo) =>
+                        String(photo?.file_url || "").trim(),
+                      )
+                    : [];
 
                   return (
                     <div
@@ -2201,6 +2206,74 @@ export default function OrderDetailPage() {
                           }
                         />
                       </div>
+
+                      {referencePhotos.length ? (
+                        <div style={textBlock}>
+                          <div style={textBlockTitle}>
+                            Customer reference photos
+                          </div>
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns:
+                                "repeat(auto-fill, minmax(120px, 1fr))",
+                              gap: 10,
+                              marginTop: 10,
+                            }}
+                          >
+                            {referencePhotos.map((photo, index) => {
+                              const src = buildAssetUrl(photo.file_url);
+                              if (!src) return null;
+
+                              return (
+                                <a
+                                  key={photo.id || `${item.id}-reference-${index}`}
+                                  href={src}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={{
+                                    display: "block",
+                                    border: "1px solid #e4e4e7",
+                                    background: "#fafafa",
+                                    color: "#27272a",
+                                    textDecoration: "none",
+                                    overflow: "hidden",
+                                  }}
+                                  title="Open full reference photo"
+                                >
+                                  <img
+                                    src={src}
+                                    alt={
+                                      photo.file_name ||
+                                      `Customer reference ${index + 1}`
+                                    }
+                                    style={{
+                                      display: "block",
+                                      width: "100%",
+                                      aspectRatio: "4 / 3",
+                                      objectFit: "cover",
+                                      background: "#f4f4f5",
+                                    }}
+                                  />
+                                  <div
+                                    style={{
+                                      padding: "7px 8px",
+                                      fontSize: 11,
+                                      fontWeight: 650,
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    {photo.file_name ||
+                                      `Reference ${index + 1}`}
+                                  </div>
+                                </a>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
 
                       {item.requested_comments ? (
                         <div style={textBlock}>
