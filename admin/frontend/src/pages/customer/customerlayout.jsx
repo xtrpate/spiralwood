@@ -1621,9 +1621,11 @@ export default function CustomerLayout() {
                   onClick={() => {
                     closeMiniCart();
                     navigate(
-                      hasBlueprintItems && !hasStandardItems
-                        ? "/custom-cart"
-                        : "/cart",
+                      !customerUser
+                        ? "/cart"
+                        : hasBlueprintItems && !hasStandardItems
+                          ? "/custom-cart"
+                          : "/cart",
                     );
                   }}
                 >

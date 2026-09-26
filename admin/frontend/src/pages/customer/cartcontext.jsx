@@ -14,6 +14,7 @@ const CartContext = createContext(null);
 
 const STORAGE_KEY = "cust_cart";
 const LEGACY_CUSTOM_STORAGE_KEY = "cust_custom_cart";
+const GUEST_CART_PENDING_KEY = "cust_guest_cart_pending";
 
 const toPositiveInt = (value, fallback = 1) => {
   const n = parseInt(value, 10);
@@ -178,33 +179,68 @@ export function CartProvider({ children }) {
 
     let cancelled = false;
 
-    api
-      .get("/customer/cart")
-      .then((res) => {
+    const loadCloudCart = async () => {
+      try {
+        const res = await api.get("/customer/cart");
         if (cancelled) return;
 
         const cloudCart = Array.isArray(res?.data?.cart) ? res.data.cart : [];
         const normalizedCloudCart = cloudCart
           .map(normalizeCartItem)
           .filter(Boolean);
+        const normalizedLocalCart = getInitialCart()
+          .map(normalizeCartItem)
+          .filter(Boolean);
 
-        setCart((currentLocalCart) => {
-          const normalizedLocalCart = (
-            Array.isArray(currentLocalCart) ? currentLocalCart : []
-          )
-            .map(normalizeCartItem)
-            .filter(Boolean);
+        const guestCartWasPending =
+          localStorage.getItem(GUEST_CART_PENDING_KEY) === "1";
 
-          // Kung may cloud cart, iyon ang source of truth para hindi magdoble.
-          // Kung wala pang cloud cart, gamitin muna ang local cart.
-          return normalizedCloudCart.length > 0
+        if (guestCartWasPending && normalizedLocalCart.length > 0) {
+          const mergedCart = mergeCartCollections(
+            normalizedCloudCart,
+            normalizedLocalCart,
+          );
+
+          try {
+            await api.post("/customer/cart/sync", { cart: mergedCart });
+          } catch (syncError) {
+            if (cancelled) return;
+
+            // Keep the original guest cart untouched locally so a failed
+            // handoff can be retried safely on the next login/load.
+            console.error("Failed to merge guest cart into cloud cart", syncError);
+            setCart(normalizedLocalCart);
+            setCloudLoaded(false);
+            return;
+          }
+
+          if (cancelled) return;
+
+          skipNextSync.current = true;
+          localStorage.removeItem(GUEST_CART_PENDING_KEY);
+          setCart(mergedCart);
+          setCloudLoaded(true);
+          return;
+        }
+
+        if (guestCartWasPending && normalizedLocalCart.length === 0) {
+          localStorage.removeItem(GUEST_CART_PENDING_KEY);
+        }
+
+        setCart(
+          normalizedCloudCart.length > 0
             ? normalizedCloudCart
-            : normalizedLocalCart;
-        });
-
+            : normalizedLocalCart,
+        );
         setCloudLoaded(true);
-      })
-      .catch((err) => console.error("Failed to fetch cloud cart", err));
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Failed to fetch cloud cart", err);
+        }
+      }
+    };
+
+    loadCloudCart();
 
     return () => {
       cancelled = true;
@@ -223,7 +259,17 @@ export function CartProvider({ children }) {
       JSON.stringify(customOnly),
     );
 
-    if (user && user.role === "customer" && cloudLoaded) {
+    const customerSignedIn = user && user.role === "customer";
+
+    if (!customerSignedIn) {
+      if (cart.length > 0) {
+        localStorage.setItem(GUEST_CART_PENDING_KEY, "1");
+      } else {
+        localStorage.removeItem(GUEST_CART_PENDING_KEY);
+      }
+    }
+
+    if (customerSignedIn && cloudLoaded) {
       if (skipNextSync.current) {
         skipNextSync.current = false;
       } else {
@@ -238,6 +284,10 @@ export function CartProvider({ children }) {
   const addToCart = (item) => {
     const normalized = normalizeCartItem(item);
     if (!normalized) return;
+
+    if (!(user && user.role === "customer")) {
+      localStorage.setItem(GUEST_CART_PENDING_KEY, "1");
+    }
 
     setCart((prev) => {
       const existing = prev.find((entry) => entry.key === normalized.key);
@@ -335,6 +385,7 @@ export function CartProvider({ children }) {
     setCart([]);
 
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(GUEST_CART_PENDING_KEY);
     sessionStorage.removeItem(LEGACY_CUSTOM_STORAGE_KEY);
     sessionStorage.removeItem("cust_selected_keys");
     sessionStorage.removeItem("cust_selected_custom_checkout");

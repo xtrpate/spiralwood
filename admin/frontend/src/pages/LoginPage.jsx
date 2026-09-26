@@ -55,6 +55,10 @@ export default function LoginPage() {
   const location = useLocation();
   const login = useAuthStore((state) => state.login);
 
+  const requestedRedirectTo = location.state?.from?.pathname
+    ? `${location.state.from.pathname}${location.state.from.search || ""}`
+    : location.state?.redirectTo || null;
+
   const [form, setForm] = useState({
     email: "",
     password: "",
@@ -91,10 +95,6 @@ export default function LoginPage() {
 
     setLoading(true);
 
-    const redirectTo = location.state?.from?.pathname
-      ? `${location.state.from.pathname}${location.state.from.search || ""}`
-      : location.state?.redirectTo || null;
-
     try {
       const user = await login(
         form.email,
@@ -111,8 +111,8 @@ export default function LoginPage() {
 
       const nextRoute =
         user?.role === "customer"
-          ? getCustomerPostLoginRoute(redirectTo)
-          : redirectTo || getDefaultRouteForUser(user);
+          ? getCustomerPostLoginRoute(requestedRedirectTo)
+          : requestedRedirectTo || getDefaultRouteForUser(user);
 
       navigate(nextRoute, { replace: true });
     } catch (err) {
@@ -132,6 +132,7 @@ export default function LoginPage() {
             password: form.password, // Pass password so it can auto-login after phone verification!
             startingStep: code === "PHONE_NOT_VERIFIED" ? "phone" : "email",
             fromLogin: true,
+            redirectTo: requestedRedirectTo,
           },
         });
         return;
@@ -310,7 +311,14 @@ export default function LoginPage() {
 
           <div className="auth-switch">
             No account yet?{" "}
-            <button type="button" onClick={() => navigate("/register")}>
+            <button
+              type="button"
+              onClick={() =>
+                navigate("/register", {
+                  state: { redirectTo: requestedRedirectTo },
+                })
+              }
+            >
               Create Account
             </button>
           </div>
