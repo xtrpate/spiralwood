@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import toast from "react-hot-toast";
 import * as XLSX from "xlsx-js-style";
 import api from "../../services/api";
@@ -44,7 +50,7 @@ const normalizeHealthStatus = (value) => {
     return status;
   }
 
-  return status || "out_of_stock";
+  return status || "unknown";
 };
 
 const statusLabel = (value) => {
@@ -130,6 +136,56 @@ const getManilaDateInput = () => {
   return `${values.year}-${values.month}-${values.day}`;
 };
 
+const validateReportDate = (value, todayValue, label = "Report date") => {
+  const targetDate = String(value || "").trim();
+
+  if (!targetDate) {
+    return `${label} is required.`;
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
+    return `${label} must use a valid date.`;
+  }
+
+  const [year, month, day] = targetDate.split("-").map(Number);
+  const parsed = new Date(year, month - 1, day);
+
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day
+  ) {
+    return `${label} must be a valid calendar date.`;
+  }
+
+  if (targetDate > todayValue) {
+    return `${label} cannot be in the future.`;
+  }
+
+  return "";
+};
+
+const validateCustomDateRange = (startValue, endValue, todayValue) => {
+  const startError = validateReportDate(startValue, todayValue, "Start date");
+
+  if (startError) {
+    return startError;
+  }
+
+  const endError = validateReportDate(endValue, todayValue, "End date");
+
+  if (endError) {
+    return endError;
+  }
+
+  if (startValue > endValue) {
+    return "Start date cannot be later than end date.";
+  }
+
+  return "";
+};
+
 const materialSpec = (row) => {
   const form = humanize(row?.material_form || "other");
   const dimensions = [row?.length_mm, row?.width_mm, row?.thickness_mm].filter(
@@ -208,7 +264,7 @@ function EmptyRow({ colSpan, text }) {
 
 export default function CurrentInventoryReportPage() {
   const { user } = useAuthStore();
-  const todayManila = useMemo(() => getManilaDateInput(), []);
+  const todayManila = getManilaDateInput();
 
   const [rawMaterials, setRawMaterials] = useState([]);
   const [readyMade, setReadyMade] = useState([]);
@@ -216,71 +272,136 @@ export default function CurrentInventoryReportPage() {
   const [reportMeta, setReportMeta] = useState(null);
   const [warnings, setWarnings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [silentLoading, setSilentLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
   const [selectedInventoryItem, setSelectedInventoryItem] = useState(null);
 
-  const [reportDate, setReportDate] = useState(todayManila);
-  const [appliedReportDate, setAppliedReportDate] = useState(todayManila);
+  const reportRequestIdRef = useRef(0);
+  const hasLoadedReportRef = useRef(false);
+
+  const [dateFilter, setDateFilter] = useState("all");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
   const [search, setSearch] = useState("");
   const [inventoryType, setInventoryType] = useState("");
   const [stockStatus, setStockStatus] = useState("");
 
-  const loadReport = useCallback(async (dateValue) => {
-    const targetDate = String(dateValue || "").trim();
-    if (!targetDate) return;
+  const loadReport = useCallback(async () => {
+    const requestId = ++reportRequestIdRef.current;
+    const isSilentReload = hasLoadedReportRef.current;
 
-    setLoading(true);
     setError("");
 
+    if (dateFilter === "custom") {
+      const validationError = validateCustomDateRange(
+        customStart,
+        customEnd,
+        todayManila,
+      );
+
+      if (validationError) {
+        setError(validationError);
+
+        if (!hasLoadedReportRef.current) {
+          setRawMaterials([]);
+          setReadyMade([]);
+          setGeneratedAt("");
+          setWarnings([]);
+          setReportMeta(null);
+        }
+
+        setLoading(false);
+        setSilentLoading(false);
+        return;
+      }
+    }
+
+    if (isSilentReload) {
+      setSilentLoading(true);
+    } else {
+      setLoading(true);
+    }
+
     try {
-      const response = await api.get("/inventory/report", {
-        params: { date: targetDate },
-      });
+      const params = { date_filter: dateFilter };
+
+      if (dateFilter === "custom") {
+        params.from = customStart;
+        params.to = customEnd;
+      }
+
+      const response = await api.get("/inventory/report", { params });
+
+      if (requestId !== reportRequestIdRef.current) {
+        return;
+      }
 
       const rawRows = Array.isArray(response.data?.raw_materials)
         ? response.data.raw_materials
         : [];
+
       const readyRows = Array.isArray(response.data?.ready_made)
         ? response.data.ready_made
         : [];
 
       setRawMaterials(rawRows);
       setReadyMade(readyRows);
+
       setGeneratedAt(response.data?.generated_at || new Date().toISOString());
+
       setWarnings(
         Array.isArray(response.data?.warnings) ? response.data.warnings : [],
       );
+
       setReportMeta({
-        report_date: response.data?.report_date || targetDate,
         as_of_at: response.data?.as_of_at || "",
         is_current_date: Boolean(response.data?.is_current_date),
         history_complete: response.data?.history_complete !== false,
-        scope:
-          response.data?.scope ||
-          "Currently active inventory records that existed by the selected report date.",
+        scope: response.data?.scope || "Currently active inventory records.",
       });
-      setAppliedReportDate(response.data?.report_date || targetDate);
+
+      // Only mark the report as loaded after a successful request.
+      hasLoadedReportRef.current = true;
     } catch (err) {
-      setRawMaterials([]);
-      setReadyMade([]);
-      setGeneratedAt("");
-      setWarnings([]);
-      setReportMeta(null);
+      if (requestId !== reportRequestIdRef.current) {
+        return;
+      }
+
       setError(
-        err.response?.data?.message ||
-          err.message ||
+        err?.response?.data?.message ||
+          err?.message ||
           "Failed to load the Inventory report.",
       );
+
+      // Preserve the previously loaded report during silent refresh failures.
+      if (!hasLoadedReportRef.current) {
+        setRawMaterials([]);
+        setReadyMade([]);
+        setGeneratedAt("");
+        setWarnings([]);
+        setReportMeta(null);
+      }
     } finally {
+      if (requestId !== reportRequestIdRef.current) {
+        return;
+      }
+
       setLoading(false);
+      setSilentLoading(false);
     }
-  }, []);
+  }, [dateFilter, customStart, customEnd, todayManila]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-    loadReport(todayManila);
-  }, [loadReport, todayManila]);
+  }, []);
+
+  useEffect(() => {
+    if (dateFilter === "custom" && (!customStart || !customEnd)) {
+      return;
+    }
+    loadReport();
+  }, [dateFilter, customStart, customEnd, loadReport]);
 
   const normalizedSearch = normalize(search);
 
@@ -366,27 +487,13 @@ export default function CurrentInventoryReportPage() {
     setSearch("");
     setInventoryType("");
     setStockStatus("");
-  };
-
-  const applyReportDate = () => {
-    if (!reportDate) {
-      toast.error("Select a report date.");
-      return;
-    }
-    if (reportDate > todayManila) {
-      toast.error("Report date cannot be in the future.");
-      return;
-    }
-    loadReport(reportDate);
-  };
-
-  const showToday = () => {
-    setReportDate(todayManila);
-    loadReport(todayManila);
+    setDateFilter("all");
+    setCustomStart("");
+    setCustomEnd("");
   };
 
   const exportExcel = async () => {
-    if (!generatedAt || loading || !appliedReportDate) return;
+    if (!generatedAt || loading) return;
 
     setExporting(true);
 
@@ -430,10 +537,9 @@ export default function CurrentInventoryReportPage() {
 
       const summaryData = [
         [title("SPIRAL WOOD SERVICES - INVENTORY REPORT")],
-        [title("As of Date:"), formatReportDate(appliedReportDate)],
         [title("Generated:"), formatDateTime(generatedAt)],
         [title("Generated By:"), generatedBy],
-        [title("Scope:"), reportMeta?.scope || "Active inventory"],
+        [title("Scope:"), reportMeta?.scope || "Active inventory records"],
         [title("Inventory Type:"), typeLabel],
         [title("Stock Health:"), healthLabel],
         [title("Search:"), search.trim() || "None"],
@@ -570,7 +676,7 @@ export default function CurrentInventoryReportPage() {
         .replace(/[:.]/g, "-")
         .slice(0, 19);
 
-      const fileName = `wisdom_inventory_report_${appliedReportDate}_${stamp}.xlsx`;
+      const fileName = `wisdom_inventory_report_${stamp}.xlsx`;
 
       if (window.showSaveFilePicker) {
         const handle = await window.showSaveFilePicker({
@@ -623,8 +729,8 @@ export default function CurrentInventoryReportPage() {
           <button
             type="button"
             className="cir-button cir-button-secondary"
-            onClick={() => loadReport(appliedReportDate)}
-            disabled={loading}
+            onClick={() => loadReport()}
+            disabled={loading || silentLoading}
           >
             {loading ? "Refreshing..." : "Refresh"}
           </button>
@@ -632,28 +738,14 @@ export default function CurrentInventoryReportPage() {
             type="button"
             className="cir-button cir-button-primary"
             onClick={exportExcel}
-            disabled={loading || !generatedAt || exporting}
+            disabled={loading || silentLoading || !generatedAt || exporting}
           >
             {exporting ? "Exporting..." : "Export Excel"}
           </button>
         </div>
       </div>
 
-      <div className="cir-as-of-card">
-        <div className="cir-as-of-main">
-          <span className="cir-as-of-label">As of Date</span>
-          <strong className="cir-as-of-date">
-            {formatReportDate(appliedReportDate)}
-          </strong>
-        </div>
-        <span className="cir-as-of-note">
-          {reportMeta?.is_current_date
-            ? "Current inventory snapshot at the time this report was loaded."
-            : "Closing inventory reconstructed for the selected Philippine calendar date."}
-        </span>
-      </div>
-
-      <div className="cir-report-meta cir-print-only">
+      <div className="cir-report-meta">
         <span>
           <strong>Generated:</strong> {formatDateTime(generatedAt)}
         </span>
@@ -674,61 +766,122 @@ export default function CurrentInventoryReportPage() {
         </div>
       ) : null}
 
+      <div
+        className="cir-report-tabs cir-no-print"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "4px",
+          margin: "12px 0 0",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            setInventoryType("");
+            setSearch("");
+            setStockStatus("");
+          }}
+          style={{
+            padding: "10px 18px",
+            border: "none",
+            borderBottom:
+              inventoryType === ""
+                ? "2px solid #18181b"
+                : "2px solid transparent",
+            background: inventoryType === "" ? "#18181b" : "#f1f1f3",
+            color: inventoryType === "" ? "#ffffff" : "#3f3f46",
+            fontWeight: 600,
+            cursor: "pointer",
+            borderRadius: "4px 4px 0 0",
+            boxShadow:
+              inventoryType === ""
+                ? "0 2px 0 #18181b"
+                : "0 2px 4px rgba(24, 24, 27, 0.14)",
+          }}
+        >
+          All Products
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setInventoryType("raw");
+            setSearch("");
+            setStockStatus("");
+          }}
+          style={{
+            padding: "10px 18px",
+            border: "none",
+            borderBottom:
+              inventoryType === "raw"
+                ? "2px solid #18181b"
+                : "2px solid transparent",
+            background: inventoryType === "raw" ? "#18181b" : "#f1f1f3",
+            color: inventoryType === "raw" ? "#ffffff" : "#3f3f46",
+            fontWeight: 600,
+            cursor: "pointer",
+            borderRadius: "4px 4px 0 0",
+            boxShadow:
+              inventoryType === "raw"
+                ? "0 2px 0 #18181b"
+                : "0 2px 4px rgba(24, 24, 27, 0.14)",
+          }}
+        >
+          Raw Materials
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setInventoryType("ready_made");
+            setSearch("");
+            setStockStatus("");
+          }}
+          style={{
+            padding: "10px 18px",
+            border: "none",
+            borderBottom:
+              inventoryType === "ready_made"
+                ? "2px solid #18181b"
+                : "2px solid transparent",
+            background: inventoryType === "ready_made" ? "#18181b" : "#f1f1f3",
+            color: inventoryType === "ready_made" ? "#ffffff" : "#3f3f46",
+            fontWeight: 600,
+            cursor: "pointer",
+            borderRadius: "4px 4px 0 0",
+            boxShadow:
+              inventoryType === "ready_made"
+                ? "0 2px 0 #18181b"
+                : "0 2px 4px rgba(24, 24, 27, 0.14)",
+          }}
+        >
+          Ready-made Products
+        </button>
+      </div>
+
       <div className="cir-toolbar cir-no-print">
-        <label className="cir-filter-field cir-date-field">
-          <span>Report Date</span>
-          <input
-            type="date"
-            value={reportDate}
-            max={todayManila}
-            onChange={(event) => setReportDate(event.target.value)}
-          />
-        </label>
-
-        <button
-          type="button"
-          className="cir-button cir-button-primary cir-apply-date-button"
-          onClick={applyReportDate}
-          disabled={loading || !reportDate || reportDate === appliedReportDate}
-        >
-          Apply Date
-        </button>
-
-        <button
-          type="button"
-          className="cir-button cir-button-secondary cir-today-button"
-          onClick={showToday}
-          disabled={loading || appliedReportDate === todayManila}
-        >
-          Today
-        </button>
-
         <label className="cir-filter-field cir-search-field">
-          <span>Search</span>
+          <span>Search Records</span>
           <input
             type="search"
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => {
+              const nextValue = String(event.target.value || "");
+              if (nextValue.length > 120) {
+                toast.error("Search must be 120 characters or less.");
+                setSearch(nextValue.slice(0, 120));
+                return;
+              }
+              setSearch(nextValue);
+            }}
             placeholder="Material, product, barcode, category..."
             maxLength={120}
+            aria-label="Search inventory records"
           />
         </label>
 
-        <label className="cir-filter-field">
-          <span>Inventory Type</span>
-          <select
-            value={inventoryType}
-            onChange={(event) => setInventoryType(event.target.value)}
-          >
-            {INVENTORY_TYPES.map((item) => (
-              <option key={item.value || "all"} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="cir-filter-field">
+        <label className="cir-filter-field" style={{ minWidth: 150 }}>
           <span>Stock Health</span>
           <select
             value={stockStatus}
@@ -742,14 +895,63 @@ export default function CurrentInventoryReportPage() {
           </select>
         </label>
 
-        <button
-          type="button"
-          className="cir-button cir-button-secondary cir-clear-button"
-          onClick={clearFilters}
-          disabled={!search && !inventoryType && !stockStatus}
-        >
-          Clear Filters
-        </button>
+        <label className="cir-filter-field" style={{ minWidth: 160 }}>
+          <span>Date Filter</span>
+          <select
+            value={dateFilter}
+            onChange={(e) => {
+              setDateFilter(e.target.value);
+              setCustomStart("");
+              setCustomEnd("");
+            }}
+          >
+            <option value="all">All Time</option>
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="this_week">This Week</option>
+            <option value="this_month">This Month</option>
+            <option value="this_year">This Year</option>
+            <option value="custom">Custom Range</option>
+          </select>
+        </label>
+
+        {dateFilter === "custom" && (
+          <>
+            <label
+              className="cir-filter-field"
+              style={{ minWidth: 130, flex: "0 0 auto" }}
+            >
+              <span>Start Date</span>
+              <input
+                type="date"
+                value={customStart}
+                max={todayManila}
+                onChange={(e) => {
+                  const nextStart = e.target.value;
+
+                  setCustomStart(nextStart);
+
+                  if (customEnd && nextStart && nextStart > customEnd) {
+                    setCustomEnd("");
+                  }
+                }}
+              />
+            </label>
+            <label
+              className="cir-filter-field"
+              style={{ minWidth: 130, flex: "0 0 auto" }}
+            >
+              <span>End Date</span>
+              <input
+                type="date"
+                value={customEnd}
+                min={customStart || undefined}
+                max={todayManila}
+                onChange={(e) => setCustomEnd(e.target.value)}
+              />
+            </label>
+          </>
+        )}
       </div>
 
       {error ? <div className="cir-error">{error}</div> : null}
@@ -757,7 +959,7 @@ export default function CurrentInventoryReportPage() {
         <div className="cir-loading">Loading inventory report...</div>
       ) : null}
 
-      {!loading && !error ? (
+      {!loading && (!error || hasLoadedReportRef.current) ? (
         <>
           <div className="cir-summary-grid">
             <SummaryCard
@@ -838,24 +1040,30 @@ export default function CurrentInventoryReportPage() {
                               {row.name || "Unnamed material"}
                             </div>
                             <div className="cir-secondary-text">
-                              {row.category_name || "Uncategorized"} • {materialSpec(row)}
+                              {row.category_name || "Uncategorized"} •{" "}
+                              {materialSpec(row)}
                             </div>
                           </td>
                           <td className="cir-align-right cir-key-number">
-                            {formatQuantity(row.on_hand_quantity)} {row.unit || ""}
+                            {formatQuantity(row.on_hand_quantity)}{" "}
+                            {row.unit || ""}
                           </td>
                           <td className="cir-align-right">
-                            {formatQuantity(row.reserved_quantity)} {row.unit || ""}
+                            {formatQuantity(row.reserved_quantity)}{" "}
+                            {row.unit || ""}
                           </td>
                           <td className="cir-align-right cir-key-number">
-                            {formatQuantity(row.available_quantity)} {row.unit || ""}
+                            {formatQuantity(row.available_quantity)}{" "}
+                            {row.unit || ""}
                           </td>
                           <td className="cir-align-right">
                             {formatQuantity(row.reorder_point)} {row.unit || ""}
                           </td>
                           <td>
                             <StatusBadge
-                              value={row.availability_status || row.stock_status}
+                              value={
+                                row.availability_status || row.stock_status
+                              }
                             />
                           </td>
                           <td className="cir-action-cell">
@@ -919,7 +1127,10 @@ export default function CurrentInventoryReportPage() {
                           key={`ready-${row.id}`}
                           className="cir-clickable-row"
                           onDoubleClick={() =>
-                            setSelectedInventoryItem({ type: "ready_made", row })
+                            setSelectedInventoryItem({
+                              type: "ready_made",
+                              row,
+                            })
                           }
                         >
                           <td>
@@ -947,7 +1158,10 @@ export default function CurrentInventoryReportPage() {
                               type="button"
                               className="cir-row-action"
                               onClick={() =>
-                                setSelectedInventoryItem({ type: "ready_made", row })
+                                setSelectedInventoryItem({
+                                  type: "ready_made",
+                                  row,
+                                })
                               }
                             >
                               View Details
@@ -998,40 +1212,177 @@ export default function CurrentInventoryReportPage() {
 
             {selectedInventoryItem.type === "raw" ? (
               <div className="cir-detail-grid">
-                <div><span>Category</span><strong>{selectedInventoryItem.row?.category_name || "Uncategorized"}</strong></div>
-                <div><span>Supplier</span><strong>{selectedInventoryItem.row?.supplier_name || "—"}</strong></div>
-                <div><span>Form / Size</span><strong>{materialSpec(selectedInventoryItem.row)}</strong></div>
-                <div><span>Unit</span><strong>{selectedInventoryItem.row?.unit || "—"}</strong></div>
-                <div><span>On Hand</span><strong>{formatQuantity(selectedInventoryItem.row?.on_hand_quantity)}</strong></div>
-                <div><span>Reserved</span><strong>{formatQuantity(selectedInventoryItem.row?.reserved_quantity)}</strong></div>
-                <div><span>Available</span><strong>{formatQuantity(selectedInventoryItem.row?.available_quantity)}</strong></div>
-                <div><span>Pending Need</span><strong>{formatQuantity(selectedInventoryItem.row?.pending_need_quantity)}</strong></div>
-                <div><span>Reorder Point</span><strong>{formatQuantity(selectedInventoryItem.row?.reorder_point)}</strong></div>
-                <div><span>Safety Stock</span><strong>{formatQuantity(selectedInventoryItem.row?.safety_stock)}</strong></div>
-                <div><span>Lead Time</span><strong>{formatQuantity(selectedInventoryItem.row?.lead_time_days, 0)} day(s)</strong></div>
-                <div><span>Used — Last 30 Days</span><strong>{formatQuantity(selectedInventoryItem.row?.used_last_30_days)}</strong></div>
-                <div><span>Average Daily Usage</span><strong>{formatQuantity(selectedInventoryItem.row?.avg_daily_usage_30d)}</strong></div>
-                <div><span>History</span><strong>{selectedInventoryItem.row?.history_complete === false ? "Incomplete" : "Available"}</strong></div>
+                <div>
+                  <span>Category</span>
+                  <strong>
+                    {selectedInventoryItem.row?.category_name ||
+                      "Uncategorized"}
+                  </strong>
+                </div>
+                <div>
+                  <span>Supplier</span>
+                  <strong>
+                    {selectedInventoryItem.row?.supplier_name || "—"}
+                  </strong>
+                </div>
+                <div>
+                  <span>Form / Size</span>
+                  <strong>{materialSpec(selectedInventoryItem.row)}</strong>
+                </div>
+                <div>
+                  <span>Unit</span>
+                  <strong>{selectedInventoryItem.row?.unit || "—"}</strong>
+                </div>
+                <div>
+                  <span>On Hand</span>
+                  <strong>
+                    {formatQuantity(
+                      selectedInventoryItem.row?.on_hand_quantity,
+                    )}
+                  </strong>
+                </div>
+                <div>
+                  <span>Reserved</span>
+                  <strong>
+                    {formatQuantity(
+                      selectedInventoryItem.row?.reserved_quantity,
+                    )}
+                  </strong>
+                </div>
+                <div>
+                  <span>Available</span>
+                  <strong>
+                    {formatQuantity(
+                      selectedInventoryItem.row?.available_quantity,
+                    )}
+                  </strong>
+                </div>
+                <div>
+                  <span>Pending Need</span>
+                  <strong>
+                    {formatQuantity(
+                      selectedInventoryItem.row?.pending_need_quantity,
+                    )}
+                  </strong>
+                </div>
+                <div>
+                  <span>Reorder Point</span>
+                  <strong>
+                    {formatQuantity(selectedInventoryItem.row?.reorder_point)}
+                  </strong>
+                </div>
+                <div>
+                  <span>Safety Stock</span>
+                  <strong>
+                    {formatQuantity(selectedInventoryItem.row?.safety_stock)}
+                  </strong>
+                </div>
+                <div>
+                  <span>Lead Time</span>
+                  <strong>
+                    {formatQuantity(
+                      selectedInventoryItem.row?.lead_time_days,
+                      0,
+                    )}{" "}
+                    day(s)
+                  </strong>
+                </div>
+                <div>
+                  <span>Used — Last 30 Days</span>
+                  <strong>
+                    {formatQuantity(
+                      selectedInventoryItem.row?.used_last_30_days,
+                    )}
+                  </strong>
+                </div>
+                <div>
+                  <span>Average Daily Usage</span>
+                  <strong>
+                    {formatQuantity(
+                      selectedInventoryItem.row?.avg_daily_usage_30d,
+                    )}
+                  </strong>
+                </div>
+                <div>
+                  <span>History</span>
+                  <strong>
+                    {selectedInventoryItem.row?.history_complete === false
+                      ? "Incomplete"
+                      : "Available"}
+                  </strong>
+                </div>
               </div>
             ) : (
               <div className="cir-detail-grid">
-                <div><span>Barcode</span><strong>{selectedInventoryItem.row?.barcode || "—"}</strong></div>
-                <div><span>Total Stock</span><strong>{formatQuantity(selectedInventoryItem.row?.total_stock, 0)}</strong></div>
-                <div><span>Warehouse</span><strong>{formatQuantity(selectedInventoryItem.row?.warehouse_stock, 0)}</strong></div>
-                <div><span>Display Area</span><strong>{formatQuantity(selectedInventoryItem.row?.display_stock, 0)}</strong></div>
-                <div><span>Reorder Point</span><strong>{formatQuantity(selectedInventoryItem.row?.reorder_point, 0)}</strong></div>
-                <div><span>Location</span><strong>{readyLocationNote(selectedInventoryItem.row)}</strong></div>
-                <div><span>History</span><strong>{selectedInventoryItem.row?.history_complete === false ? "Incomplete" : "Available"}</strong></div>
+                <div>
+                  <span>Barcode</span>
+                  <strong>{selectedInventoryItem.row?.barcode || "—"}</strong>
+                </div>
+                <div>
+                  <span>Total Stock</span>
+                  <strong>
+                    {formatQuantity(selectedInventoryItem.row?.total_stock, 0)}
+                  </strong>
+                </div>
+                <div>
+                  <span>Warehouse</span>
+                  <strong>
+                    {formatQuantity(
+                      selectedInventoryItem.row?.warehouse_stock,
+                      0,
+                    )}
+                  </strong>
+                </div>
+                <div>
+                  <span>Display Area</span>
+                  <strong>
+                    {formatQuantity(
+                      selectedInventoryItem.row?.display_stock,
+                      0,
+                    )}
+                  </strong>
+                </div>
+                <div>
+                  <span>Reorder Point</span>
+                  <strong>
+                    {formatQuantity(
+                      selectedInventoryItem.row?.reorder_point,
+                      0,
+                    )}
+                  </strong>
+                </div>
+                <div>
+                  <span>Location</span>
+                  <strong>
+                    {readyLocationNote(selectedInventoryItem.row)}
+                  </strong>
+                </div>
+                <div>
+                  <span>History</span>
+                  <strong>
+                    {selectedInventoryItem.row?.history_complete === false
+                      ? "Incomplete"
+                      : "Available"}
+                  </strong>
+                </div>
               </div>
             )}
 
             <div className="cir-detail-foot">
-              <span>Inventory report date: {formatReportDate(appliedReportDate)}</span>
+              <span>Inventory Record</span>
               <div className="cir-detail-actions">
-                <button type="button" className="cir-button cir-button-secondary" onClick={() => window.print()}>
+                <button
+                  type="button"
+                  className="cir-button cir-button-secondary"
+                  onClick={() => window.print()}
+                >
                   Print Record
                 </button>
-                <button type="button" className="cir-button cir-button-primary" onClick={() => setSelectedInventoryItem(null)}>
+                <button
+                  type="button"
+                  className="cir-button cir-button-primary"
+                  onClick={() => setSelectedInventoryItem(null)}
+                >
                   Close
                 </button>
               </div>
@@ -1039,7 +1390,6 @@ export default function CurrentInventoryReportPage() {
           </div>
         </div>
       ) : null}
-
     </div>
   );
 }

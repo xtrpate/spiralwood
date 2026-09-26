@@ -79,6 +79,12 @@ body,
     overflow-x: hidden;
   }
 
+  /* Hide the desktop sidebar toggle on tablet/mobile.
+     The mobile hamburger button is the only menu control shown. */
+  .wisdom-sidebar-header-toggle {
+    display: none !important;
+  }
+
   /* Sidebar becomes a fixed off-canvas drawer. The `width` !important is
      the one deliberate override in this file: AdminLayout.jsx sets an
      inline `width: open ? 240 : 64` for the desktop collapse feature,
