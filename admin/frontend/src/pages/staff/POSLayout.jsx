@@ -93,7 +93,7 @@ export default function POSLayout() {
       to: "/staff/admin/stock-transfer",
       icon: Truck,
       label: "Stock Transfer",
-      permission: "stock_transfer.view",
+      permission: "stock_movements.manage",
     },
     {
       to: "/staff/admin/physical-inventory",
@@ -252,13 +252,29 @@ export default function POSLayout() {
     }
 
     let additionalItems = [];
+    const authorityLevel = String(
+      user?.authority_level || "",
+    ).toLowerCase();
 
-    if (String(user?.authority_level || "").toLowerCase() === "manager") {
+    if (authorityLevel === "manager") {
       additionalItems = permissionNavItems
         .filter((item) => hasPermission(item.permission))
         .filter(
           (item) => !baseItems.some((baseItem) => baseItem.to === item.to),
         );
+    } else if (hasPermission("stock_movements.manage")) {
+      const standardStockTransferItem = permissionNavItems.find(
+        (item) => item.to === "/staff/admin/stock-transfer",
+      );
+
+      if (
+        standardStockTransferItem &&
+        !baseItems.some(
+          (baseItem) => baseItem.to === standardStockTransferItem.to,
+        )
+      ) {
+        return [...baseItems, standardStockTransferItem];
+      }
     }
 
     if (additionalItems.length > 0) {

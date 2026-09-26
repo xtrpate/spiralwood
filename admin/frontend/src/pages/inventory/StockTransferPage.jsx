@@ -189,6 +189,21 @@ export default function StockTransferPage() {
       return;
     }
 
+    const overAvailable = payloadItems.find((item) => {
+      const row = inventoryById.get(item.product_id);
+      if (!row) return false;
+      const available = Number(row[DIRECTIONS[direction].source] || 0);
+      return item.quantity > available;
+    });
+
+    if (overAvailable) {
+      const row = inventoryById.get(overAvailable.product_id);
+      const available = Number(row?.[DIRECTIONS[direction].source] || 0);
+      toast.error(
+        `${row?.name || "Selected product"} only has ${available} unit(s) available in ${activeDirection.from}.`,
+      );
+      return;
+    }
     if (!reason.trim()) {
       toast.error("Reason is required.");
       return;
