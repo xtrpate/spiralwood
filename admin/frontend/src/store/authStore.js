@@ -386,72 +386,55 @@ const useAuthStore = create((set, get) => ({
 
   refreshMe: async () => {
     const token = get().token || getStoredToken();
-    const storedUser = getStoredUser();
 
     if (!token) {
       clearSession();
-      set({ user: null, token: null });
+      set({
+        user: null,
+        token: null,
+        permissions: [],
+      });
       return null;
     }
 
     syncAuthHeader(token);
 
     try {
-      if (storedUser?.role === "admin" || storedUser?.role === "staff") {
-        const { data } = await api.get("/auth/me");
+      // WISDOM AUTH REFRESH B1
+      // Always revalidate the logged-in account against the server.
+      // This prevents stale localStorage user data from becoming
+      // the authoritative customer session state.
+      const { data } = await api.get("/auth/me");
 
-        const mergedUser =
-          storedUser?.role === "staff"
-            ? {
-                ...storedUser,
-                ...data,
-                staff_type: data?.staff_type || storedUser?.staff_type || null,
-              }
-            : data;
+      const permissions = normalizePermissions(data?.permissions);
 
-        const permissions = normalizePermissions(mergedUser?.permissions);
+      const normalizedUser = {
+        ...data,
+        permissions,
+      };
 
-        const normalizedUser = {
-          ...mergedUser,
-          permissions,
-        };
+      persistUserOnly(normalizedUser);
 
-        persistUserOnly(normalizedUser);
+      set({
+        user: normalizedUser,
+        token,
+        permissions,
+      });
 
-        set({
-          user: normalizedUser,
-          token,
-          permissions,
-        });
-
-        return normalizedUser;
+      if (normalizedUser?.role) {
+        connectSocket(token);
       }
 
-      if (storedUser?.role === "customer") {
-        const permissions = normalizePermissions(storedUser?.permissions);
-
-        const normalizedUser = {
-          ...storedUser,
-          permissions,
-        };
-
-        persistUserOnly(normalizedUser);
-
-        set({
-          user: normalizedUser,
-          token,
-          permissions,
-        });
-
-        return normalizedUser;
-      }
-
-      clearSession();
-      set({ user: null, token: null });
-      return null;
+      return normalizedUser;
     } catch {
       clearSession();
-      set({ user: null, token: null });
+
+      set({
+        user: null,
+        token: null,
+        permissions: [],
+      });
+
       return null;
     }
   },

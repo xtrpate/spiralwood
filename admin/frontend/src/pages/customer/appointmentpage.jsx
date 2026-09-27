@@ -349,6 +349,9 @@ export default function AppointmentPage() {
 
   // Fetch the whole week's availability when the week view changes
   useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+
     const fetchWeeklyAvailability = async () => {
       setLoadingSlots(true);
 
@@ -357,18 +360,44 @@ export default function AppointmentPage() {
 
         const res = await api.get(
           `/customer/appointments/availability/weekly?start=${startDate}`,
+          {
+            signal: controller.signal,
+          },
         );
+
+        // Ignore responses from an older week after the user
+        // has already navigated to another week.
+        if (!active || controller.signal.aborted) {
+          return;
+        }
 
         setBookedSlots(res.data || {});
       } catch (err) {
+        if (
+          !active ||
+          controller.signal.aborted ||
+          err?.code === "ERR_CANCELED"
+        ) {
+          return;
+        }
+
         console.error("Failed to fetch weekly slots", err);
         setBookedSlots({});
       } finally {
-        setLoadingSlots(false);
+        // An old request must not hide the loading state
+        // belonging to the currently selected week.
+        if (active) {
+          setLoadingSlots(false);
+        }
       }
     };
 
     fetchWeeklyAvailability();
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [weekStart]);
 
   const fetchAppointments = async () => {

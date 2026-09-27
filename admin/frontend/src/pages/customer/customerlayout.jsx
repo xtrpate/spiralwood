@@ -192,6 +192,7 @@ export default function CustomerLayout() {
     "/forgot-password",
     "/reset-password",
     "/verify-otp",
+    "/phone-otp",
     "/pending-approval",
   ];
   const isAuthOverlayPage = authOverlayPaths.includes(location.pathname);
@@ -341,9 +342,7 @@ export default function CustomerLayout() {
         });
 
         if (active) {
-          setActiveOrdersCount(
-            Number(res.data?.active_orders_count || 0),
-          );
+          setActiveOrdersCount(Number(res.data?.active_orders_count || 0));
         }
       } catch (err) {
         console.error("Failed to load active orders count", err);

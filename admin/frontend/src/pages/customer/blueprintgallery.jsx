@@ -4,13 +4,10 @@
  * Browse pre-made blueprints and add to cart
  */
 import { useState, useEffect, useCallback } from "react";
-import axios from "axios";
-import { Search, ShoppingCart, Eye } from "lucide-react";
-import { useCart } from "./cartcontext";
-import "./blueprintgallery.css";
 import { Search, ShoppingCart, Eye, PenTool } from "lucide-react";
-
-const API = "http://localhost:5000";
+import { useCart } from "./cartcontext";
+import api, { buildAssetUrl } from "../../services/api";
+import "./blueprintgallery.css";
 
 /* ── Image with fallback ── */
 const BlueprintImage = ({ src, alt, className }) => {
@@ -44,7 +41,7 @@ const BlueprintImage = ({ src, alt, className }) => {
   }
   return (
     <img
-      src={`${API}/${src}`}
+      src={buildAssetUrl(src)}
       alt={alt}
       className={className}
       style={{ width: "100%", height: "100%", objectFit: "cover" }}
@@ -72,8 +69,8 @@ function BlueprintModal({ blueprint, onClose, onAddToCart }) {
   const [added, setAdded] = useState(false);
 
   useEffect(() => {
-    axios
-      .get(`/api/customer/blueprints/${blueprint.id}`)
+    api
+      .get(`/customer/blueprints/${blueprint.id}`)
       .then((r) => setFull(r.data))
       .catch(() => setFull(blueprint))
       .finally(() => setLoading(false));
@@ -257,7 +254,7 @@ export default function BlueprintGallery({ embedded = false }) {
         Object.keys(params).forEach((k) => {
           if (!params[k]) delete params[k];
         });
-        const res = await axios.get("/api/customer/blueprints", { params });
+        const res = await api.get("/customer/blueprints", { params });
         setBlueprints(res.data.blueprints);
         setTotal(res.data.total);
         if (res.data.wood_types?.length) setWoodTypes(res.data.wood_types);
@@ -441,7 +438,7 @@ export default function BlueprintGallery({ embedded = false }) {
               </div>
               <h2>No blueprints found</h2>
               <p>
-                {hasFilters 
+                {hasFilters
                   ? "We couldn't find any blueprints matching your current filters. Try adjusting your search criteria."
                   : "The blueprint gallery is currently empty. Check back later for new custom designs!"}
               </p>

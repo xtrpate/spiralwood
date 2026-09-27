@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -163,8 +164,25 @@ export function CartProvider({ children }) {
   const { user } = useAuthStore();
   const isInitialMount = useRef(true);
 
-  // 👉 NEW: A flag to tell the background sync to ignore the next update
   const skipNextSync = useRef(false);
+
+  // WISDOM CUSTOMER CART SYNC QUEUE A1
+  // Serialize cloud-cart writes so requests cannot finish out of order.
+  // The queue itself stays usable even when one request fails.
+  const cloudSyncQueueRef = useRef(Promise.resolve());
+
+  const queueCloudCartSync = useCallback((nextCart) => {
+    const runSync = () =>
+      api.post("/customer/cart/sync", {
+        cart: Array.isArray(nextCart) ? nextCart : [],
+      });
+
+    const queuedRequest = cloudSyncQueueRef.current.then(runSync, runSync);
+
+    cloudSyncQueueRef.current = queuedRequest.catch(() => undefined);
+
+    return queuedRequest;
+  }, []);
 
   const [cart, setCart] = useState(getInitialCart);
   const [miniCartOpen, setMiniCartOpen] = useState(false);
@@ -202,13 +220,16 @@ export function CartProvider({ children }) {
           );
 
           try {
-            await api.post("/customer/cart/sync", { cart: mergedCart });
+            await queueCloudCartSync(mergedCart);
           } catch (syncError) {
             if (cancelled) return;
 
             // Keep the original guest cart untouched locally so a failed
             // handoff can be retried safely on the next login/load.
-            console.error("Failed to merge guest cart into cloud cart", syncError);
+            console.error(
+              "Failed to merge guest cart into cloud cart",
+              syncError,
+            );
             setCart(normalizedLocalCart);
             setCloudLoaded(false);
             return;
@@ -273,38 +294,46 @@ export function CartProvider({ children }) {
       if (skipNextSync.current) {
         skipNextSync.current = false;
       } else {
-        api.post("/customer/cart/sync", { cart }).catch((err) => {
+        queueCloudCartSync(cart).catch((err) => {
           console.error("Cloud sync failed", err);
         });
       }
     }
 
     isInitialMount.current = false;
-  }, [cart, user?.id, user?.role, user, cloudLoaded]);
-  const addToCart = (item) => {
-    const normalized = normalizeCartItem(item);
-    if (!normalized) return;
+  }, [cart, user?.id, user?.role, user, cloudLoaded, queueCloudCartSync]);
+  const addToCart = useCallback(
+    (item) => {
+      const normalized = normalizeCartItem(item);
+      if (!normalized) return;
 
-    if (!(user && user.role === "customer")) {
-      localStorage.setItem(GUEST_CART_PENDING_KEY, "1");
-    }
+      if (!(user && user.role === "customer")) {
+        localStorage.setItem(GUEST_CART_PENDING_KEY, "1");
+      }
 
-    setCart((prev) => {
-      const existing = prev.find((entry) => entry.key === normalized.key);
+      setCart((prev) => {
+        const existing = prev.find((entry) => entry.key === normalized.key);
 
-      if (!existing) return [...prev, normalized];
+        if (!existing) return [...prev, normalized];
 
-      return prev.map((entry) =>
-        entry.key === normalized.key ? mergeLineItem(entry, normalized) : entry,
-      );
-    });
-  };
+        return prev.map((entry) =>
+          entry.key === normalized.key
+            ? mergeLineItem(entry, normalized)
+            : entry,
+        );
+      });
+    },
+    [user],
+  );
 
-  const openMiniCart = () => setMiniCartOpen(true);
-  const closeMiniCart = () => setMiniCartOpen(false);
-  const toggleMiniCart = () => setMiniCartOpen((prev) => !prev);
+  const openMiniCart = useCallback(() => setMiniCartOpen(true), []);
+  const closeMiniCart = useCallback(() => setMiniCartOpen(false), []);
+  const toggleMiniCart = useCallback(
+    () => setMiniCartOpen((prev) => !prev),
+    [],
+  );
 
-  const updateQty = (key, delta) => {
+  const updateQty = useCallback((key, delta) => {
     const cleanKey = String(key || "").trim();
     if (!cleanKey) return;
 
@@ -338,19 +367,20 @@ export function CartProvider({ children }) {
         })
         .filter(Boolean),
     );
-  };
+  }, []);
 
-  const removeItem = (key) => {
+  const removeItem = useCallback((key) => {
     const cleanKey = String(key || "").trim();
     if (!cleanKey) return;
 
     setCart((prev) => prev.filter((item) => item.key !== cleanKey));
+
     deleteCustomReferencePhotos([cleanKey]).catch((error) =>
       console.error("Failed to remove stored reference photos:", error),
     );
-  };
+  }, []);
 
-  const removeMany = (keys = []) => {
+  const removeMany = useCallback((keys = []) => {
     const keySet = new Set(
       (Array.isArray(keys) ? keys : [])
         .map((k) => String(k || "").trim())
@@ -360,44 +390,48 @@ export function CartProvider({ children }) {
     if (!keySet.size) return;
 
     setCart((prev) => prev.filter((item) => !keySet.has(item.key)));
+
     deleteCustomReferencePhotos([...keySet]).catch((error) =>
       console.error("Failed to remove stored reference photos:", error),
     );
-  };
+  }, []);
 
-  const clearCart = (syncToCloud = true) => {
-    setMiniCartOpen(false);
+  const clearCart = useCallback(
+    (syncToCloud = true) => {
+      setMiniCartOpen(false);
 
-    const customKeys = (Array.isArray(cart) ? cart : [])
-      .filter((item) => item?.cart_type === "blueprint")
-      .map((item) => item?.key)
-      .filter(Boolean);
+      const customKeys = (Array.isArray(cart) ? cart : [])
+        .filter((item) => item?.cart_type === "blueprint")
+        .map((item) => item?.key)
+        .filter(Boolean);
 
-    deleteCustomReferencePhotos(customKeys).catch((error) =>
-      console.error("Failed to clear stored reference photos:", error),
-    );
+      deleteCustomReferencePhotos(customKeys).catch((error) =>
+        console.error("Failed to clear stored reference photos:", error),
+      );
 
-    // If we are not syncing to the cloud (logout), tell the background effect to ignore the upcoming empty cart!
-    if (!syncToCloud) {
-      skipNextSync.current = true;
-    }
+      // If we are not syncing to the cloud (logout), tell the background effect
+      // to ignore the upcoming empty cart.
+      if (!syncToCloud) {
+        skipNextSync.current = true;
+      }
 
-    setCart([]);
+      setCart([]);
 
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(GUEST_CART_PENDING_KEY);
-    sessionStorage.removeItem(LEGACY_CUSTOM_STORAGE_KEY);
-    sessionStorage.removeItem("cust_selected_keys");
-    sessionStorage.removeItem("cust_selected_custom_checkout");
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(GUEST_CART_PENDING_KEY);
+      sessionStorage.removeItem(LEGACY_CUSTOM_STORAGE_KEY);
+      sessionStorage.removeItem("cust_selected_keys");
+      sessionStorage.removeItem("cust_selected_custom_checkout");
+      sessionStorage.removeItem("cust_cart_selected_keys");
 
-    sessionStorage.removeItem("cust_cart_selected_keys");
-
-    if (syncToCloud && user && user.role === "customer") {
-      api.post("/customer/cart/sync", { cart: [] }).catch((err) => {
-        console.error("Cloud clear cart sync failed", err);
-      });
-    }
-  };
+      if (syncToCloud && user && user.role === "customer") {
+        queueCloudCartSync([]).catch((err) => {
+          console.error("Cloud clear cart sync failed", err);
+        });
+      }
+    },
+    [cart, user, queueCloudCartSync],
+  );
 
   const standardCart = useMemo(
     () => cart.filter((item) => item.cart_type === "standard"),
@@ -461,6 +495,14 @@ export function CartProvider({ children }) {
       cartCount,
       customCartCount,
       cartTotal,
+      addToCart,
+      updateQty,
+      removeItem,
+      removeMany,
+      clearCart,
+      openMiniCart,
+      closeMiniCart,
+      toggleMiniCart,
     ],
   );
 

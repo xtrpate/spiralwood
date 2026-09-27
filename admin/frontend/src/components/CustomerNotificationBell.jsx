@@ -34,7 +34,11 @@ function resolveCustomerNotificationRoute(n) {
     case "order":
       return `/orders?focus_order_id=${targetId}`;
     case "support_ticket":
-      return `/support?ticket=${targetId}`;
+      // Customer support page is not currently registered in the active
+      // customer route tree. Fall back to My Orders instead of sending the
+      // customer to a non-existent /support route, which would trigger the
+      // global catch-all redirect to /catalog.
+      return "/orders";
     case "appointment":
       return `/appointment?focus_appointment_id=${targetId}`;
     case "warranty":

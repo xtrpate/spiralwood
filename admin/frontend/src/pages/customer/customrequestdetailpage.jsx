@@ -736,6 +736,13 @@ export default function CustomRequestDetailPage() {
   const discussionAutoScrollRef = useRef(true);
   const discussionTypingStopTimerRef = useRef(null);
   const discussionRemoteTypingTimerRef = useRef(null);
+
+  // WISDOM CUSTOM REQUEST REFRESH GUARDS B3
+  // Each loader keeps track of its latest request so older responses
+  // cannot overwrite newer customer-visible state.
+  const requestDetailRequestRef = useRef(0);
+  const paymentHistoryRequestRef = useRef(0);
+  const cancellationRequestRef = useRef(0);
   const [selectingMethod, setSelectingMethod] = useState(false);
   const [selectionError, setSelectionError] = useState("");
   const [initialOnlineAmount, setInitialOnlineAmount] = useState("");
@@ -750,60 +757,116 @@ export default function CustomRequestDetailPage() {
   const [historyError, setHistoryError] = useState("");
 
   const loadPaymentHistory = useCallback(async () => {
+    const requestId = ++paymentHistoryRequestRef.current;
+
     setHistoryLoading(true);
     setHistoryError("");
+
     try {
       const res = await api.get(`/customer/custom-orders/${id}/receipts`);
+
+      // Ignore an older response when a newer request has already started.
+      if (requestId !== paymentHistoryRequestRef.current) {
+        return;
+      }
+
       setPaymentHistory(
         Array.isArray(res.data?.payment_history)
           ? res.data.payment_history
           : [],
       );
     } catch (err) {
+      if (requestId !== paymentHistoryRequestRef.current) {
+        return;
+      }
+
       setPaymentHistory([]);
       setHistoryError(
         err.response?.data?.message || "Failed to load payment history.",
       );
     } finally {
-      setHistoryLoading(false);
+      if (requestId === paymentHistoryRequestRef.current) {
+        setHistoryLoading(false);
+      }
     }
   }, [id]);
 
   const loadCancellationRequest = useCallback(async () => {
+    const requestId = ++cancellationRequestRef.current;
+
     setCancellationLoading(true);
+
     try {
       const res = await api.get(
         `/customer/custom-orders/${id}/cancellation-request`,
       );
+
+      // Ignore an older response when a newer request has already started.
+      if (requestId !== cancellationRequestRef.current) {
+        return;
+      }
+
       setCancellationRequest(res.data?.request || null);
     } catch (err) {
+      if (requestId !== cancellationRequestRef.current) {
+        return;
+      }
+
       setCancellationRequest(null);
     } finally {
-      setCancellationLoading(false);
+      if (requestId === cancellationRequestRef.current) {
+        setCancellationLoading(false);
+      }
     }
   }, [id]);
 
   const loadRequestDetail = useCallback(
     async (showLoader = true) => {
-      if (showLoader) setLoading(true);
+      const requestId = ++requestDetailRequestRef.current;
+
+      if (showLoader) {
+        setLoading(true);
+      }
+
       setError("");
 
       try {
         const res = await api.get(`/customer/custom-orders/${id}`);
+
+        // Ignore this response when another detail request
+        // has already started and become the latest request.
+        if (requestId !== requestDetailRequestRef.current) {
+          return;
+        }
+
         setRequestData(res.data);
+
         // Loaded here (rather than in a separate mount-only effect) so
         // that payment history also refreshes every time this succeeds
         // -- including right after a PayMongo verification attempt below,
         // with no manual page reload required.
         await Promise.all([loadPaymentHistory(), loadCancellationRequest()]);
+
+        // The auxiliary loaders can finish after another detail refresh
+        // has already become the latest request. Do not let this older
+        // detail request change the main loading/error state afterward.
+        if (requestId !== requestDetailRequestRef.current) {
+          return;
+        }
       } catch (err) {
+        if (requestId !== requestDetailRequestRef.current) {
+          return;
+        }
+
         setError(
           err.response?.data?.message ||
             err.response?.data?.error ||
             "Failed to load request details.",
         );
       } finally {
-        if (showLoader) setLoading(false);
+        if (showLoader && requestId === requestDetailRequestRef.current) {
+          setLoading(false);
+        }
       }
     },
     [id, loadPaymentHistory, loadCancellationRequest],
@@ -1068,8 +1131,7 @@ export default function CustomRequestDetailPage() {
 
   // Defaults preserve compatibility with an older backend response, while
   // every write endpoint remains server-authoritative.
-  const initialCashAvailable =
-    paymentMethodAvailability.initial_cash !== false;
+  const initialCashAvailable = paymentMethodAvailability.initial_cash !== false;
   const initialPaymongoAvailable =
     paymentMethodAvailability.initial_paymongo !== false;
   const remainingCashAvailable =
@@ -3755,9 +3817,7 @@ export default function CustomRequestDetailPage() {
                     <div className="wisdom-remaining-current-v184">
                       <div>
                         <div className="wisdom-remaining-method-line-v184">
-                          <h4>
-                            {remainingPaymentMethodLabel}
-                          </h4>
+                          <h4>{remainingPaymentMethodLabel}</h4>
 
                           <span className="wisdom-remaining-method-badge-v184">
                             {remainingPaymentMethodDefaulted
