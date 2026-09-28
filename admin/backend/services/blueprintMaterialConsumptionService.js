@@ -13,6 +13,9 @@
 //   - Repeated calls are idempotent once every reservation is consumed.
 
 const { parseDecimalToCentsStrict } = require("../utils/paymentAmounts");
+const {
+  resolveLifecycleByOrder,
+} = require("./blueprintLifecycleService");
 
 const normalize = (value) => String(value || "").trim().toLowerCase();
 
@@ -106,20 +109,23 @@ async function consumeBlueprintMaterialsForProduction(
     );
   }
 
-  // Canonical transaction lock begins with the order. Both production-entry
-  // controllers call this before their own guarded status write.
-  const [[order]] = await conn.query(
-    `SELECT id, order_number, order_type, status, blueprint_id
-     FROM orders
-     WHERE id = ?
-     LIMIT 1
-     FOR UPDATE`,
-    [orderIdNum],
-  );
+  // Resolve and lock the canonical production lifecycle before touching raw
+  // materials. This keeps consumption bound to the exact current blueprint
+  // and approved estimation, using the same order -> blueprint -> estimation
+  // lock discipline as material reservation.
+  const lifecycle = await resolveLifecycleByOrder(conn, {
+    orderId: orderIdNum,
+    lockOrder: true,
+    lockBlueprint: true,
+    lockEstimation: true,
+  });
 
-  if (!order) {
+  if (!lifecycle.order) {
     fail("ORDER_NOT_FOUND", "Order not found.", 404);
   }
+
+  const order = lifecycle.order;
+
   if (normalize(order.order_type) !== "blueprint") {
     fail(
       "NOT_BLUEPRINT_ORDER",
@@ -127,10 +133,34 @@ async function consumeBlueprintMaterialsForProduction(
       400,
     );
   }
-  if (!isPositiveInt(order.blueprint_id)) {
+
+  if (
+    lifecycle.status !== "OK" ||
+    !lifecycle.blueprint ||
+    !lifecycle.estimation
+  ) {
+    fail(
+      "BLUEPRINT_LIFECYCLE_UNRESOLVED",
+      `Production material consumption cannot resolve the current order lifecycle (${lifecycle.reason || "unknown"}).`,
+    );
+  }
+
+  const { blueprint, estimation } = lifecycle;
+
+  if (
+    !isPositiveInt(order.blueprint_id) ||
+    Number(order.blueprint_id) !== Number(blueprint.id)
+  ) {
     fail(
       "BLUEPRINT_LINK_MISSING",
-      "This blueprint order is not linked to a valid blueprint.",
+      "This blueprint order is not linked to its canonical blueprint.",
+    );
+  }
+
+  if (normalize(estimation.status) !== "approved") {
+    fail(
+      "ESTIMATION_NOT_APPROVED",
+      "Production can only consume materials from the current approved estimation.",
     );
   }
 
@@ -143,10 +173,10 @@ async function consumeBlueprintMaterialsForProduction(
     );
   }
 
-  // Read the material ids first. The locked order serializes compliant writes
-  // for this order. Raw materials are then locked in ascending id order before
-  // the reservation rows, matching BPI-3's material-before-reservation lock
-  // order and reducing cross-order deadlock risk.
+  // The canonical lifecycle is already locked above. Raw materials are then
+  // locked in ascending id order before reservation rows, matching BPI-3's
+  // material-before-reservation portion of the lock order and reducing
+  // cross-order deadlock risk.
   const [reservationPreviewRows] = await conn.query(
     `SELECT id, material_id
      FROM blueprint_material_reservations
@@ -272,16 +302,35 @@ async function consumeBlueprintMaterialsForProduction(
   }
 
   for (const reservation of reservationRows) {
-    if (Number(reservation.blueprint_id) !== Number(order.blueprint_id)) {
+    if (Number(reservation.blueprint_id) !== Number(blueprint.id)) {
       fail(
         "RESERVATION_BLUEPRINT_MISMATCH",
         `Reservation ${reservation.id} does not belong to the order's canonical blueprint.`,
       );
     }
-    if (!materialMap.has(Number(reservation.material_id))) {
+
+    if (Number(reservation.estimation_id) !== Number(estimation.id)) {
+      fail(
+        "RESERVATION_ESTIMATION_MISMATCH",
+        `Reservation ${reservation.id} does not belong to the order's current approved estimation.`,
+      );
+    }
+
+    const material = materialMap.get(Number(reservation.material_id));
+    if (!material) {
       fail(
         "RAW_MATERIAL_NOT_FOUND",
         `Reserved material ${reservation.material_id} no longer exists.`,
+      );
+    }
+
+    if (
+      normalize(reservation.status) === "reserved" &&
+      Number(material.is_active) !== 1
+    ) {
+      fail(
+        "RAW_MATERIAL_INACTIVE",
+        `${material.name || `Raw material ${material.id}`} is archived or inactive and cannot be consumed for production.`,
       );
     }
   }

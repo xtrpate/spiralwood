@@ -67,7 +67,7 @@ const parsePositiveQuantityUnits = (value, label) => {
 
 const parseNonNegativeQuantityUnits = (value, label) => {
   const units = parseDecimalToCentsStrict(value);
-  if (units === null) {
+  if (units === null || units < 0) {
     fail(
       "INVALID_MATERIAL_STOCK",
       `${label} has an invalid on-hand quantity.`,
@@ -437,10 +437,10 @@ async function ensureBlueprintMaterialReservations(
   const [reservationRows] = await conn.query(
     `SELECT id, order_id, blueprint_id, estimation_id, material_id,
             material_name_snapshot, unit_snapshot, quantity, status,
-            issue_code, issue_note, reserved_at
+            issue_code, issue_note, reserved_at, created_at
      FROM blueprint_material_reservations
      WHERE material_id IN (${placeholders})
-     ORDER BY material_id, id
+     ORDER BY material_id, created_at, id
      FOR UPDATE`,
     materialIds,
   );
@@ -495,18 +495,6 @@ async function ensureBlueprintMaterialReservations(
       );
     }
 
-    const onHandUnits = parseNonNegativeQuantityUnits(
-      material.quantity,
-      `Raw material ${material.id}`,
-    );
-    const reservedElsewhereUnits =
-      reservedElsewhereUnitsByMaterial.get(requirement.materialId) || 0;
-    const availableUnits = Math.max(0, onHandUnits - reservedElsewhereUnits);
-    const shortageUnits = Math.max(
-      0,
-      requirement.quantityUnits - availableUnits,
-    );
-
     const existing = currentReservationByMaterial.get(requirement.materialId);
     const existingStatus = normalize(existing?.status);
 
@@ -528,7 +516,23 @@ async function ensureBlueprintMaterialReservations(
       }
     }
 
+    const onHandUnits = parseNonNegativeQuantityUnits(
+      material.quantity,
+      `Raw material ${material.id}`,
+    );
+    const reservedElsewhereUnits =
+      reservedElsewhereUnitsByMaterial.get(requirement.materialId) || 0;
+
     if (existing && TERMINAL_RESERVATION_STATUSES.has(existingStatus)) {
+      const availableUnits = Math.max(
+        0,
+        onHandUnits - reservedElsewhereUnits,
+      );
+      const shortageUnits = Math.max(
+        0,
+        requirement.quantityUnits - availableUnits,
+      );
+
       unchangedTerminalCount += 1;
       materialResults.push({
         reservation_id: existing.id,
@@ -545,6 +549,56 @@ async function ensureBlueprintMaterialReservations(
       });
       continue;
     }
+
+    if (Number(material.is_active) !== 1) {
+      fail(
+        "RAW_MATERIAL_INACTIVE",
+        `${material.name || `Raw material ${material.id}`} is archived or inactive and cannot be reserved.`,
+      );
+    }
+
+    // A younger paid order must not claim stock that an older pending
+    // reservation is already waiting for. Rows are locked and ordered by
+    // material -> created_at -> id, so every pending row encountered before
+    // this order is a FIFO claim that must be honored first. A brand-new order
+    // has no row yet, therefore every existing pending row is ahead of it.
+    let pendingAheadUnits = 0;
+    for (const row of reservationRows) {
+      if (Number(row.material_id) !== Number(requirement.materialId)) continue;
+
+      if (existing && Number(row.id) === Number(existing.id)) {
+        break;
+      }
+
+      if (
+        Number(row.order_id) === orderIdNum ||
+        normalize(row.status) !== "pending_stock"
+      ) {
+        continue;
+      }
+
+      const queuedUnits = parsePositiveQuantityUnits(
+        row.quantity,
+        `Reservation ${row.id}`,
+      );
+      const nextPendingAheadUnits = pendingAheadUnits + queuedUnits;
+      if (!Number.isSafeInteger(nextPendingAheadUnits)) {
+        fail(
+          "INVALID_PENDING_STOCK_TOTAL",
+          `Pending-stock quantity for material ${requirement.materialId} is invalid.`,
+        );
+      }
+      pendingAheadUnits = nextPendingAheadUnits;
+    }
+
+    const availableUnits = Math.max(
+      0,
+      onHandUnits - reservedElsewhereUnits - pendingAheadUnits,
+    );
+    const shortageUnits = Math.max(
+      0,
+      requirement.quantityUnits - availableUnits,
+    );
 
     // Once an active reservation has successfully claimed stock, never
     // downgrade it merely because a later manual adjustment made on-hand
