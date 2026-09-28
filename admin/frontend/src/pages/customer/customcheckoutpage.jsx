@@ -676,6 +676,28 @@ export default function CustomCheckoutPage() {
 
   return (
     <div className="custom-request-checkout-v2">
+      <style>{`
+        .mobile-back-top-btn {
+          display: none !important;
+          position: static !important;
+          margin-bottom: 16px !important;
+          width: fit-content !important;
+        }
+        @media (max-width: 1180px) {
+          .desktop-back-top-btn {
+            display: none !important;
+          }
+          .mobile-back-top-btn {
+            display: inline-flex !important;
+          }
+        }
+        @media (max-width: 760px) {
+          .fulfillment-group {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
+
       <div className="page-hero">
         <h1>Custom Request Checkout</h1>
         <p>Review this design and submit it for quotation.</p>
@@ -684,6 +706,15 @@ export default function CustomCheckoutPage() {
       <div className="checkout-layout">
         <div className="checkout-form-panel">
           {error && <div className="alert alert-error">{error}</div>}
+
+          {/* Mobile Back Button (Visible only on smaller screens) */}
+          <button
+            type="button"
+            className="wisdom-custom-request-back-nav-v15 mobile-back-top-btn"
+            onClick={() => navigate("/custom-cart")}
+          >
+            {"\u2190"} Back to Custom Designs
+          </button>
 
           {/* WISDOM CUSTOM DESIGN REVIEW EDIT BEFORE SUBMIT V1.0.0 */}
           <div className="checkout-section custom-final-review-section">
@@ -910,6 +941,7 @@ export default function CustomCheckoutPage() {
                   <div
                     role="group"
                     aria-label="Fulfillment method"
+                    className="fulfillment-group"
                     style={{
                       display: "grid",
                       gridTemplateColumns: "1fr 1fr",
@@ -1083,15 +1115,11 @@ export default function CustomCheckoutPage() {
                   </div>
                 )}
 
-                {fulfillmentMethod === "delivery" && (
+                {fulfillmentMethod === "delivery" && !useDefaultAddress && (
                   <div className="form-field full">
                     <LocationPicker
                       key={`custom-checkout-location-${locationPickerKey}`}
-                      label={
-                        useDefaultAddress
-                          ? "Default Delivery Location"
-                          : "Delivery Address"
-                      }
+                      label="Delivery Address"
                       addressValue={form.delivery_address}
                       onAddressChange={handleAddressInputChange}
                       value={deliveryPin}
@@ -1126,7 +1154,7 @@ export default function CustomCheckoutPage() {
         <div className="wisdom-custom-request-summary-column-v14">
           <button
             type="button"
-            className="wisdom-custom-request-back-nav-v15"
+            className="wisdom-custom-request-back-nav-v15 desktop-back-top-btn"
             onClick={() => navigate("/custom-cart")}
           >
             {"\u2190"} Back to Custom Designs

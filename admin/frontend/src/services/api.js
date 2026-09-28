@@ -82,6 +82,17 @@ api.interceptors.response.use(
     const message = error.response?.data?.message;
     const requestUrl = error.config?.url || "";
 
+    // WISDOM: cancelled requests are expected when a component
+    // unmounts or an older request is replaced by a newer request.
+    // Do not misreport them as a server/network failure.
+    if (
+      axios.isCancel(error) ||
+      error?.code === "ERR_CANCELED" ||
+      error?.name === "CanceledError"
+    ) {
+      return Promise.reject(error);
+    }
+
     if (status === 401) {
       const isPublicRequest = isPublicGuestRequest(requestUrl);
 

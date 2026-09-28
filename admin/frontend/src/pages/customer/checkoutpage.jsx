@@ -21,6 +21,12 @@ const PAYMENT_METHODS = [
     desc: "Pay when the order is delivered.",
   },
   {
+    value: "cop",
+    icon: "🏬",
+    label: "Cash on Pick-up",
+    desc: "Pay when you pick up your order in-store.",
+  },
+  {
     value: "paymongo",
     icon: "💳",
     label: "Pay Online",
@@ -30,6 +36,7 @@ const PAYMENT_METHODS = [
 
 const DEFAULT_PAYMENT_AVAILABILITY = Object.freeze({
   cod: true,
+  cop: true,
   paymongo: true,
 });
 
@@ -140,6 +147,7 @@ export default function CheckoutPage() {
         setCheckoutNote(note);
         setPaymentAvailability({
           cod: readEnabledPaymentSetting(payment.cod_enabled, true),
+          cop: readEnabledPaymentSetting(payment.cop_enabled, true),
           paymongo: readEnabledPaymentSetting(payment.paymongo_enabled, true),
         });
       })
@@ -323,6 +331,7 @@ export default function CheckoutPage() {
     () =>
       PAYMENT_METHODS.filter((method) => {
         if (method.value === "cod") return paymentAvailability.cod;
+        if (method.value === "cop") return paymentAvailability.cop;
         if (method.value === "paymongo") return paymentAvailability.paymongo;
         return false;
       }),

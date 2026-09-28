@@ -9,7 +9,21 @@ import {
 } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
-import { Search, X, CheckCircle2, Smartphone, Undo2, Redo2, List, Ruler, Box, RotateCcw, Maximize2, Camera } from "lucide-react";
+import {
+  Search,
+  X,
+  CheckCircle2,
+  Smartphone,
+  Undo2,
+  Redo2,
+  List,
+  Ruler,
+  Box,
+  RotateCcw,
+  Maximize2,
+  Camera,
+  Filter,
+} from "lucide-react";
 import { useCustomCart } from "./customcartcontext";
 import { useCart } from "./cartcontext";
 
@@ -21,12 +35,10 @@ import {
   readGeneratedCompactPreview,
 } from "./customerBlueprintPreviewCache";
 
-const CustomerBlueprintViewer = lazy(() =>
-  import("./CustomerBlueprintViewer"),
-);
+const CustomerBlueprintViewer = lazy(() => import("./CustomerBlueprintViewer"));
 
-const CustomerTemplateWorkbench = lazy(() =>
-  import("./CustomerTemplateWorkbench"),
+const CustomerTemplateWorkbench = lazy(
+  () => import("./CustomerTemplateWorkbench"),
 );
 
 const CUSTOMIZE_GALLERY_PREVIEW_PRESET = "iso";
@@ -813,14 +825,19 @@ function SkeletonCard() {
   );
 }
 
-function ModalShell({ title, subtitle, onClose, children, wide = false, variant = "" }) {
+function ModalShell({
+  title,
+  subtitle,
+  onClose,
+  children,
+  wide = false,
+  variant = "",
+}) {
   return (
     <div
       className={
         "cust-modal-backdrop" +
-        (variant === "customize"
-          ? " cust-modal-backdrop-customize"
-          : "")
+        (variant === "customize" ? " cust-modal-backdrop-customize" : "")
       }
       onClick={onClose}
     >
@@ -954,7 +971,9 @@ function CustomizeModal({ product, onClose, onAdd }) {
       variant="customize"
     >
       {loading ? (
-        <div className="cust-modal-state cust-modal-loading-state">Loading customization options…</div>
+        <div className="cust-modal-state cust-modal-loading-state">
+          Loading customization options…
+        </div>
       ) : error ? (
         <div className="cust-modal-error">{error}</div>
       ) : (
@@ -1040,7 +1059,8 @@ const miniPartGroup = (component = {}) => {
     .map((value) => String(value || "").toLowerCase())
     .join(" ");
 
-  if (/\btabletop\b|\bcountertop\b|\btop panel\b|\btop\b/.test(text)) return "TOP";
+  if (/\btabletop\b|\bcountertop\b|\btop panel\b|\btop\b/.test(text))
+    return "TOP";
   if (/\bapron\b/.test(text)) return "APRON";
   if (/\bleg\b|front_leg|back_leg/.test(text)) return "LEGS";
   if (/\bdoor\b/.test(text)) return "DOORS";
@@ -1102,7 +1122,9 @@ const miniFinishChoices = (selected = null) => {
   );
   const selectedItem = selectedFromLibrary || selected || library[0] || null;
   const remaining = library.filter(
-    (item) => String(item.id || "").toLowerCase() !== String(selectedItem?.id || "").toLowerCase(),
+    (item) =>
+      String(item.id || "").toLowerCase() !==
+      String(selectedItem?.id || "").toLowerCase(),
   );
 
   return {
@@ -1120,7 +1142,8 @@ const miniPartSections = (product = {}) => {
     const finish = miniFinishInfo(component);
     if (!groups.has(group)) groups.set(group, []);
     const list = groups.get(group);
-    if (!list.some((item) => String(item.id) === String(finish.id))) list.push(finish);
+    if (!list.some((item) => String(item.id) === String(finish.id)))
+      list.push(finish);
   });
 
   const orderByProfile = {
@@ -1226,8 +1249,8 @@ function MiniPanelHydrationState({ unavailable = false }) {
 const hasEmbeddedGalleryScene = (product = {}) =>
   Boolean(
     product?.design_data ||
-      product?.view_3d_data ||
-      (Array.isArray(product?.components) && product.components.length > 0),
+    product?.view_3d_data ||
+    (Array.isArray(product?.components) && product.components.length > 0),
   );
 
 const buildGalleryPreviewMetadata = (product = {}) => ({
@@ -1364,9 +1387,7 @@ function useCustomizeGalleryHydrationBatch(scopeKey) {
 
   const isReleased = useCallback(
     (productId) =>
-      coordinatorRef.current.released.has(
-        `${scopeKey}::${productId}`,
-      ),
+      coordinatorRef.current.released.has(`${scopeKey}::${productId}`),
     [scopeKey, releaseVersion],
   );
 
@@ -1434,9 +1455,7 @@ function ProductCard({
   useEffect(() => {
     const embedded = hasEmbeddedGalleryScene(product);
 
-    setCachedStaticPreview(
-      readGeneratedCompactPreview(compactPreviewCacheKey),
-    );
+    setCachedStaticPreview(readGeneratedCompactPreview(compactPreviewCacheKey));
     setHydratedProduct(embedded ? product : null);
     setDetailResolved(embedded);
     setDetailFailed(false);
@@ -1504,12 +1523,7 @@ function ProductCard({
   useEffect(() => {
     if (!batchVisible || !detailResolved || !product?.id) return;
     onBatchResolved?.(product.id);
-  }, [
-    batchVisible,
-    detailResolved,
-    onBatchResolved,
-    product?.id,
-  ]);
+  }, [batchVisible, detailResolved, onBatchResolved, product?.id]);
 
   useEffect(() => {
     if (!previewEligible || detailResolved || !product?.id) {
@@ -1544,10 +1558,8 @@ function ProductCard({
 
   const detailsReady = Boolean(hydratedProduct);
   const batchDetailsReady = detailsReady && batchReleased;
-  const detailUnavailable =
-    detailResolved && detailFailed && !detailsReady;
-  const batchDetailUnavailable =
-    detailUnavailable && batchReleased;
+  const detailUnavailable = detailResolved && detailFailed && !detailsReady;
+  const batchDetailUnavailable = detailUnavailable && batchReleased;
   const cardProduct = hydratedProduct || product;
 
   const profile = detectTemplateProfile(cardProduct || {});
@@ -1561,10 +1573,7 @@ function ProductCard({
     () => miniSceneComponents(cardProduct),
     [cardProduct],
   );
-  const parts = useMemo(
-    () => miniPartSections(cardProduct),
-    [cardProduct],
-  );
+  const parts = useMemo(() => miniPartSections(cardProduct), [cardProduct]);
   const wholeSelected = useMemo(
     () => (components.length ? miniFinishInfo(components[0]) : null),
     [components],
@@ -1574,11 +1583,11 @@ function ProductCard({
     String(cardProduct?.title || product?.title || "").trim() ||
     "Custom Furniture";
 
-
   const customColor = useMemo(() => {
     const candidate = components.find((component) =>
-      [component?.fill, component?.color, component?.finish_color].some((value) =>
-        /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(String(value || "").trim()),
+      [component?.fill, component?.color, component?.finish_color].some(
+        (value) =>
+          /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(String(value || "").trim()),
       ),
     );
     return miniHex(
@@ -1599,21 +1608,38 @@ function ProductCard({
     >
       <div className="cust-mini-configurator-v21">
         <div className="cust-mini-tools-v21" aria-hidden="true">
-          <span className="cust-mini-close-v21"><X size={10} strokeWidth={1.6} /></span>
+          <span className="cust-mini-close-v21">
+            <X size={10} strokeWidth={1.6} />
+          </span>
           <span className="cust-mini-tool-gap-v21" />
-          <span><Undo2 size={9} strokeWidth={1.5} /></span>
-          <span><Redo2 size={9} strokeWidth={1.5} /></span>
-          <span><List size={9} strokeWidth={1.5} /></span>
-          <span><Ruler size={9} strokeWidth={1.5} /></span>
+          <span>
+            <Undo2 size={9} strokeWidth={1.5} />
+          </span>
+          <span>
+            <Redo2 size={9} strokeWidth={1.5} />
+          </span>
+          <span>
+            <List size={9} strokeWidth={1.5} />
+          </span>
+          <span>
+            <Ruler size={9} strokeWidth={1.5} />
+          </span>
           <span className="cust-mini-mm-v21">mm</span>
-          <span><Box size={9} strokeWidth={1.5} /></span>
-          <span><RotateCcw size={9} strokeWidth={1.5} /></span>
-          <span><Maximize2 size={9} strokeWidth={1.5} /></span>
-          <span><Camera size={9} strokeWidth={1.5} /></span>
+          <span>
+            <Box size={9} strokeWidth={1.5} />
+          </span>
+          <span>
+            <RotateCcw size={9} strokeWidth={1.5} />
+          </span>
+          <span>
+            <Maximize2 size={9} strokeWidth={1.5} />
+          </span>
+          <span>
+            <Camera size={9} strokeWidth={1.5} />
+          </span>
         </div>
 
         <div className="cust-mini-preview-v21">
-
           {cachedStaticPreview ? (
             <div className="cust-mini-preview-stage-v21">
               <img
@@ -1660,10 +1686,7 @@ function ProductCard({
             </div>
           ) : (
             <ProductImage
-              src={
-                cardProduct?.preview_image_url ||
-                cardProduct?.thumbnail_url
-              }
+              src={cardProduct?.preview_image_url || cardProduct?.thumbnail_url}
               alt={cardProduct?.title}
             />
           )}
@@ -1704,7 +1727,9 @@ function ProductCard({
                   <small>Keeps proportions</small>
                 </div>
                 <div className="cust-mini-size-labels-v21">
-                  <span>Width</span><span>Height</span><span>Depth</span>
+                  <span>Width</span>
+                  <span>Height</span>
+                  <span>Depth</span>
                 </div>
                 <div className="cust-mini-size-fields-v21">
                   <span>{Math.round(Number(dimensions.width_mm) || 0)}</span>
@@ -1719,7 +1744,8 @@ function ProductCard({
               </div>
 
               <div className="cust-mini-request-v21">
-                <span>Request details</span><strong>+</strong>
+                <span>Request details</span>
+                <strong>+</strong>
               </div>
 
               <div className="cust-mini-add-v21">Add to Cart</div>
@@ -1779,8 +1805,8 @@ export default function CustomizePage() {
   const [customizingProduct, setCustomizingProduct] = useState(null);
   const [toastMessage, setToastMessage] = useState("");
   const [isHiding, setIsHiding] = useState(false);
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const galleryRequestRef = useRef(0);
-
 
   const closeCustomizeModal = useCallback(() => {
     setCustomizingProduct(null);
@@ -1834,9 +1860,7 @@ export default function CustomizePage() {
     const requestId = galleryRequestRef.current + 1;
     galleryRequestRef.current = requestId;
 
-    const delay = search.trim()
-      ? CUSTOMIZE_GALLERY_SEARCH_DEBOUNCE_MS
-      : 0;
+    const delay = search.trim() ? CUSTOMIZE_GALLERY_SEARCH_DEBOUNCE_MS : 0;
 
     const timer = window.setTimeout(() => {
       fetchProducts(search, requestId);
@@ -2023,7 +2047,6 @@ export default function CustomizePage() {
     setIsHiding(false);
   };
 
-
   // Business category comes from the category selected when Admin publishes
   // the blueprint. Template profile detection remains separate for 3D behavior.
   const categoryOptions = useMemo(() => {
@@ -2145,7 +2168,8 @@ export default function CustomizePage() {
         <div className="cust-page-meta">
           {!loading && (
             <div className="cust-results-info">
-              {visibleDesignCount} design{visibleDesignCount !== 1 ? "s" : ""} available
+              Showing {visibleDesignCount} design
+              {visibleDesignCount !== 1 ? "s" : ""}
             </div>
           )}
         </div>
@@ -2154,26 +2178,26 @@ export default function CustomizePage() {
       {/* WISDOM READY-MADE STYLE DESIGN BROWSER V8.4 */}
       <div className="cust-design-browser">
         <aside
-          className="cust-category-refine"
+          className="cust-category-refine catalog-sidebar"
           aria-label="Refine furniture designs by category"
         >
-          <div className="cust-category-refine-label">
+          <div className="cust-category-refine-label sidebar-title">
             Refine by Category
           </div>
 
-          <div className="cust-category-refine-options">
+          <div className="cust-category-refine-options filter-options">
             {categoryOptions.map((option) => (
               <button
                 key={option.id}
                 type="button"
-                className={`cust-category-refine-option${
+                className={`cust-category-refine-option filter-option${
                   categoryFilter === option.id ? " active" : ""
                 }`}
                 aria-pressed={categoryFilter === option.id}
                 onClick={() => setCategoryFilter(option.id)}
               >
                 <span>{option.label}</span>
-                <span className="cust-category-refine-count">
+                <span className="cust-category-refine-count filter-count">
                   {Number(option.count || 0)}
                 </span>
               </button>
@@ -2181,25 +2205,102 @@ export default function CustomizePage() {
           </div>
         </aside>
 
-        <section className="cust-design-results" aria-label="Furniture designs">
-          <form
-            className="cust-search-shell cust-design-search"
-            onSubmit={handleSearch}
-          >
-            <div className="cust-search">
-              <Search size={16} />
-              <input
-                type="text"
-                placeholder="Search designs..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-          </form>
+        <section
+          className="catalog-main cust-design-results"
+          aria-label="Furniture designs"
+        >
+          <div className="catalog-toolbar">
+            <form className="catalog-search-shell" onSubmit={handleSearch}>
+              <div className="catalog-search">
+                <Search size={16} />
+                <input
+                  type="text"
+                  placeholder="Search designs..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+            </form>
+
+            <button
+              type="button"
+              className="mobile-filter-toggle"
+              onClick={() => setMobileFilterOpen(true)}
+            >
+              <Filter size={20} />
+            </button>
+          </div>
 
           <div className="cust-products-grid">{renderedCards}</div>
         </section>
       </div>
+
+      {mobileFilterOpen && (
+        <div
+          className="mobile-filter-overlay"
+          onClick={() => setMobileFilterOpen(false)}
+        >
+          <div
+            className="mobile-filter-drawer"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mobile-filter-header">
+              <h3>Refine by Category</h3>
+              <button onClick={() => setMobileFilterOpen(false)}>
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="mobile-filter-body">
+              <div className="filter-section">
+                <div className="sidebar-title">Refine by Category</div>
+                <div className="filter-options">
+                  {categoryOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className={`filter-option ${
+                        categoryFilter === option.id ? "active" : ""
+                      }`}
+                      onClick={() => {
+                        setCategoryFilter(option.id);
+                        setMobileFilterOpen(false);
+                      }}
+                    >
+                      <span>{option.label}</span>
+                      <span className="filter-count">
+                        {Number(option.count || 0)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="mobile-filter-footer">
+              <button
+                type="button"
+                className="clear-filters"
+                onClick={() => setCategoryFilter("all")}
+                disabled={categoryFilter === "all"}
+                style={{
+                  opacity: categoryFilter === "all" ? 0.4 : 1,
+                  cursor: categoryFilter === "all" ? "not-allowed" : "pointer",
+                }}
+              >
+                Clear Filters
+              </button>
+              <button
+                type="button"
+                className="price-apply-btn"
+                onClick={() => setMobileFilterOpen(false)}
+              >
+                Show Results
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {customizingProduct ? (
         <CustomizeModal

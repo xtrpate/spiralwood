@@ -1120,7 +1120,7 @@
   }
 
   .product-card-price {
-    font-size: 1rem !important;
+    display: none !important;
   }
 
   /* Stack the buttons vertically so they don't crush each other */

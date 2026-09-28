@@ -822,11 +822,53 @@ a {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 28px;
   }
+
+  /* WISDOM CUSTOMER HEADER LAPTOP COMPACT FIX D1
+     Reduce the fixed header footprint before mobile mode begins.
+     This keeps the center brand visible while preserving the
+     existing desktop layout and controls. */
+  .cust-header-main {
+    gap: clamp(8px, 1.4vw, 18px);
+    padding-left: clamp(10px, 1.4vw, 14px);
+    padding-right: clamp(10px, 1.4vw, 14px);
+  }
+
+  .cust-header-left,
+  .cust-header-right {
+    gap: clamp(7px, 1.1vw, 16px);
+  }
+
+  .cust-menu-btn {
+    min-width: clamp(96px, 9.8vw, 108px);
+    padding-left: clamp(12px, 1.4vw, 18px);
+    padding-right: clamp(12px, 1.4vw, 18px);
+  }
+
+  .cust-cart-summary-btn {
+    min-width: clamp(96px, 11vw, 122px);
+    padding-left: clamp(10px, 1.3vw, 16px);
+    padding-right: clamp(10px, 1.3vw, 14px);
+  }
+
+  /* Keep the brand fluid instead of allowing its fixed width
+     to consume the space needed by the right-side controls. */
+  .cust-brand-image-wrap {
+    width: clamp(245px, 26vw, 290px) !important;
+    height: clamp(50px, 5vw, 56px) !important;
+  }
 }
 
 @media (max-width: 980px) {
+  /* WISDOM CUSTOMER HEADER TABLET/LAPTOP TRANSITION D2
+     Remove the search before the header becomes too crowded. */
   .cust-header-main {
-    grid-template-columns: 1fr auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: clamp(8px, 1.5vw, 14px);
+  }
+
+  .cust-header-left,
+  .cust-header-right {
+    gap: clamp(6px, 1vw, 12px);
   }
 
   .cust-header-search {
@@ -835,6 +877,17 @@ a {
 
   .cust-brand .cust-brand-copy {
     display: none !important;
+  }
+
+  .cust-brand-image-wrap {
+    width: clamp(220px, 28vw, 260px) !important;
+    height: clamp(46px, 5vw, 52px) !important;
+  }
+
+  .cust-cart-summary-btn {
+    min-width: clamp(88px, 10vw, 108px);
+    padding-left: 8px;
+    padding-right: 8px;
   }
 }
 
@@ -863,8 +916,13 @@ a {
 
   .cust-header-main {
     min-height: 74px;
-    padding: 0 14px;
-    gap: 10px;
+    padding: 0 10px;
+    gap: 8px;
+  }
+
+  .cust-header-left,
+  .cust-header-right {
+    gap: 6px;
   }
 
   .cust-menu-btn {
@@ -875,6 +933,42 @@ a {
 
   .cust-menu-btn span {
     display: none;
+  }
+
+  /* WISDOM MOBILE HEADER CART COMPACT FIX */
+  .cust-cart-summary-btn {
+    min-width: 42px;
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    gap: 0;
+  }
+
+  .cust-cart-summary-total {
+    display: none;
+  }
+
+  .cust-cart-summary-icon-wrap {
+    margin-right: 0;
+  }
+
+  /* WISDOM MOBILE HEADER CART COMPACT FIX
+     Hide the cart total on small screens so it does not compete
+     with the centered brand, notification, and account controls. */
+  .cust-cart-summary-btn {
+    min-width: 42px;
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    gap: 0;
+  }
+
+  .cust-cart-summary-total {
+    display: none;
+  }
+
+  .cust-cart-summary-icon-wrap {
+    margin-right: 0;
   }
 
   .cust-brand-badge.header {
@@ -2814,6 +2908,31 @@ a {
   }
 }
 
+/* WISDOM CUSTOMER HEADER NARROW-SCREEN SAFETY D4
+   Prevent the header controls from competing for space at very
+   narrow browser widths. */
+@media (max-width: 760px) {
+  .cust-header-main {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  }
+
+  .cust-header-left {
+    min-width: 0;
+  }
+
+  .cust-header-right {
+    min-width: 0;
+    justify-content: flex-end;
+  }
+
+  .cust-brand {
+    min-width: 0;
+  }
+
+  .cust-brand-image-wrap {
+    max-width: 100%;
+  }
+}
 
 /* ==========================================================================
    WISDOM CUSTOMER FOOTER RESTRUCTURE V1.0.0
@@ -3048,7 +3167,6 @@ a {
   }
 }
 
-
 /* ==========================================================================
    WISDOM CUSTOMER FOOTER ICONS + LOGO FIX V1.0.1
    Adds restrained monochrome icons and restores the original rounded logo.
@@ -3155,7 +3273,6 @@ a {
   font-weight: 400;
 }
 
-
 /* ==========================================================================
    WISDOM CUSTOMER FOOTER BALANCE POLISH V1.0.2
    Balanced information density + more refined social controls
@@ -3218,7 +3335,6 @@ a {
     max-width: none;
   }
 }
-
 
 /* ==========================================================================
    WISDOM CUSTOMER FOOTER FINAL POLISH V1.0.4

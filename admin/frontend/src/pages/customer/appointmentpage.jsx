@@ -10,6 +10,8 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import useAuthStore from "../../store/authStore";
 import api from "../../services/api";
@@ -290,6 +292,105 @@ const parseNotes = (notes) => {
 
   return details;
 };
+
+function ExpandableText({ text = "", limit = 120 }) {
+  const [expanded, setExpanded] = useState(false);
+  const raw = String(text || "").trim();
+
+  if (!raw || raw.length <= limit) {
+    return <span>{raw}</span>;
+  }
+
+  const truncated = raw.slice(0, limit).replace(/\s+\S*$/, "");
+
+  return (
+    <span>
+      {expanded ? raw : `${truncated}…`}
+      <button
+        type="button"
+        className="appt-view-more-btn"
+        onClick={(e) => {
+          e.stopPropagation();
+          setExpanded((prev) => !prev);
+        }}
+      >
+        {expanded ? "View less" : "View more"}
+      </button>
+    </span>
+  );
+}
+
+function AppointmentCard({ appt, onCancel }) {
+  const [open, setOpen] = useState(false);
+  const details = parseNotes(appt.notes);
+  const isPending = String(appt.status || "").toLowerCase() === "pending";
+
+  return (
+    <div className={`appt-item ${open ? "open" : ""}`}>
+      <button
+        type="button"
+        className="appt-item-top"
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        <div className="appt-item-left">
+          <div className="appt-item-purpose">
+            {getPurposeLabel(appt.purpose)}
+          </div>
+          <div className="appt-item-meta">
+            <span>
+              <Calendar size={12} /> {formatDateTime(appt.scheduled_date)}
+            </span>
+          </div>
+        </div>
+
+        <div className="appt-item-right">
+          <StatusBadge status={appt.status} />
+          {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        </div>
+      </button>
+
+      {open && (
+        <div className="appt-item-body-wrap">
+          {details.projectDescription && (
+            <div className="appt-item-info-card">
+              <div className="appt-item-info-label">Project Description</div>
+              <div className="appt-item-body">
+                <ExpandableText text={details.projectDescription} limit={120} />
+              </div>
+            </div>
+          )}
+
+          {details.customerNotes && (
+            <div className="appt-item-info-card">
+              <div className="appt-item-info-label">Additional Notes</div>
+              <div className="appt-item-body">
+                <ExpandableText text={details.customerNotes} limit={100} />
+              </div>
+            </div>
+          )}
+
+          {appt.assigned_to_name && (
+            <div className="appt-item-assigned">
+              Assigned staff: <strong>{appt.assigned_to_name}</strong>
+            </div>
+          )}
+
+          {isPending && (
+            <div className="appt-item-actions">
+              <button
+                type="button"
+                className="appt-btn-cancel"
+                onClick={() => onCancel(appt.id)}
+              >
+                Cancel request
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function AppointmentPage() {
   const { user } = useAuthStore();
@@ -1343,49 +1444,13 @@ export default function AppointmentPage() {
                 </div>
               ) : (
                 <div className="appt-list">
-                  {appointments.map((a) => {
-                    const details = parseNotes(a.notes);
-
-                    return (
-                      <div key={a.id} className="appt-item">
-                        <div className="appt-item-top">
-                          <div className="appt-item-purpose">
-                            {getPurposeLabel(a.purpose)}
-                          </div>
-                          <StatusBadge status={a.status} />
-                        </div>
-
-                        <div className="appt-item-meta">
-                          <span>
-                            <Calendar size={12} />{" "}
-                            {formatDateTime(a.scheduled_date)}
-                          </span>
-                        </div>
-
-                        {details.projectDescription && (
-                          <div className="appt-item-body">
-                            {details.projectDescription}
-                          </div>
-                        )}
-
-                        {a.assigned_to_name && (
-                          <div className="appt-item-assigned">
-                            Assigned staff: {a.assigned_to_name}
-                          </div>
-                        )}
-
-                        {String(a.status || "").toLowerCase() === "pending" && (
-                          <button
-                            type="button"
-                            className="appt-btn-cancel"
-                            onClick={() => handleCancel(a.id)}
-                          >
-                            Cancel request
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {appointments.map((a) => (
+                    <AppointmentCard
+                      key={a.id}
+                      appt={a}
+                      onCancel={handleCancel}
+                    />
+                  ))}
                 </div>
               )}
             </div>
