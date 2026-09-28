@@ -1035,9 +1035,10 @@ export default function OrderDetailPage() {
       setReassignStaffId("");
       setReassignModal(true);
     } catch (err) {
-      if (err.response?.status === 404) {
-        toast.error(err.response?.data?.message || "Order not found.");
-      }
+      toast.error(
+        err?.response?.data?.message ||
+          "Failed to load staff for production reassignment.",
+      );
     } finally {
       setLoadingReassignable(false);
     }
@@ -1060,9 +1061,10 @@ export default function OrderDetailPage() {
       setReassignModal(false);
       await load({ silent: true });
     } catch (err) {
-      if (err.response?.status === 404) {
-        toast.error(err.response?.data?.message || "Order not found.");
-      }
+      toast.error(
+        err?.response?.data?.message ||
+          "Failed to reassign production staff.",
+      );
     } finally {
       setReassigning(false);
     }
