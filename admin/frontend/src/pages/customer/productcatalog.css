@@ -3539,3 +3539,32 @@ button.detail-thumb img {
     gap: 6px !important;
   }
 }
+
+/* WISDOM PRODUCT CATALOG - QUICK VIEW DESCRIPTION LIMIT
+   Keep long product descriptions from taking over the product detail view.
+   The full description remains stored in the database. */
+.detail-description {
+  display: -webkit-box !important;
+  -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 5 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+/* WISDOM PRODUCT QUICK VIEW - MOBILE BUTTON ORDER
+   Mobile: keep both actions on one row, with Add to Cart first.
+   Desktop/tablet keep the original button order. */
+@media (max-width: 520px) {
+  .detail-button-row {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+
+  .detail-button-row .detail-add-btn {
+    order: 1;
+  }
+
+  .detail-button-row .detail-buy-btn {
+    order: 2;
+  }
+}
