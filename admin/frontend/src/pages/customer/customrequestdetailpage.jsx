@@ -1812,6 +1812,7 @@ export default function CustomRequestDetailPage() {
     try {
       const res = await api.post(
         `/customer/custom-orders/${requestData.id}/project-agreement/accept`,
+        { acknowledged: true },
       );
       setAgreementConfirmOpen(false);
       setAgreementChecked(false);

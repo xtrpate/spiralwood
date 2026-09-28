@@ -2299,6 +2299,15 @@ exports.acceptProjectAgreement = async (req, res) => {
       });
     }
 
+    if (!alreadyAccepted && req.body?.acknowledged !== true) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message:
+          "Please acknowledge that you reviewed the Project Agreement before accepting it.",
+      });
+    }
+
     if (!alreadyAccepted) {
       const [acceptResult] = await conn.execute(
         `UPDATE contracts

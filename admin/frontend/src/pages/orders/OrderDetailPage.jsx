@@ -1544,6 +1544,17 @@ export default function OrderDetailPage() {
 
   const needsCustomRequestAdminReview =
     hasCustomRequestItems && normalizedOrderStatus === "pending";
+  const productionTasksSummary = hasBlueprintTasks
+    ? `${completedBlueprintTasks.length}/${blueprintTasks.length}`
+    : [
+          "contract_released",
+          "production",
+          "shipping",
+          "delivered",
+          "completed",
+        ].includes(normalizedOrderStatus)
+      ? "Ready"
+      : "Waiting";
   const summaryCards = [
     {
       label: "Payment",
@@ -1565,9 +1576,7 @@ export default function OrderDetailPage() {
     hasBlueprintFlow
       ? {
           label: "Production Tasks",
-          value: hasBlueprintTasks
-            ? `${completedBlueprintTasks.length}/${blueprintTasks.length}`
-            : "Ready",
+          value: productionTasksSummary,
           tone: { bg: "#ffffff", color: "#52525b", border: "#d4d4d8" },
         }
       : {

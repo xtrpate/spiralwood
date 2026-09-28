@@ -749,21 +749,36 @@ export default function BlueprintPayments() {
     const remainingBeforeCents = parseTrustedDisplayCents(
       summary.remaining_balance,
     );
+    const minimumAdditionalCents = parseTrustedDisplayCents(
+      summary.minimum_additional_payment || 0,
+    );
 
-    if (amountCents === null || remainingBeforeCents === null) {
+    if (
+      amountCents === null ||
+      remainingBeforeCents === null ||
+      minimumAdditionalCents === null
+    ) {
       setRecordError("Enter a valid payment amount.");
       return;
     }
 
-    const remainingAfterCents = Math.max(0, remainingBeforeCents - amountCents);
-
-    let previewStatus = "Partial";
-    if (amountCents === remainingBeforeCents) {
-      previewStatus = "Paid";
-    } else if (amountCents > remainingBeforeCents) {
-      previewStatus =
-        "Above the current balance - the server will validate the amount";
+    if (amountCents < minimumAdditionalCents) {
+      setRecordError(
+        `The amount is below the minimum required payment of ${formatMoney(
+          minimumAdditionalCents / 100,
+        )}.`,
+      );
+      return;
     }
+
+    if (amountCents > remainingBeforeCents) {
+      setRecordError("The amount cannot exceed the remaining balance.");
+      return;
+    }
+
+    const remainingAfterCents = Math.max(0, remainingBeforeCents - amountCents);
+    const previewStatus =
+      amountCents === remainingBeforeCents ? "Paid" : "Partial";
 
     const confirmed = window.confirm(
       `Confirm cash payment of ${formatMoney(amountCents / 100)} for ${summary.order_number}.\n\n` +
