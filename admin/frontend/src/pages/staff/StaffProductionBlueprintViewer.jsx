@@ -1555,13 +1555,13 @@ export default function StaffProductionBlueprintViewer({
 
       switch (viewMode) {
         case "Front":
-          camera.position.set(center.x, center.y, center.z + distance);
+          camera.position.set(center.x, center.y, box.max.z + distance);
           break;
         case "Back":
-          camera.position.set(center.x, center.y, center.z - distance);
+          camera.position.set(center.x, center.y, box.min.z - distance);
           break;
         case "Side":
-          camera.position.set(center.x - distance, center.y, center.z);
+          camera.position.set(box.min.x - distance, center.y, center.z);
           break;
         // WISDOM ADMIN SUBMITTED DESIGN DIMENSIONS R2.1 TOP BOTTOM CAMERA FIX
         // Top/Bottom fit the furniture footprint, but the camera still needs
@@ -2187,6 +2187,15 @@ export default function StaffProductionBlueprintViewer({
     );
   }
 
+  const movementHelp =
+    hasPreviewDoors && hasPreviewDrawers
+      ? "Click a door or drawer to preview movement"
+      : hasPreviewDoors
+        ? "Click a door to preview movement"
+        : hasPreviewDrawers
+          ? "Click a drawer to preview movement"
+          : "";
+
   return (
     <div className="staff-prod-viewer">
       <div className="staff-prod-viewer-toolbar">
@@ -2273,7 +2282,8 @@ export default function StaffProductionBlueprintViewer({
       </div>
 
       <div className="staff-prod-viewer-help">
-        Drag to rotate • Scroll to zoom • Click a door or drawer to preview movement
+        Drag to rotate {"\u2022"} Scroll to zoom
+        {movementHelp ? ` \u2022 ${movementHelp}` : ""}
       </div>
     </div>
   );

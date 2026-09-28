@@ -193,6 +193,11 @@ export default function ProductionBlueprintView() {
     firstText(record?.order_item?.product_name, blueprint?.title) ||
     "Assigned Furniture";
   const isOrderDesign = record?.design_source === "order_customization";
+  const productionQuantity = Number(record?.order_item?.quantity);
+  const quantityText =
+    Number.isSafeInteger(productionQuantity) && productionQuantity > 0
+      ? productionQuantity.toLocaleString("en-PH")
+      : "-";
   const referencePhotos = Array.isArray(record?.reference_photos)
     ? record.reference_photos.filter((photo) =>
         String(photo?.file_url || "").trim(),
@@ -253,7 +258,12 @@ export default function ProductionBlueprintView() {
 
           <div className="production-blueprint-layout">
             <section className="production-blueprint-view-section">
-              <StaffProductionBlueprintViewer blueprint={blueprint} />
+              <StaffProductionBlueprintViewer
+                blueprint={blueprint}
+                cleanFurnitureSelfShadow
+                cleanWardrobeDoorShelfOverlap
+                showDimensionAnnotations
+              />
             </section>
 
             <aside className="production-blueprint-details">
@@ -286,6 +296,10 @@ export default function ProductionBlueprintView() {
                 <div className="production-blueprint-detail-row">
                   <span>Finish / Color</span>
                   <strong><FinishValue value={overallFinish} /></strong>
+                </div>
+                <div className="production-blueprint-detail-row">
+                  <span>Quantity</span>
+                  <strong>{quantityText}</strong>
                 </div>
                 <div className="production-blueprint-detail-row">
                   <span>Order</span>

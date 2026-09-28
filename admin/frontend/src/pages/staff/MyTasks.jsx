@@ -1686,6 +1686,12 @@ function ProductionBlueprintPanel({ orderId, orderNumber }) {
           <div style={productionBlueprintDimensions}>{dimensionText}</div>
         ) : null}
 
+        {record?.order_item ? (
+          <div style={productionBlueprintDimensions}>
+            Quantity: {Math.max(1, Number(record.order_item.quantity) || 1).toLocaleString("en-PH")}
+          </div>
+        ) : null}
+
         <span style={productionReadOnlyBadge}>Read Only</span>
       </div>
 
