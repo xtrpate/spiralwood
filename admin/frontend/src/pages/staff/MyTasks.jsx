@@ -54,6 +54,18 @@ const STEP_STATUS_META = {
     border: "#d8a3a3",
     label: "On Hold",
   },
+  missing: {
+    bg: "#fff7ed",
+    color: "#9a3412",
+    border: "#fdba74",
+    label: "Missing",
+  },
+  invalid: {
+    bg: "#fff1f2",
+    color: "#9f1239",
+    border: "#fda4af",
+    label: "Needs Review",
+  },
 };
 
 const ORDER_STATUS_META = {
@@ -174,6 +186,7 @@ export default function MyTasks() {
   const [holdSaving, setHoldSaving] = useState(false);
   const [taskActionTarget, setTaskActionTarget] = useState(null);
   const [taskActionMode, setTaskActionMode] = useState(null);
+  const [undoReason, setUndoReason] = useState("");
 
   const loadTasks = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -338,6 +351,7 @@ export default function MyTasks() {
 
     setTaskActionTarget(task);
     setTaskActionMode(mode);
+    setUndoReason("");
   };
 
   const closeTaskActionDialog = () => {
@@ -350,14 +364,16 @@ export default function MyTasks() {
 
     setTaskActionTarget(null);
     setTaskActionMode(null);
+    setUndoReason("");
   };
 
-  const undoTaskCompletion = async (taskId) => {
+  const undoTaskCompletion = async (taskId, reason) => {
     try {
       setBusyId(taskId);
 
       const { data } = await api.post(
         `/tasks/${taskId}/undo-completion`,
+        { undo_reason: reason },
       );
 
       setTasks((previous) =>
@@ -390,14 +406,34 @@ export default function MyTasks() {
   const submitTaskAction = async () => {
     if (!taskActionTarget || !taskActionMode) return;
 
+    const normalizedUndoReason = undoReason.trim();
+
+    if (taskActionMode === "undo") {
+      if (!normalizedUndoReason) {
+        toast.error(
+          "Please enter a reason before reopening this production step.",
+        );
+        return;
+      }
+
+      if (normalizedUndoReason.length > 500) {
+        toast.error("Undo reason must be 500 characters or fewer.");
+        return;
+      }
+    }
+
     const saved =
       taskActionMode === "complete"
         ? await updateTaskStatus(taskActionTarget.id, "completed")
-        : await undoTaskCompletion(taskActionTarget.id);
+        : await undoTaskCompletion(
+            taskActionTarget.id,
+            normalizedUndoReason,
+          );
 
     if (saved) {
       setTaskActionTarget(null);
       setTaskActionMode(null);
+      setUndoReason("");
     }
   };
 
@@ -450,20 +486,50 @@ export default function MyTasks() {
 
     return Array.from(map.values())
       .map((order) => {
-        const steps = REQUIRED_STEPS.map((stepLabel) => {
-          const matchedTask =
-            order.rawTasks.find(
-              (task) => normalize(task.task_role) === normalize(stepLabel),
-            ) || null;
+        const requiredTaskBuckets = new Map(
+          REQUIRED_STEPS.map((stepLabel) => [normalize(stepLabel), []]),
+        );
 
-          const status = normalize(matchedTask?.status || "pending");
+        order.rawTasks.forEach((task) => {
+          const roleKey = normalize(task.task_role);
+          if (requiredTaskBuckets.has(roleKey)) {
+            requiredTaskBuckets.get(roleKey).push(task);
+          }
+        });
+
+        const packetIssues = [];
+
+        const steps = REQUIRED_STEPS.map((stepLabel) => {
+          const matches =
+            requiredTaskBuckets.get(normalize(stepLabel)) || [];
+
+          let integrityIssue = "";
+          if (matches.length === 0) {
+            integrityIssue = `Missing ${stepLabel} task`;
+          } else if (matches.length > 1) {
+            integrityIssue = `Duplicate ${stepLabel} tasks (${matches.length})`;
+          }
+
+          if (integrityIssue) {
+            packetIssues.push(integrityIssue);
+          }
+
+          const matchedTask = matches.length === 1 ? matches[0] : null;
+          const status = matchedTask
+            ? normalize(matchedTask.status || "pending")
+            : matches.length === 0
+              ? "missing"
+              : "invalid";
 
           return {
             stepLabel,
             task: matchedTask,
             status,
+            integrityIssue,
           };
         });
+
+        const packetIntegrityOk = packetIssues.length === 0;
 
         const completedCount = steps.filter(
           (step) => step.status === "completed",
@@ -478,6 +544,7 @@ export default function MyTasks() {
         );
 
         const ready =
+          packetIntegrityOk &&
           completedCount === REQUIRED_STEPS.length &&
           steps.every((step) => Boolean(step.task));
 
@@ -489,6 +556,8 @@ export default function MyTasks() {
         return {
           ...order,
           steps,
+          packetIntegrityOk,
+          packetIntegrityMessage: packetIssues.join("; "),
           completedCount,
           progressPercent: Math.round(
             (completedCount / REQUIRED_STEPS.length) * 100,
@@ -797,22 +866,47 @@ export default function MyTasks() {
                         </div>
                       </div>
 
+                      {!order.packetIntegrityOk ? (
+                        <div
+                          style={{
+                            marginBottom: 12,
+                            border: "1px solid #fda4af",
+                            background: "#fff1f2",
+                            padding: 12,
+                            color: "#9f1239",
+                            fontSize: 12,
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          <strong>Production packet requires admin review.</strong>{" "}
+                          {order.packetIntegrityMessage}. Production actions are
+                          temporarily disabled until the five-step packet is
+                          corrected.
+                        </div>
+                      ) : null}
+
                       <div style={stepList}>
                         {order.steps.map((step, stepIndex) => {
                           const stepMeta =
                             STEP_STATUS_META[step.status] ||
                             STEP_STATUS_META.pending;
 
-                          const canStartThisStep = canStartStepInSequence(
-                            order.steps,
-                            stepIndex,
-                          );
-
-                          const canUndoThisStep = order.steps
-                            .slice(stepIndex + 1)
-                            .every(
-                              (candidate) => candidate.status === "pending",
+                          const canStartThisStep =
+                            order.packetIntegrityOk &&
+                            canStartStepInSequence(
+                              order.steps,
+                              stepIndex,
                             );
+
+                          const canUndoThisStep =
+                            order.packetIntegrityOk &&
+                            order.steps
+                              .slice(stepIndex + 1)
+                              .every(
+                                (candidate) =>
+                                  candidate.status === "pending" &&
+                                  Boolean(candidate.task),
+                              );
 
                           const previousStep = getPreviousRequiredStepLabel(
                             order.steps,
@@ -853,7 +947,16 @@ export default function MyTasks() {
                               <div style={stepContent}>
                                 <div style={stepName}>{step.stepLabel}</div>
 
-                                {!step.task ? (
+                                {step.integrityIssue ? (
+                                  <div
+                                    style={{
+                                      ...stepHint,
+                                      color: "#9f1239",
+                                    }}
+                                  >
+                                    {step.integrityIssue}
+                                  </div>
+                                ) : !step.task ? (
                                   <div style={stepHint}>
                                     Waiting for task assignment
                                   </div>
@@ -904,7 +1007,9 @@ export default function MyTasks() {
                                   {stepMeta.label}
                                 </span>
 
-                                {step.task && isOwnedByCurrentUser ? (
+                                {order.packetIntegrityOk &&
+                                step.task &&
+                                isOwnedByCurrentUser ? (
                                   <div className="indoor-task-step-actions" style={stepActions}>
                                     {step.status === "pending" &&
                                     canStartThisStep ? (
@@ -1360,6 +1465,54 @@ export default function MyTasks() {
                 : `Return ${taskActionTarget.task_role || taskActionTarget.title || "this production step"} to In Progress? Undo is blocked if a later production step has already started or the order has already moved forward to delivery or completion.`}
             </p>
 
+            {taskActionMode === "undo" ? (
+              <>
+                <label
+                  htmlFor="production-undo-reason"
+                  style={{
+                    display: "block",
+                    marginTop: 18,
+                    marginBottom: 6,
+                    color: "#3f3f46",
+                    fontSize: 11,
+                    fontWeight: 700,
+                  }}
+                >
+                  Reason for reopening this step *
+                </label>
+                <textarea
+                  id="production-undo-reason"
+                  value={undoReason}
+                  maxLength={500}
+                  autoFocus
+                  onChange={(event) => setUndoReason(event.target.value)}
+                  placeholder="Example: Incorrect measurement found during inspection."
+                  style={{
+                    width: "100%",
+                    minHeight: 100,
+                    resize: "vertical",
+                    border: "1px solid #d4d4d8",
+                    padding: 10,
+                    boxSizing: "border-box",
+                    fontFamily: "inherit",
+                    fontSize: 12.5,
+                    color: "#18181b",
+                    outline: "none",
+                  }}
+                />
+                <div
+                  style={{
+                    marginTop: 5,
+                    textAlign: "right",
+                    color: "#71717a",
+                    fontSize: 10.5,
+                  }}
+                >
+                  {undoReason.length}/500
+                </div>
+              </>
+            ) : null}
+
             <div
               style={{
                 display: "flex",
@@ -1380,9 +1533,13 @@ export default function MyTasks() {
               <button
                 type="button"
                 onClick={submitTaskAction}
-                disabled={busyId === taskActionTarget.id}
+                disabled={
+                  busyId === taskActionTarget.id ||
+                  (taskActionMode === "undo" && !undoReason.trim())
+                }
                 style={
-                  busyId === taskActionTarget.id
+                  busyId === taskActionTarget.id ||
+                  (taskActionMode === "undo" && !undoReason.trim())
                     ? disabledButton
                     : primaryButton
                 }

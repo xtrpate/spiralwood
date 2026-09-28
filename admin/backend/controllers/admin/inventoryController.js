@@ -1190,112 +1190,203 @@ exports.updateRawMaterial = async (req, res) => {
       });
     }
 
-    const [[before]] = await pool.query(
-      `SELECT id, name, category_id, unit, material_form, length_mm, width_mm,
-              thickness_mm, quantity, reorder_point, safety_stock, lead_time_days,
-              unit_cost, supplier_id, stock_status
-       FROM raw_materials
-       WHERE id = ?
-       LIMIT 1`,
-      [materialId],
-    );
+    const conn = await pool.getConnection();
 
-    if (!before) {
-      return res.status(404).json({ message: "Raw material not found." });
-    }
+    try {
+      await conn.beginTransaction();
 
-    const currentQty = normalizeRawMaterialQuantity(before.quantity);
-    const requestedQty =
-      quantity === undefined || quantity === null || quantity === ""
-        ? currentQty
-        : Number(quantity);
+      const [[before]] = await conn.query(
+        `SELECT id, name, category_id, unit, material_form, length_mm, width_mm,
+                thickness_mm, quantity, reorder_point, safety_stock, lead_time_days,
+                unit_cost, supplier_id, stock_status
+         FROM raw_materials
+         WHERE id = ?
+         LIMIT 1
+         FOR UPDATE`,
+        [materialId],
+      );
 
-    if (
-      !Number.isFinite(requestedQty) ||
-      requestedQty < 0 ||
-      (quantity !== undefined &&
-        quantity !== null &&
-        quantity !== "" &&
-        !hasValidQuantityPrecisionForUnit(quantity, unit))
-    ) {
-      return res.status(400).json({
-        message: quantityRuleMessage(unit),
-      });
-    }
+      if (!before) {
+        await conn.rollback();
+        return res.status(404).json({ message: "Raw material not found." });
+      }
 
-    if (Math.abs(requestedQty - currentQty) > 0.0000001) {
-      return res.status(409).json({
-        message:
-          "On-hand quantity cannot be changed from Edit Raw Material. Use Stock Movement so every physical stock change is recorded.",
-        current_quantity: currentQty,
-        requested_quantity: requestedQty,
-      });
-    }
-
-    const duplicate = await findDuplicateRawMaterial(pool, {
-      name,
-      unit,
-      materialForm: physicalSpec.materialForm,
-      lengthMm: physicalSpec.lengthMm,
-      widthMm: physicalSpec.widthMm,
-      thicknessMm: physicalSpec.thicknessMm,
-      excludeId: materialId,
-    });
-
-    if (duplicate) {
-      return res.status(409).json({
-        message: duplicateRawMaterialMessage(duplicate),
-        duplicate_material_id: duplicate.id,
-        duplicate_is_active: Number(duplicate.is_active) === 1,
-      });
-    }
-
-    const status = computeStockStatus(currentQty, reorderPoint, safetyStock);
-
-    const [updateResult] = await pool.query(
-      `UPDATE raw_materials
-       SET name=?, category_id=?, unit=?, material_form=?, length_mm=?, width_mm=?,
-           thickness_mm=?, reorder_point=?, safety_stock=?, lead_time_days=?, unit_cost=?, supplier_id=?, stock_status=?
-       WHERE id=?`,
-      [
-        String(name).trim(),
-        category_id ? parseInt(category_id, 10) : null,
-        String(unit).trim(),
-        physicalSpec.materialForm,
-        physicalSpec.lengthMm,
-        physicalSpec.widthMm,
-        physicalSpec.thicknessMm,
-        reorderPoint,
-        safetyStock,
-        leadTime,
-        unitCost,
-        supplier_id ? parseInt(supplier_id, 10) : null,
-        status,
+      const activeReservations = await lockActiveBlueprintReservations(
+        conn,
         materialId,
-      ],
-    );
+      );
+      const currentQty = normalizeRawMaterialQuantity(before.quantity);
 
-    if (updateResult.affectedRows !== 1) {
-      return res.status(409).json({
-        message: "Raw material could not be updated. Refresh and try again.",
+      const normalizeDefinitionText = (value) =>
+        String(value ?? "")
+          .trim()
+          .toLowerCase();
+      const normalizeNullableDimension = (value) => {
+        if (value === null || value === undefined || value === "") return null;
+        const number = Number(value);
+        return Number.isFinite(number) ? number : Number.NaN;
+      };
+      const sameNullableDimension = (left, right) => {
+        const a = normalizeNullableDimension(left);
+        const b = normalizeNullableDimension(right);
+        if (a === null || b === null) return a === b;
+        return (
+          Number.isFinite(a) &&
+          Number.isFinite(b) &&
+          Math.abs(a - b) <= 0.0000001
+        );
+      };
+
+      const nameChanged =
+        normalizeDefinitionText(before.name) !== normalizeDefinitionText(name);
+      const unitChanged =
+        normalizeDefinitionText(before.unit) !== normalizeDefinitionText(unit);
+      const materialFormChanged =
+        normalizeDefinitionText(before.material_form || "other") !==
+        normalizeDefinitionText(physicalSpec.materialForm || "other");
+      const dimensionsChanged =
+        !sameNullableDimension(before.length_mm, physicalSpec.lengthMm) ||
+        !sameNullableDimension(before.width_mm, physicalSpec.widthMm) ||
+        !sameNullableDimension(before.thickness_mm, physicalSpec.thicknessMm);
+      const measurementDefinitionChanged =
+        unitChanged || materialFormChanged || dimensionsChanged;
+      const materialDefinitionChanged =
+        nameChanged || measurementDefinitionChanged;
+
+      if (materialDefinitionChanged && activeReservations.length > 0) {
+        await conn.rollback();
+        return res.status(409).json({
+          message:
+            "This raw material is committed to active blueprint orders. Its name, unit, material form, and dimensions cannot be changed until those reservations are consumed or released.",
+          reservation_ids: activeReservations.map((row) => row.id),
+        });
+      }
+
+      if (measurementDefinitionChanged) {
+        const referenceCounts = await getRawMaterialReferenceCounts(
+          conn,
+          materialId,
+        );
+
+        if (currentQty > 0 || referenceCounts.total > 0) {
+          await conn.rollback();
+          return res.status(409).json({
+            message:
+              "This raw material's unit, material form, and dimensions cannot be changed while physical stock or historical references exist. Use Stock Movement to bring unused stock to zero when applicable, or archive this material and create a new record for a different physical definition.",
+            current_quantity: currentQty,
+            historical_reference_count: referenceCounts.total,
+            reference_counts: referenceCounts,
+          });
+        }
+      }
+
+      const requestedQty =
+        quantity === undefined || quantity === null || quantity === ""
+          ? currentQty
+          : Number(quantity);
+
+      if (
+        !Number.isFinite(requestedQty) ||
+        requestedQty < 0 ||
+        (quantity !== undefined &&
+          quantity !== null &&
+          quantity !== "" &&
+          !hasValidQuantityPrecisionForUnit(quantity, unit))
+      ) {
+        await conn.rollback();
+        return res.status(400).json({
+          message: quantityRuleMessage(unit),
+        });
+      }
+
+      if (Math.abs(requestedQty - currentQty) > 0.0000001) {
+        await conn.rollback();
+        return res.status(409).json({
+          message:
+            "On-hand quantity cannot be changed from Edit Raw Material. Use Stock Movement so every physical stock change is recorded.",
+          current_quantity: currentQty,
+          requested_quantity: requestedQty,
+        });
+      }
+
+      const duplicate = await findDuplicateRawMaterial(conn, {
+        name,
+        unit,
+        materialForm: physicalSpec.materialForm,
+        lengthMm: physicalSpec.lengthMm,
+        widthMm: physicalSpec.widthMm,
+        thicknessMm: physicalSpec.thicknessMm,
+        excludeId: materialId,
       });
+
+      if (duplicate) {
+        await conn.rollback();
+        return res.status(409).json({
+          message: duplicateRawMaterialMessage(duplicate),
+          duplicate_material_id: duplicate.id,
+          duplicate_is_active: Number(duplicate.is_active) === 1,
+        });
+      }
+
+      const status = computeStockStatus(currentQty, reorderPoint, safetyStock);
+
+      const [updateResult] = await conn.query(
+        `UPDATE raw_materials
+         SET name=?, category_id=?, unit=?, material_form=?, length_mm=?, width_mm=?,
+             thickness_mm=?, reorder_point=?, safety_stock=?, lead_time_days=?, unit_cost=?, supplier_id=?, stock_status=?
+         WHERE id=?`,
+        [
+          String(name).trim(),
+          category_id ? parseInt(category_id, 10) : null,
+          String(unit).trim(),
+          physicalSpec.materialForm,
+          physicalSpec.lengthMm,
+          physicalSpec.widthMm,
+          physicalSpec.thicknessMm,
+          reorderPoint,
+          safetyStock,
+          leadTime,
+          unitCost,
+          supplier_id ? parseInt(supplier_id, 10) : null,
+          status,
+          materialId,
+        ],
+      );
+
+      if (updateResult.affectedRows !== 1) {
+        await conn.rollback();
+        return res.status(409).json({
+          message: "Raw material could not be updated. Refresh and try again.",
+        });
+      }
+
+      const [[after]] = await conn.query(
+        `SELECT id, name, category_id, unit, material_form, length_mm, width_mm,
+                thickness_mm, quantity, reorder_point, safety_stock, lead_time_days,
+                unit_cost, supplier_id, stock_status
+         FROM raw_materials
+         WHERE id = ?
+         LIMIT 1`,
+        [materialId],
+      );
+
+      await conn.commit();
+
+      if (after) {
+        req.auditRecord = { id: materialId, old: before, new: after };
+      }
+
+      return res.json({ message: "Raw material updated." });
+    } catch (error) {
+      try {
+        await conn.rollback();
+      } catch {
+        // Preserve the original update error.
+      }
+      throw error;
+    } finally {
+      conn.release();
     }
-
-    const [[after]] = await pool.query(
-      `SELECT id, name, category_id, unit, material_form, length_mm, width_mm,
-              thickness_mm, quantity, reorder_point, safety_stock, lead_time_days,
-              unit_cost, supplier_id, stock_status
-       FROM raw_materials
-       WHERE id = ?
-       LIMIT 1`,
-      [materialId],
-    );
-
-    if (after) {
-      req.auditRecord = { id: materialId, old: before, new: after };
-    }
-
-    return res.json({ message: "Raw material updated." });
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
