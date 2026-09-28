@@ -45,7 +45,15 @@ const formatTypeLabel = (type) => {
 
 const UNMATCHED_CATEGORY_FILTER = "__unmatched_home_category__";
 
-const ProductImage = ({ src, alt, className, style, imgStyle, loading, decoding }) => {
+const ProductImage = ({
+  src,
+  alt,
+  className,
+  style,
+  imgStyle,
+  loading,
+  decoding,
+}) => {
   const [errored, setErrored] = useState(false);
   const resolvedSrc = buildAssetUrl(src);
 
@@ -724,93 +732,128 @@ export default function ProductCatalog() {
 
         <div className="catalog-main">
           <div className="catalog-toolbar">
-            <div className="catalog-search-shell">
-              <div className="catalog-search">
-                <Search size={16} />
-                <input
-                  type="text"
-                  placeholder="Search products..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  onFocus={() => setSearchFocused(true)}
-                  onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
-                />
-              </div>
-
-              {searchFocused && search.trim().length > 0 && (
-                <div className="catalog-search-dropdown">
-                  {loading ? (
-                    <div className="catalog-search-item-empty">
-                      Searching...
-                    </div>
-                  ) : products.length === 0 ? (
-                    <div className="catalog-search-item-empty">
-                      No results found for "{search}"
-                    </div>
-                  ) : (
-                    <>
-                      {products.slice(0, 6).map((product) => (
-                        <button
-                          key={product.id}
-                          type="button"
-                          className="catalog-search-item"
-                          onClick={() => {
-                            openProduct(product);
-                            setSearchFocused(false);
-                          }}
-                        >
-                          <div className="catalog-search-item-thumb">
-                            <img
-                              src={buildAssetUrl(product.image_url)}
-                              alt={product.name}
-                              onError={(e) => {
-                                e.currentTarget.style.display = "none";
-                              }}
-                            />
-                          </div>
-
-                          <div className="catalog-search-item-copy">
-                            <div className="catalog-search-item-name">
-                              {product.name}
-                            </div>
-                            <div className="catalog-search-item-cat">
-                              {product.category || "Uncategorized"}
-                            </div>
-                          </div>
-
-                          <div className="catalog-search-item-price">
-                            {formatPeso(product.online_price)}
-                          </div>
-                        </button>
-                      ))}
-
-                      {products.length > 6 && (
-                        <div className="catalog-search-item-more">
-                          View all {products.length} results in the catalog
-                        </div>
-                      )}
-                    </>
-                  )}
+            <div
+              style={{
+                width: "100%",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              {hasActiveFilters && (
+                <div className="mobile-active-filter-row">
+                  <button
+                    type="button"
+                    className="mobile-active-filter-clear"
+                    onClick={clearFilters}
+                  >
+                    Clear all filters
+                  </button>
                 </div>
               )}
-            </div>
 
-            <button
-              className="mobile-filter-toggle"
-              onClick={() => setMobileFilterOpen(true)}
-            >
-              <Filter size={20} />
-            </button>
-
-            {hasActiveFilters && (
-              <button
-                type="button"
-                className="catalog-clear-inline"
-                onClick={clearFilters}
+              <div
+                style={{
+                  display: "flex",
+                  width: "100%",
+                  gap: "10px",
+                  alignItems: "center",
+                }}
               >
-                Clear all filters
-              </button>
-            )}
+                <div
+                  className="catalog-search-shell"
+                  style={{ margin: 0, flex: 1 }}
+                >
+                  <div className="catalog-search">
+                    <Search size={16} />
+                    <input
+                      type="text"
+                      placeholder="Search products..."
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      onFocus={() => setSearchFocused(true)}
+                      onBlur={() =>
+                        setTimeout(() => setSearchFocused(false), 200)
+                      }
+                    />
+                  </div>
+
+                  {searchFocused && search.trim().length > 0 && (
+                    <div className="catalog-search-dropdown">
+                      {loading ? (
+                        <div className="catalog-search-item-empty">
+                          Searching...
+                        </div>
+                      ) : products.length === 0 ? (
+                        <div className="catalog-search-item-empty">
+                          No results found for "{search}"
+                        </div>
+                      ) : (
+                        <>
+                          {products.slice(0, 6).map((product) => (
+                            <button
+                              key={product.id}
+                              type="button"
+                              className="catalog-search-item"
+                              onClick={() => {
+                                openProduct(product);
+                                setSearchFocused(false);
+                              }}
+                            >
+                              <div className="catalog-search-item-thumb">
+                                <img
+                                  src={buildAssetUrl(product.image_url)}
+                                  alt={product.name}
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = "none";
+                                  }}
+                                />
+                              </div>
+
+                              <div className="catalog-search-item-copy">
+                                <div className="catalog-search-item-name">
+                                  {product.name}
+                                </div>
+                                <div className="catalog-search-item-cat">
+                                  {product.category || "Uncategorized"}
+                                </div>
+                              </div>
+
+                              <div className="catalog-search-item-price">
+                                {formatPeso(product.online_price)}
+                              </div>
+                            </button>
+                          ))}
+
+                          {products.length > 6 && (
+                            <div className="catalog-search-item-more">
+                              View all {products.length} results in the catalog
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  className="mobile-filter-toggle"
+                  onClick={() => setMobileFilterOpen(true)}
+                >
+                  <Filter size={20} />
+                </button>
+
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    className="catalog-clear-inline hide-on-mobile"
+                    onClick={clearFilters}
+                  >
+                    Clear all filters
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="product-grid">

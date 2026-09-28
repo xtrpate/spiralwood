@@ -2106,6 +2106,10 @@
   display: none; /* Hidden on desktop */
 }
 
+.mobile-active-filter-row {
+  display: none; /* Hidden on desktop */
+}
+
 @media (max-width: 780px) {
   /* Hide desktop sidebar and header sort dropdown */
   .catalog-sidebar {
@@ -2129,12 +2133,19 @@
   .catalog-search-shell {
     flex: 1 1 auto !important;
     width: 100% !important;
-    max-width: none !important; /* Forces it to fill the space */
+    max-width: none !important;
+    margin: 0 !important;
   }
 
   .catalog-search input {
     width: 100% !important;
     box-sizing: border-box !important;
+    border: 1px solid #d9d9d9 !important;
+    background: #ffffff !important;
+  }
+
+  .catalog-search input:focus {
+    border-color: #111111 !important;
   }
 
   /* New Filter Icon Button */
@@ -2145,7 +2156,7 @@
     width: 50px;
     height: 50px;
     background: #ffffff;
-    border: 1.5px solid #b5bac0;
+    border: 1px solid #d9d9d9;
     color: #111111;
     cursor: pointer;
     flex-shrink: 0;
@@ -2157,13 +2168,27 @@
     border-color: #111111;
   }
 
-  .catalog-clear-inline {
-    width: 100% !important;
-    order: -1 !important;
-    text-align: right !important;
-    min-height: auto !important;
-    padding: 0 4px 0 0 !important;
-    margin-bottom: 12px !important;
+  .mobile-active-filter-row {
+    display: flex !important;
+    justify-content: flex-end;
+    margin-bottom: 8px;
+    width: 100%;
+  }
+
+  .mobile-active-filter-clear {
+    background: transparent;
+    border: none;
+    color: #4b5563;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0 4px 4px;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+
+  .hide-on-mobile {
+    display: none !important;
   }
 
   /* Mobile Filter Modal */

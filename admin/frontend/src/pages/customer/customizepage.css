@@ -3801,20 +3801,45 @@
   .cust-page .cust-search input {
     width: 100% !important;
     box-sizing: border-box !important;
+    border: 1px solid #d9d9d9 !important;
+    background: #ffffff !important;
+  }
+
+  .cust-page .cust-search input:focus {
+    border-color: #111111 !important;
   }
 
   .mobile-filter-toggle {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 48px;
+    width: 50px;
     height: 50px;
     background: #ffffff;
-    border: 1.5px solid #b5bac0;
+    border: 1px solid #d9d9d9;
     color: #111111;
     cursor: pointer;
     flex-shrink: 0;
     border-radius: 0;
+  }
+
+  .mobile-active-filter-row {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 8px;
+    width: 100%;
+  }
+
+  .mobile-active-filter-clear {
+    background: transparent;
+    border: none;
+    color: #4b5563;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0 4px 4px;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
   }
 
   .mobile-filter-toggle:active,

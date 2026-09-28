@@ -2210,25 +2210,57 @@ export default function CustomizePage() {
           aria-label="Furniture designs"
         >
           <div className="catalog-toolbar">
-            <form className="catalog-search-shell" onSubmit={handleSearch}>
-              <div className="catalog-search">
-                <Search size={16} />
-                <input
-                  type="text"
-                  placeholder="Search designs..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-            </form>
-
-            <button
-              type="button"
-              className="mobile-filter-toggle"
-              onClick={() => setMobileFilterOpen(true)}
+            <div
+              style={{
+                width: "100%",
+                display: "flex",
+                flexDirection: "column",
+              }}
             >
-              <Filter size={20} />
-            </button>
+              {categoryFilter !== "all" && (
+                <div className="mobile-active-filter-row">
+                  <button
+                    type="button"
+                    className="mobile-active-filter-clear"
+                    onClick={() => setCategoryFilter("all")}
+                  >
+                    Clear all filters
+                  </button>
+                </div>
+              )}
+              <div
+                style={{
+                  display: "flex",
+                  width: "100%",
+                  gap: "10px",
+                  alignItems: "center",
+                }}
+              >
+                <form
+                  className="catalog-search-shell"
+                  onSubmit={handleSearch}
+                  style={{ margin: 0, flex: 1 }}
+                >
+                  <div className="catalog-search">
+                    <Search size={16} />
+                    <input
+                      type="text"
+                      placeholder="Search designs..."
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                    />
+                  </div>
+                </form>
+
+                <button
+                  type="button"
+                  className="mobile-filter-toggle"
+                  onClick={() => setMobileFilterOpen(true)}
+                >
+                  <Filter size={20} />
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="cust-products-grid">{renderedCards}</div>

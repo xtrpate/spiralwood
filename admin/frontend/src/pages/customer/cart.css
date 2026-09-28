@@ -575,7 +575,6 @@
   .fm-cart-item {
     background: #ffffff !important;
     border: 2px solid #e8e8e8 !important;
-    border-radius: 8px !important;
     grid-template-columns: 1fr !important;
     gap: 16px !important;
     padding: 20px 16px 24px !important;
