@@ -756,6 +756,8 @@ export default function CustomRequestDetailPage() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState("");
 
+  const [activeTab, setActiveTab] = useState("overview");
+
   const loadPaymentHistory = useCallback(async () => {
     const requestId = ++paymentHistoryRequestRef.current;
 
@@ -2364,15 +2366,30 @@ export default function CustomRequestDetailPage() {
 
           <div className="checkout-layout crd-layout">
             <div
-              className={`checkout-form-panel wisdom-request-details-main-v11 crd-customer-journey-v2 ${
-                String(requestData.status || "")
-                  .trim()
-                  .toLowerCase() === "completed" &&
-                requestData.payment_status === "paid"
-                  ? "crd-completed-layout-v4"
-                  : ""
-              }`}
+              className={`checkout-form-panel wisdom-request-details-main-v11 wisdom-request-tab-${activeTab}-v12`}
             >
+              <div className="wisdom-request-tabs-v12" role="tablist">
+                {[
+                  { id: "overview", label: "Overview" },
+                  { id: "financials", label: "Quotation & Agreement" },
+                  { id: "payment", label: "Payment" },
+                  { id: "messages", label: "Messages" },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === tab.id}
+                    className={`wisdom-request-tab-btn-v12 ${
+                      activeTab === tab.id ? "is-active" : ""
+                    }`}
+                    onClick={() => setActiveTab(tab.id)}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
               <div className="checkout-section wisdom-request-overview-v11">
                 <div className="checkout-section-header">
                   <div className="checkout-section-num">01</div>
@@ -2725,6 +2742,7 @@ export default function CustomRequestDetailPage() {
                           </DetailValue>
                         </div>
 
+                        {/* SCOPE OF WORK REMOVED 
                         {agreementVisibleItems.length > 0 ? (
                           <div
                             className="crd-panel"
@@ -2761,6 +2779,7 @@ export default function CustomRequestDetailPage() {
                             </div>
                           </div>
                         ) : null}
+                        */}
 
                         <div
                           className="crd-panel crd-panel-soft"
@@ -3927,153 +3946,178 @@ export default function CustomRequestDetailPage() {
               {requestData &&
               (historyLoading || historyError || paymentHistory.length > 0) ? (
                 <div className="checkout-section wisdom-request-payment-history-v11">
-                  <div className="checkout-section-header">
-                    <div className="checkout-section-num">PH</div>
-                    <h3>Payment activity</h3>
-                  </div>
-
-                  <div className="checkout-section-body">
-                    {historyLoading ? (
-                      <div className="crd-info-box muted">
-                        Loading payment history...
-                      </div>
-                    ) : historyError ? (
-                      <div className="crd-info-box pending">{historyError}</div>
-                    ) : paymentHistory.length === 0 ? (
-                      <div className="crd-info-box muted">
-                        No payment transactions found.
-                      </div>
-                    ) : (
+                  <details
+                    className="crd-quote-breakdown-v3"
+                    style={{ margin: 0, border: "none" }}
+                  >
+                    <summary
+                      className="checkout-section-header"
+                      style={{
+                        borderBottom: "none",
+                        background: "#fff",
+                        minHeight: "54px",
+                      }}
+                    >
                       <div
                         style={{
-                          overflowX: "auto",
-                          WebkitOverflowScrolling: "touch",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
                         }}
                       >
-                        <table
+                        <div className="checkout-section-num">PH</div>
+                        <h3 style={{ margin: 0 }}>Payment activity</h3>
+                      </div>
+                    </summary>
+
+                    <div
+                      className="checkout-section-body"
+                      style={{ paddingTop: 0, borderTop: "1px solid #ececec" }}
+                    >
+                      {historyLoading ? (
+                        <div className="crd-info-box muted">
+                          Loading payment history...
+                        </div>
+                      ) : historyError ? (
+                        <div className="crd-info-box pending">
+                          {historyError}
+                        </div>
+                      ) : paymentHistory.length === 0 ? (
+                        <div className="crd-info-box muted">
+                          No payment transactions found.
+                        </div>
+                      ) : (
+                        <div
                           style={{
-                            width: "100%",
-                            minWidth: 560,
-                            borderCollapse: "collapse",
-                            fontSize: 13,
+                            overflowX: "auto",
+                            WebkitOverflowScrolling: "touch",
                           }}
                         >
-                          <thead>
-                            <tr>
-                              {[
-                                "Date & Time",
-                                "Payment Type",
-                                "Method",
-                                "Amount",
-                                "Status",
-                                "Receipt",
-                              ].map((col) => (
-                                <th
-                                  key={col}
-                                  style={{
-                                    textAlign: "left",
-                                    padding: "8px 10px",
-                                    fontSize: 11,
-                                    fontWeight: 800,
-                                    textTransform: "uppercase",
-                                    letterSpacing: "0.03em",
-                                    color: "#71717a",
-                                    borderBottom: "1px solid #e4e4e7",
-                                    whiteSpace: "nowrap",
-                                  }}
-                                >
-                                  {col}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {paymentHistory.map((row) => {
-                              const method = String(row.payment_method || "")
-                                .trim()
-                                .toLowerCase();
-                              const canViewReceipt =
-                                String(row.status || "")
-                                  .trim()
-                                  .toLowerCase() === "verified" &&
-                                Boolean(row.receipt_id) &&
-                                Boolean(row.receipt_number);
-                              const isVerifiedNoReceipt =
-                                String(row.status || "")
-                                  .trim()
-                                  .toLowerCase() === "verified" &&
-                                !canViewReceipt;
-
-                              return (
-                                <tr key={row.payment_transaction_id}>
-                                  <td style={historyTdStyle}>
-                                    {formatDate(row.created_at)}
-                                  </td>
-                                  <td style={historyTdStyle}>
-                                    {HISTORY_PAYMENT_LABEL_TEXT[
-                                      row.payment_label
-                                    ] || "Payment"}
-                                  </td>
-                                  <td style={historyTdStyle}>
-                                    {HISTORY_PAYMENT_METHOD_LABELS[method] ||
-                                      (method ? prettifyText(method) : "—")}
-                                  </td>
-                                  <td
+                          <table
+                            style={{
+                              width: "100%",
+                              minWidth: 560,
+                              borderCollapse: "collapse",
+                              fontSize: 13,
+                            }}
+                          >
+                            <thead>
+                              <tr>
+                                {[
+                                  "Date & Time",
+                                  "Payment Type",
+                                  "Method",
+                                  "Amount",
+                                  "Status",
+                                  "Receipt",
+                                ].map((col) => (
+                                  <th
+                                    key={col}
                                     style={{
-                                      ...historyTdStyle,
-                                      fontWeight: 700,
+                                      textAlign: "left",
+                                      padding: "8px 10px",
+                                      fontSize: 11,
+                                      fontWeight: 800,
+                                      textTransform: "uppercase",
+                                      letterSpacing: "0.03em",
+                                      color: "#71717a",
+                                      borderBottom: "1px solid #e4e4e7",
+                                      whiteSpace: "nowrap",
                                     }}
                                   >
-                                    {formatMoney(row.amount)}
-                                  </td>
-                                  <td style={historyTdStyle}>
-                                    <HistoryStatusBadge status={row.status} />
-                                  </td>
-                                  <td style={historyTdStyle}>
-                                    {canViewReceipt ? (
-                                      <button
-                                        type="button"
-                                        className="btn btn-secondary"
-                                        style={{
-                                          fontSize: 12,
-                                          padding: "6px 12px",
-                                        }}
-                                        onClick={() =>
-                                          navigate(
-                                            `/custom-requests/${id}/receipts/${row.receipt_id}`,
-                                          )
-                                        }
-                                      >
-                                        View Receipt
-                                      </button>
-                                    ) : isVerifiedNoReceipt ? (
-                                      <span
-                                        style={{
-                                          color: "#a1a1aa",
-                                          fontSize: 12,
-                                        }}
-                                      >
-                                        Receipt unavailable
-                                      </span>
-                                    ) : (
-                                      <span
-                                        style={{
-                                          color: "#a1a1aa",
-                                          fontSize: 12,
-                                        }}
-                                      >
-                                        —
-                                      </span>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
+                                    {col}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {paymentHistory.map((row) => {
+                                const method = String(row.payment_method || "")
+                                  .trim()
+                                  .toLowerCase();
+                                const canViewReceipt =
+                                  String(row.status || "")
+                                    .trim()
+                                    .toLowerCase() === "verified" &&
+                                  Boolean(row.receipt_id) &&
+                                  Boolean(row.receipt_number);
+                                const isVerifiedNoReceipt =
+                                  String(row.status || "")
+                                    .trim()
+                                    .toLowerCase() === "verified" &&
+                                  !canViewReceipt;
+
+                                return (
+                                  <tr key={row.payment_transaction_id}>
+                                    <td style={historyTdStyle}>
+                                      {formatDate(row.created_at)}
+                                    </td>
+                                    <td style={historyTdStyle}>
+                                      {HISTORY_PAYMENT_LABEL_TEXT[
+                                        row.payment_label
+                                      ] || "Payment"}
+                                    </td>
+                                    <td style={historyTdStyle}>
+                                      {HISTORY_PAYMENT_METHOD_LABELS[method] ||
+                                        (method ? prettifyText(method) : "—")}
+                                    </td>
+                                    <td
+                                      style={{
+                                        ...historyTdStyle,
+                                        fontWeight: 700,
+                                      }}
+                                    >
+                                      {formatMoney(row.amount)}
+                                    </td>
+                                    <td style={historyTdStyle}>
+                                      <HistoryStatusBadge status={row.status} />
+                                    </td>
+                                    <td style={historyTdStyle}>
+                                      {canViewReceipt ? (
+                                        <button
+                                          type="button"
+                                          className="btn btn-secondary"
+                                          style={{
+                                            fontSize: 12,
+                                            padding: "6px 12px",
+                                          }}
+                                          onClick={() =>
+                                            navigate(
+                                              `/custom-requests/${id}/receipts/${row.receipt_id}`,
+                                            )
+                                          }
+                                        >
+                                          View Receipt
+                                        </button>
+                                      ) : isVerifiedNoReceipt ? (
+                                        <span
+                                          style={{
+                                            color: "#a1a1aa",
+                                            fontSize: 12,
+                                          }}
+                                        >
+                                          Receipt unavailable
+                                        </span>
+                                      ) : (
+                                        <span
+                                          style={{
+                                            color: "#a1a1aa",
+                                            fontSize: 12,
+                                          }}
+                                        >
+                                          —
+                                        </span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </details>
                 </div>
               ) : null}
 
@@ -4573,7 +4617,7 @@ export default function CustomRequestDetailPage() {
                 <div className="checkout-section-header crd-messenger-section-head-v2">
                   <div>
                     <h3>Discussion</h3>
-                    <p>Messages between you and Spiral Wood Services.</p>
+                    <p>Send your messages here.</p>
                   </div>
                 </div>
 
@@ -4591,8 +4635,8 @@ export default function CustomRequestDetailPage() {
                           <div className="crd-chat-empty crd-messenger-empty-v2">
                             <strong>No messages yet</strong>
                             <span>
-                              Start the conversation using the message box
-                              below.
+                              Have a question about your order? Send us a
+                              message below.
                             </span>
                           </div>
                         ) : (
