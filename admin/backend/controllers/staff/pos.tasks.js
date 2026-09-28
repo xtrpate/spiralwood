@@ -14,6 +14,14 @@ const {
   emitOrderStatusUpdate,
   emitTaskUpdate,
 } = require("../../utils/orderStatusSocket");
+const { parseStrictPositiveInt } = require("../../utils/validators");
+const {
+  PRODUCTION_TASK_STEPS: REQUIRED_PRODUCTION_STEPS,
+  PRODUCTION_TASK_KEYS: REQUIRED_PRODUCTION_STEP_KEYS,
+  ProductionTaskSequenceError,
+  isRequiredProductionTaskRole,
+  transitionProductionTask,
+} = require("../../services/productionTaskSequenceService");
 
 const ensureIndoorAssignee = async (userId) => {
   // ── FIXED: Switched to .query and parsed ID ──
@@ -41,79 +49,6 @@ const normalize = (value) =>
     .trim()
     .toLowerCase()
     .replace(/\s+/g, "_");
-
-const REQUIRED_PRODUCTION_STEPS = [
-  "Cutting Machine",
-  "Edge Banding",
-  "Horizontal Drilling",
-  "Retouching",
-  "Packing",
-];
-
-const REQUIRED_PRODUCTION_STEP_KEYS = REQUIRED_PRODUCTION_STEPS.map(normalize);
-
-const validateProductionSequence = async ({
-  orderId,
-  taskRole,
-  currentStatus,
-  nextStatus,
-}) => {
-  const currentTaskRoleKey = normalize(taskRole);
-  const currentStepIndex =
-    REQUIRED_PRODUCTION_STEP_KEYS.indexOf(currentTaskRoleKey);
-
-  if (!orderId || currentStepIndex === -1) {
-    return null;
-  }
-
-  const normalizedCurrentStatus = normalize(currentStatus);
-  const normalizedNextStatus = normalize(nextStatus);
-
-  // ── FIXED: Switched to .query and parsed ID ──
-  const [packetRows] = await db.query(
-    `SELECT id, task_role, status
-     FROM project_tasks
-     WHERE order_id = ?`,
-    [parseInt(orderId)],
-  );
-
-  const packetMap = new Map(
-    packetRows.map((row) => [normalize(row.task_role), row]),
-  );
-
-  for (let i = 0; i < currentStepIndex; i += 1) {
-    const previousStepLabel = REQUIRED_PRODUCTION_STEPS[i];
-    const previousStepKey = REQUIRED_PRODUCTION_STEP_KEYS[i];
-    const previousStep = packetMap.get(previousStepKey);
-
-    if (!previousStep || normalize(previousStep.status) !== "completed") {
-      return `Complete ${previousStepLabel} first before starting ${taskRole}.`;
-    }
-  }
-
-  if (
-    normalizedNextStatus === "in_progress" &&
-    !["pending", "blocked"].includes(normalizedCurrentStatus)
-  ) {
-    return "Only a pending or blocked step can be started.";
-  }
-
-  if (
-    normalizedNextStatus === "completed" &&
-    normalizedCurrentStatus !== "in_progress"
-  ) {
-    return "Only an in-progress step can be marked as completed.";
-  }
-
-  if (
-    normalizedNextStatus === "blocked" &&
-    normalizedCurrentStatus !== "in_progress"
-  ) {
-    return "Only an in-progress step can be marked as blocked.";
-  }
-
-  return null;
-};
 
 /* ── Get User Notifications ── */
 exports.getNotifications = async (req, res) => {
@@ -1202,91 +1137,267 @@ exports.createTask = async (req, res) => {
   });
 };
 
+const respondWithProductionTransitionError = (res, error) => {
+  if (!(error instanceof ProductionTaskSequenceError)) return false;
+
+  res.status(error.statusCode || 409).json({
+    message: error.message,
+    integrity_reason: error.code,
+    ...(error.details ? { details: error.details } : {}),
+  });
+  return true;
+};
+
+const applyProductionTaskTransition = async (
+  req,
+  res,
+  { taskId, status, holdReason = "" },
+) => {
+  let transition;
+
+  try {
+    transition = await transitionProductionTask(db, {
+      taskId,
+      actorUserId: req.user.id,
+      actorRole: req.user.role,
+      nextStatus: status,
+    });
+  } catch (error) {
+    if (respondWithProductionTransitionError(res, error)) return;
+    throw error;
+  }
+
+  if (transition.no_change) {
+    return res.json({ message: "No changes were made." });
+  }
+
+  const isPickupOrder =
+    normalize(transition.fulfillment_method || "delivery") === "pickup";
+  const previousStatus = normalize(transition.previous_status);
+  const nextStatus = normalize(transition.status);
+
+  req.auditRecord = {
+    id: transition.task_id,
+    old: {
+      status: previousStatus,
+      accepted_at: transition.previous_accepted_at || null,
+      completed_at: transition.previous_completed_at || null,
+    },
+    new: {
+      status: nextStatus,
+      accepted_at: transition.accepted_at || null,
+      completed_at: transition.completed_at || null,
+      ...(nextStatus === "blocked" ? { hold_reason: holdReason } : {}),
+      changed_fields: [
+        "status",
+        String(transition.previous_accepted_at || "") !==
+          String(transition.accepted_at || "") && "accepted_at",
+        String(transition.previous_completed_at || "") !==
+          String(transition.completed_at || "") && "completed_at",
+        nextStatus === "blocked" && "hold_reason",
+      ].filter(Boolean),
+    },
+  };
+
+  const orderLabel = transition.order_number
+    ? `Order ${transition.order_number}`
+    : `Order #${transition.order_id}`;
+
+  if (transition.assigned_by) {
+    if (nextStatus === "blocked") {
+      await createNotificationSafe(db, {
+        userId: Number(transition.assigned_by),
+        type: "task_blocked",
+        title: "Production Work Put on Hold",
+        message: `${req.user.name || "A staff member"} put ${transition.task_role || transition.title} on hold for ${orderLabel}. Reason: ${holdReason}`,
+        targetType: "task",
+        targetId: transition.task_id,
+        targetOrderId: transition.order_id,
+      });
+    } else {
+      const statusTitle =
+        nextStatus === "in_progress"
+          ? previousStatus === "blocked"
+            ? "Production Work Resumed"
+            : "Task Started"
+          : nextStatus === "completed"
+            ? "Task Completed"
+            : "Task Updated";
+
+      const actionText =
+        nextStatus === "completed"
+          ? "completed"
+          : nextStatus === "in_progress"
+            ? previousStatus === "blocked"
+              ? "resumed"
+              : "started"
+            : "updated";
+
+      await createNotificationSafe(db, {
+        userId: Number(transition.assigned_by),
+        type: "task_update",
+        title: statusTitle,
+        message: `${req.user.name || "A staff member"} ${actionText} ${transition.task_role || transition.title} for ${orderLabel}.`,
+        targetType: "task",
+        targetId: transition.task_id,
+        targetOrderId: transition.order_id,
+      });
+    }
+  }
+
+  if (transition.production_ready) {
+    if (
+      transition.order_status_changed &&
+      isPickupOrder &&
+      transition.customer_id
+    ) {
+      await createNotificationSafe(db, {
+        userId: Number(transition.customer_id),
+        type: "ready_for_pickup",
+        title: "Ready for Pickup",
+        message: transition.order_number
+          ? `Your furniture for Order ${transition.order_number} is ready for pickup. Please complete any remaining balance before collection.`
+          : `Your furniture for Order #${transition.order_id} is ready for pickup. Please complete any remaining balance before collection.`,
+        targetType: "order",
+        targetId: transition.order_id,
+        targetOrderId: transition.order_id,
+      });
+
+      await sendCustomerMilestoneNotificationSafe(db, {
+        orderId: transition.order_id,
+        event: "ready_for_pickup",
+      });
+    }
+
+    if (transition.assigned_by) {
+      await createNotificationSafe(db, {
+        userId: Number(transition.assigned_by),
+        type: isPickupOrder ? "ready_for_pickup" : "production_ready",
+        title: isPickupOrder
+          ? "Production Complete - Ready for Pickup"
+          : "Production Ready for Shipping",
+        message: isPickupOrder
+          ? `The full production workflow for ${orderLabel} is complete. The furniture is ready for customer pickup.`
+          : `The full production workflow for ${orderLabel} is complete. Review the order before scheduling delivery.`,
+        targetType: "order",
+        targetId: transition.order_id,
+        targetOrderId: transition.order_id,
+      });
+    }
+  }
+
+  const io = req.app.get("io");
+  const taskChangeType =
+    nextStatus === "in_progress"
+      ? previousStatus === "blocked"
+        ? "resumed"
+        : "started"
+      : nextStatus === "completed"
+        ? "completed"
+        : nextStatus === "blocked"
+          ? "blocked"
+          : "updated";
+
+  emitTaskUpdate(io, {
+    taskId: transition.task_id,
+    taskIds: [transition.task_id],
+    orderId: transition.order_id,
+    orderNumber: transition.order_number,
+    taskRole: transition.task_role,
+    status: nextStatus,
+    assignedTo: transition.assigned_to,
+    previousAssigneeIds: [],
+    changeType: taskChangeType,
+    productionReady: Boolean(transition.production_ready),
+    orderStatusChanged: Boolean(transition.order_status_changed),
+  });
+
+  if (transition.order_status_changed) {
+    emitOrderStatusUpdate(io, {
+      orderId: transition.order_id,
+      orderNumber: transition.order_number,
+      status: transition.order_status,
+      customerId: transition.customer_id,
+    });
+  }
+
+  if (transition.production_ready) {
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action:
+        isPickupOrder && transition.order_status_changed
+          ? "mark_production_ready_for_pickup"
+          : isPickupOrder
+            ? "mark_production_complete_pickup_state_unchanged"
+            : "mark_production_ready_for_shipping",
+      tableName: "orders",
+      recordId: transition.order_id,
+      oldValues: isPickupOrder
+        ? { ready_for_pickup: false }
+        : { ready_for_shipping: false },
+      newValues: isPickupOrder
+        ? {
+            ready_for_pickup: Boolean(transition.order_status_changed),
+            completed_required_steps: REQUIRED_PRODUCTION_STEP_KEYS.length,
+          }
+        : {
+            ready_for_shipping: true,
+            completed_required_steps: REQUIRED_PRODUCTION_STEP_KEYS.length,
+          },
+      ipAddress: req.ip || null,
+      actorType: "user",
+      responseStatus: 200,
+    });
+  }
+
+  const responseMessage =
+    nextStatus === "blocked"
+      ? "Production step put on hold."
+      : nextStatus === "in_progress" && previousStatus === "blocked"
+        ? "Production step resumed."
+        : nextStatus === "in_progress"
+          ? "Production step started."
+          : "Task status updated successfully.";
+
+  return res.json({
+    message: responseMessage,
+    task: {
+      id: transition.task_id,
+      status: nextStatus,
+      accepted_at: transition.accepted_at || null,
+      completed_at: transition.completed_at || null,
+      hold_reason: nextStatus === "blocked" ? holdReason : null,
+    },
+    order_status: transition.order_status,
+  });
+};
+
 /* ── Accept Task ── */
 exports.acceptTask = async (req, res) => {
-  try {
-    const taskId = parseInt(req.params.id);
-    const userId = parseInt(req.user.id);
+  const taskId = parseStrictPositiveInt(req.params.id);
 
-    // ── FIXED: Switched to .query and parsed IDs ──
-    const [tasks] = await db.query(
-      `SELECT pt.*, o.order_number, o.status AS order_status
-       FROM project_tasks pt
-       LEFT JOIN orders o ON o.id = pt.order_id
-       WHERE pt.id = ? AND pt.assigned_to = ?`,
-      [taskId, userId],
-    );
-
-    if (tasks.length === 0) {
-      return res.status(400).json({ message: "Task not found." });
-    }
-    const task = tasks[0];
-
-    if (normalize(task.order_status) === "cancelled") {
-      return res.status(409).json({
-        message:
-          "This custom furniture order was cancelled. Do not start any remaining production work.",
-      });
-    }
-
-    if (normalize(task.status) !== "pending") {
-      return res
-        .status(400)
-        .json({ message: "Task already accepted or blocked." });
-    }
-
-    const sequenceError = await validateProductionSequence({
-      orderId: task.order_id,
-      taskRole: task.task_role,
-      currentStatus: "pending",
-      nextStatus: "in_progress",
-    });
-
-    if (sequenceError) {
-      return res.status(400).json({ message: sequenceError });
-    }
-
-    // ── FIXED: Switched to .query ──
-    const [result] = await db.query(
-      `UPDATE project_tasks SET status = 'in_progress', is_read = 1, accepted_at = NOW() 
-       WHERE id = ? AND assigned_to = ? AND status = 'pending'`,
-      [taskId, userId],
-    );
-
-    if (result.affectedRows !== 1) {
-      return res.status(409).json({
-        message:
-          "Task status or assignment changed before this update was completed. Refresh and try again.",
-      });
-    }
-
-    // Best-effort: task acceptance above has already committed under
-    // autocommit. A notification failure here must never be reported
-    // to the staff member as a failed task acceptance.
-    await createNotificationSafe(db, {
-      userId: parseInt(task.assigned_by),
-      type: "task_update",
-      title: "Task Started",
-      message: task.order_number
-        ? `${req.user.name || "A staff member"} started ${task.task_role || task.title} for Order ${task.order_number}.`
-        : `${req.user.name || "A staff member"} started ${task.task_role || task.title}.`,
-      targetType: "task",
-      targetId: task.id,
-      targetOrderId: task.order_id,
-    });
-
-    res.json({ message: "Assignment accepted." });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Error accepting task" });
+  if (!taskId) {
+    return res.status(400).json({ message: "Invalid task ID." });
   }
+
+  req.params.id = String(taskId);
+  req.body = {
+    ...(req.body || {}),
+    status: "in_progress",
+  };
+
+  return exports.updateTaskStatus(req, res);
 };
 
 /* ── Update Task Status ── */
 exports.updateTaskStatus = async (req, res) => {
   const { status } = req.body;
-  const taskId = parseInt(req.params.id);
+  const taskId = parseStrictPositiveInt(req.params.id);
   const holdReason = String(req.body?.hold_reason || "").trim();
+
+  if (!taskId) {
+    return res.status(400).json({ message: "Invalid task ID." });
+  }
 
   const validStatuses = ["pending", "in_progress", "completed", "blocked"];
   if (!validStatuses.includes(status)) {
@@ -1341,6 +1452,14 @@ exports.updateTaskStatus = async (req, res) => {
       });
     }
 
+    if (isRequiredProductionTaskRole(existing.task_role)) {
+      return await applyProductionTaskTransition(req, res, {
+        taskId,
+        status,
+        holdReason,
+      });
+    }
+
     if (status === existing.status) {
       return res.json({ message: "No changes were made." });
     }
@@ -1355,17 +1474,6 @@ exports.updateTaskStatus = async (req, res) => {
       return res.status(400).json({
         message: "Staff cannot move a task back to pending.",
       });
-    }
-
-    const sequenceError = await validateProductionSequence({
-      orderId: existing.order_id,
-      taskRole: existing.task_role,
-      currentStatus: existing.status,
-      nextStatus: status,
-    });
-
-    if (sequenceError) {
-      return res.status(400).json({ message: sequenceError });
     }
 
     let completedAt = existing.completed_at || null;
@@ -1475,7 +1583,11 @@ exports.updateTaskStatus = async (req, res) => {
     let pickupReadyApplied = false;
 
     try {
-      if (existing.order_id && existing.assigned_by) {
+      if (
+        isRequiredProductionTaskRole(existing.task_role) &&
+        existing.order_id &&
+        existing.assigned_by
+      ) {
         const [packetRows] = await db.query(
           `SELECT id, task_role, status
            FROM project_tasks
@@ -1682,9 +1794,9 @@ exports.updateTaskStatus = async (req, res) => {
 
 /* ── Undo Completed Production Step ── */
 exports.undoTaskCompletion = async (req, res) => {
-  const taskId = Number.parseInt(req.params.id, 10);
+  const taskId = parseStrictPositiveInt(req.params.id);
 
-  if (!Number.isInteger(taskId) || taskId <= 0) {
+  if (!taskId) {
     return res.status(400).json({ message: "Invalid task ID." });
   }
 
@@ -1696,35 +1808,79 @@ exports.undoTaskCompletion = async (req, res) => {
     await conn.beginTransaction();
     transactionOpen = true;
 
-    const [[existing]] = await conn.query(
-      `SELECT
-         pt.id,
-         pt.title,
-         pt.status,
-         pt.assigned_to,
-         pt.assigned_by,
-         pt.accepted_at,
-         pt.completed_at,
-         pt.order_id,
-         pt.task_role,
-         o.order_number,
-         o.customer_id,
-         o.status AS order_status,
-         o.order_type,
-         o.fulfillment_method
-       FROM project_tasks pt
-       INNER JOIN orders o ON o.id = pt.order_id
-       WHERE pt.id = ?
-       LIMIT 1
-       FOR UPDATE`,
+    const [[taskReference]] = await conn.query(
+      `SELECT id, order_id
+       FROM project_tasks
+       WHERE id = ?
+       LIMIT 1`,
       [taskId],
     );
 
-    if (!existing) {
+    const orderId = parseStrictPositiveInt(taskReference?.order_id);
+
+    if (!taskReference || !orderId) {
       await conn.rollback();
       transactionOpen = false;
       return res.status(404).json({ message: "Task not found." });
     }
+
+    // Keep the same lock order as assignment/reassignment/sequence updates:
+    // order first, then the complete task packet.
+    const [[order]] = await conn.query(
+      `SELECT
+         id,
+         order_number,
+         customer_id,
+         status,
+         order_type,
+         fulfillment_method
+       FROM orders
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [orderId],
+    );
+
+    if (!order) {
+      await conn.rollback();
+      transactionOpen = false;
+      return res.status(404).json({ message: "Order not found." });
+    }
+
+    const [packetRows] = await conn.query(
+      `SELECT
+         id,
+         title,
+         status,
+         assigned_to,
+         assigned_by,
+         accepted_at,
+         completed_at,
+         order_id,
+         task_role
+       FROM project_tasks
+       WHERE order_id = ?
+       ORDER BY id
+       FOR UPDATE`,
+      [orderId],
+    );
+
+    const taskRow = packetRows.find((row) => Number(row.id) === taskId);
+
+    if (!taskRow) {
+      await conn.rollback();
+      transactionOpen = false;
+      return res.status(404).json({ message: "Task not found." });
+    }
+
+    const existing = {
+      ...taskRow,
+      order_number: order.order_number,
+      customer_id: order.customer_id,
+      order_status: order.status,
+      order_type: order.order_type,
+      fulfillment_method: order.fulfillment_method,
+    };
 
     const isAdmin = normalize(req.user?.role) === "admin";
     const isOwner = Number(existing.assigned_to) === Number(req.user?.id);
@@ -1773,14 +1929,6 @@ exports.undoTaskCompletion = async (req, res) => {
           "This production step can no longer be undone because the order has already moved beyond Production.",
       });
     }
-
-    const [packetRows] = await conn.query(
-      `SELECT id, task_role, status
-       FROM project_tasks
-       WHERE order_id = ?
-       FOR UPDATE`,
-      [existing.order_id],
-    );
 
     for (
       let index = currentStepIndex + 1;
@@ -2214,19 +2362,6 @@ exports.updateTask = async (req, res) => {
         message:
           "Production workflow order and step role must be managed through the production assignment workflow.",
       });
-    }
-
-    if (statusChanged) {
-      const sequenceError = await validateProductionSequence({
-        orderId: nextOrderId,
-        taskRole: nextTaskRole,
-        currentStatus: existing.status,
-        nextStatus,
-      });
-
-      if (sequenceError) {
-        return res.status(400).json({ message: sequenceError });
-      }
     }
 
     let completedAt = existing.completed_at;
