@@ -726,18 +726,22 @@ export default function App() {
                   <Route
                     path="orders"
                     element={
-                      <RequirePermission permission="orders.view">
-                        <OrdersPage />
-                      </RequirePermission>
+                      <RequireAuth roles={["admin"]}>
+                        <RequirePermission permission="orders.view">
+                          <OrdersPage />
+                        </RequirePermission>
+                      </RequireAuth>
                     }
                   />
 
                   <Route
                     path="orders/:id"
                     element={
-                      <RequirePermission permission="orders.view">
-                        <OrderDetailPage />
-                      </RequirePermission>
+                      <RequireAuth roles={["admin"]}>
+                        <RequirePermission permission="orders.view">
+                          <OrderDetailPage />
+                        </RequirePermission>
+                      </RequireAuth>
                     }
                   />
 
@@ -1150,9 +1154,23 @@ export default function App() {
                   <Route
                     path="/staff/admin/orders"
                     element={
-                      <RequirePermission permission="orders.view">
+                      <ProtectedRoute
+                        allowedRoles={["manager", "admin"]}
+                        requiredPermission="orders.view"
+                      >
                         <OrdersPage />
-                      </RequirePermission>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/staff/admin/orders/:id"
+                    element={
+                      <ProtectedRoute
+                        allowedRoles={["manager", "admin"]}
+                        requiredPermission="orders.view"
+                      >
+                        <OrderDetailPage />
+                      </ProtectedRoute>
                     }
                   />
                   <Route

@@ -16,7 +16,11 @@ const {
   resolveLifecycleByOrder,
 } = require("../../services/blueprintLifecycleService");
 const { parseStrictPositiveInt } = require("../../utils/validators");
-const { calcDownPaymentAmount } = require("../../utils/paymentAmounts");
+const {
+  calcDownPaymentAmount,
+  parseDecimalToCentsStrict,
+  centsToAmount,
+} = require("../../utils/paymentAmounts");
 const {
   buildPaymentSummaryFromRows,
 } = require("../../services/blueprintCashPaymentService");
@@ -643,6 +647,90 @@ const TRANSACTION_REPORT_DATE_FILTERS = new Set([
   "custom",
 ]);
 
+const ADMIN_ORDER_FILTER_STATUSES = new Set([
+  "pending",
+  "confirmed",
+  "contract_released",
+  "production",
+  "ready_for_pickup",
+  "shipping",
+  "delivered",
+  "completed",
+  "cancelled",
+]);
+
+const ADMIN_ORDER_FILTER_CHANNELS = new Set(["online", "walkin"]);
+const ADMIN_ORDER_FILTER_TYPES = new Set(["standard", "blueprint"]);
+const ADMIN_ORDER_PAYMENT_STATUSES = new Set([
+  "unpaid",
+  "pending",
+  "partial",
+  "paid",
+  "rejected",
+]);
+
+const ADMIN_ORDER_PAYMENT_SUMMARY_JOIN = `
+  LEFT JOIN (
+    SELECT
+      order_id,
+      COUNT(*) AS row_count,
+      COALESCE(
+        SUM(
+          CASE
+            WHEN LOWER(COALESCE(status, '')) = 'verified'
+            THEN amount
+            ELSE 0
+          END
+        ),
+        0
+      ) AS verified_total,
+      COALESCE(
+        SUM(
+          CASE
+            WHEN LOWER(COALESCE(status, '')) = 'pending'
+            THEN 1
+            ELSE 0
+          END
+        ),
+        0
+      ) AS pending_count,
+      COALESCE(
+        SUM(
+          CASE
+            WHEN LOWER(COALESCE(status, '')) = 'rejected'
+            THEN 1
+            ELSE 0
+          END
+        ),
+        0
+      ) AS rejected_count
+    FROM payment_transactions
+    GROUP BY order_id
+  ) payment_rollup ON payment_rollup.order_id = o.id
+`;
+
+const ADMIN_ORDER_PAYMENT_STATUS_SQL = `
+  CASE
+    WHEN LOWER(COALESCE(o.payment_method, '')) IN ('cash', 'cod', 'cop')
+      AND LOWER(COALESCE(o.payment_status, '')) = 'paid'
+      THEN 'paid'
+    WHEN COALESCE(payment_rollup.verified_total, 0) >= COALESCE(o.total, 0)
+      AND COALESCE(o.total, 0) > 0
+      THEN 'paid'
+    WHEN COALESCE(payment_rollup.verified_total, 0) > 0
+      THEN 'partial'
+    WHEN COALESCE(payment_rollup.pending_count, 0) > 0
+      THEN 'pending'
+    WHEN COALESCE(payment_rollup.row_count, 0) = 0
+      AND NULLIF(TRIM(COALESCE(o.payment_proof, '')), '') IS NOT NULL
+      AND LOWER(COALESCE(o.payment_status, '')) <> 'paid'
+      THEN 'pending'
+    WHEN COALESCE(payment_rollup.rejected_count, 0) > 0
+      THEN 'rejected'
+    ELSE 'unpaid'
+  END
+`;
+
 const formatUtcDateKey = (date) =>
   [
     String(date.getUTCFullYear()).padStart(4, "0"),
@@ -757,6 +845,7 @@ exports.getAll = async (req, res) => {
       status,
       channel,
       orderType,
+      paymentStatus,
       search,
       from,
       to,
@@ -795,19 +884,54 @@ exports.getAll = async (req, res) => {
       String(transaction_report || "").trim() === "1";
     const includeSummary = String(include_summary || "1").trim() !== "0";
 
-    if (status) {
-      where.push("o.status = ?");
-      params.push(status);
-    }
-    if (orderType) {
-      where.push("LOWER(o.order_type) = ?");
-      params.push(orderType.toLowerCase());
+    const normalizedStatusFilter = normalize(status);
+    if (normalizedStatusFilter) {
+      if (!ADMIN_ORDER_FILTER_STATUSES.has(normalizedStatusFilter)) {
+        const error = new Error("Invalid order status filter.");
+        error.status = 400;
+        throw error;
+      }
+
+      where.push("LOWER(o.status) = ?");
+      params.push(normalizedStatusFilter);
     }
 
-    if (channel) {
-      where.push("LOWER(o.type) = ?");
-      params.push(channel.toLowerCase());
+    const normalizedOrderTypeFilter = normalize(orderType);
+    if (normalizedOrderTypeFilter) {
+      if (!ADMIN_ORDER_FILTER_TYPES.has(normalizedOrderTypeFilter)) {
+        const error = new Error("Invalid order type filter.");
+        error.status = 400;
+        throw error;
+      }
+
+      where.push("LOWER(o.order_type) = ?");
+      params.push(normalizedOrderTypeFilter);
     }
+
+    const normalizedChannelFilter = normalize(channel);
+    if (normalizedChannelFilter) {
+      if (!ADMIN_ORDER_FILTER_CHANNELS.has(normalizedChannelFilter)) {
+        const error = new Error("Invalid order channel filter.");
+        error.status = 400;
+        throw error;
+      }
+
+      where.push("LOWER(o.type) = ?");
+      params.push(normalizedChannelFilter);
+    }
+
+    const normalizedPaymentStatusFilter = normalize(paymentStatus);
+    if (normalizedPaymentStatusFilter) {
+      if (!ADMIN_ORDER_PAYMENT_STATUSES.has(normalizedPaymentStatusFilter)) {
+        const error = new Error("Invalid payment status filter.");
+        error.status = 400;
+        throw error;
+      }
+
+      where.push(`(${ADMIN_ORDER_PAYMENT_STATUS_SQL}) = ?`);
+      params.push(normalizedPaymentStatusFilter);
+    }
+
     if (transactionReportMode) {
       const { startUtc, endUtc } = buildTransactionReportDateRange({
         dateFilter: date_filter,
@@ -824,16 +948,49 @@ exports.getAll = async (req, res) => {
         where.push("o.created_at < ?");
         params.push(endUtc);
       }
-    } else if (from && to) {
-      const { startUtc } = getPhilippineDateBoundsUtc(from);
-      const { nextStartUtc } = getPhilippineDateBoundsUtc(to);
-      where.push("o.created_at >= ? AND o.created_at < ?");
-      params.push(startUtc, nextStartUtc);
+    } else {
+      const fromKey = String(from || "").trim();
+      const toKey = String(to || "").trim();
+
+      let fromBounds = null;
+      let toBounds = null;
+
+      try {
+        if (fromKey) {
+          fromBounds = getPhilippineDateBoundsUtc(fromKey);
+        }
+
+        if (toKey) {
+          toBounds = getPhilippineDateBoundsUtc(toKey);
+        }
+      } catch {
+        const error = new Error(
+          "Order dates must use valid YYYY-MM-DD values.",
+        );
+        error.status = 400;
+        throw error;
+      }
+
+      if (fromKey && toKey && fromKey > toKey) {
+        const error = new Error("Start date cannot be after end date.");
+        error.status = 400;
+        throw error;
+      }
+
+      if (fromBounds) {
+        where.push("o.created_at >= ?");
+        params.push(fromBounds.startUtc);
+      }
+
+      if (toBounds) {
+        where.push("o.created_at < ?");
+        params.push(toBounds.nextStartUtc);
+      }
     }
     const normalizedSearch = String(search || "").trim();
 
     if (normalizedSearch.length > 100) {
-      const error = new Error("What are you even searching?");
+      const error = new Error("Search must be 100 characters or fewer.");
       error.status = 400;
       throw error;
     }
@@ -844,16 +1001,24 @@ exports.getAll = async (req, res) => {
       const clauses = [
         "COALESCE(u.name, o.walkin_customer_name) LIKE ?",
         "COALESCE(u.email, '') LIKE ?",
-        "o.id = ?",
         "o.order_number LIKE ?",
       ];
-      const searchParams = [pattern, pattern, parseInt(term, 10) || 0, pattern];
+      const searchParams = [pattern, pattern, pattern];
+
+      if (/^\d+$/.test(term)) {
+        const strictOrderId = Number(term);
+
+        if (Number.isSafeInteger(strictOrderId) && strictOrderId > 0) {
+          clauses.push("o.id = ?");
+          searchParams.push(strictOrderId);
+        }
+      }
 
       if (transactionReportMode) {
         clauses.push(
           "LOWER(COALESCE(o.type, '')) LIKE LOWER(?)",
           "LOWER(COALESCE(o.status, '')) LIKE LOWER(?)",
-          "LOWER(COALESCE(o.payment_status, '')) LIKE LOWER(?)",
+          `LOWER(${ADMIN_ORDER_PAYMENT_STATUS_SQL}) LIKE LOWER(?)`,
           "LOWER(COALESCE(o.payment_method, '')) LIKE LOWER(?)",
           "LOWER(COALESCE(o.order_type, '')) LIKE LOWER(?)",
           "CAST(COALESCE(o.total, 0) AS CHAR) LIKE ?",
@@ -896,6 +1061,7 @@ exports.getAll = async (req, res) => {
               o.total AS total_amount,
               o.payment_method,
               o.payment_status,
+              ${ADMIN_ORDER_PAYMENT_STATUS_SQL} AS payment_status_display,
               o.created_at,
               (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) AS item_count,
               COALESCE(u.name, o.walkin_customer_name) AS customer_name,
@@ -941,6 +1107,7 @@ exports.getAll = async (req, res) => {
        FROM orders o
        LEFT JOIN users u ON u.id = o.customer_id
        LEFT JOIN blueprints b ON b.id = o.blueprint_id
+       ${ADMIN_ORDER_PAYMENT_SUMMARY_JOIN}
        WHERE ${where.join(" AND ")}
        ORDER BY o.created_at DESC
        LIMIT ? OFFSET ?`,
@@ -956,7 +1123,7 @@ exports.getAll = async (req, res) => {
             COUNT(*) AS total_orders,
             COALESCE(SUM(CASE
               WHEN LOWER(COALESCE(o.status, '')) = 'pending'
-                OR LOWER(COALESCE(o.payment_status, '')) = 'pending'
+                OR (${ADMIN_ORDER_PAYMENT_STATUS_SQL}) = 'pending'
               THEN 1 ELSE 0 END), 0) AS needs_review,
             COALESCE(SUM(CASE
               WHEN LOWER(COALESCE(o.order_type, '')) = 'blueprint'
@@ -966,7 +1133,7 @@ exports.getAll = async (req, res) => {
                 AND LOWER(COALESCE(o.status, '')) = 'pending'
               THEN 1 ELSE 0 END), 0) AS quote_needed,
             COALESCE(SUM(CASE
-              WHEN LOWER(COALESCE(o.payment_status, '')) = 'paid'
+              WHEN (${ADMIN_ORDER_PAYMENT_STATUS_SQL}) = 'paid'
               THEN 1 ELSE 0 END), 0) AS paid_orders,
             COALESCE(SUM(CASE
               WHEN LOWER(COALESCE(o.type, '')) = 'online'
@@ -984,12 +1151,15 @@ exports.getAll = async (req, res) => {
               WHEN LOWER(COALESCE(o.status, '')) IN (
                 'pending',
                 'confirmed',
+                'contract_released',
                 'production',
+                'ready_for_pickup',
                 'shipping'
               )
               THEN 1 ELSE 0 END), 0) AS in_progress
          FROM orders o
          LEFT JOIN users u ON u.id = o.customer_id
+         ${ADMIN_ORDER_PAYMENT_SUMMARY_JOIN}
          WHERE ${where.join(" AND ")}`,
         params,
       );
@@ -1006,7 +1176,9 @@ exports.getAll = async (req, res) => {
     if (Number(err?.status) === 400) {
       return res.status(400).json({ message: err.message });
     }
-    res.status(500).json({ message: err.message });
+
+    console.error("[orderController.getAll]", err);
+    return res.status(500).json({ message: "Failed to load orders." });
   }
 };
 
@@ -1208,7 +1380,12 @@ exports.getOne = async (req, res) => {
       [orderId],
     );
 
-    const items = rawItems.map(normalizeCustomRequestItem);
+    const items = rawItems.map((item) => {
+      const publicItem = { ...item };
+      delete publicItem.production_cost;
+      delete publicItem.profit_margin;
+      return normalizeCustomRequestItem(publicItem);
+    });
 
     let customRequestItems =
       normalize(order.order_type) === "blueprint"
@@ -1354,12 +1531,41 @@ exports.getOne = async (req, res) => {
     // — never the display-only `payments` array, which may still contain
     // the synthetic initial_* row. order.payment_status is never treated
     // as proof of a verified amount here.
-    const verifiedPaymentTotal = paymentTransactions
-      .filter((payment) => normalize(payment.status) === "verified")
-      .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    let verifiedPaymentTotalCents = 0;
 
-    const totalAmount = Number(order.total_amount || order.total || 0);
-    const paymentBalance = Math.max(0, totalAmount - verifiedPaymentTotal);
+    for (const payment of paymentTransactions) {
+      if (normalize(payment.status) !== "verified") continue;
+
+      const paymentCents = parseDecimalToCentsStrict(payment.amount);
+      const nextTotalCents =
+        paymentCents === null
+          ? null
+          : verifiedPaymentTotalCents + paymentCents;
+
+      if (
+        paymentCents === null ||
+        !Number.isSafeInteger(nextTotalCents)
+      ) {
+        throw new Error(
+          `Invalid persisted payment amount for order ${orderId}.`,
+        );
+      }
+
+      verifiedPaymentTotalCents = nextTotalCents;
+    }
+
+    const totalAmountCents = parseDecimalToCentsStrict(
+      order.total_amount ?? order.total ?? 0,
+    );
+
+    if (totalAmountCents === null) {
+      throw new Error(`Invalid persisted order total for order ${orderId}.`);
+    }
+
+    const verifiedPaymentTotal = centsToAmount(verifiedPaymentTotalCents);
+    const paymentBalance = centsToAmount(
+      Math.max(0, totalAmountCents - verifiedPaymentTotalCents),
+    );
 
     // Pending/rejected checks intentionally still read the DISPLAY array
     // (payments, including the synthetic row) — this only affects the
@@ -1387,9 +1593,12 @@ exports.getOne = async (req, res) => {
 
     if (legacyCashMarkedPaid) {
       paymentStatusDisplay = "paid";
-    } else if (verifiedPaymentTotal >= totalAmount && totalAmount > 0) {
+    } else if (
+      verifiedPaymentTotalCents >= totalAmountCents &&
+      totalAmountCents > 0
+    ) {
       paymentStatusDisplay = "paid";
-    } else if (verifiedPaymentTotal > 0) {
+    } else if (verifiedPaymentTotalCents > 0) {
       paymentStatusDisplay = "partial";
     } else if (hasPendingPayment) {
       paymentStatusDisplay = "pending";
@@ -1424,6 +1633,7 @@ exports.getOne = async (req, res) => {
     // above is. Deleted from `order` here, before the response spread.
     delete order.paymongo_session_id;
     delete order.payment_url;
+    delete order.checkout_idempotency_key;
 
     res.json({
       ...order,

@@ -15,6 +15,7 @@ import { formatPHDate } from "../../utils/dateTime";
 import { getSocket, subscribeSocketReady } from "../../services/socket";
 import toast from "react-hot-toast";
 import { Package2, Search } from "lucide-react";
+import useAuthStore from "../../store/authStore";
 import "./OrdersPage.css";
 
 const CustomerBlueprintViewer = React.lazy(() =>
@@ -67,7 +68,15 @@ const getStatusColor = (status) => {
   if (["delivered", "completed"].includes(s)) return "green";
   if (["pending"].includes(s)) return "yellow";
   if (["cancelled"].includes(s)) return "red";
-  if (["confirmed", "contract_released", "production", "shipping"].includes(s))
+  if (
+    [
+      "confirmed",
+      "contract_released",
+      "production",
+      "ready_for_pickup",
+      "shipping",
+    ].includes(s)
+  )
     return "blue";
   return "gray";
 };
@@ -111,6 +120,13 @@ const STATUS_STYLE = {
     label: "Production",
   },
 
+  ready_for_pickup: {
+    bg: "#EFF6FF",
+    color: "#1D4ED8",
+    border: "#BFDBFE",
+    label: "Ready for Pickup",
+  },
+
   shipping: {
     bg: "#ECFEFF",
     color: "#0F766E",
@@ -145,6 +161,7 @@ const STATUS_ORDER = [
   "confirmed",
   "contract_released",
   "production",
+  "ready_for_pickup",
   "shipping",
   "delivered",
   "completed",
@@ -475,6 +492,9 @@ export default function OrdersPage() {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
   const navigate = useNavigate();
+  const { user } = useAuthStore();
+  const orderDetailBasePath =
+    user?.role === "staff" ? "/staff/admin/orders" : "/admin/orders";
 
   const [orders, setOrders] = useState([]);
   const [total, setTotal] = useState(0);
@@ -731,6 +751,16 @@ export default function OrdersPage() {
 
   const totalPages = Math.max(1, Math.ceil(total / 20));
 
+  useEffect(() => {
+    if (filters.page <= totalPages) return;
+
+    setFilters((previous) =>
+      previous.page > totalPages
+        ? { ...previous, page: totalPages }
+        : previous,
+    );
+  }, [filters.page, totalPages]);
+
   return (
     <div style={pageShell} className="orders-admin-v2">
       <div style={headerBlock} className="orders-header">
@@ -928,7 +958,9 @@ export default function OrdersPage() {
                     <tr
                       key={order.id}
                       className="orders-body-row"
-                      onClick={() => navigate(`/admin/orders/${order.id}`)}
+                      onClick={() =>
+                        navigate(`${orderDetailBasePath}/${order.id}`)
+                      }
                     >
                       <td>
                         <div className="orders-product-cell">
@@ -1024,7 +1056,7 @@ export default function OrdersPage() {
                           }`}
                           onClick={(event) => {
                             event.stopPropagation();
-                            navigate(`/admin/orders/${order.id}`);
+                            navigate(`${orderDetailBasePath}/${order.id}`);
                           }}
                         >
                           {actionLabel}

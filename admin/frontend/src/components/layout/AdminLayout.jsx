@@ -124,7 +124,7 @@ const NAV_ITEMS = [
     path: "/admin/orders",
     permission: "orders.view",
     icon: ShoppingCart,
-    roles: ["admin", "staff"],
+    roles: ["admin"],
   },
   {
     label: "Cancellations",
