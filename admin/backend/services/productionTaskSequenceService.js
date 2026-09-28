@@ -230,6 +230,7 @@ async function transitionProductionTask(
     actorUserId,
     actorRole,
     nextStatus,
+    holdReason = null,
   },
 ) {
   const parsedTaskId = parseStrictPositiveInt(taskId);
@@ -240,6 +241,35 @@ async function transitionProductionTask(
   const parsedActorUserId = parseStrictPositiveInt(actorUserId);
   const normalizedActorRole = normalizeProductionTaskRole(actorRole);
   const normalizedNextStatus = normalizeProductionTaskRole(nextStatus);
+
+  let normalizedHoldReason = null;
+  if (normalizedNextStatus === "blocked") {
+    if (typeof holdReason !== "string") {
+      fail(
+        "INVALID_HOLD_REASON",
+        "A reason is required before putting production work on hold.",
+        400,
+      );
+    }
+
+    normalizedHoldReason = holdReason.trim();
+
+    if (!normalizedHoldReason) {
+      fail(
+        "INVALID_HOLD_REASON",
+        "A reason is required before putting production work on hold.",
+        400,
+      );
+    }
+
+    if (normalizedHoldReason.length > 500) {
+      fail(
+        "INVALID_HOLD_REASON",
+        "Hold reason must be 500 characters or fewer.",
+        400,
+      );
+    }
+  }
 
   if (!parsedTaskId) {
     fail("INVALID_TASK_ID", "Invalid task ID.", 400);
@@ -371,7 +401,9 @@ async function transitionProductionTask(
          title,
          status,
          accepted_at,
-         completed_at
+         completed_at,
+         hold_reason,
+         blocked_at
        FROM project_tasks
        WHERE order_id = ?
        ORDER BY id
@@ -427,6 +459,8 @@ async function transitionProductionTask(
         status: currentStatus,
         accepted_at: existing.accepted_at || null,
         completed_at: existing.completed_at || null,
+        hold_reason: existing.hold_reason || null,
+        blocked_at: existing.blocked_at || null,
         fulfillment_method: order.fulfillment_method,
         production_ready: isProductionReady(requiredRows),
         order_status_changed: false,
@@ -447,6 +481,8 @@ async function transitionProductionTask(
 
     let acceptedAt = existing.accepted_at || null;
     let completedAt = existing.completed_at || null;
+    let nextHoldReason = null;
+    let blockedAt = null;
 
     if (!acceptedAt && normalizedNextStatus === "in_progress") {
       acceptedAt = new Date();
@@ -458,12 +494,19 @@ async function transitionProductionTask(
       completedAt = null;
     }
 
+    if (normalizedNextStatus === "blocked") {
+      nextHoldReason = normalizedHoldReason;
+      blockedAt = new Date();
+    }
+
     const [updateResult] = await conn.query(
       `UPDATE project_tasks
        SET
          status = ?,
          completed_at = ?,
          accepted_at = ?,
+         hold_reason = ?,
+         blocked_at = ?,
          is_read = 1,
          updated_at = NOW()
        WHERE id = ?
@@ -473,6 +516,8 @@ async function transitionProductionTask(
         normalizedNextStatus,
         completedAt,
         acceptedAt,
+        nextHoldReason,
+        blockedAt,
         parsedTaskId,
         existing.status,
         existing.assigned_to,
@@ -493,6 +538,8 @@ async function transitionProductionTask(
             status: normalizedNextStatus,
             accepted_at: acceptedAt,
             completed_at: completedAt,
+            hold_reason: nextHoldReason,
+            blocked_at: blockedAt,
           }
         : row,
     );
@@ -562,8 +609,12 @@ async function transitionProductionTask(
       status: normalizedNextStatus,
       previous_accepted_at: existing.accepted_at || null,
       previous_completed_at: existing.completed_at || null,
+      previous_hold_reason: existing.hold_reason || null,
+      previous_blocked_at: existing.blocked_at || null,
       accepted_at: acceptedAt,
       completed_at: completedAt,
+      hold_reason: nextHoldReason,
+      blocked_at: blockedAt,
       fulfillment_method: order.fulfillment_method,
       production_ready: becameProductionReady,
       production_ready_after: isProductionReadyAfter,
@@ -589,6 +640,346 @@ async function transitionProductionTask(
   }
 }
 
+
+async function undoProductionTaskCompletion(
+  pool,
+  { taskId, actorUserId, actorRole, undoReason },
+) {
+  const parsedTaskId = parseStrictPositiveInt(taskId);
+  const parsedActorUserId = parseStrictPositiveInt(actorUserId);
+  const normalizedActorRole = normalizeProductionTaskRole(actorRole);
+
+  if (!parsedTaskId) {
+    fail("INVALID_TASK_ID", "Invalid task ID.", 400);
+  }
+
+  if (!parsedActorUserId) {
+    fail("INVALID_ACTOR_ID", "Invalid user ID.", 400);
+  }
+
+  if (typeof undoReason !== "string" || !undoReason.trim()) {
+    fail(
+      "INVALID_UNDO_REASON",
+      "A reason is required before reopening a completed production step.",
+      400,
+    );
+  }
+
+  const normalizedUndoReason = undoReason.trim();
+
+  if (normalizedUndoReason.length > 500) {
+    fail(
+      "INVALID_UNDO_REASON",
+      "Undo reason must be 500 characters or fewer.",
+      400,
+    );
+  }
+
+  const conn = await pool.getConnection();
+  let transactionOpen = false;
+
+  try {
+    await conn.beginTransaction();
+    transactionOpen = true;
+
+    const [[taskReference]] = await conn.query(
+      `SELECT id, order_id
+       FROM project_tasks
+       WHERE id = ?
+       LIMIT 1`,
+      [parsedTaskId],
+    );
+
+    if (!taskReference) {
+      fail("TASK_NOT_FOUND", "Task not found.", 404);
+    }
+
+    const orderId = parseStrictPositiveInt(taskReference.order_id);
+
+    if (!orderId) {
+      fail(
+        "PRODUCTION_TASK_ORDER_MISSING",
+        "This production task is not linked to a valid order.",
+      );
+    }
+
+    const [[order]] = await conn.query(
+      `SELECT
+         id,
+         order_number,
+         customer_id,
+         status,
+         order_type,
+         blueprint_id,
+         fulfillment_method
+       FROM orders
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [orderId],
+    );
+
+    if (!order) {
+      fail(
+        "PRODUCTION_ORDER_NOT_FOUND",
+        "The order linked to this production task no longer exists.",
+      );
+    }
+
+    if (normalizeProductionTaskRole(order.order_type) !== "blueprint") {
+      fail(
+        "PRODUCTION_ORDER_TYPE_INVALID",
+        "This task does not belong to a blueprint production order.",
+      );
+    }
+
+    const blueprintId = parseStrictPositiveInt(order.blueprint_id);
+
+    if (!blueprintId) {
+      fail(
+        "PRODUCTION_BLUEPRINT_MISSING",
+        "This production order is not linked to a valid blueprint.",
+      );
+    }
+
+    const [[blueprint]] = await conn.query(
+      `SELECT id, is_deleted
+       FROM blueprints
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [blueprintId],
+    );
+
+    if (!blueprint || Number(blueprint.is_deleted) === 1) {
+      fail(
+        "PRODUCTION_BLUEPRINT_UNAVAILABLE",
+        "This production order's linked blueprint is unavailable. Manual review is required.",
+      );
+    }
+
+    const [packetRows] = await conn.query(
+      `SELECT
+         id,
+         order_id,
+         blueprint_id,
+         assigned_to,
+         assigned_by,
+         task_role,
+         title,
+         status,
+         accepted_at,
+         completed_at,
+         hold_reason,
+         blocked_at
+       FROM project_tasks
+       WHERE order_id = ?
+       ORDER BY id
+       FOR UPDATE`,
+      [orderId],
+    );
+
+    const { requiredRows, rowsByKey } = assertPacketIntegrity({
+      packetRows,
+      order,
+    });
+
+    const existing = requiredRows.find(
+      (row) => Number(row.id) === parsedTaskId,
+    );
+
+    if (!existing) {
+      fail(
+        "TASK_NOT_IN_PRODUCTION_PACKET",
+        "This task is not part of the order's required production packet.",
+      );
+    }
+
+    const isAdmin = normalizedActorRole === "admin";
+    const isOwner = Number(existing.assigned_to) === parsedActorUserId;
+
+    if (!isAdmin && !isOwner) {
+      fail(
+        "PRODUCTION_TASK_FORBIDDEN",
+        "You can only reopen production tasks assigned to you.",
+        403,
+      );
+    }
+
+    if (normalizeProductionTaskRole(existing.status) !== "completed") {
+      fail(
+        "PRODUCTION_UNDO_REQUIRES_COMPLETED",
+        "Only a completed production step can be reopened.",
+      );
+    }
+
+    const taskKey = normalizeProductionTaskRole(existing.task_role);
+    const currentStepIndex = PRODUCTION_TASK_KEYS.indexOf(taskKey);
+
+    if (currentStepIndex === -1) {
+      fail(
+        "NOT_REQUIRED_PRODUCTION_TASK",
+        "Only required production steps support Undo Done.",
+        400,
+      );
+    }
+
+    const isPacking = taskKey === normalizeProductionTaskRole("Packing");
+    const isPickupOrder =
+      normalizeProductionTaskRole(order.fulfillment_method || "delivery") ===
+      "pickup";
+    const orderStatus = normalizeProductionTaskRole(order.status);
+    const canRollbackPickupReady =
+      isPacking && isPickupOrder && orderStatus === "ready_for_pickup";
+
+    if (orderStatus !== "production" && !canRollbackPickupReady) {
+      fail(
+        "PRODUCTION_UNDO_ORDER_NOT_ACTIVE",
+        "This production step can no longer be reopened because the order has already moved beyond Production.",
+      );
+    }
+
+    for (
+      let index = currentStepIndex + 1;
+      index < PRODUCTION_TASK_KEYS.length;
+      index += 1
+    ) {
+      const laterKey = PRODUCTION_TASK_KEYS[index];
+      const laterRow = rowsByKey.get(laterKey);
+
+      if (
+        !laterRow ||
+        normalizeProductionTaskRole(laterRow.status) !== "pending"
+      ) {
+        fail(
+          "PRODUCTION_UNDO_LATER_STEP_STARTED",
+          `Cannot reopen ${existing.task_role || existing.title} because ${getProductionTaskRoleLabel(
+            laterKey,
+          )} has already started.`,
+        );
+      }
+    }
+
+    if (isPacking) {
+      // Do not lock delivery rows here. Delivery status/reassignment flows
+      // lock delivery -> order, while production locks order first. The order
+      // lock already serializes delivery creation, and this plain existence
+      // check avoids introducing the reverse lock order / deadlock cycle.
+      const [[deliveryAttempt]] = await conn.query(
+        `SELECT id, status
+         FROM deliveries
+         WHERE order_id = ?
+         ORDER BY id DESC
+         LIMIT 1`,
+        [orderId],
+      );
+
+      if (deliveryAttempt) {
+        fail(
+          "PRODUCTION_UNDO_DELIVERY_EXISTS",
+          "Packing can no longer be reopened because a delivery attempt already exists for this order.",
+        );
+      }
+    }
+
+    const [updateResult] = await conn.query(
+      `UPDATE project_tasks
+       SET
+         status = 'in_progress',
+         completed_at = NULL,
+         hold_reason = NULL,
+         blocked_at = NULL,
+         is_read = 1,
+         updated_at = NOW()
+       WHERE id = ?
+         AND status = 'completed'
+         AND assigned_to = ?`,
+      [parsedTaskId, existing.assigned_to],
+    );
+
+    if (updateResult.affectedRows !== 1) {
+      fail(
+        "PRODUCTION_TASK_CHANGED",
+        "The production step changed before Undo Done was applied. Refresh and try again.",
+      );
+    }
+
+    let orderStatusChanged = false;
+    let nextOrderStatus = order.status;
+
+    if (canRollbackPickupReady) {
+      const [orderUpdateResult] = await conn.query(
+        `UPDATE orders
+         SET status = 'production',
+             updated_at = NOW()
+         WHERE id = ?
+           AND status = 'ready_for_pickup'
+           AND order_type = 'blueprint'
+           AND COALESCE(
+             NULLIF(LOWER(TRIM(fulfillment_method)), ''),
+             'delivery'
+           ) = 'pickup'`,
+        [orderId],
+      );
+
+      if (orderUpdateResult.affectedRows !== 1) {
+        fail(
+          "PRODUCTION_UNDO_PICKUP_ROLLBACK_FAILED",
+          "The pickup order changed before production could be reopened. No changes were saved.",
+        );
+      }
+
+      orderStatusChanged = true;
+      nextOrderStatus = "production";
+    }
+
+    await conn.commit();
+    transactionOpen = false;
+
+    return {
+      task_id: parsedTaskId,
+      order_id: orderId,
+      order_number: order.order_number,
+      customer_id: order.customer_id,
+      assigned_to: existing.assigned_to,
+      assigned_by: existing.assigned_by,
+      task_role: existing.task_role,
+      title: existing.title,
+      previous_status: "completed",
+      status: "in_progress",
+      accepted_at: existing.accepted_at || null,
+      previous_completed_at: existing.completed_at || null,
+      completed_at: null,
+      previous_hold_reason: existing.hold_reason || null,
+      hold_reason: null,
+      previous_blocked_at: existing.blocked_at || null,
+      blocked_at: null,
+      undo_reason: normalizedUndoReason,
+      fulfillment_method: order.fulfillment_method,
+      production_ready: false,
+      production_ready_after: false,
+      order_status_changed: orderStatusChanged,
+      previous_order_status: order.status,
+      order_status: nextOrderStatus,
+    };
+  } catch (error) {
+    if (transactionOpen) {
+      try {
+        await conn.rollback();
+      } catch (rollbackError) {
+        console.error(
+          "[productionTaskSequenceService undo] rollback failed:",
+          rollbackError.message,
+        );
+      }
+    }
+
+    throw error;
+  } finally {
+    conn.release();
+  }
+}
+
 module.exports = {
   PRODUCTION_TASK_STEPS,
   PRODUCTION_TASK_KEYS,
@@ -597,4 +988,5 @@ module.exports = {
   isRequiredProductionTaskRole,
   getProductionTaskRoleLabel,
   transitionProductionTask,
+  undoProductionTaskCompletion,
 };

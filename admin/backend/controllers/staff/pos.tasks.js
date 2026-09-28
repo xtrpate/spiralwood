@@ -21,6 +21,7 @@ const {
   ProductionTaskSequenceError,
   isRequiredProductionTaskRole,
   transitionProductionTask,
+  undoProductionTaskCompletion,
 } = require("../../services/productionTaskSequenceService");
 
 const ensureIndoorAssignee = async (userId) => {
@@ -486,7 +487,11 @@ const getOperationsTaskReport = async (req, res) => {
     // Keep the existing blocked-task detail useful without loading the larger
     // production-material payload that the Operations Report does not render.
     const blockedTaskIds = tasks
-      .filter((task) => normalize(task.status) === "blocked")
+      .filter(
+        (task) =>
+          normalize(task.status) === "blocked" &&
+          !String(task.hold_reason || "").trim(),
+      )
       .map((task) => Number(task.id))
       .filter((id) => Number.isInteger(id) && id > 0);
 
@@ -525,7 +530,10 @@ const getOperationsTaskReport = async (req, res) => {
       }
 
       for (const task of tasks) {
-        if (normalize(task.status) === "blocked") {
+        if (
+          normalize(task.status) === "blocked" &&
+          !String(task.hold_reason || "").trim()
+        ) {
           task.hold_reason = reasonByTaskId.get(Number(task.id)) || null;
         }
       }
@@ -723,7 +731,11 @@ exports.getTasks = async (req, res) => {
     // another project_tasks column. Only the latest reason for a task that is
     // currently blocked/on hold is exposed to the UI.
     const blockedTaskIds = tasks
-      .filter((task) => normalize(task.status) === "blocked")
+      .filter(
+        (task) =>
+          normalize(task.status) === "blocked" &&
+          !String(task.hold_reason || "").trim(),
+      )
       .map((task) => Number(task.id))
       .filter((id) => Number.isInteger(id) && id > 0);
 
@@ -761,7 +773,10 @@ exports.getTasks = async (req, res) => {
       }
 
       for (const task of tasks) {
-        if (normalize(task.status) === "blocked") {
+        if (
+          normalize(task.status) === "blocked" &&
+          !String(task.hold_reason || "").trim()
+        ) {
           task.hold_reason = reasonByTaskId.get(Number(task.id)) || null;
         }
       }
@@ -1161,6 +1176,7 @@ const applyProductionTaskTransition = async (
       actorUserId: req.user.id,
       actorRole: req.user.role,
       nextStatus: status,
+      holdReason,
     });
   } catch (error) {
     if (respondWithProductionTransitionError(res, error)) return;
@@ -1182,19 +1198,25 @@ const applyProductionTaskTransition = async (
       status: previousStatus,
       accepted_at: transition.previous_accepted_at || null,
       completed_at: transition.previous_completed_at || null,
+      hold_reason: transition.previous_hold_reason || null,
+      blocked_at: transition.previous_blocked_at || null,
     },
     new: {
       status: nextStatus,
       accepted_at: transition.accepted_at || null,
       completed_at: transition.completed_at || null,
-      ...(nextStatus === "blocked" ? { hold_reason: holdReason } : {}),
+      hold_reason: transition.hold_reason || null,
+      blocked_at: transition.blocked_at || null,
       changed_fields: [
         "status",
         String(transition.previous_accepted_at || "") !==
           String(transition.accepted_at || "") && "accepted_at",
         String(transition.previous_completed_at || "") !==
           String(transition.completed_at || "") && "completed_at",
-        nextStatus === "blocked" && "hold_reason",
+        String(transition.previous_hold_reason || "") !==
+          String(transition.hold_reason || "") && "hold_reason",
+        String(transition.previous_blocked_at || "") !==
+          String(transition.blocked_at || "") && "blocked_at",
       ].filter(Boolean),
     },
   };
@@ -1209,7 +1231,7 @@ const applyProductionTaskTransition = async (
         userId: Number(transition.assigned_by),
         type: "task_blocked",
         title: "Production Work Put on Hold",
-        message: `${req.user.name || "A staff member"} put ${transition.task_role || transition.title} on hold for ${orderLabel}. Reason: ${holdReason}`,
+        message: `${req.user.name || "A staff member"} put ${transition.task_role || transition.title} on hold for ${orderLabel}. Reason: ${transition.hold_reason || holdReason}`,
         targetType: "task",
         targetId: transition.task_id,
         targetOrderId: transition.order_id,
@@ -1366,7 +1388,8 @@ const applyProductionTaskTransition = async (
       status: nextStatus,
       accepted_at: transition.accepted_at || null,
       completed_at: transition.completed_at || null,
-      hold_reason: nextStatus === "blocked" ? holdReason : null,
+      hold_reason: transition.hold_reason || null,
+      blocked_at: transition.blocked_at || null,
     },
     order_status: transition.order_status,
   });
@@ -1393,7 +1416,9 @@ exports.acceptTask = async (req, res) => {
 exports.updateTaskStatus = async (req, res) => {
   const { status } = req.body;
   const taskId = parseStrictPositiveInt(req.params.id);
-  const holdReason = String(req.body?.hold_reason || "").trim();
+  const rawHoldReason = req.body?.hold_reason;
+  const holdReason =
+    typeof rawHoldReason === "string" ? rawHoldReason.trim() : "";
 
   if (!taskId) {
     return res.status(400).json({ message: "Invalid task ID." });
@@ -1405,7 +1430,7 @@ exports.updateTaskStatus = async (req, res) => {
   }
 
   if (status === "blocked") {
-    if (!holdReason) {
+    if (typeof rawHoldReason !== "string" || !holdReason) {
       return res.status(400).json({
         message: "A reason is required before putting production work on hold.",
       });
@@ -1795,336 +1820,167 @@ exports.updateTaskStatus = async (req, res) => {
 /* ── Undo Completed Production Step ── */
 exports.undoTaskCompletion = async (req, res) => {
   const taskId = parseStrictPositiveInt(req.params.id);
+  const bodyKeys = Object.keys(req.body || {});
 
   if (!taskId) {
     return res.status(400).json({ message: "Invalid task ID." });
   }
 
-  let conn = null;
-  let transactionOpen = false;
+  if (bodyKeys.some((key) => key !== "undo_reason")) {
+    return res.status(400).json({ message: "Unexpected Undo Done field." });
+  }
+
+  if (
+    typeof req.body?.undo_reason !== "string" ||
+    !req.body.undo_reason.trim()
+  ) {
+    return res.status(400).json({
+      message:
+        "A reason is required before reopening a completed production step.",
+    });
+  }
+
+  const undoReason = req.body.undo_reason.trim();
+
+  if (undoReason.length > 500) {
+    return res.status(400).json({
+      message: "Undo reason must be 500 characters or fewer.",
+    });
+  }
+
+  let transition;
 
   try {
-    conn = await db.getConnection();
-    await conn.beginTransaction();
-    transactionOpen = true;
-
-    const [[taskReference]] = await conn.query(
-      `SELECT id, order_id
-       FROM project_tasks
-       WHERE id = ?
-       LIMIT 1`,
-      [taskId],
-    );
-
-    const orderId = parseStrictPositiveInt(taskReference?.order_id);
-
-    if (!taskReference || !orderId) {
-      await conn.rollback();
-      transactionOpen = false;
-      return res.status(404).json({ message: "Task not found." });
-    }
-
-    // Keep the same lock order as assignment/reassignment/sequence updates:
-    // order first, then the complete task packet.
-    const [[order]] = await conn.query(
-      `SELECT
-         id,
-         order_number,
-         customer_id,
-         status,
-         order_type,
-         fulfillment_method
-       FROM orders
-       WHERE id = ?
-       LIMIT 1
-       FOR UPDATE`,
-      [orderId],
-    );
-
-    if (!order) {
-      await conn.rollback();
-      transactionOpen = false;
-      return res.status(404).json({ message: "Order not found." });
-    }
-
-    const [packetRows] = await conn.query(
-      `SELECT
-         id,
-         title,
-         status,
-         assigned_to,
-         assigned_by,
-         accepted_at,
-         completed_at,
-         order_id,
-         task_role
-       FROM project_tasks
-       WHERE order_id = ?
-       ORDER BY id
-       FOR UPDATE`,
-      [orderId],
-    );
-
-    const taskRow = packetRows.find((row) => Number(row.id) === taskId);
-
-    if (!taskRow) {
-      await conn.rollback();
-      transactionOpen = false;
-      return res.status(404).json({ message: "Task not found." });
-    }
-
-    const existing = {
-      ...taskRow,
-      order_number: order.order_number,
-      customer_id: order.customer_id,
-      order_status: order.status,
-      order_type: order.order_type,
-      fulfillment_method: order.fulfillment_method,
-    };
-
-    const isAdmin = normalize(req.user?.role) === "admin";
-    const isOwner = Number(existing.assigned_to) === Number(req.user?.id);
-
-    if (!isAdmin && !isOwner) {
-      await conn.rollback();
-      transactionOpen = false;
-      return res.status(403).json({
-        message: "You can only undo completion for tasks assigned to you.",
-      });
-    }
-
-    if (normalize(existing.status) !== "completed") {
-      await conn.rollback();
-      transactionOpen = false;
-      return res.status(409).json({
-        message: "Only a completed production step can be undone.",
-      });
-    }
-
-    const taskRoleKey = normalize(existing.task_role);
-    const currentStepIndex = REQUIRED_PRODUCTION_STEP_KEYS.indexOf(taskRoleKey);
-
-    if (currentStepIndex === -1) {
-      await conn.rollback();
-      transactionOpen = false;
-      return res.status(400).json({
-        message: "Only required production steps support Undo Done.",
-      });
-    }
-
-    const orderStatus = normalize(existing.order_status);
-    const isPacking = taskRoleKey === normalize("Packing");
-    const isPickupOrder =
-      normalize(existing.order_type) === "blueprint" &&
-      normalize(existing.fulfillment_method) === "pickup";
-
-    const canRollbackPickupReady =
-      isPacking && isPickupOrder && orderStatus === "ready_for_pickup";
-
-    if (orderStatus !== "production" && !canRollbackPickupReady) {
-      await conn.rollback();
-      transactionOpen = false;
-      return res.status(409).json({
-        message:
-          "This production step can no longer be undone because the order has already moved beyond Production.",
-      });
-    }
-
-    for (
-      let index = currentStepIndex + 1;
-      index < REQUIRED_PRODUCTION_STEP_KEYS.length;
-      index += 1
-    ) {
-      const laterStepKey = REQUIRED_PRODUCTION_STEP_KEYS[index];
-      const laterStepLabel = REQUIRED_PRODUCTION_STEPS[index];
-
-      const laterStepStarted = packetRows.some(
-        (row) =>
-          normalize(row.task_role) === laterStepKey &&
-          ["in_progress", "blocked", "completed"].includes(
-            normalize(row.status),
-          ),
-      );
-
-      if (laterStepStarted) {
-        await conn.rollback();
-        transactionOpen = false;
-        return res.status(409).json({
-          message: `Cannot undo ${existing.task_role || existing.title} because ${laterStepLabel} has already started.`,
-        });
-      }
-    }
-
-    if (isPacking) {
-      const [[activeDelivery]] = await conn.query(
-        `SELECT id, status
-         FROM deliveries
-         WHERE order_id = ?
-           AND LOWER(TRIM(status)) IN (
-             'scheduled',
-             'in_transit',
-             'delivered',
-             'completed'
-           )
-         ORDER BY id DESC
-         LIMIT 1
-         FOR UPDATE`,
-        [existing.order_id],
-      );
-
-      if (activeDelivery) {
-        await conn.rollback();
-        transactionOpen = false;
-        return res.status(409).json({
-          message:
-            "Packing can no longer be undone because delivery activity has already started for this order.",
-        });
-      }
-    }
-
-    const [updateResult] = await conn.query(
-      `UPDATE project_tasks
-       SET
-         status = 'in_progress',
-         completed_at = NULL,
-         is_read = 1,
-         updated_at = NOW()
-       WHERE id = ?
-         AND status = 'completed'`,
-      [taskId],
-    );
-
-    if (updateResult.affectedRows !== 1) {
-      await conn.rollback();
-      transactionOpen = false;
-      return res.status(409).json({
-        message:
-          "The production step changed before Undo Done was applied. Refresh and try again.",
-      });
-    }
-
-    let orderStatusChanged = false;
-    let nextOrderStatus = existing.order_status;
-
-    if (canRollbackPickupReady) {
-      const [orderUpdate] = await conn.query(
-        `UPDATE orders
-         SET status = 'production', updated_at = NOW()
-         WHERE id = ?
-           AND status = 'ready_for_pickup'
-           AND order_type = 'blueprint'
-           AND COALESCE(
-             NULLIF(LOWER(TRIM(fulfillment_method)), ''),
-             'delivery'
-           ) = 'pickup'`,
-        [existing.order_id],
-      );
-
-      if (orderUpdate.affectedRows !== 1) {
-        await conn.rollback();
-        transactionOpen = false;
-        return res.status(409).json({
-          message:
-            "The pickup order state changed before Undo Done was applied. Refresh and try again.",
-        });
-      }
-
-      orderStatusChanged = true;
-      nextOrderStatus = "production";
-    }
-
-    await conn.commit();
-    transactionOpen = false;
-
-    req.auditRecord = {
-      id: taskId,
-      old: {
-        status: existing.status,
-        accepted_at: existing.accepted_at,
-        completed_at: existing.completed_at,
-        order_status: existing.order_status,
-      },
-      new: {
-        status: "in_progress",
-        accepted_at: existing.accepted_at,
-        completed_at: null,
-        order_status: nextOrderStatus,
-        completion_undo: true,
-        changed_fields: [
-          "status",
-          "completed_at",
-          orderStatusChanged && "order_status",
-        ].filter(Boolean),
-      },
-    };
-
-    if (existing.assigned_by) {
-      await createNotificationSafe(db, {
-        userId: Number(existing.assigned_by),
-        type: "task_update",
-        title: "Task Completion Reopened",
-        message: `${req.user.name || "A staff member"} reopened ${existing.task_role || existing.title} for ${existing.order_number ? `Order ${existing.order_number}` : `Order #${existing.order_id}`} so production work can continue.`,
-        targetType: "task",
-        targetId: existing.id,
-        targetOrderId: existing.order_id,
-      });
-    }
-
-    const io = req.app.get("io");
-
-    emitTaskUpdate(io, {
+    transition = await undoProductionTaskCompletion(db, {
       taskId,
-      taskIds: [taskId],
-      orderId: existing.order_id,
-      orderNumber: existing.order_number,
-      taskRole: existing.task_role,
-      status: "in_progress",
-      assignedTo: existing.assigned_to,
-      previousAssigneeIds: [],
-      changeType: "completion_undone",
-      productionReady: false,
-      orderStatusChanged,
+      actorUserId: req.user.id,
+      actorRole: req.user.role,
+      undoReason,
     });
-
-    if (orderStatusChanged) {
-      emitOrderStatusUpdate(io, {
-        orderId: existing.order_id,
-        orderNumber: existing.order_number,
-        status: "production",
-        customerId: existing.customer_id,
-      });
-    }
-
-    return res.json({
-      message: "Completion undone. Production step returned to In Progress.",
-      task: {
-        id: taskId,
-        status: "in_progress",
-        accepted_at: existing.accepted_at,
-        completed_at: null,
-        hold_reason: null,
-      },
-      order_status: nextOrderStatus,
-    });
-  } catch (err) {
-    if (conn && transactionOpen) {
-      try {
-        await conn.rollback();
-      } catch (rollbackErr) {
-        console.error(
-          "[pos.tasks undoTaskCompletion rollback]",
-          rollbackErr.message,
-        );
-      }
-    }
-
-    console.error("[pos.tasks POST /:id/undo-completion]", err);
+  } catch (error) {
+    if (respondWithProductionTransitionError(res, error)) return;
+    console.error("[pos.tasks POST /:id/undo-completion]", error);
     return res.status(500).json({
       message: "Failed to undo production step completion.",
     });
-  } finally {
-    if (conn) conn.release();
   }
+
+  req.auditRecord = {
+    id: transition.task_id,
+    old: {
+      status: transition.previous_status,
+      accepted_at: transition.accepted_at || null,
+      completed_at: transition.previous_completed_at || null,
+      hold_reason: transition.previous_hold_reason || null,
+      blocked_at: transition.previous_blocked_at || null,
+      order_status: transition.previous_order_status,
+    },
+    new: {
+      status: transition.status,
+      accepted_at: transition.accepted_at || null,
+      completed_at: null,
+      hold_reason: null,
+      blocked_at: null,
+      order_status: transition.order_status,
+      completion_undo: true,
+      undo_reason: transition.undo_reason,
+      changed_fields: [
+        "status",
+        "completed_at",
+        "hold_reason",
+        "blocked_at",
+        transition.order_status_changed && "order_status",
+      ].filter(Boolean),
+    },
+  };
+
+  const orderLabel = transition.order_number
+    ? `Order ${transition.order_number}`
+    : `Order #${transition.order_id}`;
+
+  if (transition.assigned_by) {
+    await createNotificationSafe(db, {
+      userId: Number(transition.assigned_by),
+      type: "task_update",
+      title: "Task Completion Reopened",
+      message: `${req.user.name || "A staff member"} reopened ${transition.task_role || transition.title} for ${orderLabel}. Reason: ${transition.undo_reason}`,
+      targetType: "task",
+      targetId: transition.task_id,
+      targetOrderId: transition.order_id,
+    });
+  }
+
+  if (transition.order_status_changed) {
+    if (transition.customer_id) {
+      await createNotificationSafe(db, {
+        userId: Number(transition.customer_id),
+        type: "order_update",
+        title: "Production Work Reopened",
+        message: `${orderLabel} needs additional production work. Please wait for a new Ready for Pickup notice before collection.`,
+        targetType: "order",
+        targetId: transition.order_id,
+        targetOrderId: transition.order_id,
+      });
+    }
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "reopen_production_from_pickup_ready",
+      tableName: "orders",
+      recordId: transition.order_id,
+      oldValues: {
+        status: transition.previous_order_status,
+        ready_for_pickup: true,
+      },
+      newValues: {
+        status: transition.order_status,
+        ready_for_pickup: false,
+        reopened_task_id: transition.task_id,
+        reopen_reason: transition.undo_reason,
+      },
+      ipAddress: req.ip || null,
+      actorType: "user",
+      responseStatus: 200,
+    });
+  }
+
+  const io = req.app.get("io");
+
+  emitTaskUpdate(io, {
+    taskId: transition.task_id,
+    taskIds: [transition.task_id],
+    orderId: transition.order_id,
+    orderNumber: transition.order_number,
+    taskRole: transition.task_role,
+    status: transition.status,
+    assignedTo: transition.assigned_to,
+    previousAssigneeIds: [],
+    changeType: "completion_undone",
+    productionReady: false,
+    orderStatusChanged: Boolean(transition.order_status_changed),
+  });
+
+  if (transition.order_status_changed) {
+    emitOrderStatusUpdate(io, {
+      orderId: transition.order_id,
+      orderNumber: transition.order_number,
+      status: transition.order_status,
+      customerId: transition.customer_id,
+    });
+  }
+
+  return res.json({
+    message: "Completion undone. Production step returned to In Progress.",
+    task: {
+      id: transition.task_id,
+      status: transition.status,
+      accepted_at: transition.accepted_at || null,
+      completed_at: null,
+      hold_reason: null,
+      blocked_at: null,
+    },
+    order_status: transition.order_status,
+  });
 };
 
 /* ── Update Task (Admin edit / Staff status update fallback) ── */

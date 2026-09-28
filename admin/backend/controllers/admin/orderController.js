@@ -3758,6 +3758,7 @@ const applyAdminProductionTaskTransition = async (
       actorUserId: req.user.id,
       actorRole: req.user.role,
       nextStatus: status,
+      holdReason,
     });
   } catch (error) {
     if (respondWithProductionTaskSequenceError(res, error)) return;
@@ -3779,12 +3780,15 @@ const applyAdminProductionTaskTransition = async (
       status: previousStatus,
       accepted_at: transition.previous_accepted_at || null,
       completed_at: transition.previous_completed_at || null,
+      hold_reason: transition.previous_hold_reason || null,
+      blocked_at: transition.previous_blocked_at || null,
     },
     new: {
       status: nextStatus,
       accepted_at: transition.accepted_at || null,
       completed_at: transition.completed_at || null,
-      ...(nextStatus === "blocked" ? { hold_reason: holdReason } : {}),
+      hold_reason: transition.hold_reason || null,
+      blocked_at: transition.blocked_at || null,
     },
   };
 
@@ -3798,7 +3802,7 @@ const applyAdminProductionTaskTransition = async (
         userId: Number(transition.assigned_by),
         type: "task_blocked",
         title: "Production Work Put on Hold",
-        message: `${req.user.name || "An administrator"} put ${transition.task_role || transition.title} on hold for ${orderLabel}. Reason: ${holdReason}`,
+        message: `${req.user.name || "An administrator"} put ${transition.task_role || transition.title} on hold for ${orderLabel}. Reason: ${transition.hold_reason || holdReason}`,
         targetType: "task",
         targetId: transition.task_id,
         targetOrderId: transition.order_id,
@@ -3953,7 +3957,8 @@ const applyAdminProductionTaskTransition = async (
       status: nextStatus,
       accepted_at: transition.accepted_at || null,
       completed_at: transition.completed_at || null,
-      hold_reason: nextStatus === "blocked" ? holdReason : null,
+      hold_reason: transition.hold_reason || null,
+      blocked_at: transition.blocked_at || null,
     },
     order_status: transition.order_status,
   });
@@ -3964,6 +3969,9 @@ exports.updateTaskStatus = async (req, res) => {
     const orderId = parseStrictPositiveInt(req.params.id);
     const taskId = parseStrictPositiveInt(req.params.taskId);
     const { status } = req.body;
+    const rawHoldReason = req.body?.hold_reason;
+    const holdReason =
+      typeof rawHoldReason === "string" ? rawHoldReason.trim() : "";
 
     if (!orderId) {
       return res.status(400).json({ message: "Invalid order ID." });
@@ -3972,7 +3980,6 @@ exports.updateTaskStatus = async (req, res) => {
     if (!taskId) {
       return res.status(400).json({ message: "Invalid task ID." });
     }
-    const holdReason = String(req.body?.hold_reason || "").trim();
 
     const valid = ["pending", "in_progress", "completed", "blocked"];
     if (!valid.includes(status)) {
@@ -3980,7 +3987,7 @@ exports.updateTaskStatus = async (req, res) => {
     }
 
     if (status === "blocked") {
-      if (!holdReason) {
+      if (typeof rawHoldReason !== "string" || !holdReason) {
         return res.status(400).json({
           message:
             "A reason is required before putting production work on hold.",
