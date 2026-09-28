@@ -2991,7 +2991,7 @@ exports.getAssignableStaff = async (req, res) => {
             SELECT COUNT(DISTINCT COALESCE(pt.order_id, pt.blueprint_id, pt.id))
             FROM project_tasks pt
             WHERE pt.assigned_to = u.id
-              AND pt.status IN ('pending', 'in_progress')
+              AND pt.status IN ('pending', 'in_progress', 'blocked')
           ) AS active_task_count
        FROM users u
        WHERE u.role = 'staff'
@@ -3017,23 +3017,73 @@ exports.assignStaff = async (req, res) => {
   try {
     const orderId = parseStrictPositiveInt(req.params.id);
     const staffId = parseStrictPositiveInt(req.body?.staff_id);
-    const { due_date, note } = req.body;
+    const { due_date, note } = req.body || {};
 
     if (!orderId) {
       return res.status(400).json({ message: "Invalid order ID." });
     }
 
-    if (!staffId || !due_date) {
+    if (!staffId || typeof due_date !== "string" || !due_date.trim()) {
       return res.status(400).json({
         message: "Assigned indoor staff and due date are required.",
       });
     }
 
-    const parsedDueDate = new Date(due_date);
-    if (Number.isNaN(parsedDueDate.getTime())) {
+    const dueDateMatch =
+      /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(
+        due_date.trim(),
+      );
+
+    if (!dueDateMatch) {
       return res.status(400).json({
         message: "Due date is invalid.",
       });
+    }
+
+    const [, yearText, monthText, dayText, hourText, minuteText, secondText = "00"] =
+      dueDateMatch;
+
+    const year = Number(yearText);
+    const month = Number(monthText);
+    const day = Number(dayText);
+    const hour = Number(hourText);
+    const minute = Number(minuteText);
+    const second = Number(secondText);
+    const phOffsetMs = 8 * 60 * 60 * 1000;
+    const dueDateUtcMs =
+      Date.UTC(year, month - 1, day, hour, minute, second) - phOffsetMs;
+    const dueDateCheck = new Date(dueDateUtcMs + phOffsetMs);
+
+    if (
+      dueDateCheck.getUTCFullYear() !== year ||
+      dueDateCheck.getUTCMonth() !== month - 1 ||
+      dueDateCheck.getUTCDate() !== day ||
+      dueDateCheck.getUTCHours() !== hour ||
+      dueDateCheck.getUTCMinutes() !== minute ||
+      dueDateCheck.getUTCSeconds() !== second
+    ) {
+      return res.status(400).json({
+        message: "Due date is invalid.",
+      });
+    }
+
+    if (dueDateUtcMs < Date.now() - 60_000) {
+      return res.status(400).json({
+        message: "Due date cannot be in the past.",
+      });
+    }
+
+    const normalizedDueDate =
+      `${yearText}-${monthText}-${dayText} ${hourText}:${minuteText}:${secondText}`;
+
+    let normalizedNote = "";
+    if (note !== undefined && note !== null) {
+      if (typeof note !== "string") {
+        return res.status(400).json({
+          message: "Production note must be text.",
+        });
+      }
+      normalizedNote = note.trim();
     }
 
     await conn.beginTransaction();
@@ -3082,6 +3132,35 @@ exports.assignStaff = async (req, res) => {
       return res.status(400).json({
         message:
           "Indoor staff assignment is only allowed after contract release or during production.",
+      });
+    }
+
+    if (
+      !parseStrictPositiveInt(order.blueprint_id) ||
+      Number(order.blueprint_id) !== Number(blueprintId)
+    ) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message:
+          "The order and Project Agreement do not reference the same production blueprint. Manual review is required before assignment.",
+      });
+    }
+
+    const [[blueprint]] = await conn.query(
+      `SELECT id, is_deleted
+       FROM blueprints
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [blueprintId],
+    );
+
+    if (!blueprint || blueprint.is_deleted) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "This order's linked blueprint no longer exists.",
       });
     }
 
@@ -3137,8 +3216,8 @@ exports.assignStaff = async (req, res) => {
     const createdTaskIds = [];
     for (const stepLabel of BLUEPRINT_PRODUCTION_TASK_ROLE_OPTIONS) {
       const title = `${order.order_number || `Order #${orderId}`} — ${stepLabel}`;
-      const description = note
-        ? `Production step: ${stepLabel}\n\nAdmin production note: ${note}`
+      const description = normalizedNote
+        ? `Production step: ${stepLabel}\n\nAdmin production note: ${normalizedNote}`
         : `Production step: ${stepLabel}`;
 
       const [taskResult] = await conn.query(
@@ -3164,7 +3243,7 @@ exports.assignStaff = async (req, res) => {
           stepLabel,
           title,
           description,
-          due_date,
+          normalizedDueDate,
         ],
       );
       createdTaskIds.push(taskResult.insertId);

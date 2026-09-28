@@ -206,10 +206,13 @@ exports.markAllNotificationsRead = async (req, res) => {
 /* ── Get Projects Requiring Allocation ── */
 exports.getProjects = async (req, res) => {
   try {
-    // ── FIXED: Switched to .query and added empty array [] ──
+    const requiredRolePlaceholders = REQUIRED_PRODUCTION_STEP_KEYS.map(
+      () => "?",
+    ).join(", ");
+
     const [projects] = await db.query(
       `
-      SELECT 
+      SELECT
         o.id,
         o.order_number,
         COALESCE(u.name, o.walkin_customer_name, 'Walk-in Customer') AS customer_name,
@@ -223,10 +226,18 @@ exports.getProjects = async (req, res) => {
         ) AS assigned_tasks_count
       FROM orders o
       LEFT JOIN users u ON o.customer_id = u.id
-      WHERE o.status IN ('confirmed', 'production')
+      WHERE LOWER(TRIM(o.order_type)) = 'blueprint'
+        AND LOWER(TRIM(o.status)) IN ('contract_released', 'production')
+        AND NOT EXISTS (
+          SELECT 1
+          FROM project_tasks existing
+          WHERE existing.order_id = o.id
+            AND LOWER(REPLACE(TRIM(existing.task_role), ' ', '_'))
+                IN (${requiredRolePlaceholders})
+        )
       ORDER BY o.created_at DESC
     `,
-      [],
+      REQUIRED_PRODUCTION_STEP_KEYS,
     );
     res.json(projects);
   } catch (err) {

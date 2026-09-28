@@ -1035,9 +1035,10 @@ export default function OrderDetailPage() {
       setReassignStaffId("");
       setReassignModal(true);
     } catch (err) {
-      if (err.response?.status === 404) {
-        toast.error(err.response?.data?.message || "Order not found.");
-      }
+      toast.error(
+        err?.response?.data?.message ||
+          "Failed to load staff for production reassignment.",
+      );
     } finally {
       setLoadingReassignable(false);
     }
@@ -1060,9 +1061,10 @@ export default function OrderDetailPage() {
       setReassignModal(false);
       await load({ silent: true });
     } catch (err) {
-      if (err.response?.status === 404) {
-        toast.error(err.response?.data?.message || "Order not found.");
-      }
+      toast.error(
+        err?.response?.data?.message ||
+          "Failed to reassign production staff.",
+      );
     } finally {
       setReassigning(false);
     }
@@ -1544,6 +1546,17 @@ export default function OrderDetailPage() {
 
   const needsCustomRequestAdminReview =
     hasCustomRequestItems && normalizedOrderStatus === "pending";
+  const productionTasksSummary = hasBlueprintTasks
+    ? `${completedBlueprintTasks.length}/${blueprintTasks.length}`
+    : [
+          "contract_released",
+          "production",
+          "shipping",
+          "delivered",
+          "completed",
+        ].includes(normalizedOrderStatus)
+      ? "Ready"
+      : "Waiting";
   const summaryCards = [
     {
       label: "Payment",
@@ -1565,9 +1578,7 @@ export default function OrderDetailPage() {
     hasBlueprintFlow
       ? {
           label: "Production Tasks",
-          value: hasBlueprintTasks
-            ? `${completedBlueprintTasks.length}/${blueprintTasks.length}`
-            : "Ready",
+          value: productionTasksSummary,
           tone: { bg: "#ffffff", color: "#52525b", border: "#d4d4d8" },
         }
       : {

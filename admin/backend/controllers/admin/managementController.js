@@ -528,6 +528,18 @@ exports.generateContract = async (req, res) => {
 
   const requestedBlueprintId = req.body?.blueprint_id;
   const { terms, warranty_terms } = req.body || {};
+  const normalizedTerms =
+    typeof terms === "string" ? terms.trim() : "";
+  const normalizedWarrantyTerms =
+    typeof warranty_terms === "string" ? warranty_terms.trim() : "";
+
+  if (!normalizedTerms) {
+    return res.status(400).json({ message: "Agreement terms are required." });
+  }
+
+  if (!normalizedWarrantyTerms) {
+    return res.status(400).json({ message: "Warranty terms are required." });
+  }
 
   let conn = null;
   let transactionActive = false;
@@ -746,8 +758,8 @@ exports.generateContract = async (req, res) => {
         blueprint.id,
         order.customer_id,
         customerName,
-        warranty_terms || null,
-        terms || null,
+        normalizedWarrantyTerms,
+        normalizedTerms,
         req.user.id,
         requiredDownPayment,
       ],

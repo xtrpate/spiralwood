@@ -1215,9 +1215,9 @@ export default function ContractsPage() {
               <div>
                 <h2 id="create-contract-title">Create Project Agreement</h2>
                 <p>
-                  Select an eligible blueprint order. The system will confirm
-                  the customer, approved quotation and order total before the
-                  Project Agreement is created.
+                  Select a confirmed blueprint order candidate. The system will
+                  verify the customer, approved quotation, order total and
+                  agreement readiness before the Project Agreement is created.
                 </p>
               </div>
               <button
@@ -1264,14 +1264,15 @@ export default function ContractsPage() {
                     ))}
                   </select>
                   <small>
-                    Only confirmed blueprint orders with a customer-approved
-                    quotation and no existing Project Agreement are listed.
+                    Confirmed blueprint orders without an existing Project
+                    Agreement are listed as candidates. Select one to verify the
+                    approved quotation and order total.
                   </small>
                 </label>
 
                 {availableOrders.length === 0 && (
                   <div className="contracts-alert contracts-alert-neutral">
-                    There are no eligible approved blueprint orders available
+                    There are no confirmed blueprint order candidates available
                     for a new Project Agreement.
                   </div>
                 )}
