@@ -166,6 +166,14 @@ function makeConnection() {
 
       if (scenario?.kind === "reschedule") {
         if (
+          text.includes("SELECT order_id FROM deliveries") &&
+          text.includes("WHERE id = ?") &&
+          !text.includes("FOR UPDATE")
+        ) {
+          return [[{ order_id: 10 }]];
+        }
+
+        if (
           text.includes("SELECT * FROM deliveries") &&
           text.includes("WHERE id = ?") &&
           text.includes("FOR UPDATE")

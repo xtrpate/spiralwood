@@ -18,6 +18,10 @@ const {
 } = require("../../utils/paymentAmounts");
 const { parseStrictPositiveInt } = require("../../utils/validators");
 const {
+  isRetryableTransactionError,
+  buildConcurrentUpdateResponse,
+} = require("../../utils/transactionConflict");
+const {
   createNotification,
   createNotificationSafe,
 } = require("../../utils/notificationHelper");
@@ -1801,9 +1805,36 @@ exports.reassignDeliveryRider = async (req, res) => {
     await conn.beginTransaction();
     transactionActive = true;
 
-    // Lock the delivery first. updateDeliveryStatus() uses the same
-    // delivery -> order lock order, so a rider starting the trip at the
-    // same moment as an admin reassignment is serialized safely.
+    // Probe the immutable parent link without taking a row lock. The
+    // authoritative transaction lock order is always orders -> deliveries.
+    const [[deliveryProbe]] = await conn.query(
+      `SELECT order_id FROM deliveries WHERE id = ? LIMIT 1`,
+      [deliveryId],
+    );
+
+    if (!deliveryProbe) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(404).json({ message: "Delivery not found." });
+    }
+
+    const [[order]] = await conn.query(
+      `
+      SELECT id, order_number, customer_id, status
+      FROM orders
+      WHERE id = ?
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [deliveryProbe.order_id],
+    );
+
+    if (!order) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(404).json({ message: "Linked order not found." });
+    }
+
     const [[existing]] = await conn.query(
       `
       SELECT
@@ -1822,10 +1853,16 @@ exports.reassignDeliveryRider = async (req, res) => {
       [deliveryId],
     );
 
-    if (!existing) {
+    if (
+      !existing ||
+      Number(existing.order_id) !== Number(order.id)
+    ) {
       await conn.rollback();
       transactionActive = false;
-      return res.status(404).json({ message: "Delivery not found." });
+      return res.status(409).json({
+        message:
+          "The delivery changed before reassignment started. Refresh and try again.",
+      });
     }
 
     const currentStatus = normalizeText(existing.status).toLowerCase();
@@ -1861,23 +1898,6 @@ exports.reassignDeliveryRider = async (req, res) => {
       return res.status(409).json({
         message: "This rider is already assigned to the delivery.",
       });
-    }
-
-    const [[order]] = await conn.query(
-      `
-      SELECT id, order_number, customer_id, status
-      FROM orders
-      WHERE id = ?
-      LIMIT 1
-      FOR UPDATE
-      `,
-      [existing.order_id],
-    );
-
-    if (!order) {
-      await conn.rollback();
-      transactionActive = false;
-      return res.status(404).json({ message: "Linked order not found." });
     }
 
     const orderStatus = normalizeText(order.status).toLowerCase();
@@ -2080,6 +2100,15 @@ exports.reassignDeliveryRider = async (req, res) => {
     }
 
     console.error("PATCH /api/pos/deliveries/:id/assignment error:", err);
+
+    if (isRetryableTransactionError(err)) {
+      return res.status(409).json(
+        buildConcurrentUpdateResponse(
+          "This delivery was updated at the same time by another process. Refresh and try the reassignment again.",
+        ),
+      );
+    }
+
     return res.status(500).json({
       message: "Failed to reassign delivery rider.",
     });
@@ -2183,15 +2212,59 @@ exports.rescheduleDelivery = async (req, res) => {
     await conn.beginTransaction();
     transactionActive = true;
 
+    // Read only the parent key first; no row lock is taken by this probe.
+    // All authoritative locks below follow orders -> deliveries.
+    const [[sourceProbe]] = await conn.query(
+      `SELECT order_id FROM deliveries WHERE id = ? LIMIT 1`,
+      [sourceDeliveryId],
+    );
+
+    if (!sourceProbe) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(404).json({ message: "Failed delivery not found." });
+    }
+
+    const [[order]] = await conn.query(
+      `
+      SELECT
+        id,
+        order_number,
+        customer_id,
+        status,
+        order_type,
+        payment_method,
+        fulfillment_method,
+        delivery_address
+      FROM orders
+      WHERE id = ?
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [sourceProbe.order_id],
+    );
+
+    if (!order) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(404).json({ message: "Linked order not found." });
+    }
+
     const [[sourceDelivery]] = await conn.query(
       `SELECT * FROM deliveries WHERE id = ? LIMIT 1 FOR UPDATE`,
       [sourceDeliveryId],
     );
 
-    if (!sourceDelivery) {
+    if (
+      !sourceDelivery ||
+      Number(sourceDelivery.order_id) !== Number(order.id)
+    ) {
       await conn.rollback();
       transactionActive = false;
-      return res.status(404).json({ message: "Failed delivery not found." });
+      return res.status(409).json({
+        message:
+          "The failed delivery changed before rescheduling started. Refresh and try again.",
+      });
     }
 
     if (normalizeText(sourceDelivery.status).toLowerCase() !== "failed") {
@@ -2211,7 +2284,7 @@ exports.rescheduleDelivery = async (req, res) => {
       LIMIT 1
       FOR UPDATE
       `,
-      [sourceDelivery.order_id],
+      [order.id],
     );
 
     if (
@@ -2234,7 +2307,7 @@ exports.rescheduleDelivery = async (req, res) => {
       LIMIT 1
       FOR UPDATE
       `,
-      [sourceDelivery.order_id],
+      [order.id],
     );
 
     if (activeAttempt) {
@@ -2243,31 +2316,6 @@ exports.rescheduleDelivery = async (req, res) => {
       return res.status(409).json({
         message: "A newer active delivery already exists for this order.",
       });
-    }
-
-    const [[order]] = await conn.query(
-      `
-      SELECT
-        id,
-        order_number,
-        customer_id,
-        status,
-        order_type,
-        payment_method,
-        fulfillment_method,
-        delivery_address
-      FROM orders
-      WHERE id = ?
-      LIMIT 1
-      FOR UPDATE
-      `,
-      [sourceDelivery.order_id],
-    );
-
-    if (!order) {
-      await conn.rollback();
-      transactionActive = false;
-      return res.status(404).json({ message: "Linked order not found." });
     }
 
     if (getEffectiveDeliveryFulfillmentMethod(order) !== "delivery") {
@@ -2530,6 +2578,15 @@ exports.rescheduleDelivery = async (req, res) => {
     }
 
     console.error("POST /api/pos/deliveries/:id/reschedule error:", err);
+
+    if (isRetryableTransactionError(err)) {
+      return res.status(409).json(
+        buildConcurrentUpdateResponse(
+          "This delivery was updated at the same time by another process. Refresh and try the reschedule again.",
+        ),
+      );
+    }
+
     return res.status(500).json({ message: "Failed to reschedule delivery." });
   } finally {
     if (conn) conn.release();
@@ -2606,21 +2663,28 @@ exports.updateDeliveryStatus = async (req, res) => {
     conn = await db.getConnection();
     await conn.beginTransaction();
 
-    const [[existing]] = await conn.query(
-      `SELECT * FROM deliveries WHERE id = ? FOR UPDATE`,
+    // Probe only the immutable delivery -> order link first. The probe
+    // does not take a row lock. Canonical mutation lock order is:
+    // orders -> deliveries -> payment/acknowledgement child rows.
+    const [[deliveryProbe]] = await conn.query(
+      `SELECT order_id, driver_id FROM deliveries WHERE id = ? LIMIT 1`,
       [deliveryId],
     );
 
-    if (!existing) {
+    if (!deliveryProbe) {
       await conn.rollback();
+      cleanupFreshUpload(req.file);
       return res.status(404).json({ message: "Delivery not found" });
     }
 
+    // Early authorization gate before locking the linked order. This probe
+    // is non-locking; assignment is revalidated again after delivery FOR UPDATE.
     if (
       req.user.role === "staff" &&
-      Number(existing.driver_id) !== Number(req.user.id)
+      Number(deliveryProbe.driver_id) !== Number(req.user.id)
     ) {
       await conn.rollback();
+      cleanupFreshUpload(req.file);
       return res.status(403).json({
         message: "You can only update deliveries assigned to you.",
       });
@@ -2633,12 +2697,54 @@ exports.updateDeliveryStatus = async (req, res) => {
        WHERE id = ?
        LIMIT 1
        FOR UPDATE`,
-      [existing.order_id],
+      [deliveryProbe.order_id],
     );
 
     if (!order) {
       await conn.rollback();
+      cleanupFreshUpload(req.file);
       return res.status(404).json({ message: "Linked order not found." });
+    }
+
+    const [[existing]] = await conn.query(
+      `SELECT * FROM deliveries WHERE id = ? FOR UPDATE`,
+      [deliveryId],
+    );
+
+    if (
+      !existing ||
+      Number(existing.order_id) !== Number(order.id)
+    ) {
+      await conn.rollback();
+      cleanupFreshUpload(req.file);
+      return res.status(409).json({
+        message:
+          "The delivery changed before this update started. Refresh and try again.",
+      });
+    }
+
+    if (
+      req.user.role === "staff" &&
+      Number(existing.driver_id) !== Number(req.user.id)
+    ) {
+      await conn.rollback();
+      cleanupFreshUpload(req.file);
+      return res.status(403).json({
+        message: "You can only update deliveries assigned to you.",
+      });
+    }
+
+    const lockedOrderStatus = normalizeText(order.status).toLowerCase();
+    if (["cancelled", "completed"].includes(lockedOrderStatus)) {
+      await conn.rollback();
+      cleanupFreshUpload(req.file);
+      return res.status(409).json({
+        reason_code: "ORDER_CLOSED_FOR_DELIVERY_MUTATION",
+        message:
+          lockedOrderStatus === "cancelled"
+            ? "This order has been cancelled and its delivery can no longer be changed."
+            : "This order has already been completed and its delivery can no longer be changed.",
+      });
     }
 
     const currentStatus = normalizeText(
@@ -3873,6 +3979,15 @@ exports.updateDeliveryStatus = async (req, res) => {
       cleanupFreshUpload(req.file);
     }
     console.error("PATCH /api/pos/deliveries/:id/status error:", err);
+
+    if (isRetryableTransactionError(err)) {
+      return res.status(409).json(
+        buildConcurrentUpdateResponse(
+          "This order or delivery was updated at the same time by another process. Refresh and try again.",
+        ),
+      );
+    }
+
     res.status(500).json({ message: "Failed to update delivery status" });
   } finally {
     if (conn) conn.release();
