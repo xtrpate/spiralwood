@@ -181,6 +181,7 @@ export default function LoginPage() {
                   placeholder=""
                   value={form.email}
                   onChange={(e) => setField("email", e.target.value)}
+                  maxLength={254}
                   required
                   autoFocus
                   autoComplete="email"
@@ -200,6 +201,7 @@ export default function LoginPage() {
                   placeholder=""
                   value={form.password}
                   onChange={(e) => setField("password", e.target.value)}
+                  maxLength={72}
                   required
                   autoComplete="current-password"
                   style={{ paddingRight: "76px" }}

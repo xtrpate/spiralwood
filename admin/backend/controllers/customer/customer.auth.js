@@ -457,10 +457,46 @@ exports.register = async (req, res) => {
     });
   }
 
-  if (password.length < 8) {
+  const normalizedFirstName = String(first_name).trim();
+  const normalizedLastName = String(last_name).trim();
+  const normalizedEmail = String(email).trim().toLowerCase();
+  const normalizedAddress = String(address).trim();
+  const normalizedPassword = String(password);
+
+  if (normalizedFirstName.length > 50) {
+    return res.status(400).json({
+      message: "First name must not exceed 50 characters.",
+    });
+  }
+
+  if (normalizedLastName.length > 50) {
+    return res.status(400).json({
+      message: "Last name must not exceed 50 characters.",
+    });
+  }
+
+  if (normalizedEmail.length > 254) {
+    return res.status(400).json({
+      message: "Email address must not exceed 254 characters.",
+    });
+  }
+
+  if (normalizedAddress.length > 500) {
+    return res.status(400).json({
+      message: "Delivery address must not exceed 500 characters.",
+    });
+  }
+
+  if (normalizedPassword.length < 8) {
     return res
       .status(400)
       .json({ message: "Password must be at least 8 characters." });
+  }
+
+  if (normalizedPassword.length > 72) {
+    return res.status(400).json({
+      message: "Password must not exceed 72 characters.",
+    });
   }
 
   let normalizedPhone;
@@ -480,9 +516,7 @@ exports.register = async (req, res) => {
   }
 
   try {
-    const normalizedEmail = String(email).trim().toLowerCase();
-    const fullName = `${String(first_name).trim()} ${String(last_name).trim()}`;
-    const normalizedPhone = normalizePhilippinePhone(phone); // Normalize phone early
+    const fullName = `${normalizedFirstName} ${normalizedLastName}`;
 
     const phoneVariants = getPhoneLookupVariants(normalizedPhone);
     const [existing] = await db.query(
@@ -504,7 +538,7 @@ exports.register = async (req, res) => {
       });
     }
 
-    const hashed = await bcrypt.hash(password, 12);
+    const hashed = await bcrypt.hash(normalizedPassword, 12);
 
     // Email OTP
     const emailOtp = generateOtp();
@@ -558,7 +592,7 @@ exports.register = async (req, res) => {
         normalizedEmail,
         hashed,
         normalizedPhone,
-        address,
+        normalizedAddress,
         parsedLat,
         parsedLng,
         emailOtpHash,
@@ -1703,6 +1737,12 @@ exports.resetPassword = async (req, res) => {
   if (normalizedNewPassword.length < 8) {
     return res.status(400).json({
       message: "New password must be at least 8 characters.",
+    });
+  }
+
+  if (normalizedNewPassword.length > 72) {
+    return res.status(400).json({
+      message: "New password must not exceed 72 characters.",
     });
   }
 

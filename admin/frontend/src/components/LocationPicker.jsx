@@ -170,6 +170,7 @@ export default function LocationPicker({
   height = 380,
   showCurrentLocation = true,
   reverseGeocodeOnPin = false,
+  maxLength,
 }) {
   const hasPin = Boolean(
     value && Number.isFinite(value.lat) && Number.isFinite(value.lng),
@@ -433,6 +434,7 @@ export default function LocationPicker({
             value={addressValue || ""}
             onChange={handleAddressInputChange}
             placeholder="Street, Barangay, City, Province"
+            maxLength={maxLength}
             style={{
               flex: "1 1 220px",
               minWidth: 0,

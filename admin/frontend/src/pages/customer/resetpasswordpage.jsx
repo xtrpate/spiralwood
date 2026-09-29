@@ -134,9 +134,10 @@ export default function ResetPasswordPage() {
                 <Lock size={15} />
                 <input
                   type={showPw ? "text" : "password"}
-                  placeholder="Minimum 8 characters"
+                  placeholder="Enter your new password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  maxLength={72}
                   required
                   style={{ paddingRight: 76 }}
                 />
@@ -194,9 +195,10 @@ export default function ResetPasswordPage() {
                 <Lock size={15} />
                 <input
                   type={showCPw ? "text" : "password"}
-                  placeholder="Repeat your new password"
+                  placeholder="Re-enter your new password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
+                  maxLength={72}
                   required
                   style={{ paddingRight: 76 }}
                 />

@@ -3259,3 +3259,133 @@
 }
 
 /* WISDOM PLACE ORDER CENTER R4 END */
+
+/* WISDOM CHECKOUT MONOCHROME FINAL V1 START */
+
+/*
+   CheckoutPage.jsx imports cart.css after customizepage.css.
+   cart.css still contains the older brown/navy checkout styles.
+   These scoped overrides make the ready-made checkout consistently
+   use the current monochrome design without affecting CartPage.
+*/
+
+/* Main checkout section number */
+.checkout-page .checkout-section-num {
+  border-color: #111111;
+  background: #111111;
+  color: #ffffff;
+}
+
+/* Checkout form text */
+.checkout-page .checkout-section-header h3,
+.checkout-page .form-field label,
+.checkout-page .checkout-item-name {
+  color: #111111;
+}
+
+/* Checkout fields */
+.checkout-page .form-field input,
+.checkout-page .form-field select,
+.checkout-page .form-field textarea,
+.checkout-page .order-notes {
+  color: #111111;
+}
+
+.checkout-page .form-field input:focus,
+.checkout-page .form-field select:focus,
+.checkout-page .form-field textarea:focus,
+.checkout-page .order-notes:focus {
+  border-color: #111111;
+  box-shadow: 0 0 0 1px #111111 inset;
+}
+
+/* Payment method cards */
+.checkout-page .payment-method-card:hover {
+  border-color: #111111;
+  background: #fafafa;
+}
+
+.checkout-page .payment-method-card.selected {
+  border-color: #111111;
+  background: #f8f8f8;
+}
+
+.checkout-page .payment-method-card.selected .payment-method-check,
+.checkout-page .payment-method-check.selected {
+  border-color: #111111;
+  background: #ffffff;
+}
+
+.checkout-page .payment-method-card.selected .payment-method-check::after,
+.checkout-page .payment-method-check.selected::after {
+  background: #111111;
+}
+
+/* Checkout summary */
+.checkout-page .checkout-summary-header {
+  background: #111111;
+  border-bottom-color: #111111;
+}
+
+.checkout-page .checkout-summary-header h3 {
+  color: #ffffff;
+}
+
+.checkout-page .checkout-summary-item-name {
+  color: #111111;
+}
+
+.checkout-page .checkout-summary-item-price {
+  color: #111111;
+}
+
+/* Checkout item prices */
+.checkout-page .checkout-item-price {
+  color: #111111;
+}
+
+/* Neutral summary text */
+.checkout-page .checkout-summary-item-qty,
+.checkout-page .checkout-item-qty {
+  color: #6b7280;
+}
+
+/* Payment information boxes, if used by this checkout */
+.checkout-page .payment-info-box {
+  background: #fafafa;
+  border-color: #e5e7eb;
+}
+
+.checkout-page .payment-info-box h4 {
+  color: #111111;
+}
+
+.checkout-page .payment-info-row {
+  color: #555555;
+}
+
+.checkout-page .payment-info-row span:last-child {
+  color: #111111;
+}
+
+/* Keep the current monochrome Place Order button */
+.checkout-page .place-order-btn {
+  background: #111111 !important;
+  border-color: #111111 !important;
+  color: #ffffff !important;
+}
+
+.checkout-page .place-order-btn:not(:disabled):hover {
+  background: #000000 !important;
+  border-color: #000000 !important;
+  color: #ffffff !important;
+}
+
+/* Disabled button */
+.checkout-page .place-order-btn:disabled {
+  background: #efefef !important;
+  border-color: #d7d7d7 !important;
+  color: #8a8a8a !important;
+}
+
+/* WISDOM CHECKOUT MONOCHROME FINAL V1 END */

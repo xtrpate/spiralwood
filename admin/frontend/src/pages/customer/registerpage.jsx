@@ -34,10 +34,7 @@ export default function RegisterPage() {
   const redirectTo = String(location.state?.redirectTo || "").trim() || null;
 
   const goToLogin = () => {
-    navigate(
-      "/login",
-      redirectTo ? { state: { redirectTo } } : undefined,
-    );
+    navigate("/login", redirectTo ? { state: { redirectTo } } : undefined);
   };
 
   const [step, setStep] = useState("form");
@@ -898,11 +895,7 @@ export default function RegisterPage() {
           </div>
 
           <div className="auth-tabs">
-            <button
-              className="auth-tab"
-              type="button"
-              onClick={goToLogin}
-            >
+            <button className="auth-tab" type="button" onClick={goToLogin}>
               Sign In
             </button>
             <button className="auth-tab active" type="button">
@@ -924,6 +917,7 @@ export default function RegisterPage() {
                       value={form.first_name}
                       onChange={(e) => set("first_name", e.target.value)}
                       placeholder="Juan"
+                      maxLength={50}
                       required
                     />
                   </div>
@@ -938,6 +932,7 @@ export default function RegisterPage() {
                       value={form.last_name}
                       onChange={(e) => set("last_name", e.target.value)}
                       placeholder="Dela Cruz"
+                      maxLength={50}
                       required
                     />
                   </div>
@@ -953,6 +948,7 @@ export default function RegisterPage() {
                     value={form.email}
                     onChange={(e) => set("email", e.target.value)}
                     placeholder="youremail@example.com"
+                    maxLength={254}
                     required
                   />
                 </div>
@@ -1000,6 +996,7 @@ export default function RegisterPage() {
                     value={form.password}
                     onChange={(e) => set("password", e.target.value)}
                     placeholder="Enter your password"
+                    maxLength={72}
                     required
                     style={{ paddingRight: 70 }}
                   />
@@ -1045,6 +1042,7 @@ export default function RegisterPage() {
                     value={form.confirm_password}
                     onChange={(e) => set("confirm_password", e.target.value)}
                     placeholder="Re-enter your password"
+                    maxLength={72}
                     required
                     style={{ paddingRight: 70 }}
                   />
@@ -1096,6 +1094,7 @@ export default function RegisterPage() {
                     label="Home Address"
                     addressValue={form.address}
                     onAddressChange={(text) => set("address", text)}
+                    maxLength={500}
                     value={
                       form.address_lat !== null && form.address_lng !== null
                         ? {
