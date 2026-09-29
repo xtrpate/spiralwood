@@ -161,6 +161,9 @@ const getPhilippineTodayKey = () => {
   return `${parts.year}-${parts.month}-${parts.day}`;
 };
 
+const MAX_DELIVERY_ADDRESS_LENGTH = 1000;
+const MAX_DELIVERY_NOTES_LENGTH = 2000;
+
 const getDeliveryAttemptStatus = (delivery = {}) => {
   const status = normalizeStatus(delivery.status);
   const notes = String(delivery.notes || "")
@@ -402,25 +405,32 @@ export default function DeliveryScheduling() {
 
   const validateForm = () => {
     const nextErrors = {};
-    const now = new Date();
 
     if (!form.order_id) nextErrors.order_id = "Please select an order.";
     if (!form.driver_id)
       nextErrors.driver_id = "Please select a delivery rider.";
 
-    if (!String(form.address || "").trim()) {
+    const address = String(form.address || "").trim();
+    if (!address) {
       nextErrors.address = "Delivery address is required.";
+    } else if (address.length > MAX_DELIVERY_ADDRESS_LENGTH) {
+      nextErrors.address =
+        `Delivery address must be ${MAX_DELIVERY_ADDRESS_LENGTH} characters or fewer.`;
+    }
+
+    const notes = String(form.notes || "").trim();
+    if (notes.length > MAX_DELIVERY_NOTES_LENGTH) {
+      nextErrors.notes =
+        `Delivery notes must be ${MAX_DELIVERY_NOTES_LENGTH} characters or fewer.`;
     }
 
     if (!form.scheduled_date) {
       nextErrors.scheduled_date = "Confirmed delivery schedule is required.";
     } else if (!/^\d{4}-\d{2}-\d{2}$/.test(form.scheduled_date)) {
       nextErrors.scheduled_date = "Confirmed delivery schedule is invalid.";
-    } else {
-      if (form.scheduled_date < todayLocal) {
-        nextErrors.scheduled_date =
-          "Confirmed delivery schedule cannot be in the past.";
-      }
+    } else if (form.scheduled_date < todayLocal) {
+      nextErrors.scheduled_date =
+        "Confirmed delivery schedule cannot be in the past.";
     }
 
     setFieldErrors(nextErrors);
@@ -663,7 +673,7 @@ export default function DeliveryScheduling() {
       setForm((prev) => ({
         ...prev,
         order_id: String(preselectOrderId),
-        address: selectedOrder.delivery_address || prev.address,
+        address: selectedOrder.delivery_address || "",
         scheduled_date: requestedDateOnly,
       }));
 
@@ -862,6 +872,12 @@ export default function DeliveryScheduling() {
       nextErrors.reason = "Reschedule reason is required.";
     } else if (reason.length > 500) {
       nextErrors.reason = "Reschedule reason must be 500 characters or fewer.";
+    }
+
+    const notes = String(rescheduleForm.notes || "").trim();
+    if (notes.length > MAX_DELIVERY_NOTES_LENGTH) {
+      nextErrors.notes =
+        `Delivery notes must be ${MAX_DELIVERY_NOTES_LENGTH} characters or fewer.`;
     }
 
     setRescheduleFieldErrors(nextErrors);
@@ -1231,7 +1247,7 @@ export default function DeliveryScheduling() {
                         ...prev,
                         order_id: nextOrderId,
                         address:
-                          selectedOrder?.delivery_address || prev.address,
+                          selectedOrder?.delivery_address || "",
                         scheduled_date:
                           requestedDateOnly,
                       }));
@@ -1398,17 +1414,14 @@ export default function DeliveryScheduling() {
                   <input
                     type="text"
                     value={form.address}
-                    onChange={(e) => {
-                      setForm((prev) => ({
-                        ...prev,
-                        address: e.target.value,
-                      }));
-                      setFieldErrors((prev) => ({ ...prev, address: "" }));
-                    }}
-                    placeholder="Delivery address"
+                    readOnly
+                    maxLength={MAX_DELIVERY_ADDRESS_LENGTH}
+                    placeholder="Select an order to load its delivery address"
                     required
+                    title="Delivery address is loaded from the selected order."
                     style={{
                       ...inputStyle,
+                      background: "#f4f4f5",
                       borderColor: fieldErrors.address ? "#dc2626" : "#e4e4e7",
                     }}
                   />
@@ -1430,20 +1443,35 @@ export default function DeliveryScheduling() {
                   <label style={labelStyle}>Notes</label>
                   <textarea
                     rows={2}
+                    maxLength={MAX_DELIVERY_NOTES_LENGTH}
                     placeholder="Add delivery instructions (optional)"
                     value={form.notes}
-                    onChange={(e) =>
+                    onChange={(e) => {
                       setForm((prev) => ({
                         ...prev,
                         notes: e.target.value,
-                      }))
-                    }
+                      }));
+                      setFieldErrors((prev) => ({ ...prev, notes: "" }));
+                    }}
                     style={{
                       ...inputStyle,
                       resize: "vertical",
                       fontFamily: "inherit",
+                      borderColor: fieldErrors.notes ? "#dc2626" : "#e4e4e7",
                     }}
                   />
+                  {fieldErrors.notes && (
+                    <p
+                      style={{
+                        color: "#dc2626",
+                        fontSize: 12,
+                        marginTop: 6,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {fieldErrors.notes}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -1935,20 +1963,39 @@ export default function DeliveryScheduling() {
                   <label style={labelStyle}>Notes</label>
                   <textarea
                     rows={2}
+                    maxLength={MAX_DELIVERY_NOTES_LENGTH}
                     placeholder="Add delivery instructions (optional)"
                     value={rescheduleForm.notes}
-                    onChange={(event) =>
+                    onChange={(event) => {
                       setRescheduleForm((prev) => ({
                         ...prev,
                         notes: event.target.value,
-                      }))
-                    }
+                      }));
+                      setRescheduleFieldErrors((prev) => ({
+                        ...prev,
+                        notes: "",
+                      }));
+                    }}
                     style={{
                       ...inputStyle,
                       resize: "vertical",
                       fontFamily: "inherit",
+                      borderColor: rescheduleFieldErrors.notes
+                        ? "#dc2626"
+                        : "#d9dce1",
                     }}
                   />
+                  {rescheduleFieldErrors.notes ? (
+                    <p
+                      style={{
+                        color: "#dc2626",
+                        fontSize: 11,
+                        margin: "6px 0 0",
+                      }}
+                    >
+                      {rescheduleFieldErrors.notes}
+                    </p>
+                  ) : null}
                 </div>
               </div>
 
