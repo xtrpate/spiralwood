@@ -16,6 +16,11 @@ const {
   centsToDecimalString,
   centsToAmount,
 } = require("../../utils/paymentAmounts");
+const { parseStrictPositiveInt } = require("../../utils/validators");
+const {
+  isRetryableTransactionError,
+  buildConcurrentUpdateResponse,
+} = require("../../utils/transactionConflict");
 const {
   createNotification,
   createNotificationSafe,
@@ -73,6 +78,168 @@ const DELIVERY_TRANSITIONS = {
   failed: [],
 };
 const normalizeText = (value) => String(value || "").trim();
+
+const DELIVERY_SCHEDULABLE_ORDER_STATUSES = new Set([
+  "confirmed",
+  "contract_released",
+  "production",
+  "shipping",
+]);
+const MAX_DELIVERY_ADDRESS_LENGTH = 1000;
+const MAX_DELIVERY_NOTES_LENGTH = 2000;
+const MAX_RESCHEDULE_REASON_LENGTH = 500;
+const MAX_STORED_RESCHEDULE_NOTES_LENGTH =
+  "Reschedule Reason: ".length +
+  MAX_RESCHEDULE_REASON_LENGTH +
+  1 +
+  MAX_DELIVERY_NOTES_LENGTH;
+
+const CREATE_DELIVERY_BODY_KEYS = new Set([
+  "order_id",
+  "driver_id",
+  "address",
+  "scheduled_date",
+  "notes",
+]);
+const REASSIGN_DELIVERY_BODY_KEYS = new Set([
+  "driver_id",
+  "reassignment_reason",
+]);
+const RESCHEDULE_DELIVERY_BODY_KEYS = new Set([
+  "driver_id",
+  "scheduled_date",
+  "reschedule_reason",
+  "notes",
+]);
+
+const hasOnlyAllowedDeliveryKeys = (value, allowedKeys) =>
+  value &&
+  typeof value === "object" &&
+  !Array.isArray(value) &&
+  Object.keys(value).every((key) => allowedKeys.has(key));
+
+const parseDeliveryPositiveInt = (value) => {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  return parseStrictPositiveInt(value);
+};
+
+const readBoundedDeliveryText = (
+  value,
+  { required = false, maxLength } = {},
+) => {
+  if (value === undefined || value === null) {
+    return required
+      ? { ok: false, reason: "required", value: "" }
+      : { ok: true, reason: null, value: "" };
+  }
+
+  if (typeof value !== "string") {
+    return { ok: false, reason: "type", value: "" };
+  }
+
+  const normalized = value.trim();
+
+  if (required && !normalized) {
+    return { ok: false, reason: "required", value: "" };
+  }
+
+  if (
+    Number.isSafeInteger(maxLength) &&
+    maxLength >= 0 &&
+    normalized.length > maxLength
+  ) {
+    return { ok: false, reason: "length", value: normalized };
+  }
+
+  return { ok: true, reason: null, value: normalized };
+};
+
+const getEffectiveDeliveryFulfillmentMethod = (order = {}) => {
+  const orderType =
+    normalizeText(order.order_type).toLowerCase() || "standard";
+  const paymentMethod = normalizeText(order.payment_method).toLowerCase();
+
+  // Standard storefront COP is Cash on Pickup. Those orders currently do
+  // not persist fulfillment_method, so payment_method remains the canonical
+  // pickup signal for this legacy/current standard-order flow.
+  if (orderType === "standard" && paymentMethod === "cop") {
+    return "pickup";
+  }
+
+  const explicitFulfillment = normalizeText(
+    order.fulfillment_method,
+  ).toLowerCase();
+
+  if (explicitFulfillment === "pickup") return "pickup";
+  if (explicitFulfillment === "delivery") return "delivery";
+
+  // Preserve the existing legacy default for records that predate an
+  // explicit fulfillment_method. Other scheduling gates still require an
+  // eligible status and a saved delivery address.
+  return "delivery";
+};
+
+const isActiveDeliveryRider = (user) =>
+  Boolean(
+    user &&
+      user.role === "staff" &&
+      user.staff_type === "delivery_rider" &&
+      Number(user.is_active) === 1,
+  );
+
+const getCreateDeliveryBaseEligibility = (order = {}) => {
+  const orderStatus = normalizeText(order.status).toLowerCase();
+  const orderType =
+    normalizeText(order.order_type).toLowerCase() || "standard";
+  const fulfillmentMethod = getEffectiveDeliveryFulfillmentMethod(order);
+  const canonicalAddress = normalizeText(order.delivery_address);
+
+  if (fulfillmentMethod !== "delivery") {
+    return {
+      ok: false,
+      message: "Pickup orders cannot be scheduled for delivery.",
+    };
+  }
+
+  if (!canonicalAddress) {
+    return {
+      ok: false,
+      message:
+        "A saved delivery address is required before this order can be scheduled.",
+    };
+  }
+
+  if (canonicalAddress.length > MAX_DELIVERY_ADDRESS_LENGTH) {
+    return {
+      ok: false,
+      message:
+        "The saved delivery address is too long. Update the order address before scheduling delivery.",
+    };
+  }
+
+  if (orderType === "blueprint" && orderStatus !== "production") {
+    return {
+      ok: false,
+      message:
+        "Blueprint delivery can only be scheduled after the order reaches Production.",
+    };
+  }
+
+  if (!DELIVERY_SCHEDULABLE_ORDER_STATUSES.has(orderStatus)) {
+    return {
+      ok: false,
+      message: "This order is not eligible for delivery scheduling.",
+    };
+  }
+
+  return {
+    ok: true,
+    orderStatus,
+    orderType,
+    fulfillmentMethod,
+    canonicalAddress,
+  };
+};
 
 const DELIVERY_ACKNOWLEDGEMENT_TEXT =
   "I acknowledge receipt of this order at the delivery address.";
@@ -431,28 +598,6 @@ const isRiderDeliveryCollectionPayment = (row = {}) => {
   );
 };
 
-const ensureStaffType = async (userId, expectedType) => {
-  if (!userId) return null;
-
-  const [rows] = await db.query(
-    `SELECT id, name, role, staff_type, is_active
-     FROM users
-     WHERE id = ?
-     LIMIT 1`,
-    [userId],
-  );
-
-  if (!rows.length) return null;
-
-  const user = rows[0];
-
-  if (user.role !== "staff") return null;
-  if (user.staff_type !== expectedType) return null;
-  if (!user.is_active) return null;
-
-  return user;
-};
-
 exports.getDeliverableOrders = async (req, res) => {
   try {
     // ── FIXED: Added empty array [] to prevent driver panics ──
@@ -498,11 +643,11 @@ exports.getDeliverableOrders = async (req, res) => {
     );
 
     const readinessPromises = rows.map(async (row) => {
-      const isBlueprint =
-        normalizeText(row.order_type).toLowerCase() === "blueprint";
+      const baseEligibility = getCreateDeliveryBaseEligibility(row);
+      if (!baseEligibility.ok) return null;
 
+      const isBlueprint = baseEligibility.orderType === "blueprint";
       if (!isBlueprint) return row;
-      if (normalizeText(row.status).toLowerCase() !== "production") return null;
 
       const readiness = await getBlueprintDeliveryReadiness(db, row.id);
       return readiness.ok ? row : null;
@@ -1236,18 +1381,54 @@ exports.getDeliveryReceipt = async (req, res) => {
 };
 
 exports.createDelivery = async (req, res) => {
-  const orderId = toNullableInt(req.body.order_id);
-  const driverId = toNullableInt(req.body.driver_id);
-  const address = normalizeText(req.body.address);
-  const scheduledDateRaw = normalizeText(req.body.scheduled_date);
-  const scheduledDate = normalizeConfirmedScheduleDateOnly(scheduledDateRaw);
-  const notes = normalizeText(req.body.notes) || "";
-
-  if (!orderId || !driverId || !address || !scheduledDateRaw) {
+  if (!hasOnlyAllowedDeliveryKeys(req.body, CREATE_DELIVERY_BODY_KEYS)) {
     return res.status(400).json({
-      message: "order_id, driver_id, address, and scheduled_date are required",
+      message: "Unsupported delivery scheduling field detected.",
     });
   }
+
+  const orderId = parseDeliveryPositiveInt(req.body.order_id);
+  const driverId = parseDeliveryPositiveInt(req.body.driver_id);
+
+  if (!orderId) {
+    return res.status(400).json({ message: "Invalid order_id." });
+  }
+
+  if (!driverId) {
+    return res.status(400).json({ message: "Invalid driver_id." });
+  }
+
+  const requestedAddressResult = readBoundedDeliveryText(req.body.address, {
+    required: true,
+    maxLength: MAX_DELIVERY_ADDRESS_LENGTH,
+  });
+
+  if (!requestedAddressResult.ok) {
+    return res.status(400).json({
+      message:
+        requestedAddressResult.reason === "length"
+          ? `Delivery address must be ${MAX_DELIVERY_ADDRESS_LENGTH} characters or fewer.`
+          : "Delivery address must be valid text.",
+    });
+  }
+
+  const scheduledDateInput = readBoundedDeliveryText(
+    req.body.scheduled_date,
+    {
+      required: true,
+      maxLength: 32,
+    },
+  );
+
+  if (!scheduledDateInput.ok) {
+    return res.status(400).json({
+      message: "Confirmed delivery schedule must be a valid date.",
+    });
+  }
+
+  const scheduledDate = normalizeConfirmedScheduleDateOnly(
+    scheduledDateInput.value,
+  );
 
   if (!scheduledDate) {
     return res.status(400).json({
@@ -1261,195 +1442,158 @@ exports.createDelivery = async (req, res) => {
     });
   }
 
-  try {
-    const rider = await ensureStaffType(driverId, "delivery_rider");
-    if (!rider) {
-      return res.status(400).json({
-        message: "Selected delivery rider was not found.",
-      });
-    }
+  const notesResult = readBoundedDeliveryText(req.body.notes, {
+    maxLength: MAX_DELIVERY_NOTES_LENGTH,
+  });
 
-    const [[order]] = await db.query(
+  if (!notesResult.ok) {
+    return res.status(400).json({
+      message:
+        notesResult.reason === "length"
+          ? `Delivery notes must be ${MAX_DELIVERY_NOTES_LENGTH} characters or fewer.`
+          : "Delivery notes must be text.",
+    });
+  }
+
+  const requestedAddress = requestedAddressResult.value;
+  const finalNotes = notesResult.value || null;
+
+  let result = null;
+  let delivery = null;
+  let scheduleConn = null;
+  let transactionActive = false;
+  let order = null;
+  let rider = null;
+  let canonicalAddress = "";
+
+  try {
+    scheduleConn = await db.getConnection();
+    await scheduleConn.beginTransaction();
+    transactionActive = true;
+
+    const [[lockedOrder]] = await scheduleConn.query(
       `
       SELECT
-        o.id,
-        o.order_number,
-        o.customer_id,
-        o.status,
-        o.order_type,
-        o.payment_status,
-        o.fulfillment_method,
-        o.delivery_address,
-        o.requested_delivery_date,
-        o.delivery_request_notes,
-        o.notes,
-        COALESCE(o.walkin_customer_name, customer.name, 'Walk-in Customer') AS customer_name,
-        COALESCE(o.walkin_customer_phone, customer.phone, '') AS customer_phone
-      FROM orders o
-      LEFT JOIN users customer ON customer.id = o.customer_id
-      WHERE o.id = ?
+        id,
+        order_number,
+        customer_id,
+        status,
+        order_type,
+        type,
+        payment_status,
+        payment_method,
+        fulfillment_method,
+        delivery_address,
+        requested_delivery_date,
+        delivery_request_notes,
+        notes
+      FROM orders
+      WHERE id = ?
       LIMIT 1
+      FOR UPDATE
       `,
       [orderId],
     );
 
-    if (!order) {
+    if (!lockedOrder) {
+      await scheduleConn.rollback();
+      transactionActive = false;
       return res.status(404).json({ message: "Order not found" });
     }
 
-    if (
-      normalizeText(order.order_type).toLowerCase() === "blueprint" &&
-      normalizeText(order.fulfillment_method).toLowerCase() === "pickup"
-    ) {
+    order = lockedOrder;
+
+    const baseEligibility = getCreateDeliveryBaseEligibility(lockedOrder);
+
+    if (!baseEligibility.ok) {
+      await scheduleConn.rollback();
+      transactionActive = false;
+      return res.status(409).json({ message: baseEligibility.message });
+    }
+
+    canonicalAddress = baseEligibility.canonicalAddress;
+
+    if (requestedAddress !== canonicalAddress) {
+      await scheduleConn.rollback();
+      transactionActive = false;
       return res.status(409).json({
-        message: "Pickup orders cannot be scheduled for delivery.",
+        message:
+          "The delivery address no longer matches the saved order address. Refresh the order before scheduling delivery.",
       });
     }
 
-    const orderStatus = String(order.status || "").toLowerCase();
+    if (baseEligibility.orderType === "blueprint") {
+      const readiness = await getBlueprintDeliveryReadiness(
+        scheduleConn,
+        orderId,
+      );
 
-    if (["cancelled", "delivered", "completed"].includes(orderStatus)) {
-      return res.status(400).json({
-        message: "This order can no longer be scheduled for delivery",
-      });
-    }
-    if (normalizeText(order.order_type).toLowerCase() === "blueprint") {
-      if (orderStatus !== "production") {
+      if (!readiness.ok) {
+        await scheduleConn.rollback();
+        transactionActive = false;
         return res.status(409).json({
-          message:
-            "Blueprint delivery can only be scheduled after the order reaches Production.",
+          message: readiness.message,
         });
       }
-
-      const readiness = await getBlueprintDeliveryReadiness(db, orderId);
-      if (!readiness.ok) {
-        return res.status(409).json({ message: readiness.message });
-      }
     }
 
-    const [[existingDelivery]] = await db.query(
+    const [[lockedExistingDelivery]] = await scheduleConn.query(
       `
       SELECT id, status
       FROM deliveries
       WHERE order_id = ?
       ORDER BY id DESC
       LIMIT 1
+      FOR UPDATE
       `,
       [orderId],
     );
 
-    if (existingDelivery) {
+    if (lockedExistingDelivery) {
+      await scheduleConn.rollback();
+      transactionActive = false;
       return res.status(409).json({
         message:
-          String(existingDelivery.status || "").toLowerCase() === "failed"
+          normalizeText(lockedExistingDelivery.status).toLowerCase() ===
+          "failed"
             ? "This order has a failed delivery. Use Reschedule on the latest failed attempt."
             : "A delivery already exists for this order.",
       });
     }
 
-    const finalNotes = notes || null;
+    const [[lockedRider]] = await scheduleConn.query(
+      `
+      SELECT id, name, role, staff_type, is_active
+      FROM users
+      WHERE id = ?
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [driverId],
+    );
 
-    let result;
-    let delivery;
-    let scheduleConn;
-    let nextOrderStatus = null;
+    if (!isActiveDeliveryRider(lockedRider)) {
+      await scheduleConn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "Selected delivery rider was not found or is inactive.",
+      });
+    }
 
-    try {
-      scheduleConn = await db.getConnection();
-      await scheduleConn.beginTransaction();
+    rider = lockedRider;
 
-      const [[lockedOrder]] = await scheduleConn.query(
-        `
-        SELECT id, status, order_type, type, fulfillment_method
-        FROM orders
-        WHERE id = ?
-        LIMIT 1
-        FOR UPDATE
-        `,
-        [orderId],
-      );
+    // Re-check the PH business date while the authoritative transaction is
+    // active so a request crossing midnight cannot persist a newly-past date.
+    if (scheduledDate < getPhilippineDateKey()) {
+      await scheduleConn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "Confirmed delivery schedule cannot be in the past.",
+      });
+    }
 
-      if (!lockedOrder) {
-        await scheduleConn.rollback();
-        return res.status(404).json({ message: "Order not found" });
-      }
-
-      const lockedOrderStatus = normalizeText(
-        lockedOrder.status || "",
-      ).toLowerCase();
-      const lockedIsBlueprintOrder =
-        normalizeText(lockedOrder.order_type || "").toLowerCase() ===
-        "blueprint";
-      const lockedIsPickupOrder =
-        lockedIsBlueprintOrder &&
-        normalizeText(lockedOrder.fulfillment_method || "").toLowerCase() ===
-          "pickup";
-
-      if (lockedIsPickupOrder) {
-        await scheduleConn.rollback();
-        return res.status(409).json({
-          message: "Pickup orders cannot be scheduled for delivery.",
-        });
-      }
-
-      const lockedIsOnlineStandardOrder =
-        normalizeText(lockedOrder.order_type || "").toLowerCase() ===
-          "standard" &&
-        normalizeText(lockedOrder.type || "").toLowerCase() === "online";
-
-      if (["cancelled", "delivered", "completed"].includes(lockedOrderStatus)) {
-        await scheduleConn.rollback();
-        return res.status(409).json({
-          message: "This order can no longer be scheduled for delivery.",
-        });
-      }
-
-      if (lockedIsBlueprintOrder) {
-        if (lockedOrderStatus !== "production") {
-          await scheduleConn.rollback();
-          return res.status(409).json({
-            message:
-              "Blueprint delivery can only be scheduled after the order reaches Production.",
-          });
-        }
-
-        const lockedReadiness = await getBlueprintDeliveryReadiness(
-          scheduleConn,
-          orderId,
-        );
-        if (!lockedReadiness.ok) {
-          await scheduleConn.rollback();
-          return res.status(409).json({
-            message: lockedReadiness.message,
-          });
-        }
-      }
-
-      const [[lockedExistingDelivery]] = await scheduleConn.query(
-        `
-        SELECT id, status
-        FROM deliveries
-        WHERE order_id = ?
-        ORDER BY id DESC
-        LIMIT 1
-        FOR UPDATE
-        `,
-        [orderId],
-      );
-
-      if (lockedExistingDelivery) {
-        await scheduleConn.rollback();
-        return res.status(409).json({
-          message:
-            normalizeText(lockedExistingDelivery.status).toLowerCase() ===
-            "failed"
-              ? "This order has a failed delivery. Use Reschedule on the latest failed attempt."
-              : "A delivery already exists for this order.",
-        });
-      }
-
-      [result] = await scheduleConn.query(
-        `
+    [result] = await scheduleConn.query(
+      `
       INSERT INTO deliveries (
         order_id,
         driver_id,
@@ -1464,15 +1608,18 @@ exports.createDelivery = async (req, res) => {
       )
       VALUES (?, ?, ?, NOW(), ?, NULL, ?, 'scheduled', ?, NULL)
       `,
-        [orderId, driverId, req.user.id, scheduledDate, address, finalNotes],
-      );
+      [
+        orderId,
+        driverId,
+        req.user.id,
+        scheduledDate,
+        canonicalAddress,
+        finalNotes,
+      ],
+    );
 
-      // Creating or assigning a delivery does not start the delivery itself.
-      // The delivery record remains "scheduled" until the assigned rider
-      // explicitly starts the trip and changes it to "in_transit".
-
-      [[delivery]] = await scheduleConn.query(
-        `
+    [[delivery]] = await scheduleConn.query(
+      `
       SELECT
         d.id,
         d.order_id,
@@ -1505,57 +1652,38 @@ exports.createDelivery = async (req, res) => {
       WHERE d.id = ?
       LIMIT 1
       `,
-        [result.insertId],
-      );
+      [result.insertId],
+    );
 
-      await scheduleConn.commit();
+    await scheduleConn.commit();
+    transactionActive = false;
 
-      const io = req.app.get("io");
+    const io = req.app.get("io");
+    const orderStatusChanged = false;
 
-      const orderStatusChanged = false;
+    emitDeliveryUpdate(io, {
+      deliveryId: delivery?.id ?? result.insertId,
+      orderId,
+      orderNumber: order.order_number,
+      status: delivery?.status ?? "scheduled",
+      driverId,
+      scheduledDate: delivery?.scheduled_date ?? scheduledDate,
+      customerId: order.customer_id,
+      changeType: "created",
+      orderStatusChanged,
+      notifyCustomer: !orderStatusChanged,
+      notifyDriver: false,
+    });
 
-      emitDeliveryUpdate(io, {
-        deliveryId: delivery?.id ?? result.insertId,
-        orderId,
-        orderNumber: order.order_number,
-        status: delivery?.status ?? "scheduled",
-        driverId,
-        scheduledDate: delivery?.scheduled_date ?? scheduledDate,
-        customerId: order.customer_id,
-        changeType: "created",
-        orderStatusChanged,
-        notifyCustomer: !orderStatusChanged,
-        notifyDriver: false,
-      });
-
-      // Order status remains unchanged while the delivery is only scheduled.
-      // The assigned rider will emit the order status change when the trip
-      // actually starts.
-
-      emitDeliveryAssigned({
-        io,
-        deliveryId: delivery?.id ?? result.insertId,
-        orderId,
-        orderNumber: order.order_number,
-        driverId,
-        scheduledDate,
-        status: delivery?.status ?? "scheduled",
-      });
-    } catch (scheduleErr) {
-      if (scheduleConn) {
-        try {
-          await scheduleConn.rollback();
-        } catch (rollbackErr) {
-          console.error(
-            "POST /api/pos/deliveries scheduling rollback error:",
-            rollbackErr,
-          );
-        }
-      }
-      throw scheduleErr;
-    } finally {
-      if (scheduleConn) scheduleConn.release();
-    }
+    emitDeliveryAssigned({
+      io,
+      deliveryId: delivery?.id ?? result.insertId,
+      orderId,
+      orderNumber: order.order_number,
+      driverId,
+      scheduledDate,
+      status: delivery?.status ?? "scheduled",
+    });
 
     req.auditRecord = {
       id: result.insertId,
@@ -1567,7 +1695,7 @@ exports.createDelivery = async (req, res) => {
         assigned_by: delivery?.assigned_by ?? req.user.id,
         scheduled_date: delivery?.scheduled_date ?? scheduledDate,
         status: delivery?.status ?? "scheduled",
-        address_present: Boolean(delivery?.address ?? address),
+        address_present: Boolean(delivery?.address ?? canonicalAddress),
         notes_present: Boolean(delivery?.notes ?? finalNotes),
         signed_receipt_present: false,
         assigned_at: delivery?.assigned_at ?? null,
@@ -1600,7 +1728,7 @@ exports.createDelivery = async (req, res) => {
       });
     }
 
-    res.status(201).json({
+    return res.status(201).json({
       message: "Delivery scheduled successfully",
       delivery,
       assigned_driver: {
@@ -1609,31 +1737,65 @@ exports.createDelivery = async (req, res) => {
       },
     });
   } catch (err) {
+    if (scheduleConn && transactionActive) {
+      try {
+        await scheduleConn.rollback();
+      } catch (rollbackErr) {
+        console.error(
+          "POST /api/pos/deliveries scheduling rollback error:",
+          rollbackErr,
+        );
+      }
+      transactionActive = false;
+    }
+
     console.error("POST /api/pos/deliveries error:", err);
-    res.status(500).json({ message: "Failed to schedule delivery" });
+    return res.status(500).json({ message: "Failed to schedule delivery" });
+  } finally {
+    if (scheduleConn) scheduleConn.release();
   }
 };
 
 exports.reassignDeliveryRider = async (req, res) => {
-  const deliveryId = toNullableInt(req.params.id);
-  const driverId = toNullableInt(req.body.driver_id);
-  const reassignmentReason = normalizeText(req.body.reassignment_reason);
+  if (
+    !hasOnlyAllowedDeliveryKeys(
+      req.body,
+      REASSIGN_DELIVERY_BODY_KEYS,
+    )
+  ) {
+    return res.status(400).json({
+      message: "Unsupported delivery reassignment field detected.",
+    });
+  }
+
+  const deliveryId = parseDeliveryPositiveInt(req.params.id);
+  const driverId = parseDeliveryPositiveInt(req.body.driver_id);
+  const reasonResult = readBoundedDeliveryText(
+    req.body.reassignment_reason,
+    {
+      required: true,
+      maxLength: MAX_RESCHEDULE_REASON_LENGTH,
+    },
+  );
 
   if (!deliveryId) {
     return res.status(400).json({ message: "Invalid delivery id." });
   }
 
-  if (!driverId || !reassignmentReason) {
+  if (!driverId) {
+    return res.status(400).json({ message: "Invalid driver_id." });
+  }
+
+  if (!reasonResult.ok) {
     return res.status(400).json({
-      message: "driver_id and reassignment_reason are required.",
+      message:
+        reasonResult.reason === "length"
+          ? `Reassignment reason must be ${MAX_RESCHEDULE_REASON_LENGTH} characters or fewer.`
+          : "A valid reassignment reason is required.",
     });
   }
 
-  if (reassignmentReason.length > 500) {
-    return res.status(400).json({
-      message: "Reassignment reason must be 500 characters or fewer.",
-    });
-  }
+  const reassignmentReason = reasonResult.value;
 
   let conn;
   let transactionActive = false;
@@ -1643,9 +1805,36 @@ exports.reassignDeliveryRider = async (req, res) => {
     await conn.beginTransaction();
     transactionActive = true;
 
-    // Lock the delivery first. updateDeliveryStatus() uses the same
-    // delivery -> order lock order, so a rider starting the trip at the
-    // same moment as an admin reassignment is serialized safely.
+    // Probe the immutable parent link without taking a row lock. The
+    // authoritative transaction lock order is always orders -> deliveries.
+    const [[deliveryProbe]] = await conn.query(
+      `SELECT order_id FROM deliveries WHERE id = ? LIMIT 1`,
+      [deliveryId],
+    );
+
+    if (!deliveryProbe) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(404).json({ message: "Delivery not found." });
+    }
+
+    const [[order]] = await conn.query(
+      `
+      SELECT id, order_number, customer_id, status
+      FROM orders
+      WHERE id = ?
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [deliveryProbe.order_id],
+    );
+
+    if (!order) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(404).json({ message: "Linked order not found." });
+    }
+
     const [[existing]] = await conn.query(
       `
       SELECT
@@ -1664,10 +1853,16 @@ exports.reassignDeliveryRider = async (req, res) => {
       [deliveryId],
     );
 
-    if (!existing) {
+    if (
+      !existing ||
+      Number(existing.order_id) !== Number(order.id)
+    ) {
       await conn.rollback();
       transactionActive = false;
-      return res.status(404).json({ message: "Delivery not found." });
+      return res.status(409).json({
+        message:
+          "The delivery changed before reassignment started. Refresh and try again.",
+      });
     }
 
     const currentStatus = normalizeText(existing.status).toLowerCase();
@@ -1703,23 +1898,6 @@ exports.reassignDeliveryRider = async (req, res) => {
       return res.status(409).json({
         message: "This rider is already assigned to the delivery.",
       });
-    }
-
-    const [[order]] = await conn.query(
-      `
-      SELECT id, order_number, customer_id, status
-      FROM orders
-      WHERE id = ?
-      LIMIT 1
-      FOR UPDATE
-      `,
-      [existing.order_id],
-    );
-
-    if (!order) {
-      await conn.rollback();
-      transactionActive = false;
-      return res.status(404).json({ message: "Linked order not found." });
     }
 
     const orderStatus = normalizeText(order.status).toLowerCase();
@@ -1922,6 +2100,15 @@ exports.reassignDeliveryRider = async (req, res) => {
     }
 
     console.error("PATCH /api/pos/deliveries/:id/assignment error:", err);
+
+    if (isRetryableTransactionError(err)) {
+      return res.status(409).json(
+        buildConcurrentUpdateResponse(
+          "This delivery was updated at the same time by another process. Refresh and try the reassignment again.",
+        ),
+      );
+    }
+
     return res.status(500).json({
       message: "Failed to reassign delivery rider.",
     });
@@ -1931,22 +2118,45 @@ exports.reassignDeliveryRider = async (req, res) => {
 };
 
 exports.rescheduleDelivery = async (req, res) => {
-  const sourceDeliveryId = toNullableInt(req.params.id);
-  const driverId = toNullableInt(req.body.driver_id);
-  const scheduledDateRaw = normalizeText(req.body.scheduled_date);
-  const scheduledDate = normalizeConfirmedScheduleDateOnly(scheduledDateRaw);
-  const rescheduleReason = normalizeText(req.body.reschedule_reason);
-  const notes = normalizeText(req.body.notes) || "";
+  if (
+    !hasOnlyAllowedDeliveryKeys(
+      req.body,
+      RESCHEDULE_DELIVERY_BODY_KEYS,
+    )
+  ) {
+    return res.status(400).json({
+      message: "Unsupported delivery reschedule field detected.",
+    });
+  }
+
+  const sourceDeliveryId = parseDeliveryPositiveInt(req.params.id);
+  const driverId = parseDeliveryPositiveInt(req.body.driver_id);
 
   if (!sourceDeliveryId) {
     return res.status(400).json({ message: "Invalid failed delivery id." });
   }
 
-  if (!driverId || !scheduledDateRaw || !rescheduleReason) {
+  if (!driverId) {
+    return res.status(400).json({ message: "Invalid driver_id." });
+  }
+
+  const scheduledDateInput = readBoundedDeliveryText(
+    req.body.scheduled_date,
+    {
+      required: true,
+      maxLength: 32,
+    },
+  );
+
+  if (!scheduledDateInput.ok) {
     return res.status(400).json({
-      message: "driver_id, scheduled_date, and reschedule_reason are required.",
+      message: "New delivery date must be a valid date.",
     });
   }
+
+  const scheduledDate = normalizeConfirmedScheduleDateOnly(
+    scheduledDateInput.value,
+  );
 
   if (!scheduledDate) {
     return res.status(400).json({
@@ -1960,36 +2170,106 @@ exports.rescheduleDelivery = async (req, res) => {
     });
   }
 
-  if (rescheduleReason.length > 500) {
+  const reasonResult = readBoundedDeliveryText(
+    req.body.reschedule_reason,
+    {
+      required: true,
+      maxLength: MAX_RESCHEDULE_REASON_LENGTH,
+    },
+  );
+
+  if (!reasonResult.ok) {
     return res.status(400).json({
-      message: "Reschedule reason must be 500 characters or fewer.",
+      message:
+        reasonResult.reason === "length"
+          ? `Reschedule reason must be ${MAX_RESCHEDULE_REASON_LENGTH} characters or fewer.`
+          : "A valid reschedule reason is required.",
     });
   }
 
-  let conn;
-  try {
-    const rider = await ensureStaffType(driverId, "delivery_rider");
-    if (!rider) {
-      return res.status(400).json({
-        message: "Selected delivery rider was not found.",
-      });
-    }
+  const notesResult = readBoundedDeliveryText(req.body.notes, {
+    maxLength: MAX_DELIVERY_NOTES_LENGTH,
+  });
 
+  if (!notesResult.ok) {
+    return res.status(400).json({
+      message:
+        notesResult.reason === "length"
+          ? `Delivery notes must be ${MAX_DELIVERY_NOTES_LENGTH} characters or fewer.`
+          : "Delivery notes must be text.",
+    });
+  }
+
+  const rescheduleReason = reasonResult.value;
+  const notes = notesResult.value;
+
+  let conn = null;
+  let transactionActive = false;
+  let rider = null;
+
+  try {
     conn = await db.getConnection();
     await conn.beginTransaction();
+    transactionActive = true;
+
+    // Read only the parent key first; no row lock is taken by this probe.
+    // All authoritative locks below follow orders -> deliveries.
+    const [[sourceProbe]] = await conn.query(
+      `SELECT order_id FROM deliveries WHERE id = ? LIMIT 1`,
+      [sourceDeliveryId],
+    );
+
+    if (!sourceProbe) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(404).json({ message: "Failed delivery not found." });
+    }
+
+    const [[order]] = await conn.query(
+      `
+      SELECT
+        id,
+        order_number,
+        customer_id,
+        status,
+        order_type,
+        payment_method,
+        fulfillment_method,
+        delivery_address
+      FROM orders
+      WHERE id = ?
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [sourceProbe.order_id],
+    );
+
+    if (!order) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(404).json({ message: "Linked order not found." });
+    }
 
     const [[sourceDelivery]] = await conn.query(
       `SELECT * FROM deliveries WHERE id = ? LIMIT 1 FOR UPDATE`,
       [sourceDeliveryId],
     );
 
-    if (!sourceDelivery) {
+    if (
+      !sourceDelivery ||
+      Number(sourceDelivery.order_id) !== Number(order.id)
+    ) {
       await conn.rollback();
-      return res.status(404).json({ message: "Failed delivery not found." });
+      transactionActive = false;
+      return res.status(409).json({
+        message:
+          "The failed delivery changed before rescheduling started. Refresh and try again.",
+      });
     }
 
     if (normalizeText(sourceDelivery.status).toLowerCase() !== "failed") {
       await conn.rollback();
+      transactionActive = false;
       return res.status(409).json({
         message: "Only a failed delivery can be rescheduled.",
       });
@@ -2004,7 +2284,7 @@ exports.rescheduleDelivery = async (req, res) => {
       LIMIT 1
       FOR UPDATE
       `,
-      [sourceDelivery.order_id],
+      [order.id],
     );
 
     if (
@@ -2012,6 +2292,7 @@ exports.rescheduleDelivery = async (req, res) => {
       Number(latestAttempt.id) !== Number(sourceDeliveryId)
     ) {
       await conn.rollback();
+      transactionActive = false;
       return res.status(409).json({
         message: "Only the latest failed delivery attempt can be rescheduled.",
       });
@@ -2026,42 +2307,58 @@ exports.rescheduleDelivery = async (req, res) => {
       LIMIT 1
       FOR UPDATE
       `,
-      [sourceDelivery.order_id],
+      [order.id],
     );
 
     if (activeAttempt) {
       await conn.rollback();
+      transactionActive = false;
       return res.status(409).json({
         message: "A newer active delivery already exists for this order.",
       });
     }
 
-    const [[order]] = await conn.query(
-      `
-      SELECT id, order_number, customer_id, status, order_type
-      FROM orders
-      WHERE id = ?
-      LIMIT 1
-      FOR UPDATE
-      `,
-      [sourceDelivery.order_id],
-    );
-
-    if (!order) {
+    if (getEffectiveDeliveryFulfillmentMethod(order) !== "delivery") {
       await conn.rollback();
-      return res.status(404).json({ message: "Linked order not found." });
+      transactionActive = false;
+      return res.status(409).json({
+        message: "Pickup orders cannot be rescheduled for delivery.",
+      });
+    }
+
+    const canonicalAddress = normalizeText(order.delivery_address);
+
+    if (!canonicalAddress) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message:
+          "A saved delivery address is required before this order can be rescheduled.",
+      });
+    }
+
+    if (canonicalAddress.length > MAX_DELIVERY_ADDRESS_LENGTH) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message:
+          "The saved delivery address is too long. Update the order address before rescheduling delivery.",
+      });
     }
 
     const orderStatus = normalizeText(order.status).toLowerCase();
     if (["cancelled", "delivered", "completed"].includes(orderStatus)) {
       await conn.rollback();
+      transactionActive = false;
       return res.status(409).json({
         message: "This order can no longer be rescheduled for delivery.",
       });
     }
+
     if (normalizeText(order.order_type).toLowerCase() === "blueprint") {
       if (orderStatus !== "shipping") {
         await conn.rollback();
+        transactionActive = false;
         return res.status(409).json({
           message:
             "A Blueprint redelivery must remain in Shipping until a new delivery attempt is completed.",
@@ -2074,13 +2371,51 @@ exports.rescheduleDelivery = async (req, res) => {
       );
       if (!readiness.ok) {
         await conn.rollback();
+        transactionActive = false;
         return res.status(409).json({ message: readiness.message });
       }
+    }
+
+    const [[lockedRider]] = await conn.query(
+      `
+      SELECT id, name, role, staff_type, is_active
+      FROM users
+      WHERE id = ?
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [driverId],
+    );
+
+    if (!isActiveDeliveryRider(lockedRider)) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "Selected delivery rider was not found or is inactive.",
+      });
+    }
+
+    rider = lockedRider;
+
+    if (scheduledDate < getPhilippineDateKey()) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "New delivery date cannot be in the past.",
+      });
     }
 
     const finalNotes = [`Reschedule Reason: ${rescheduleReason}`, notes]
       .filter(Boolean)
       .join("\n");
+
+    if (finalNotes.length > MAX_STORED_RESCHEDULE_NOTES_LENGTH) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "Combined reschedule notes are too long.",
+      });
+    }
 
     const [insertResult] = await conn.query(
       `
@@ -2103,7 +2438,7 @@ exports.rescheduleDelivery = async (req, res) => {
         driverId,
         req.user.id,
         scheduledDate,
-        sourceDelivery.address,
+        canonicalAddress,
         finalNotes,
       ],
     );
@@ -2143,6 +2478,7 @@ exports.rescheduleDelivery = async (req, res) => {
     );
 
     await conn.commit();
+    transactionActive = false;
 
     const io = req.app.get("io");
 
@@ -2219,7 +2555,7 @@ exports.rescheduleDelivery = async (req, res) => {
       scheduledDate,
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       message: "Delivery rescheduled successfully.",
       delivery,
       source_delivery_id: sourceDeliveryId,
@@ -2229,7 +2565,7 @@ exports.rescheduleDelivery = async (req, res) => {
       },
     });
   } catch (err) {
-    if (conn) {
+    if (conn && transactionActive) {
       try {
         await conn.rollback();
       } catch (rollbackErr) {
@@ -2238,9 +2574,20 @@ exports.rescheduleDelivery = async (req, res) => {
           rollbackErr,
         );
       }
+      transactionActive = false;
     }
+
     console.error("POST /api/pos/deliveries/:id/reschedule error:", err);
-    res.status(500).json({ message: "Failed to reschedule delivery." });
+
+    if (isRetryableTransactionError(err)) {
+      return res.status(409).json(
+        buildConcurrentUpdateResponse(
+          "This delivery was updated at the same time by another process. Refresh and try the reschedule again.",
+        ),
+      );
+    }
+
+    return res.status(500).json({ message: "Failed to reschedule delivery." });
   } finally {
     if (conn) conn.release();
   }
@@ -2316,21 +2663,28 @@ exports.updateDeliveryStatus = async (req, res) => {
     conn = await db.getConnection();
     await conn.beginTransaction();
 
-    const [[existing]] = await conn.query(
-      `SELECT * FROM deliveries WHERE id = ? FOR UPDATE`,
+    // Probe only the immutable delivery -> order link first. The probe
+    // does not take a row lock. Canonical mutation lock order is:
+    // orders -> deliveries -> payment/acknowledgement child rows.
+    const [[deliveryProbe]] = await conn.query(
+      `SELECT order_id, driver_id FROM deliveries WHERE id = ? LIMIT 1`,
       [deliveryId],
     );
 
-    if (!existing) {
+    if (!deliveryProbe) {
       await conn.rollback();
+      cleanupFreshUpload(req.file);
       return res.status(404).json({ message: "Delivery not found" });
     }
 
+    // Early authorization gate before locking the linked order. This probe
+    // is non-locking; assignment is revalidated again after delivery FOR UPDATE.
     if (
       req.user.role === "staff" &&
-      Number(existing.driver_id) !== Number(req.user.id)
+      Number(deliveryProbe.driver_id) !== Number(req.user.id)
     ) {
       await conn.rollback();
+      cleanupFreshUpload(req.file);
       return res.status(403).json({
         message: "You can only update deliveries assigned to you.",
       });
@@ -2343,12 +2697,54 @@ exports.updateDeliveryStatus = async (req, res) => {
        WHERE id = ?
        LIMIT 1
        FOR UPDATE`,
-      [existing.order_id],
+      [deliveryProbe.order_id],
     );
 
     if (!order) {
       await conn.rollback();
+      cleanupFreshUpload(req.file);
       return res.status(404).json({ message: "Linked order not found." });
+    }
+
+    const [[existing]] = await conn.query(
+      `SELECT * FROM deliveries WHERE id = ? FOR UPDATE`,
+      [deliveryId],
+    );
+
+    if (
+      !existing ||
+      Number(existing.order_id) !== Number(order.id)
+    ) {
+      await conn.rollback();
+      cleanupFreshUpload(req.file);
+      return res.status(409).json({
+        message:
+          "The delivery changed before this update started. Refresh and try again.",
+      });
+    }
+
+    if (
+      req.user.role === "staff" &&
+      Number(existing.driver_id) !== Number(req.user.id)
+    ) {
+      await conn.rollback();
+      cleanupFreshUpload(req.file);
+      return res.status(403).json({
+        message: "You can only update deliveries assigned to you.",
+      });
+    }
+
+    const lockedOrderStatus = normalizeText(order.status).toLowerCase();
+    if (["cancelled", "completed"].includes(lockedOrderStatus)) {
+      await conn.rollback();
+      cleanupFreshUpload(req.file);
+      return res.status(409).json({
+        reason_code: "ORDER_CLOSED_FOR_DELIVERY_MUTATION",
+        message:
+          lockedOrderStatus === "cancelled"
+            ? "This order has been cancelled and its delivery can no longer be changed."
+            : "This order has already been completed and its delivery can no longer be changed.",
+      });
     }
 
     const currentStatus = normalizeText(
@@ -3583,6 +3979,15 @@ exports.updateDeliveryStatus = async (req, res) => {
       cleanupFreshUpload(req.file);
     }
     console.error("PATCH /api/pos/deliveries/:id/status error:", err);
+
+    if (isRetryableTransactionError(err)) {
+      return res.status(409).json(
+        buildConcurrentUpdateResponse(
+          "This order or delivery was updated at the same time by another process. Refresh and try again.",
+        ),
+      );
+    }
+
     res.status(500).json({ message: "Failed to update delivery status" });
   } finally {
     if (conn) conn.release();

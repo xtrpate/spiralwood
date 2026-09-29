@@ -38,6 +38,10 @@ const {
   summarizeVerifiedPaymentRows,
 } = require("../../services/blueprintInitialOnlinePaymentService");
 const { parseStrictPositiveInt } = require("../../utils/validators");
+const {
+  isRetryableTransactionError,
+  buildConcurrentUpdateResponse,
+} = require("../../utils/transactionConflict");
 const { createNotificationSafe } = require("../../utils/notificationHelper");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const {
@@ -5615,13 +5619,10 @@ const createPickupRemainingBalancePayMongoCheckout = async ({
 // in_transit, the choice is locked and this endpoint rejects further
 // changes.
 //
-// CORRECTIVE PATCH (lock-order consistency): lock order is
-// deliveries -> orders -> payment_transactions, matching the rider
-// blueprint branch in pos.fulfillment.js exactly, so the two Phase 5
-// write paths can never deadlock against each other. This intentionally
-// differs from the plain order-first convention used elsewhere in this
-// file; do not "fix" it back without re-introducing the deadlock risk
-// this patch was written to close.
+// DELIVERY B2A lock-order contract: every transaction that touches both
+// the canonical order and its delivery uses orders -> deliveries ->
+// payment_transactions. Keeping one parent-first hierarchy prevents the
+// old cancellation/admin vs rider/payment lock inversion.
 exports.selectRemainingPaymentMethod = async (req, res) => {
   let conn = null;
   let transactionActive = false;
@@ -5646,7 +5647,15 @@ exports.selectRemainingPaymentMethod = async (req, res) => {
       `SELECT fulfillment_method FROM orders WHERE id = ? AND customer_id = ? AND order_type = 'blueprint' LIMIT 1`,
       [orderId, req.user.id],
     );
-    if (normalize(fulfillmentProbe?.fulfillment_method) === "pickup") {
+
+    // Reject an unknown/foreign/non-blueprint order before starting a
+    // transaction or taking the canonical order row lock. The locked read
+    // below still revalidates ownership to close the race window.
+    if (!fulfillmentProbe) {
+      return res.status(404).json({ message: "Custom request not found." });
+    }
+
+    if (normalize(fulfillmentProbe.fulfillment_method) === "pickup") {
       return selectPickupRemainingPaymentMethod({
         req,
         res,
@@ -5659,64 +5668,8 @@ exports.selectRemainingPaymentMethod = async (req, res) => {
     await conn.beginTransaction();
     transactionActive = true;
 
-    // 1) deliveries row FOR UPDATE — the most recent delivery for this
-    // order, locked before the order itself. No write happens based on
-    // this alone; it only gates on delivery existence/status, which
-    // requires no other table.
-    const [[delivery]] = await conn.query(
-      `SELECT id, status
-       FROM deliveries
-       WHERE order_id = ?
-       ORDER BY id DESC
-       LIMIT 1
-       FOR UPDATE`,
-      [orderId],
-    );
-
-    if (!delivery) {
-      await conn.rollback();
-      transactionActive = false;
-      return res.status(400).json({
-        message:
-          "A delivery must be scheduled before choosing the remaining payment method.",
-      });
-    }
-
-    const deliveryStatus = normalize(delivery.status);
-
-    // On-delivery choice: the customer may pick or switch Cash/Online
-    // while the delivery is scheduled OR while the rider is already in
-    // transit. Starting transit alone must never lock this choice —
-    // only a terminal delivery state does.
-    const TERMINAL_DELIVERY_STATUSES = [
-      "delivered",
-      "completed",
-      "cancelled",
-      "failed",
-    ];
-    const SELECTABLE_DELIVERY_STATUSES = ["scheduled", "in_transit"];
-
-    if (TERMINAL_DELIVERY_STATUSES.includes(deliveryStatus)) {
-      await conn.rollback();
-      transactionActive = false;
-      return res.status(409).json({
-        message:
-          "The remaining payment method can no longer be changed for this delivery.",
-      });
-    }
-
-    if (!SELECTABLE_DELIVERY_STATUSES.includes(deliveryStatus)) {
-      await conn.rollback();
-      transactionActive = false;
-      return res.status(400).json({
-        message:
-          "The remaining payment method can only be chosen while delivery is scheduled or in transit.",
-      });
-    }
-
-    // 2) orders row FOR UPDATE — locked second. Customer ownership,
-    // order type, order status, and payment status are all validated
-    // against this locked record, never against an earlier unlocked read.
+    // 1) Canonical order row first. Every transaction that touches both
+    // orders and deliveries follows orders -> deliveries -> payments.
     const [[order]] = await conn.query(
       `SELECT
           id,
@@ -5725,6 +5678,7 @@ exports.selectRemainingPaymentMethod = async (req, res) => {
           status,
           payment_status,
           total,
+          fulfillment_method,
           remaining_payment_method,
           paymongo_session_id,
           payment_url
@@ -5749,6 +5703,15 @@ exports.selectRemainingPaymentMethod = async (req, res) => {
         .json({ message: "This order does not support this action." });
     }
 
+    if (normalize(order.fulfillment_method) === "pickup") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message:
+          "This order is configured for pickup. Refresh before changing the delivery payment method.",
+      });
+    }
+
     if (["cancelled", "completed"].includes(normalize(order.status))) {
       await conn.rollback();
       transactionActive = false;
@@ -5764,6 +5727,54 @@ exports.selectRemainingPaymentMethod = async (req, res) => {
       return res
         .status(400)
         .json({ message: "This order has already been fully paid." });
+    }
+
+    // 2) Lock the newest delivery only after the canonical order lock.
+    const [[delivery]] = await conn.query(
+      `SELECT id, status
+       FROM deliveries
+       WHERE order_id = ?
+       ORDER BY id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [orderId],
+    );
+
+    if (!delivery) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message:
+          "A delivery must be scheduled before choosing the remaining payment method.",
+      });
+    }
+
+    const deliveryStatus = normalize(delivery.status);
+
+    const TERMINAL_DELIVERY_STATUSES = [
+      "delivered",
+      "completed",
+      "cancelled",
+      "failed",
+    ];
+    const SELECTABLE_DELIVERY_STATUSES = ["scheduled", "in_transit"];
+
+    if (TERMINAL_DELIVERY_STATUSES.includes(deliveryStatus)) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message:
+          "The remaining payment method can no longer be changed for this delivery.",
+      });
+    }
+
+    if (!SELECTABLE_DELIVERY_STATUSES.includes(deliveryStatus)) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message:
+          "The remaining payment method can only be chosen while delivery is scheduled or in transit.",
+      });
     }
 
     if (normalizedMethod === "paymongo") {
@@ -5921,6 +5932,15 @@ exports.selectRemainingPaymentMethod = async (req, res) => {
       }
     }
     console.error("[customer.customorders selectRemainingPaymentMethod]", err);
+
+    if (isRetryableTransactionError(err)) {
+      return res.status(409).json(
+        buildConcurrentUpdateResponse(
+          "This order was updated at the same time by another process. Refresh and choose the remaining payment method again.",
+        ),
+      );
+    }
+
     return res
       .status(500)
       .json({ message: "Failed to update the remaining payment method." });
@@ -5949,7 +5969,14 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
       `SELECT fulfillment_method FROM orders WHERE id = ? AND customer_id = ? AND order_type = 'blueprint' LIMIT 1`,
       [orderId, req.user.id],
     );
-    if (normalize(fulfillmentProbe?.fulfillment_method) === "pickup") {
+
+    // Do not let an unauthorized/unknown order reach a FOR UPDATE lock.
+    // The transaction still revalidates the same ownership after it begins.
+    if (!fulfillmentProbe) {
+      return res.status(404).json({ message: "Custom order not found." });
+    }
+
+    if (normalize(fulfillmentProbe.fulfillment_method) === "pickup") {
       return createPickupRemainingBalancePayMongoCheckout({
         req,
         res,
@@ -5961,9 +5988,78 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
     await conn.beginTransaction();
     transactionActive = true;
 
-    // 1) deliveries row FOR UPDATE — same lock order as
-    // selectRemainingPaymentMethod and the rider blueprint branch:
-    // deliveries -> orders -> payment_transactions.
+    // 1) Lock the canonical order first. This is the shared transaction
+    // hierarchy for delivery/payment mutations: orders -> deliveries -> payments.
+    const [[order]] = await conn.query(
+      `SELECT
+          id,
+          order_number,
+          customer_id,
+          order_type,
+          status,
+          payment_status,
+          total,
+          fulfillment_method,
+          remaining_payment_method,
+          paymongo_session_id,
+          payment_url
+       FROM orders
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [orderId],
+    );
+
+    if (!order || Number(order.customer_id) !== Number(req.user.id)) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(404).json({ message: "Custom order not found." });
+    }
+
+    if (normalize(order.order_type) !== "blueprint") {
+      await conn.rollback();
+      transactionActive = false;
+      return res
+        .status(400)
+        .json({ message: "This order does not support this action." });
+    }
+
+    if (normalize(order.fulfillment_method) === "pickup") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message:
+          "This order is configured for pickup. Refresh before creating a delivery payment session.",
+      });
+    }
+
+    if (["cancelled", "completed"].includes(normalize(order.status))) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message:
+          "This order is closed and no further payment action is available.",
+      });
+    }
+
+    if (normalize(order.payment_status) === "paid") {
+      await conn.rollback();
+      transactionActive = false;
+      return res
+        .status(400)
+        .json({ message: "This order has already been fully paid." });
+    }
+
+    if (normalize(order.remaining_payment_method) !== "paymongo") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message:
+          "Select Online Payment for the remaining balance before creating a payment session.",
+      });
+    }
+
+    // 2) Delivery is locked only after the order.
     const [[delivery]] = await conn.query(
       `SELECT id, status
        FROM deliveries
@@ -5991,66 +6087,6 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
       return res.status(400).json({
         message:
           "Online payment for the remaining balance is only available while delivery is scheduled or in transit.",
-      });
-    }
-
-    // 2) orders row FOR UPDATE.
-    const [[order]] = await conn.query(
-      `SELECT
-          id,
-          order_number,
-          customer_id,
-          order_type,
-          status,
-          payment_status,
-          total,
-          remaining_payment_method,
-          paymongo_session_id,
-          payment_url
-       FROM orders
-       WHERE id = ?
-       LIMIT 1
-       FOR UPDATE`,
-      [orderId],
-    );
-
-    if (!order || Number(order.customer_id) !== Number(req.user.id)) {
-      await conn.rollback();
-      transactionActive = false;
-      return res.status(404).json({ message: "Custom order not found." });
-    }
-
-    if (normalize(order.order_type) !== "blueprint") {
-      await conn.rollback();
-      transactionActive = false;
-      return res
-        .status(400)
-        .json({ message: "This order does not support this action." });
-    }
-
-    if (["cancelled", "completed"].includes(normalize(order.status))) {
-      await conn.rollback();
-      transactionActive = false;
-      return res.status(400).json({
-        message:
-          "This order is closed and no further payment action is available.",
-      });
-    }
-
-    if (normalize(order.payment_status) === "paid") {
-      await conn.rollback();
-      transactionActive = false;
-      return res
-        .status(400)
-        .json({ message: "This order has already been fully paid." });
-    }
-
-    if (normalize(order.remaining_payment_method) !== "paymongo") {
-      await conn.rollback();
-      transactionActive = false;
-      return res.status(400).json({
-        message:
-          "Select Online Payment for the remaining balance before creating a payment session.",
       });
     }
 
@@ -6288,6 +6324,15 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
       "[customer.customorders createRemainingBalancePayMongoCheckout]",
       err.response?.data || err,
     );
+
+    if (isRetryableTransactionError(err)) {
+      return res.status(409).json(
+        buildConcurrentUpdateResponse(
+          "This order was updated at the same time by another process. Refresh and try creating the online payment session again.",
+        ),
+      );
+    }
+
     return res
       .status(500)
       .json({ message: "Failed to create the online payment session." });
