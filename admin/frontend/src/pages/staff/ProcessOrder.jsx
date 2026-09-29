@@ -11,6 +11,27 @@ const isValidPHPhone = (value) => {
   return digits.length === 11 && digits.startsWith("09");
 };
 
+const getPhilippineDateTimeLocalMin = () => {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(new Date())
+      .filter((part) =>
+        ["year", "month", "day", "hour", "minute"].includes(part.type),
+      )
+      .map((part) => [part.type, part.value]),
+  );
+
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+};
+
 const POS_QR_ENABLED = process.env.REACT_APP_POS_QR_ENABLED === "true";
 const POS_QR_STORAGE_KEY = "pos_qr_attempt";
 const POS_CASH_IDEMPOTENCY_STORAGE_KEY = "pos_cash_checkout";
@@ -208,6 +229,7 @@ export default function ProcessOrder() {
   const resumeStartedRef = useRef(false);
   const checkoutTokenRef = useRef(qrAttempt?.checkout_token || "");
   const effectivePaymentMethod = qrAttempt ? "online" : form.payment_method;
+  const minimumDeliveryDateTime = getPhilippineDateTimeLocalMin();
 
   useEffect(() => {
     const saved = sessionStorage.getItem("pos_cart");
@@ -300,7 +322,8 @@ export default function ProcessOrder() {
     !form.need_delivery ||
     (form.delivery_address.trim() &&
       hasValidDeliveryPin &&
-      form.delivery_requested_date);
+      form.delivery_requested_date &&
+      form.delivery_requested_date >= minimumDeliveryDateTime);
 
   const baseFormIsValid =
     cart.length > 0 &&
@@ -410,6 +433,8 @@ export default function ProcessOrder() {
         return setError("Pin the exact delivery location on the map.");
       if (!form.delivery_requested_date)
         return setError("Delivery date is required.");
+      if (form.delivery_requested_date < minimumDeliveryDateTime)
+        return setError("Delivery date and time cannot be in the past.");
       if (
         form.delivery_fee &&
         !MONEY_INPUT_PATTERN.test(form.delivery_fee.trim())
@@ -505,6 +530,11 @@ export default function ProcessOrder() {
       return "Pin the exact delivery location on the map.";
     if (form.need_delivery && !form.delivery_requested_date)
       return "Delivery date is required.";
+    if (
+      form.need_delivery &&
+      form.delivery_requested_date < minimumDeliveryDateTime
+    )
+      return "Delivery date and time cannot be in the past.";
     return null;
   };
 
@@ -1574,6 +1604,7 @@ export default function ProcessOrder() {
                             name="delivery_requested_date"
                             type="datetime-local"
                             value={form.delivery_requested_date}
+                            min={minimumDeliveryDateTime}
                             onChange={(e) =>
                               setForm({
                                 ...form,

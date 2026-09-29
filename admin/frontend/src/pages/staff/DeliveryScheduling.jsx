@@ -145,6 +145,22 @@ const normalizeStatus = (status) =>
     .trim()
     .toLowerCase();
 
+const getPhilippineTodayKey = () => {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+      .formatToParts(new Date())
+      .filter((part) => ["year", "month", "day"].includes(part.type))
+      .map((part) => [part.type, part.value]),
+  );
+
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
+
 const getDeliveryAttemptStatus = (delivery = {}) => {
   const status = normalizeStatus(delivery.status);
   const notes = String(delivery.notes || "")
@@ -242,9 +258,7 @@ export default function DeliveryScheduling() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
-  const now = new Date();
-  const pad = (n) => String(n).padStart(2, "0");
-  const todayLocal = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const todayLocal = getPhilippineTodayKey();
   const [deliveries, setDeliveries] = useState([]);
   const [eligibleOrders, setEligibleOrders] = useState([]);
   const [eligibleOrdersLoading, setEligibleOrdersLoading] = useState(false);
@@ -650,7 +664,7 @@ export default function DeliveryScheduling() {
         ...prev,
         order_id: String(preselectOrderId),
         address: selectedOrder.delivery_address || prev.address,
-        scheduled_date: requestedDateOnly || prev.scheduled_date,
+        scheduled_date: requestedDateOnly,
       }));
 
       setShowForm(true);
@@ -1219,7 +1233,7 @@ export default function DeliveryScheduling() {
                         address:
                           selectedOrder?.delivery_address || prev.address,
                         scheduled_date:
-                          requestedDateOnly || prev.scheduled_date,
+                          requestedDateOnly,
                       }));
 
                       setFieldErrors((prev) => ({

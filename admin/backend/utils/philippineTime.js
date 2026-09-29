@@ -65,6 +65,33 @@ const getPhilippineDateKey = (value = new Date()) => {
   ].join("-");
 };
 
+// Requested delivery datetime is a Philippine business wall-clock value,
+// not an event timestamp. This key intentionally has minute precision to
+// match <input type="datetime-local"> and prevents server/browser timezone
+// settings from changing the business meaning of the selected time.
+const getPhilippineDateTimeMinuteKey = (value = new Date()) => {
+  const instant =
+    value instanceof Date ? new Date(value.getTime()) : new Date(value);
+
+  if (Number.isNaN(instant.getTime())) {
+    throw new TypeError("A valid date/time value is required.");
+  }
+
+  const philippineClock = new Date(instant.getTime() + PH_UTC_OFFSET_MS);
+
+  return [
+    String(philippineClock.getUTCFullYear()).padStart(4, "0"),
+    "-",
+    String(philippineClock.getUTCMonth() + 1).padStart(2, "0"),
+    "-",
+    String(philippineClock.getUTCDate()).padStart(2, "0"),
+    " ",
+    String(philippineClock.getUTCHours()).padStart(2, "0"),
+    ":",
+    String(philippineClock.getUTCMinutes()).padStart(2, "0"),
+  ].join("");
+};
+
 const getPhilippineDateBoundsUtc = (dateKey) => {
   const { year, monthIndex, day } = parseDateKey(dateKey);
 
@@ -117,4 +144,5 @@ module.exports = {
   getPhilippineBusinessPeriods,
   getPhilippineDateBoundsUtc,
   getPhilippineDateKey,
+  getPhilippineDateTimeMinuteKey,
 };

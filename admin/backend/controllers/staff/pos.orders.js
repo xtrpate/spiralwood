@@ -14,6 +14,9 @@ const {
   getPhoneLookupVariants,
   phoneDigitsSql,
 } = require("../../utils/phone");
+const {
+  getPhilippineDateTimeMinuteKey,
+} = require("../../utils/philippineTime");
 
 const MAX_POS_CART_LINES = 100;
 const MAX_POS_ITEM_QUANTITY = 1000;
@@ -313,6 +316,11 @@ exports.createOrder = async (req, res) => {
     if (!requestedDate) {
       return res.status(400).json({
         message: "A valid delivery date and time is required.",
+      });
+    }
+    if (requestedDate.slice(0, 16) < getPhilippineDateTimeMinuteKey()) {
+      return res.status(400).json({
+        message: "Delivery date and time cannot be in the past.",
       });
     }
 

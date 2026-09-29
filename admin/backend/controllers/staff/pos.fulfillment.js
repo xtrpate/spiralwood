@@ -469,7 +469,10 @@ exports.getDeliverableOrders = async (req, res) => {
         o.delivery_address,
         o.delivery_lat,
         o.delivery_lng,
-        o.requested_delivery_date,
+        DATE_FORMAT(
+          o.requested_delivery_date,
+          '%Y-%m-%d %H:%i:%s'
+        ) AS requested_delivery_date,
         o.delivery_request_notes,
         o.created_at,
 
@@ -1252,6 +1255,12 @@ exports.createDelivery = async (req, res) => {
     });
   }
 
+  if (scheduledDate < getPhilippineDateKey()) {
+    return res.status(400).json({
+      message: "Confirmed delivery schedule cannot be in the past.",
+    });
+  }
+
   try {
     const rider = await ensureStaffType(driverId, "delivery_rider");
     if (!rider) {
@@ -1942,6 +1951,12 @@ exports.rescheduleDelivery = async (req, res) => {
   if (!scheduledDate) {
     return res.status(400).json({
       message: "New delivery date must be a valid date.",
+    });
+  }
+
+  if (scheduledDate < getPhilippineDateKey()) {
+    return res.status(400).json({
+      message: "New delivery date cannot be in the past.",
     });
   }
 

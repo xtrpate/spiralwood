@@ -208,6 +208,27 @@ function validBody(overrides = {}) {
   };
 }
 
+function getPhilippineDateTimeLocal(minutesOffset = 0) {
+  const shifted = new Date(
+    Date.now() +
+      8 * 60 * 60 * 1000 +
+      minutesOffset * 60 * 1000,
+  );
+  const pad2 = (value) => String(value).padStart(2, "0");
+
+  return [
+    String(shifted.getUTCFullYear()).padStart(4, "0"),
+    "-",
+    pad2(shifted.getUTCMonth() + 1),
+    "-",
+    pad2(shifted.getUTCDate()),
+    "T",
+    pad2(shifted.getUTCHours()),
+    ":",
+    pad2(shifted.getUTCMinutes()),
+  ].join("");
+}
+
 function reset(nextMode = "valid") {
   mode = nextMode;
   connectionCount = 0;
@@ -323,7 +344,7 @@ async function run() {
     address: "Test Address",
     lat: 15.1,
     lng: 120.6,
-    requested_date: "2026-10-01T10:00",
+    requested_date: getPhilippineDateTimeLocal(24 * 60),
     notes: "",
   };
 
@@ -391,6 +412,48 @@ async function run() {
     res,
   );
   assert.equal(res.statusCode, 400);
+
+  // A syntactically valid but already-past Philippine delivery request
+  // must fail before a DB connection is acquired.
+  reset();
+  res = makeRes();
+  await controller.createOrder(
+    makeRequest(validBody({
+      delivery_fee: "100.00",
+      expected_total: "8700.00",
+      delivery: {
+        ...baseDelivery,
+        requested_date: getPhilippineDateTimeLocal(-60),
+      },
+    })),
+    res,
+  );
+  assert.equal(res.statusCode, 400);
+  assert.match(res.body?.message || "", /past/i);
+  assert.equal(connectionCount, 0);
+  assert.ok(!hasSql("INSERT INTO orders"));
+
+  // A future Philippine wall-clock request remains valid and is stored
+  // without UTC/local timezone conversion.
+  reset();
+  res = makeRes();
+  await controller.createOrder(
+    makeRequest(validBody({
+      delivery_fee: "100.00",
+      expected_total: "8700.00",
+      delivery: baseDelivery,
+    })),
+    res,
+  );
+  assert.equal(res.statusCode, 200);
+  const futureDeliveryInsert = calls.find((call) =>
+    call.sql?.includes("INSERT INTO orders"),
+  );
+  assert.ok(futureDeliveryInsert);
+  assert.equal(
+    futureDeliveryInsert.params[13],
+    `${baseDelivery.requested_date.replace("T", " ")}:00`,
+  );
 
   // Stored product eligibility is enforced on the server.
   for (const nextMode of ["inactive", "blueprint"]) {

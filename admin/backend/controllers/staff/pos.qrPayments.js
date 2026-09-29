@@ -48,6 +48,9 @@ const {
   isValidPhoneNumber,
   parseStrictPositiveInt,
 } = require("../../utils/validators");
+const {
+  getPhilippineDateTimeMinuteKey,
+} = require("../../utils/philippineTime");
 
 const DEFAULT_TTL_MINUTES = 15;
 const MAX_TOKEN_LENGTH = 64;
@@ -1516,6 +1519,14 @@ exports.createAttempt = async (req, res) => {
   if (!deliveryDateResult.ok) {
     return res.status(400).json({
       message: "A valid delivery date and time is required.",
+    });
+  }
+  if (
+    deliveryDateResult.value &&
+    deliveryDateResult.value.slice(0, 16) < getPhilippineDateTimeMinuteKey()
+  ) {
+    return res.status(400).json({
+      message: "Delivery date and time cannot be in the past.",
     });
   }
 
