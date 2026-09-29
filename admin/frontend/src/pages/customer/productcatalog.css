@@ -3540,47 +3540,62 @@ button.detail-thumb img {
   }
 }
 
-/* WISDOM PRODUCT CATALOG - QUICK VIEW DESCRIPTION EXPAND
-   Interactive description wrapper with CSS line clamping. */
+/* WISDOM PRODUCT CATALOG - QUICK VIEW DESCRIPTION RESPONSIVE EXPAND */
 .detail-description-wrapper {
   position: relative;
-  cursor: pointer;
   margin-bottom: 24px;
 }
 
 .detail-description-wrapper .detail-description {
   margin-bottom: 0 !important;
-  transition: all 0.2s ease;
   color: #555555;
 }
 
-/* Desktop truncation */
-.detail-description-wrapper:not(.is-expanded) .detail-description {
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+/* On Desktop: Show full description, disable clicking and fading */
+@media (min-width: 781px) {
+  .detail-description-wrapper {
+    cursor: text;
+  }
+  .detail-description-wrapper .detail-description {
+    display: block !important;
+    -webkit-line-clamp: unset !important;
+  }
+  .detail-description-wrapper::after {
+    display: none !important;
+  }
 }
 
-.detail-description-wrapper:not(.is-expanded)::after {
-  content: "Read more";
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  padding-left: 24px;
-  background: linear-gradient(to right, transparent, #ffffff 30%);
-  color: #111111;
-  font-size: 0.85rem;
-  font-weight: 700;
-  text-decoration: underline;
-}
+/* On Mobile: 4-line truncation with visual fade, expandable on click */
+@media (max-width: 780px) {
+  .detail-description-wrapper {
+    cursor: pointer;
+  }
 
-.detail-description-wrapper.is-expanded .detail-description {
-  -webkit-line-clamp: unset !important;
-}
+  .detail-description-wrapper .detail-description {
+    transition: all 0.2s ease;
+  }
 
-.detail-description-wrapper.is-expanded::after {
-  display: none;
+  .detail-description-wrapper:not(.is-expanded) .detail-description {
+    display: -webkit-box !important;
+    -webkit-line-clamp: 4 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+  }
+
+  .detail-description-wrapper:not(.is-expanded)::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 24px;
+    background: linear-gradient(to bottom, transparent, #ffffff);
+    pointer-events: none;
+  }
+
+  .detail-description-wrapper.is-expanded .detail-description {
+    -webkit-line-clamp: unset !important;
+  }
 }
 
 /* Mobile overrides: Remove "Read more" and show at least 4 lines */

@@ -166,6 +166,11 @@ export function CartProvider({ children }) {
 
   const skipNextSync = useRef(false);
 
+  // WISDOM CUSTOMER CART ACCOUNT ISOLATION
+  // Tracks the previously authenticated customer so a cart from one
+  // customer cannot remain in local storage when the account changes.
+  const previousCustomerIdRef = useRef(null);
+
   // WISDOM CUSTOMER CART SYNC QUEUE A1
   // Serialize cloud-cart writes so requests cannot finish out of order.
   // The queue itself stays usable even when one request fails.
@@ -183,6 +188,37 @@ export function CartProvider({ children }) {
 
     return queuedRequest;
   }, []);
+
+  // WISDOM CUSTOMER CART ACCOUNT ISOLATION
+  // Clear the local cart whenever a logged-in customer logs out or
+  // the authenticated customer changes. The customer's cloud cart
+  // remains untouched and will be loaded again when they log in.
+  useEffect(() => {
+    const currentCustomerId =
+      user?.role === "customer" && user?.id != null ? String(user.id) : null;
+
+    const previousCustomerId = previousCustomerIdRef.current;
+
+    const customerAccountChanged =
+      previousCustomerId !== null && previousCustomerId !== currentCustomerId;
+
+    if (customerAccountChanged) {
+      skipNextSync.current = true;
+
+      setCart([]);
+      setMiniCartOpen(false);
+
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(GUEST_CART_PENDING_KEY);
+
+      sessionStorage.removeItem(LEGACY_CUSTOM_STORAGE_KEY);
+      sessionStorage.removeItem("cust_selected_keys");
+      sessionStorage.removeItem("cust_selected_custom_checkout");
+      sessionStorage.removeItem("cust_cart_selected_keys");
+    }
+
+    previousCustomerIdRef.current = currentCustomerId;
+  }, [user?.id, user?.role]);
 
   const [cart, setCart] = useState(getInitialCart);
   const [miniCartOpen, setMiniCartOpen] = useState(false);
