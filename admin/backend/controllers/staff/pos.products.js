@@ -49,6 +49,12 @@ exports.getAllInventory = async (req, res) => {
 /* ── Search Products (Barcode or Keyword) ── */
 exports.searchProducts = async (req, res) => {
   const { q, barcode } = req.query;
+  const normalizedQuery = typeof q === "string" ? q.trim() : "";
+  const normalizedBarcode = typeof barcode === "string" ? barcode.trim() : "";
+
+  if (normalizedQuery.length > 100 || normalizedBarcode.length > 100) {
+    return res.status(400).json({ message: "Product search is too long." });
+  }
 
   try {
     let query = `
@@ -60,7 +66,6 @@ exports.searchProducts = async (req, res) => {
         p.image_url,
         p.walkin_price,
         p.online_price,
-        p.production_cost,
         COALESCE(rmds.quantity, 0) AS stock,
         CASE
           WHEN COALESCE(rmds.quantity, 0) <= 0 THEN 'out_of_stock'
@@ -72,24 +77,24 @@ exports.searchProducts = async (req, res) => {
       FROM products p
       LEFT JOIN categories c ON c.id = p.category_id
       LEFT JOIN ready_made_display_stock rmds ON rmds.product_id = p.id
-      WHERE 1=1
+      WHERE p.type = 'standard'
+        AND COALESCE(p.is_active, 0) = 1
     `;
     const params = [];
 
-    if (barcode && String(barcode).trim()) {
+    if (normalizedBarcode) {
       query += ` AND p.barcode = ?`;
-      params.push(String(barcode).trim());
-    } else if (q && String(q).trim()) {
-      const keyword = `%${String(q).trim()}%`;
+      params.push(normalizedBarcode);
+    } else if (normalizedQuery) {
+      const keyword = `%${normalizedQuery}%`;
       query += `
         AND (
           p.name LIKE ?
           OR p.barcode LIKE ?
           OR c.name LIKE ?
-          OR p.type LIKE ?
         )
       `;
-      params.push(keyword, keyword, keyword, keyword);
+      params.push(keyword, keyword, keyword);
     }
 
     query += `

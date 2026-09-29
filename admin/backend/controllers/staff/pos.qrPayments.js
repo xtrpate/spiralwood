@@ -1141,6 +1141,8 @@ const runTransactionA = async (req, res, ctx) => {
          p.name,
          p.walkin_price,
          p.production_cost,
+         p.type,
+         p.is_active,
          p.stock,
          p.reorder_point,
          COALESCE(ds.quantity, 0) AS display_stock
@@ -1164,6 +1166,16 @@ const runTransactionA = async (req, res, ctx) => {
         await conn.rollback();
         return res.status(404).json({
           message: `Product not found for item ${item.product_id}.`,
+        });
+      }
+
+      if (
+        String(product.type || "").toLowerCase() !== "standard" ||
+        Number(product.is_active) !== 1
+      ) {
+        await conn.rollback();
+        return res.status(409).json({
+          message: `${product.name} is not available for cashier sale.`,
         });
       }
 
