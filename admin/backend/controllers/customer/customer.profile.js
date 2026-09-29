@@ -10,6 +10,10 @@ const {
   phoneDigitsSql,
 } = require("../../utils/phone");
 
+const PASSWORD_HISTORY_LIMIT = 3;
+
+const MAX_PROFILE_ADDRESS_LENGTH = 500;
+
 /* ── OTP generator ── */
 const genOtp = () => Math.floor(100000 + Math.random() * 900000).toString();
 
@@ -58,8 +62,53 @@ exports.uploadAvatar = async (req, res) => {
 ──────────────────────────────────────── */
 exports.updateBasic = async (req, res) => {
   const { name, address, address_lat, address_lng } = req.body;
-  if (!name?.trim())
+
+  if (!name?.trim()) {
     return res.status(400).json({ message: "Name is required." });
+  }
+
+  const normalizedName = String(name).trim();
+  const normalizedAddress = String(address || "").trim();
+
+  if (normalizedAddress.length > MAX_PROFILE_ADDRESS_LENGTH) {
+    return res.status(400).json({
+      message: `Address must not exceed ${MAX_PROFILE_ADDRESS_LENGTH} characters.`,
+    });
+  }
+
+  let nameFirstPart = normalizedName;
+  let nameLastPart = "";
+
+  if (normalizedName.includes(",")) {
+    const [last, ...firsts] = normalizedName.split(",");
+    nameLastPart = String(last || "").trim();
+    nameFirstPart = firsts.join(",").trim();
+  } else {
+    const nameParts = normalizedName.split(/\s+/);
+
+    if (nameParts.length > 1) {
+      nameLastPart = nameParts.pop();
+      nameFirstPart = nameParts.join(" ");
+    }
+  }
+
+  if (nameFirstPart.length > 50) {
+    return res.status(400).json({
+      message: "First name must not exceed 50 characters.",
+    });
+  }
+
+  if (nameLastPart.length > 50) {
+    return res.status(400).json({
+      message: "Last name must not exceed 50 characters.",
+    });
+  }
+
+  if (!nameFirstPart || !nameLastPart) {
+    return res.status(400).json({
+      message: "Both First Name and Last Name are required.",
+    });
+  }
 
   // address_lat/address_lng are treated as an optional PAIR that the
   // customer either:
@@ -145,20 +194,20 @@ exports.updateBasic = async (req, res) => {
       // a pin) — update all four columns.
       [updateResult] = await db.query(
         "UPDATE users SET name=?, address=?, address_lat=?, address_lng=? WHERE id=?",
-        [name.trim(), address?.trim() || "", cleanLat, cleanLng, req.user.id],
+        [name.trim(), normalizedAddress, cleanLat, cleanLng, req.user.id],
       );
     } else {
       // Request didn't mention lat/lng at all — only touch name/address,
       // leaving any previously saved pin exactly as it was.
       [updateResult] = await db.query(
         "UPDATE users SET name=?, address=? WHERE id=?",
-        [name.trim(), address?.trim() || "", req.user.id],
+        [name.trim(), normalizedAddress, req.user.id],
       );
     }
 
     if (existingUser && updateResult?.affectedRows === 1) {
       const trimmedName = name.trim();
-      const trimmedAddress = address?.trim() || "";
+      const trimmedAddress = normalizedAddress;
 
       const previousCoordinatesConfigured =
         existingLat !== null && existingLng !== null;
@@ -204,15 +253,34 @@ exports.updateBasic = async (req, res) => {
 ──────────────────────────────────────── */
 exports.requestEmailChange = async (req, res) => {
   const { new_email } = req.body;
-  if (!new_email?.trim())
-    return res.status(400).json({ message: "New email is required." });
 
   const normalizedCurrentEmail = String(req.user.email || "")
     .trim()
     .toLowerCase();
+
   const normalizedRequestedEmail = String(new_email || "")
     .trim()
     .toLowerCase();
+
+  if (!normalizedRequestedEmail) {
+    return res.status(400).json({
+      message: "New email is required.",
+    });
+  }
+
+  if (normalizedRequestedEmail.length > 254) {
+    return res.status(400).json({
+      message: "Email address must not exceed 254 characters.",
+    });
+  }
+
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  if (!emailPattern.test(normalizedRequestedEmail)) {
+    return res.status(400).json({
+      message: "Enter a valid email address.",
+    });
+  }
 
   if (normalizedRequestedEmail === normalizedCurrentEmail) {
     return res.status(400).json({
@@ -220,11 +288,9 @@ exports.requestEmailChange = async (req, res) => {
     });
   }
 
-  /* Check if email already taken */
-  // ── FIXED: Switched to .query ──
   const [exists] = await db.query(
-    "SELECT id FROM users WHERE email=? AND id!=?",
-    [new_email, req.user.id],
+    "SELECT id FROM users WHERE LOWER(email)=? AND id!=?",
+    [normalizedRequestedEmail, req.user.id],
   );
   if (exists.length)
     return res.status(409).json({ message: "Email already in use." });
@@ -237,14 +303,14 @@ exports.requestEmailChange = async (req, res) => {
     // ── FIXED: Switched to .query ──
     await db.query(
       `UPDATE users
-       SET otp_code=?, otp_expires=?, pending_email=?
-       WHERE id=?`,
-      [otp, expires, new_email, req.user.id],
+   SET otp_code=?, otp_expires=?, otp_purpose='change_email', pending_email=?
+   WHERE id=?`,
+      [otp, expires, normalizedRequestedEmail, req.user.id],
     );
 
     const payload = {
       sender: { name: "Spiral Wood Services", email: process.env.MAIL_USER },
-      to: [{ email: new_email, name: "Customer" }],
+      to: [{ email: normalizedRequestedEmail, name: "Customer" }],
       subject: "Verify your new email — Spiral Wood",
       htmlContent: `
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
@@ -286,44 +352,142 @@ exports.requestEmailChange = async (req, res) => {
 ──────────────────────────────────────── */
 exports.verifyEmailChange = async (req, res) => {
   const { otp } = req.body;
+  const normalizedOtp = String(otp || "").trim();
+
+  if (!/^\d{6}$/.test(normalizedOtp)) {
+    return res.status(400).json({
+      message: "OTP must be exactly 6 digits.",
+    });
+  }
+
   try {
-    // ── FIXED: Switched to .query ──
     const [rows] = await db.query(
-      "SELECT email, otp_code, otp_expires, pending_email FROM users WHERE id=?",
+      `
+      SELECT
+        email,
+        otp_code,
+        otp_expires,
+        otp_purpose,
+        pending_email
+      FROM users
+      WHERE id=?
+      LIMIT 1
+      `,
       [req.user.id],
     );
+
     const u = rows[0];
-    if (!u || u.otp_code !== otp)
-      return res.status(400).json({ message: "Invalid OTP." });
-    if (new Date(u.otp_expires) < new Date())
-      return res.status(400).json({ message: "OTP has expired." });
 
-    const emailChanged = u.pending_email !== u.email;
-
-    // ── FIXED: Switched to .query ──
-    const [updateResult] = await db.query(
-      `UPDATE users
-       SET email=?, pending_email=NULL, otp_code=NULL, otp_expires=NULL
-       WHERE id=?`,
-      [u.pending_email, req.user.id],
-    );
-
-    if (emailChanged && updateResult?.affectedRows === 1) {
-      req.auditRecord = {
-        id: req.user.id,
-        old: { email_configured: true },
-        new: {
-          email_changed: true,
-          email_configured: true,
-          changed_fields: ["email"],
-        },
-      };
+    if (
+      !u ||
+      String(u.otp_code || "").trim() !== normalizedOtp ||
+      u.otp_purpose !== "change_email"
+    ) {
+      return res.status(400).json({
+        message: "Invalid OTP.",
+      });
     }
 
-    res.json({ message: "Email updated successfully." });
+    if (!u.otp_expires || new Date(u.otp_expires) < new Date()) {
+      return res.status(400).json({
+        message: "OTP has expired.",
+      });
+    }
+
+    const pendingEmail = String(u.pending_email || "")
+      .trim()
+      .toLowerCase();
+
+    if (!pendingEmail) {
+      return res.status(400).json({
+        message: "No pending email change was found. Please start again.",
+      });
+    }
+
+    if (pendingEmail.length > 254) {
+      return res.status(400).json({
+        message: "Email address must not exceed 254 characters.",
+      });
+    }
+
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailPattern.test(pendingEmail)) {
+      return res.status(400).json({
+        message: "The pending email address is invalid.",
+      });
+    }
+
+    if (
+      pendingEmail ===
+      String(u.email || "")
+        .trim()
+        .toLowerCase()
+    ) {
+      return res.status(400).json({
+        message: "New email must be different from your current email.",
+      });
+    }
+
+    const [exists] = await db.query(
+      `
+      SELECT id
+      FROM users
+      WHERE LOWER(email)=?
+        AND id!=?
+      LIMIT 1
+      `,
+      [pendingEmail, req.user.id],
+    );
+
+    if (exists.length > 0) {
+      return res.status(409).json({
+        message: "Email already in use.",
+      });
+    }
+
+    const [updateResult] = await db.query(
+      `
+      UPDATE users
+      SET
+        email=?,
+        pending_email=NULL,
+        otp_code=NULL,
+        otp_expires=NULL,
+        otp_purpose=NULL
+      WHERE id=?
+        AND otp_purpose='change_email'
+        AND otp_expires IS NOT NULL
+        AND otp_expires > NOW()
+      `,
+      [pendingEmail, req.user.id],
+    );
+
+    if (updateResult?.affectedRows !== 1) {
+      return res.status(400).json({
+        message:
+          "Your email change request has expired. Please request a new verification code.",
+      });
+    }
+
+    req.auditRecord = {
+      id: req.user.id,
+      old: { email_configured: true },
+      new: {
+        email_changed: true,
+        email_configured: true,
+        changed_fields: ["email"],
+      },
+    };
+
+    return res.json({
+      message: "Email updated successfully.",
+    });
   } catch (err) {
     console.error("[profile/verify-email-change]", err);
-    res.status(500).json({ message: "Verification failed." });
+    return res.status(500).json({
+      message: "Verification failed.",
+    });
   }
 };
 
@@ -340,7 +504,9 @@ exports.updatePhone = async (req, res) => {
   try {
     normalizedPhone = normalizePhilippinePhone(phone);
   } catch {
-    return res.status(400).json({ message: "Enter a valid Philippine mobile number." });
+    return res
+      .status(400)
+      .json({ message: "Enter a valid Philippine mobile number." });
   }
 
   try {
@@ -424,11 +590,12 @@ exports.requestPasswordChange = async (req, res) => {
     const otp = genOtp();
     const expires = new Date(Date.now() + 15 * 60 * 1000);
     // ── FIXED: Switched to .query ──
-    await db.query("UPDATE users SET otp_code=?, otp_expires=? WHERE id=?", [
-      otp,
-      expires,
-      req.user.id,
-    ]);
+    await db.query(
+      `UPDATE users
+   SET otp_code=?, otp_expires=?, otp_purpose='change_password'
+   WHERE id=?`,
+      [otp, expires, req.user.id],
+    );
 
     const payload = {
       sender: { name: "Spiral Wood Services", email: process.env.MAIL_USER },
@@ -476,48 +643,239 @@ exports.requestPasswordChange = async (req, res) => {
 ──────────────────────────────────────── */
 exports.verifyPasswordChange = async (req, res) => {
   const { otp, new_password } = req.body;
+
+  const normalizedOtp = String(otp || "").trim();
+  const normalizedNewPassword = String(new_password || "");
+
+  if (!/^\d{6}$/.test(normalizedOtp)) {
+    return res.status(400).json({
+      message: "OTP must be exactly 6 digits.",
+    });
+  }
+
+  if (normalizedNewPassword.length < 8) {
+    return res.status(400).json({
+      message: "New password must be at least 8 characters.",
+    });
+  }
+
+  if (normalizedNewPassword.length > 72) {
+    return res.status(400).json({
+      message: "New password must not exceed 72 characters.",
+    });
+  }
+
+  if (!/[A-Z]/.test(normalizedNewPassword)) {
+    return res.status(400).json({
+      message: "New password must contain at least one uppercase letter.",
+    });
+  }
+
+  if (!/[a-z]/.test(normalizedNewPassword)) {
+    return res.status(400).json({
+      message: "New password must contain at least one lowercase letter.",
+    });
+  }
+
+  if (!/[0-9]/.test(normalizedNewPassword)) {
+    return res.status(400).json({
+      message: "New password must contain at least one number.",
+    });
+  }
+
+  if (!/[^A-Za-z0-9]/.test(normalizedNewPassword)) {
+    return res.status(400).json({
+      message: "New password must contain at least one special character.",
+    });
+  }
+
+  let connection;
+
   try {
-    // ── FIXED: Switched to .query ──
-    const [rows] = await db.query(
-      "SELECT password, otp_code, otp_expires FROM users WHERE id=?",
+    connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    const [rows] = await connection.query(
+      `SELECT
+         password,
+         otp_code,
+         otp_expires,
+         otp_purpose
+       FROM users
+       WHERE id=?
+       LIMIT 1
+       FOR UPDATE`,
       [req.user.id],
     );
-    const u = rows[0];
-    if (!u || u.otp_code !== otp)
-      return res.status(400).json({ message: "Invalid OTP." });
-    if (new Date(u.otp_expires) < new Date())
-      return res.status(400).json({ message: "OTP has expired." });
 
-    const sameAsCurrent = await bcrypt.compare(new_password, u.password);
+    const u = rows[0];
+
+    if (
+      !u ||
+      String(u.otp_code || "").trim() !== normalizedOtp ||
+      u.otp_purpose !== "change_password"
+    ) {
+      await connection.rollback();
+
+      return res.status(400).json({
+        message: "Invalid OTP.",
+      });
+    }
+
+    if (!u.otp_expires || new Date(u.otp_expires) < new Date()) {
+      await connection.rollback();
+
+      return res.status(400).json({
+        message: "OTP has expired.",
+      });
+    }
+
+    const sameAsCurrent = await bcrypt.compare(
+      normalizedNewPassword,
+      u.password || "",
+    );
+
     if (sameAsCurrent) {
+      await connection.rollback();
+
       return res.status(400).json({
         message: "New password must be different from your current password.",
       });
     }
 
-    const hashed = await bcrypt.hash(new_password, 12);
-    // ── FIXED: Switched to .query ──
-    const [updateResult] = await db.query(
-      "UPDATE users SET password=?, otp_code=NULL, otp_expires=NULL WHERE id=?",
+    const [historyRows] = await connection.query(
+      `
+      SELECT password_hash
+      FROM user_password_history
+      WHERE user_id = ?
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+      `,
+      [req.user.id, PASSWORD_HISTORY_LIMIT],
+    );
+
+    for (const history of historyRows) {
+      const sameAsPrevious = await bcrypt.compare(
+        normalizedNewPassword,
+        history.password_hash || "",
+      );
+
+      if (sameAsPrevious) {
+        await connection.rollback();
+
+        return res.status(400).json({
+          message:
+            "You cannot reuse your current password or any of your previous 3 passwords.",
+        });
+      }
+    }
+
+    const hashed = await bcrypt.hash(normalizedNewPassword, 12);
+
+    const [updateResult] = await connection.query(
+      `
+      UPDATE users
+      SET
+        password=?,
+        otp_code=NULL,
+        otp_expires=NULL,
+        otp_purpose=NULL
+      WHERE id=?
+        AND otp_purpose='change_password'
+        AND otp_expires IS NOT NULL
+        AND otp_expires > NOW()
+      `,
       [hashed, req.user.id],
     );
 
-    if (updateResult?.affectedRows === 1) {
-      req.auditRecord = {
-        id: req.user.id,
-        old: { password_configured: true },
-        new: {
-          password_credential_updated: true,
-          password_configured: true,
-          changed_fields: ["password"],
-        },
-      };
+    if (updateResult.affectedRows !== 1) {
+      await connection.rollback();
+
+      return res.status(400).json({
+        message:
+          "Your password change request has expired. Please start again.",
+      });
     }
 
-    res.json({ message: "Password changed successfully." });
+    /*
+     * Store the old current password as the newest historical password.
+     */
+    await connection.query(
+      `
+      INSERT INTO user_password_history (user_id, password_hash)
+      VALUES (?, ?)
+      `,
+      [req.user.id, u.password],
+    );
+
+    /*
+     * Keep only the 3 most recent previous passwords.
+     */
+    const [historyToKeep] = await connection.query(
+      `
+      SELECT id
+      FROM user_password_history
+      WHERE user_id=?
+      ORDER BY created_at DESC, id DESC
+      `,
+      [req.user.id],
+    );
+
+    const oldHistoryIds = historyToKeep
+      .slice(PASSWORD_HISTORY_LIMIT)
+      .map((row) => row.id);
+
+    if (oldHistoryIds.length > 0) {
+      const placeholders = oldHistoryIds.map(() => "?").join(",");
+
+      await connection.query(
+        `
+        DELETE FROM user_password_history
+        WHERE user_id=?
+          AND id IN (${placeholders})
+        `,
+        [req.user.id, ...oldHistoryIds],
+      );
+    }
+
+    await connection.commit();
+
+    req.auditRecord = {
+      id: req.user.id,
+      old: { password_configured: true },
+      new: {
+        password_credential_updated: true,
+        password_configured: true,
+        password_history_checked: true,
+        password_history_limit: PASSWORD_HISTORY_LIMIT,
+        changed_fields: ["password"],
+      },
+    };
+
+    return res.json({
+      message: "Password changed successfully.",
+    });
   } catch (err) {
+    if (connection) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        console.error(
+          "[profile/verify-password-change rollback]",
+          rollbackError,
+        );
+      }
+    }
+
     console.error("[profile/verify-password-change]", err);
-    res.status(500).json({ message: "Failed." });
+
+    return res.status(500).json({
+      message: "Failed to change password.",
+    });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
   }
 };
 
@@ -557,7 +915,8 @@ exports.requestPhoneChange = async (req, res) => {
 
     if (normalizedPhone === currentPhone) {
       return res.status(400).json({
-        message: "New phone number must be different from your current phone number.",
+        message:
+          "New phone number must be different from your current phone number.",
       });
     }
 
@@ -592,7 +951,9 @@ exports.requestPhoneChange = async (req, res) => {
     return res.json({ message: "OTP sent to new phone number." });
   } catch (err) {
     console.error("[profile/request-phone-change]", err);
-    return res.status(500).json({ message: "Failed to send SMS verification code." });
+    return res
+      .status(500)
+      .json({ message: "Failed to send SMS verification code." });
   }
 };
 
@@ -601,15 +962,27 @@ exports.requestPhoneChange = async (req, res) => {
 ──────────────────────────────────────── */
 exports.verifyPhoneChange = async (req, res) => {
   const { otp, new_phone } = req.body;
-  if (!otp || !new_phone) {
-    return res.status(400).json({ message: "OTP and new phone number are required." });
+  const normalizedOtp = String(otp || "").trim();
+
+  if (!/^\d{6}$/.test(normalizedOtp)) {
+    return res.status(400).json({
+      message: "OTP must be exactly 6 digits.",
+    });
+  }
+
+  if (!new_phone) {
+    return res.status(400).json({
+      message: "New phone number is required.",
+    });
   }
 
   let normalizedPhone;
   try {
     normalizedPhone = normalizePhilippinePhone(new_phone);
   } catch {
-    return res.status(400).json({ message: "Enter a valid Philippine mobile number." });
+    return res
+      .status(400)
+      .json({ message: "Enter a valid Philippine mobile number." });
   }
 
   try {
@@ -618,11 +991,17 @@ exports.verifyPhoneChange = async (req, res) => {
       [req.user.id],
     );
     const u = rows[0];
-    if (!u || String(u.otp_code) !== String(otp).trim() || u.otp_purpose !== "change_phone") {
+    if (
+      !u ||
+      String(u.otp_code || "").trim() !== normalizedOtp ||
+      u.otp_purpose !== "change_phone"
+    ) {
       return res.status(400).json({ message: "Invalid OTP code." });
     }
     if (!u.otp_expires || new Date(u.otp_expires) < new Date()) {
-      return res.status(400).json({ message: "OTP has expired. Please request a new one." });
+      return res
+        .status(400)
+        .json({ message: "OTP has expired. Please request a new one." });
     }
 
     let pendingPhone;
@@ -630,12 +1009,14 @@ exports.verifyPhoneChange = async (req, res) => {
       pendingPhone = normalizePhilippinePhone(u.pending_phone || "");
     } catch {
       return res.status(400).json({
-        message: "No verified phone-change request is pending. Please request a new code.",
+        message:
+          "No verified phone-change request is pending. Please request a new code.",
       });
     }
     if (pendingPhone !== normalizedPhone) {
       return res.status(400).json({
-        message: "The phone number does not match the number that received this code.",
+        message:
+          "The phone number does not match the number that received this code.",
       });
     }
 
@@ -655,7 +1036,9 @@ exports.verifyPhoneChange = async (req, res) => {
 
     let existingPhone = String(u.phone || "").trim();
     try {
-      existingPhone = existingPhone ? normalizePhilippinePhone(existingPhone) : "";
+      existingPhone = existingPhone
+        ? normalizePhilippinePhone(existingPhone)
+        : "";
     } catch {
       // Preserve only for audit comparison.
     }
@@ -772,35 +1155,55 @@ exports.requestCurrentPhoneAuth = async (req, res) => {
 ──────────────────────────────────────── */
 exports.verifyCurrentPhoneAuth = async (req, res) => {
   const { otp } = req.body;
+  const normalizedOtp = String(otp || "").trim();
 
-  if (!otp) return res.status(400).json({ message: "OTP is required." });
+  if (!/^\d{6}$/.test(normalizedOtp)) {
+    return res.status(400).json({
+      message: "OTP must be exactly 6 digits.",
+    });
+  }
 
   try {
     const [rows] = await db.query(
       "SELECT otp_code, otp_expires, otp_purpose FROM users WHERE id=?",
       [req.user.id],
     );
+
     const u = rows[0];
 
-    if (!u || u.otp_code !== otp || u.otp_purpose !== "auth_current_phone") {
-      return res.status(400).json({ message: "Invalid OTP code." });
-    }
-    if (new Date(u.otp_expires) < new Date()) {
-      return res.status(400).json({ message: "OTP has expired." });
+    if (
+      !u ||
+      String(u.otp_code || "").trim() !== normalizedOtp ||
+      u.otp_purpose !== "auth_current_phone"
+    ) {
+      return res.status(400).json({
+        message: "Invalid OTP code.",
+      });
     }
 
-    // Clear the OTP so it can't be reused, allowing them to proceed to step 3
+    if (!u.otp_expires || new Date(u.otp_expires) < new Date()) {
+      return res.status(400).json({
+        message: "OTP has expired.",
+      });
+    }
+
+    // Clear the OTP so it cannot be reused.
     await db.query(
-      `UPDATE users SET otp_code=NULL, otp_expires=NULL, otp_purpose=NULL WHERE id=?`,
+      `UPDATE users
+       SET otp_code=NULL, otp_expires=NULL, otp_purpose=NULL
+       WHERE id=?`,
       [req.user.id],
     );
 
-    res.json({
+    return res.json({
       message: "Identity verified. Proceed to enter new phone number.",
     });
   } catch (err) {
     console.error("[profile/verify-current-phone-auth]", err);
-    res.status(500).json({ message: "Verification failed." });
+
+    return res.status(500).json({
+      message: "Verification failed.",
+    });
   }
 };
 
@@ -818,12 +1221,10 @@ exports.requestCurrentEmailAuth = async (req, res) => {
     const u = rows[0];
 
     if (method === "sms" && !u.phone) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "No phone number attached to this account. Please update your phone number first.",
-        });
+      return res.status(400).json({
+        message:
+          "No phone number attached to this account. Please update your phone number first.",
+      });
     }
 
     const otp = genOtp();
@@ -890,8 +1291,13 @@ exports.requestCurrentEmailAuth = async (req, res) => {
 ──────────────────────────────────────── */
 exports.verifyCurrentEmailAuth = async (req, res) => {
   const { otp } = req.body;
+  const normalizedOtp = String(otp || "").trim();
 
-  if (!otp) return res.status(400).json({ message: "OTP is required." });
+  if (!/^\d{6}$/.test(normalizedOtp)) {
+    return res.status(400).json({
+      message: "OTP must be exactly 6 digits.",
+    });
+  }
 
   try {
     const [rows] = await db.query(
@@ -900,8 +1306,14 @@ exports.verifyCurrentEmailAuth = async (req, res) => {
     );
     const u = rows[0];
 
-    if (!u || u.otp_code !== otp || u.otp_purpose !== "auth_current_email") {
-      return res.status(400).json({ message: "Invalid OTP code." });
+    if (
+      !u ||
+      String(u.otp_code || "").trim() !== normalizedOtp ||
+      u.otp_purpose !== "auth_current_email"
+    ) {
+      return res.status(400).json({
+        message: "Invalid OTP code.",
+      });
     }
     if (new Date(u.otp_expires) < new Date()) {
       return res.status(400).json({ message: "OTP has expired." });

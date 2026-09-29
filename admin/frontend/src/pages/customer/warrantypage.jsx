@@ -17,6 +17,9 @@ import {
 } from "../../components/MotionFeedbackOverlay";
 import "./warrantypage.css";
 
+const MAX_WARRANTY_DESCRIPTION_LENGTH = 1000;
+const MAX_WARRANTY_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+
 const StatusBadge = ({ status }) => {
   const normalized = String(status || "").toLowerCase();
 
@@ -721,18 +724,42 @@ export default function WarrantyPage() {
                             </label>
                             <input
                               className="winput"
-                              type="number"
-                              min="1"
-                              max={Number(
-                                products.find(
-                                  (item) =>
-                                    String(item.order_item_id) ===
-                                    String(selectedOrderItemId),
-                                )?.quantity || 1,
-                              )}
-                              step="1"
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
                               value={claimQuantity}
-                              onChange={(e) => setClaimQuantity(e.target.value)}
+                              onChange={(e) => {
+                                const value = e.target.value.replace(/\D/g, "");
+
+                                if (!value) {
+                                  setClaimQuantity("");
+                                  return;
+                                }
+
+                                const numericValue = Number(value);
+
+                                // Claim quantity cannot be 0.
+                                if (numericValue < 1) {
+                                  setClaimQuantity("1");
+                                  return;
+                                }
+
+                                const selectedQuantity = Number(
+                                  products.find(
+                                    (item) =>
+                                      String(item.order_item_id) ===
+                                      String(selectedOrderItemId),
+                                  )?.quantity || 1,
+                                );
+
+                                // Claim quantity cannot exceed the quantity purchased.
+                                if (numericValue > selectedQuantity) {
+                                  setClaimQuantity(String(selectedQuantity));
+                                  return;
+                                }
+
+                                setClaimQuantity(String(numericValue));
+                              }}
                               disabled={!selectedOrderItemId}
                             />
                           </div>
@@ -748,10 +775,11 @@ export default function WarrantyPage() {
                               value={description}
                               onChange={(e) => setDescription(e.target.value)}
                               rows={4}
-                              maxLength={1000}
+                              maxLength={MAX_WARRANTY_DESCRIPTION_LENGTH}
                             />
                             <div className="wchar-count">
-                              {description.length}/1000
+                              {description.length}/
+                              {MAX_WARRANTY_DESCRIPTION_LENGTH}
                             </div>
                           </div>
 
@@ -766,10 +794,27 @@ export default function WarrantyPage() {
                               hint="Required — upload a clear image of the issue"
                               name="photo"
                               file={photoFile}
-                              accept="image/jpeg,image/png,image/webp"
-                              onChange={(e) =>
-                                setPhotoFile(e.target.files?.[0] || null)
-                              }
+                              accept="image/jpeg,image/png,image/webp,.jfif"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0] || null;
+
+                                if (!file) {
+                                  setPhotoFile(null);
+                                  return;
+                                }
+
+                                if (file.size > MAX_WARRANTY_FILE_SIZE_BYTES) {
+                                  e.target.value = "";
+                                  setPhotoFile(null);
+                                  setFormError(
+                                    "Photo of the issue must be 5 MB or smaller.",
+                                  );
+                                  return;
+                                }
+
+                                setFormError("");
+                                setPhotoFile(file);
+                              }}
                               onClear={() => setPhotoFile(null)}
                             />
 
@@ -783,10 +828,27 @@ export default function WarrantyPage() {
                               hint="Required — upload your receipt or confirmation"
                               name="proof"
                               file={proofFile}
-                              accept="image/jpeg,image/png,image/webp,application/pdf"
-                              onChange={(e) =>
-                                setProofFile(e.target.files?.[0] || null)
-                              }
+                              accept="image/jpeg,image/png,image/webp,.jfif,application/pdf"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0] || null;
+
+                                if (!file) {
+                                  setProofFile(null);
+                                  return;
+                                }
+
+                                if (file.size > MAX_WARRANTY_FILE_SIZE_BYTES) {
+                                  e.target.value = "";
+                                  setProofFile(null);
+                                  setFormError(
+                                    "Proof of purchase must be 5 MB or smaller.",
+                                  );
+                                  return;
+                                }
+
+                                setFormError("");
+                                setProofFile(file);
+                              }}
                               onClear={() => setProofFile(null)}
                             />
                           </div>

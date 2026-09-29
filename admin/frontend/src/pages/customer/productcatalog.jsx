@@ -771,6 +771,7 @@ export default function ProductCatalog() {
                       type="text"
                       placeholder="Search products..."
                       value={search}
+                      maxLength={254}
                       onChange={(e) => setSearch(e.target.value)}
                       onFocus={() => setSearchFocused(true)}
                       onBlur={() =>

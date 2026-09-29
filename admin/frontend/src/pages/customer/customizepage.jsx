@@ -2247,6 +2247,7 @@ export default function CustomizePage() {
                       type="text"
                       placeholder="Search designs..."
                       value={search}
+                      maxLength={254}
                       onChange={(e) => setSearch(e.target.value)}
                     />
                   </div>

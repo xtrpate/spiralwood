@@ -9,6 +9,7 @@ const WARRANTY_PERIOD_KEY = "warranty_period_days";
 const WARRANTY_POLICY_VERSION_KEY = "warranty_policy_version";
 const WARRANTY_POLICY_VERSION = "2";
 const DEFAULT_WARRANTY_PERIOD_DAYS = 365;
+const MAX_WARRANTY_DESCRIPTION_LENGTH = 1000;
 
 const getWarrantyPeriodDays = async () => {
   const [rows] = await db.query(
@@ -19,20 +20,32 @@ const getWarrantyPeriodDays = async () => {
     [WARRANTY_PERIOD_KEY, WARRANTY_POLICY_VERSION_KEY],
   );
 
-  const values = new Map(rows.map((row) => [String(row.content_key), row.content]));
-  if (String(values.get(WARRANTY_POLICY_VERSION_KEY) || "") !== WARRANTY_POLICY_VERSION) {
+  const values = new Map(
+    rows.map((row) => [String(row.content_key), row.content]),
+  );
+  if (
+    String(values.get(WARRANTY_POLICY_VERSION_KEY) || "") !==
+    WARRANTY_POLICY_VERSION
+  ) {
     return DEFAULT_WARRANTY_PERIOD_DAYS;
   }
 
   const configuredDays = Number(values.get(WARRANTY_PERIOD_KEY));
-  if (!Number.isInteger(configuredDays) || configuredDays < 1 || configuredDays > 3650) {
+  if (
+    !Number.isInteger(configuredDays) ||
+    configuredDays < 1 ||
+    configuredDays > 3650
+  ) {
     return DEFAULT_WARRANTY_PERIOD_DAYS;
   }
   return configuredDays;
 };
 
 const splitStoredProofs = (value) => {
-  const parts = String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
+  const parts = String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
   return { photo_url: parts[0] || null, proof_url: parts[1] || null };
 };
 
@@ -109,7 +122,9 @@ const getEligibleOrders = async (req, res) => {
     return res.json(grouped);
   } catch (err) {
     console.error("[customer.warranty eligible-orders]", err);
-    return res.status(500).json({ message: "Server error.", error: err.message });
+    return res
+      .status(500)
+      .json({ message: "Server error.", error: err.message });
   }
 };
 
@@ -129,21 +144,25 @@ const getClaims = async (req, res) => {
       [req.user.id],
     );
 
-    return res.json(rows.map((row) => {
-      const { photo_url, proof_url } = splitStoredProofs(row.proof_url);
-      return {
-        ...row,
-        claim_quantity: Number(row.claim_quantity || 1),
-        description: row.reason,
-        photo_url: signUploadPath(photo_url),
-        proof_url: signUploadPath(proof_url),
-        replacement_receipt: signUploadPath(row.replacement_receipt),
-        reason: undefined,
-      };
-    }));
+    return res.json(
+      rows.map((row) => {
+        const { photo_url, proof_url } = splitStoredProofs(row.proof_url);
+        return {
+          ...row,
+          claim_quantity: Number(row.claim_quantity || 1),
+          description: row.reason,
+          photo_url: signUploadPath(photo_url),
+          proof_url: signUploadPath(proof_url),
+          replacement_receipt: signUploadPath(row.replacement_receipt),
+          reason: undefined,
+        };
+      }),
+    );
   } catch (err) {
     console.error("[customer.warranty GET]", err);
-    return res.status(500).json({ message: "Server error.", error: err.message });
+    return res
+      .status(500)
+      .json({ message: "Server error.", error: err.message });
   }
 };
 
@@ -154,22 +173,42 @@ const submitClaim = async (req, res) => {
   const description = String(req.body?.description || "").trim();
 
   if (!Number.isInteger(orderId) || orderId <= 0) {
-    return res.status(400).json({ message: "Please select an eligible completed and paid order." });
+    return res
+      .status(400)
+      .json({ message: "Please select an eligible completed and paid order." });
   }
   if (!Number.isInteger(orderItemId) || orderItemId <= 0) {
-    return res.status(400).json({ message: "Please select the exact affected item from the order." });
+    return res.status(400).json({
+      message: "Please select the exact affected item from the order.",
+    });
   }
   if (!Number.isInteger(claimQuantity) || claimQuantity <= 0) {
-    return res.status(400).json({ message: "Claim quantity must be a whole number greater than 0." });
+    return res.status(400).json({
+      message: "Claim quantity must be a whole number greater than 0.",
+    });
   }
   if (!description) {
-    return res.status(400).json({ message: "Description of the issue is required." });
+    return res
+      .status(400)
+      .json({ message: "Description of the issue is required." });
   }
 
-  const photoUrl = req.files?.photo?.[0] ? `uploads/warranty/${req.files.photo[0].filename}` : null;
-  const proofUrl = req.files?.proof?.[0] ? `uploads/warranty/${req.files.proof[0].filename}` : null;
+  if (description.length > MAX_WARRANTY_DESCRIPTION_LENGTH) {
+    return res.status(400).json({
+      message: `Description of the issue must not exceed ${MAX_WARRANTY_DESCRIPTION_LENGTH} characters.`,
+    });
+  }
+
+  const photoUrl = req.files?.photo?.[0]
+    ? `uploads/warranty/${req.files.photo[0].filename}`
+    : null;
+  const proofUrl = req.files?.proof?.[0]
+    ? `uploads/warranty/${req.files.proof[0].filename}`
+    : null;
   if (!photoUrl || !proofUrl) {
-    return res.status(400).json({ message: "Both defect photo and proof of purchase are required." });
+    return res.status(400).json({
+      message: "Both defect photo and proof of purchase are required.",
+    });
   }
   const combinedUrls = [photoUrl, proofUrl].join(",");
 
@@ -189,18 +228,26 @@ const submitClaim = async (req, res) => {
     );
 
     if (!item) {
-      return res.status(404).json({ message: "The selected order item was not found for this customer." });
+      return res.status(404).json({
+        message: "The selected order item was not found for this customer.",
+      });
     }
     if (String(item.status || "").toLowerCase() !== "completed") {
-      return res.status(400).json({ message: "Only completed orders can be used for warranty claims." });
+      return res.status(400).json({
+        message: "Only completed orders can be used for warranty claims.",
+      });
     }
     if (String(item.payment_status || "").toLowerCase() !== "paid") {
-      return res.status(400).json({ message: "Only fully paid orders are eligible for warranty claims." });
+      return res.status(400).json({
+        message: "Only fully paid orders are eligible for warranty claims.",
+      });
     }
 
     const expiry = item.warranty_expiry ? new Date(item.warranty_expiry) : null;
     if (!expiry || Number.isNaN(expiry.getTime()) || expiry < new Date()) {
-      return res.status(400).json({ message: "This order is no longer within the warranty period." });
+      return res.status(400).json({
+        message: "This order is no longer within the warranty period.",
+      });
     }
 
     const orderedQuantity = Number(item.ordered_quantity || 0);
@@ -220,7 +267,8 @@ const submitClaim = async (req, res) => {
     );
     if (existingClaims.length) {
       return res.status(400).json({
-        message: "An active warranty claim already exists for this exact order item.",
+        message:
+          "An active warranty claim already exists for this exact order item.",
       });
     }
 
@@ -259,7 +307,9 @@ const submitClaim = async (req, res) => {
     });
 
     try {
-      const [admins] = await db.query(`SELECT id FROM users WHERE role = 'admin' AND is_active = 1`);
+      const [admins] = await db.query(
+        `SELECT id FROM users WHERE role = 'admin' AND is_active = 1`,
+      );
       const customerName = req.user.name || "A customer";
       for (const admin of admins) {
         await createNotificationSafe(db, {
@@ -273,7 +323,10 @@ const submitClaim = async (req, res) => {
         });
       }
     } catch (notificationErr) {
-      console.error("[customer.warranty notification skipped]", notificationErr.message || notificationErr);
+      console.error(
+        "[customer.warranty notification skipped]",
+        notificationErr.message || notificationErr,
+      );
     }
 
     return res.status(201).json({
@@ -282,14 +335,18 @@ const submitClaim = async (req, res) => {
     });
   } catch (err) {
     console.error("[customer.warranty POST]", err);
-    return res.status(500).json({ message: "Server error.", error: err.message });
+    return res
+      .status(500)
+      .json({ message: "Server error.", error: err.message });
   }
 };
 
 const cancelClaim = async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
-    return res.status(400).json({ message: "Valid warranty claim ID is required." });
+    return res
+      .status(400)
+      .json({ message: "Valid warranty claim ID is required." });
   }
 
   try {
@@ -300,11 +357,16 @@ const cancelClaim = async (req, res) => {
        LIMIT 1`,
       [id, req.user.id],
     );
-    if (!claim) return res.status(404).json({ message: "Warranty claim not found." });
+    if (!claim)
+      return res.status(404).json({ message: "Warranty claim not found." });
 
-    const currentStatus = String(claim.status || "").trim().toLowerCase();
+    const currentStatus = String(claim.status || "")
+      .trim()
+      .toLowerCase();
     if (currentStatus !== "pending") {
-      return res.status(400).json({ message: "Only pending warranty claims can be cancelled." });
+      return res
+        .status(400)
+        .json({ message: "Only pending warranty claims can be cancelled." });
     }
 
     const [result] = await db.query(
@@ -315,19 +377,25 @@ const cancelClaim = async (req, res) => {
     );
     if (!result.affectedRows) {
       return res.status(409).json({
-        message: "This warranty claim can no longer be cancelled. Refresh the page and try again.",
+        message:
+          "This warranty claim can no longer be cancelled. Refresh the page and try again.",
       });
     }
 
     req.auditRecord = {
       id: claim.id,
       old: { status: "pending" },
-      new: { status: "cancelled", cancelled_by_customer_id: Number(req.user.id) },
+      new: {
+        status: "cancelled",
+        cancelled_by_customer_id: Number(req.user.id),
+      },
     };
     return res.json({ message: "Warranty claim cancelled successfully." });
   } catch (err) {
     console.error("[customer.warranty cancel]", err);
-    return res.status(500).json({ message: "Server error.", error: err.message });
+    return res
+      .status(500)
+      .json({ message: "Server error.", error: err.message });
   }
 };
 

@@ -17,6 +17,12 @@ import {
 import "./profile.css";
 import useAuthStore from "../../store/authStore";
 import LocationPicker from "../../components/LocationPicker";
+
+const MAX_NAME_LENGTH = 50;
+const MAX_ADDRESS_LENGTH = 500;
+const MAX_EMAIL_LENGTH = 254;
+const MAX_PASSWORD_LENGTH = 72;
+const OTP_LENGTH = 6;
 import {
   MotionFeedbackOverlay,
   getMotionFeedbackDurations,
@@ -443,6 +449,7 @@ export default function ProfileSettings() {
     }
 
     const combinedName = `${trimmedLast}, ${trimmedFirst}`;
+    const displayName = `${trimmedFirst} ${trimmedLast}`;
 
     setNameLoading(true);
     setNameMsg({ type: "", text: "" });
@@ -613,13 +620,36 @@ export default function ProfileSettings() {
 
   // STEP 3: Request OTP to New Email
   const requestNewEmailOtp = async () => {
-    if (!newEmail.trim())
-      return setEmailMsg({ type: "error", text: "Enter a new email address." });
+    const trimmedEmail = newEmail.trim().toLowerCase();
+
+    if (!trimmedEmail) {
+      return setEmailMsg({
+        type: "error",
+        text: "Enter a new email address.",
+      });
+    }
+
+    if (trimmedEmail.length > MAX_EMAIL_LENGTH) {
+      return setEmailMsg({
+        type: "error",
+        text: `Email address must not exceed ${MAX_EMAIL_LENGTH} characters.`,
+      });
+    }
+
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailPattern.test(trimmedEmail)) {
+      return setEmailMsg({
+        type: "error",
+        text: "Enter a valid email address.",
+      });
+    }
+
     setEmailLoading(true);
     setEmailMsg({ type: "", text: "" });
     try {
       await api.post("/customer/profile/request-email-change", {
-        new_email: newEmail,
+        new_email: trimmedEmail,
       });
       setEmailStep(4);
       setEmailCooldown(60);
@@ -640,8 +670,15 @@ export default function ProfileSettings() {
   // STEP 4: Verify New Email OTP & Save
   const verifyNewEmailOtp = async (e) => {
     if (e) e.preventDefault();
-    if (!newEmailOtp.trim())
-      return setEmailMsg({ type: "error", text: "Enter the OTP." });
+
+    const normalizedOtp = newEmailOtp.trim();
+
+    if (!/^\d{6}$/.test(normalizedOtp)) {
+      return setEmailMsg({
+        type: "error",
+        text: `OTP must be exactly ${OTP_LENGTH} digits.`,
+      });
+    }
 
     setEmailLoading(true);
     setFeedbackOpen(true);
@@ -650,7 +687,7 @@ export default function ProfileSettings() {
 
     try {
       await api.post("/customer/profile/verify-email-change", {
-        otp: newEmailOtp,
+        otp: normalizedOtp,
       });
       setUser((prev) => ({ ...prev, email: newEmail }));
 
@@ -770,8 +807,15 @@ export default function ProfileSettings() {
 
   const verifyPhoneOtp = async (formattedPhone, e) => {
     if (e) e.preventDefault();
-    if (!phoneOtp.trim())
-      return setPhoneMsg({ type: "error", text: "Enter the OTP code." });
+
+    const normalizedOtp = phoneOtp.trim();
+
+    if (!/^\d{6}$/.test(normalizedOtp)) {
+      return setPhoneMsg({
+        type: "error",
+        text: `OTP must be exactly ${OTP_LENGTH} digits.`,
+      });
+    }
 
     const phoneToSend =
       typeof formattedPhone === "string" ? formattedPhone : "0" + newPhone;
@@ -783,7 +827,7 @@ export default function ProfileSettings() {
 
     try {
       const res = await api.post("/customer/profile/verify-phone-change", {
-        otp: phoneOtp,
+        otp: normalizedOtp,
         new_phone: phoneToSend,
       });
       setUser({ ...user, phone: res.data.phone });
@@ -928,9 +972,6 @@ export default function ProfileSettings() {
     addressForm.address_lat !== (user?.address_lat ?? null) ||
     addressForm.address_lng !== (user?.address_lng ?? null);
 
-  // Check if Phone has changed
-  const isPhoneChanged = newPhone !== (user?.phone || "");
-
   return (
     <div>
       <div className="page-hero profile-page-hero">
@@ -943,9 +984,7 @@ export default function ProfileSettings() {
           {/* ══ AVATAR ══ */}
           <div className="profile-section">
             <div className="profile-section-header">
-              <h3>
-                <Camera size={16} /> Profile Picture
-              </h3>
+              <h3>Profile Picture</h3>
             </div>
             <div className="profile-section-body">
               <Alert type={avatarMsg.type} msg={avatarMsg.text} />
@@ -963,14 +1002,14 @@ export default function ProfileSettings() {
                 </div>
                 <div className="avatar-upload-info">
                   <p>
-                    Upload a photo to personalize your account. JPG or PNG, max
-                    2MB.
+                    Upload a photo to personalize your account. JPG, JPEG, JFIF,
+                    PNG, or WEBP, max 2MB.
                   </p>
                   <button
                     className="avatar-upload-btn"
                     onClick={() => fileRef.current?.click()}
                   >
-                    <Camera size={14} /> Choose Photo
+                    Choose Photo
                   </button>
                   <input
                     ref={fileRef}
@@ -1008,9 +1047,7 @@ export default function ProfileSettings() {
           {/* ══ BASIC INFO (Name) ══ */}
           <div className="profile-section">
             <div className="profile-section-header">
-              <h3>
-                <User size={16} /> Basic Information
-              </h3>
+              <h3> Basic Information</h3>
               {!editName && (
                 <button
                   className="edit-toggle"
@@ -1037,6 +1074,7 @@ export default function ProfileSettings() {
                           }))
                         }
                         placeholder="First Name"
+                        maxLength={MAX_NAME_LENGTH}
                       />
                     </div>
                     <div className="form-field">
@@ -1051,6 +1089,7 @@ export default function ProfileSettings() {
                           }))
                         }
                         placeholder="Last Name"
+                        maxLength={MAX_NAME_LENGTH}
                       />
                     </div>
                   </div>
@@ -1126,9 +1165,7 @@ export default function ProfileSettings() {
           {/* ══ DEFAULT DELIVERY ADDRESS ══ */}
           <div className="profile-section">
             <div className="profile-section-header">
-              <h3>
-                <MapPin size={16} /> Default Delivery Address
-              </h3>
+              <h3>Default Delivery Address</h3>
               {!editAddress && (
                 <button
                   className="edit-toggle"
@@ -1156,6 +1193,7 @@ export default function ProfileSettings() {
                     <LocationPicker
                       label="Address"
                       addressValue={addressForm.address}
+                      maxLength={MAX_ADDRESS_LENGTH}
                       onAddressChange={(text) =>
                         setAddressForm((p) => ({ ...p, address: text }))
                       }
@@ -1226,7 +1264,7 @@ export default function ProfileSettings() {
                       }
                     >
                       {user?.address_lat != null && user?.address_lng != null
-                        ? `📍 ${Number(user.address_lat).toFixed(5)}, ${Number(user.address_lng).toFixed(5)}`
+                        ? ` ${Number(user.address_lat).toFixed(5)}, ${Number(user.address_lng).toFixed(5)}`
                         : "Not set"}
                     </span>
                   </div>
@@ -1238,9 +1276,7 @@ export default function ProfileSettings() {
           {/* ══ EMAIL ══ */}
           <div className="profile-section">
             <div className="profile-section-header">
-              <h3>
-                <Mail size={16} /> Email Address
-              </h3>
+              <h3>Email Address</h3>
               {!editEmail && (
                 <button
                   className="edit-toggle"
@@ -1330,7 +1366,7 @@ export default function ProfileSettings() {
                 </div>
               ) : emailStep === 2 ? (
                 <div className="verify-step">
-                  <h4>🔒 Verify Identity</h4>
+                  <h4>Verify Identity</h4>
                   <p>
                     We sent a 6-digit verification code to your{" "}
                     <strong>
@@ -1346,7 +1382,7 @@ export default function ProfileSettings() {
                   >
                     <input
                       type="text"
-                      maxLength={6}
+                      maxLength={OTP_LENGTH}
                       placeholder="000000"
                       value={currentEmailOtp}
                       onChange={(e) =>
@@ -1374,7 +1410,9 @@ export default function ProfileSettings() {
                     <button
                       className="btn btn-primary"
                       onClick={verifyCurrentEmailAuth}
-                      disabled={emailLoading || currentEmailOtp.length < 6}
+                      disabled={
+                        emailLoading || currentEmailOtp.length < OTP_LENGTH
+                      }
                     >
                       {emailLoading ? (
                         <>
@@ -1393,7 +1431,7 @@ export default function ProfileSettings() {
                           Verifying…
                         </>
                       ) : (
-                        "Next"
+                        "Verify"
                       )}
                     </button>
                     <button
@@ -1413,6 +1451,7 @@ export default function ProfileSettings() {
                       value={newEmail}
                       onChange={(e) => setNewEmail(e.target.value)}
                       placeholder="newemail@example.com"
+                      maxLength={MAX_EMAIL_LENGTH}
                     />
                   </div>
                   <div className="profile-form-actions">
@@ -1420,7 +1459,7 @@ export default function ProfileSettings() {
                     <button
                       className="btn btn-primary"
                       onClick={requestNewEmailOtp}
-                      disabled={emailLoading}
+                      disabled={emailLoading || !newEmail.trim()}
                     >
                       {emailLoading ? (
                         <>
@@ -1463,7 +1502,7 @@ export default function ProfileSettings() {
                   >
                     <input
                       type="text"
-                      maxLength={6}
+                      maxLength={OTP_LENGTH}
                       placeholder="000000"
                       value={newEmailOtp}
                       onChange={(e) =>
@@ -1492,7 +1531,9 @@ export default function ProfileSettings() {
                       type="button"
                       className="btn btn-primary"
                       onClick={verifyNewEmailOtp}
-                      disabled={emailLoading}
+                      disabled={
+                        emailLoading || newEmailOtp.length !== OTP_LENGTH
+                      }
                     >
                       {emailLoading ? (
                         "Verifying…"
@@ -1520,9 +1561,7 @@ export default function ProfileSettings() {
           {/* ══ PHONE ══ */}
           <div className="profile-section">
             <div className="profile-section-header">
-              <h3>
-                <Phone size={16} /> Phone Number
-              </h3>
+              <h3>Phone Number</h3>
               {!editPhone && (
                 <button
                   className="edit-toggle"
@@ -1535,7 +1574,7 @@ export default function ProfileSettings() {
                     setPhoneMsg({ type: "", text: "" });
                   }}
                 >
-                  <Pencil size={13} /> {user?.phone ? "Change" : "Add"}
+                  {user?.phone ? "Change" : "Add"}
                 </button>
               )}
             </div>
@@ -1658,7 +1697,7 @@ export default function ProfileSettings() {
               ) : phoneStep === 2 ? (
                 /* STEP 2: VERIFY AUTHENTICATION */
                 <div className="verify-step">
-                  <h4>🔒 Verify Identity</h4>
+                  <h4>Verify Identity</h4>
                   <p>
                     We sent a 6-digit verification code to your{" "}
                     <strong>
@@ -1672,7 +1711,7 @@ export default function ProfileSettings() {
                   >
                     <input
                       type="text"
-                      maxLength={6}
+                      maxLength={OTP_LENGTH}
                       placeholder="000000"
                       value={currentPhoneOtp}
                       onChange={(e) =>
@@ -1700,7 +1739,9 @@ export default function ProfileSettings() {
                     <button
                       className="btn btn-primary"
                       onClick={verifyCurrentPhoneAuth}
-                      disabled={phoneLoading || currentPhoneOtp.length < 6}
+                      disabled={
+                        phoneLoading || currentPhoneOtp.length < OTP_LENGTH
+                      }
                     >
                       {phoneLoading ? (
                         <>
@@ -1719,7 +1760,7 @@ export default function ProfileSettings() {
                           Verifying…
                         </>
                       ) : (
-                        "Next"
+                        "Verify"
                       )}
                     </button>
                     <button
@@ -1752,6 +1793,8 @@ export default function ProfileSettings() {
                       <div className="phone-input-wrapper">
                         <input
                           type="text"
+                          inputMode="numeric"
+                          pattern="9[0-9]{9}"
                           value={
                             showPhone
                               ? newPhone
@@ -1847,7 +1890,7 @@ export default function ProfileSettings() {
                   >
                     <input
                       type="text"
-                      maxLength={6}
+                      maxLength={OTP_LENGTH}
                       placeholder="000000"
                       value={phoneOtp}
                       onChange={(e) =>
@@ -1876,7 +1919,7 @@ export default function ProfileSettings() {
                       type="button"
                       className="btn btn-primary"
                       onClick={(e) => verifyPhoneOtp("0" + newPhone, e)}
-                      disabled={phoneLoading || phoneOtp.length < 6}
+                      disabled={phoneLoading || phoneOtp.length !== OTP_LENGTH}
                     >
                       {phoneLoading ? (
                         "Verifying…"
@@ -1905,9 +1948,7 @@ export default function ProfileSettings() {
           {/* ══ PASSWORD ══ */}
           <div className="profile-section">
             <div className="profile-section-header">
-              <h3>
-                <Lock size={16} /> Change Password
-              </h3>
+              <h3>Change Password</h3>
               {!editPass && (
                 <button
                   className="edit-toggle"
@@ -1945,6 +1986,7 @@ export default function ProfileSettings() {
                         type={showPass.current ? "text" : "password"}
                         placeholder="Enter current password"
                         value={passForm.current}
+                        maxLength={MAX_PASSWORD_LENGTH}
                         onChange={(e) =>
                           setPassForm((p) => ({
                             ...p,
@@ -2026,7 +2068,7 @@ export default function ProfileSettings() {
                   >
                     <input
                       type="text"
-                      maxLength={6}
+                      maxLength={OTP_LENGTH}
                       placeholder="000000"
                       value={passOtp}
                       onChange={(e) =>
@@ -2055,7 +2097,7 @@ export default function ProfileSettings() {
                       className="btn btn-primary"
                       disabled={passLoading || !passOtp.trim()}
                       onClick={() => {
-                        if (!passOtp.trim() || passOtp.length < 6) {
+                        if (!passOtp.trim() || passOtp.length < OTP_LENGTH) {
                           setPassMsg({
                             type: "error",
                             text: "Please enter the full 6-digit OTP.",
@@ -2066,7 +2108,7 @@ export default function ProfileSettings() {
                         setPassStep(3); // Moves to the New Password window!
                       }}
                     >
-                      Next
+                      Verify
                     </button>
                     <button
                       className="btn btn-secondary"
@@ -2105,6 +2147,7 @@ export default function ProfileSettings() {
                             type={showPass[f.key] ? "text" : "password"}
                             placeholder={f.ph}
                             value={passForm[f.key]}
+                            maxLength={MAX_PASSWORD_LENGTH}
                             onChange={(e) =>
                               setPassForm((p) => ({
                                 ...p,

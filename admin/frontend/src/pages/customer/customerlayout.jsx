@@ -910,6 +910,7 @@ export default function CustomerLayout() {
                   type="text"
                   placeholder="Search furniture..."
                   value={headerSearch}
+                  maxLength={254}
                   onChange={(e) => setHeaderSearch(e.target.value)}
                   onFocus={() => setSearchFocused(true)}
                   onBlur={() => setTimeout(() => setSearchFocused(false), 200)}

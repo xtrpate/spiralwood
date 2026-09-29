@@ -24,7 +24,14 @@ const storage = multer.diskStorage({
   },
 });
 
-const ALLOWED_WARRANTY_EXT = [".jpg", ".jpeg", ".jfif", ".png", ".webp", ".pdf"];
+const ALLOWED_WARRANTY_EXT = [
+  ".jpg",
+  ".jpeg",
+  ".jfif",
+  ".png",
+  ".webp",
+  ".pdf",
+];
 
 const rawUpload = multer({
   storage,
@@ -49,15 +56,44 @@ const upload = (req, res, next) => {
     if (err) return next(err);
 
     const files = req.files ? Object.values(req.files).flat() : [];
+
     for (const file of files) {
       const ext = path.extname(file.originalname || "").toLowerCase();
+
       if (!verifyFileSignature(file.path, ext)) {
         fs.unlink(file.path, () => {});
+
         return res.status(400).json({
-          message: "One of your uploaded files does not match its file extension. Upload rejected.",
+          message:
+            "One of your uploaded files does not match its file extension. Upload rejected.",
         });
       }
     }
+
+    /*
+     * Multer saves files before the warranty controller performs
+     * database/business-rule validation.
+     *
+     * If the controller later rejects the request, remove the
+     * uploaded files so rejected claims do not leave orphaned files.
+     */
+    const uploadedFilePaths = files.map((file) => file.path).filter(Boolean);
+
+    res.on("finish", () => {
+      if (res.statusCode >= 400) {
+        for (const filePath of uploadedFilePaths) {
+          fs.unlink(filePath, (unlinkErr) => {
+            if (unlinkErr && unlinkErr.code !== "ENOENT") {
+              console.error(
+                "[customer.warranty upload cleanup]",
+                unlinkErr.message || unlinkErr,
+              );
+            }
+          });
+        }
+      }
+    });
+
     next();
   });
 };

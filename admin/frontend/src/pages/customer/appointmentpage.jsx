@@ -22,13 +22,23 @@ import {
 } from "../../components/MotionFeedbackOverlay";
 import "./appointmentpage.css";
 
-// Helper: Get tomorrow's date as YYYY-MM-DD
+// Helper: Get tomorrow's date in Asia/Manila as YYYY-MM-DD
 const getMinDateYMD = () => {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  const yr = d.getFullYear();
-  const mo = String(d.getMonth() + 1).padStart(2, "0");
-  const da = String(d.getDate()).padStart(2, "0");
+  const manilaToday = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+
+  const [year, month, day] = manilaToday.split("-").map(Number);
+
+  const tomorrow = new Date(Date.UTC(year, month - 1, day + 1));
+
+  const yr = tomorrow.getUTCFullYear();
+  const mo = String(tomorrow.getUTCMonth() + 1).padStart(2, "0");
+  const da = String(tomorrow.getUTCDate()).padStart(2, "0");
+
   return `${yr}-${mo}-${da}`;
 };
 
@@ -1114,10 +1124,11 @@ export default function AppointmentPage() {
                             setProjectDescription(e.target.value)
                           }
                           rows={4}
-                          maxLength={500}
+                          maxLength={MAX_PROJECT_DESCRIPTION_LENGTH}
                         />
                         <div className="appt-char-count">
-                          {project_description.length}/500
+                          {project_description.length}/
+                          {MAX_PROJECT_DESCRIPTION_LENGTH}
                         </div>
                       </div>
 
@@ -1132,8 +1143,11 @@ export default function AppointmentPage() {
                           value={notes}
                           onChange={(e) => setNotes(e.target.value)}
                           rows={3}
-                          maxLength={300}
+                          maxLength={MAX_NOTES_LENGTH}
                         />
+                        <div className="appt-char-count">
+                          {notes.length}/{MAX_NOTES_LENGTH}
+                        </div>
                       </div>
                     </section>
 
@@ -1331,7 +1345,7 @@ export default function AppointmentPage() {
                             placeholder="Enter the full address..."
                             value={address}
                             onChange={(e) => setAddress(e.target.value)}
-                            maxLength={300}
+                            maxLength={MAX_ADDRESS_LENGTH}
                             style={{ maxWidth: "320px" }}
                           />
                         </div>
