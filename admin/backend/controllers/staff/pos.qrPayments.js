@@ -48,6 +48,9 @@ const {
   isValidPhoneNumber,
   parseStrictPositiveInt,
 } = require("../../utils/validators");
+const {
+  getPhilippineDateTimeMinuteKey,
+} = require("../../utils/philippineTime");
 
 const DEFAULT_TTL_MINUTES = 15;
 const MAX_TOKEN_LENGTH = 64;
@@ -1141,6 +1144,8 @@ const runTransactionA = async (req, res, ctx) => {
          p.name,
          p.walkin_price,
          p.production_cost,
+         p.type,
+         p.is_active,
          p.stock,
          p.reorder_point,
          COALESCE(ds.quantity, 0) AS display_stock
@@ -1164,6 +1169,16 @@ const runTransactionA = async (req, res, ctx) => {
         await conn.rollback();
         return res.status(404).json({
           message: `Product not found for item ${item.product_id}.`,
+        });
+      }
+
+      if (
+        String(product.type || "").toLowerCase() !== "standard" ||
+        Number(product.is_active) !== 1
+      ) {
+        await conn.rollback();
+        return res.status(409).json({
+          message: `${product.name} is not available for cashier sale.`,
         });
       }
 
@@ -1504,6 +1519,14 @@ exports.createAttempt = async (req, res) => {
   if (!deliveryDateResult.ok) {
     return res.status(400).json({
       message: "A valid delivery date and time is required.",
+    });
+  }
+  if (
+    deliveryDateResult.value &&
+    deliveryDateResult.value.slice(0, 16) < getPhilippineDateTimeMinuteKey()
+  ) {
+    return res.status(400).json({
+      message: "Delivery date and time cannot be in the past.",
     });
   }
 

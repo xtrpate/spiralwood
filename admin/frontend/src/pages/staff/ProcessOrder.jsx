@@ -11,8 +11,35 @@ const isValidPHPhone = (value) => {
   return digits.length === 11 && digits.startsWith("09");
 };
 
+const getPhilippineDateTimeLocalMin = () => {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(new Date())
+      .filter((part) =>
+        ["year", "month", "day", "hour", "minute"].includes(part.type),
+      )
+      .map((part) => [part.type, part.value]),
+  );
+
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+};
+
 const POS_QR_ENABLED = process.env.REACT_APP_POS_QR_ENABLED === "true";
 const POS_QR_STORAGE_KEY = "pos_qr_attempt";
+const POS_CASH_IDEMPOTENCY_STORAGE_KEY = "pos_cash_checkout";
+const POS_CASH_IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
+const MONEY_INPUT_PATTERN = /^\d+(?:\.\d{1,2})?$/;
+
+const roundCurrency = (value) =>
+  Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 
 const safeParseJson = (value, fallback = null) => {
   try {
@@ -56,6 +83,37 @@ const createClientToken = () => {
 
 const deriveIdempotencyKey = (checkoutToken) =>
   `idem_${checkoutToken}`.slice(0, 64);
+
+const getCashIdempotencyKey = () => {
+  const stored = safeParseJson(
+    sessionStorage.getItem(POS_CASH_IDEMPOTENCY_STORAGE_KEY),
+    null,
+  );
+
+  // Keep one key for the whole unresolved cash checkout. If the first
+  // request committed but its response was lost, editing a field before
+  // retry must NOT mint a new key and create a second sale. The server
+  // will replay an identical request or return 409 for a changed retry.
+  if (
+    stored &&
+    typeof stored === "object" &&
+    typeof stored.key === "string" &&
+    POS_CASH_IDEMPOTENCY_KEY_PATTERN.test(stored.key)
+  ) {
+    return stored.key;
+  }
+
+  if (stored) {
+    sessionStorage.removeItem(POS_CASH_IDEMPOTENCY_STORAGE_KEY);
+  }
+
+  const key = `pos_cash_${createClientToken()}`.slice(0, 128);
+  sessionStorage.setItem(
+    POS_CASH_IDEMPOTENCY_STORAGE_KEY,
+    JSON.stringify({ key }),
+  );
+  return key;
+};
 
 const readStoredQrAttempt = () => {
   const parsed = safeParseJson(
@@ -171,6 +229,7 @@ export default function ProcessOrder() {
   const resumeStartedRef = useRef(false);
   const checkoutTokenRef = useRef(qrAttempt?.checkout_token || "");
   const effectivePaymentMethod = qrAttempt ? "online" : form.payment_method;
+  const minimumDeliveryDateTime = getPhilippineDateTimeLocalMin();
 
   useEffect(() => {
     const saved = sessionStorage.getItem("pos_cart");
@@ -217,29 +276,43 @@ export default function ProcessOrder() {
   const discountInput = parseFloat(form.discount) || 0;
   let discountAmount = 0;
   if (form.discount_type === "percent") {
-    discountAmount = subtotal * (discountInput / 100);
+    discountAmount = roundCurrency(subtotal * (discountInput / 100));
   } else {
-    discountAmount = discountInput;
+    discountAmount = roundCurrency(discountInput);
   }
 
-  const deliveryFeeAmt = parseFloat(form.delivery_fee) || 0;
-  const total = Math.max(
-    subtotal - discountAmount + (form.need_delivery ? deliveryFeeAmt : 0),
-    0,
+  const deliveryFeeAmt = roundCurrency(parseFloat(form.delivery_fee) || 0);
+  const total = roundCurrency(
+    Math.max(
+      subtotal - discountAmount + (form.need_delivery ? deliveryFeeAmt : 0),
+      0,
+    ),
   );
 
-  const cashReceived = parseFloat(form.cash_received) || 0;
+  const cashReceived = roundCurrency(parseFloat(form.cash_received) || 0);
   const change =
-    effectivePaymentMethod === "cash" ? Math.max(cashReceived - total, 0) : 0;
+    effectivePaymentMethod === "cash"
+      ? roundCurrency(Math.max(cashReceived - total, 0))
+      : 0;
 
   const normalizedPhone = String(form.customer_phone || "").replace(/\D/g, "");
-  const phoneIsRequired = form.need_delivery;
+  const phoneIsRequired =
+    form.need_delivery || effectivePaymentMethod === "online";
   const phoneIsValid = !normalizedPhone || isValidPHPhone(normalizedPhone);
 
   const discountIsValid =
     form.discount_type === "percent"
       ? discountInput >= 0 && discountInput <= 100
       : discountInput >= 0 && discountInput <= subtotal;
+
+  const discountValidationMessage =
+    !form.discount || discountIsValid
+      ? ""
+      : discountInput < 0
+        ? "Discount cannot be negative."
+        : form.discount_type === "percent"
+          ? "Discount cannot exceed 100%."
+          : "Discount cannot exceed subtotal.";
 
   const cashIsValid =
     effectivePaymentMethod !== "cash" ||
@@ -249,7 +322,8 @@ export default function ProcessOrder() {
     !form.need_delivery ||
     (form.delivery_address.trim() &&
       hasValidDeliveryPin &&
-      form.delivery_requested_date);
+      form.delivery_requested_date &&
+      form.delivery_requested_date >= minimumDeliveryDateTime);
 
   const baseFormIsValid =
     cart.length > 0 &&
@@ -325,21 +399,31 @@ export default function ProcessOrder() {
     if (cart.length === 0) return setError("Cart is empty.");
     if (!form.customer_name.trim())
       return setError("Customer name is required.");
+    if (form.customer_name.trim().length > 150)
+      return setError("Customer name cannot exceed 150 characters.");
     if (phoneIsRequired && !normalizedPhone)
       return setError("Phone number is required for delivery.");
     if (normalizedPhone && !isValidPHPhone(normalizedPhone))
       return setError(
         "Enter a valid 11-digit PH mobile number starting with 09.",
       );
-    if (!discountIsValid) return setError("Invalid discount amount.");
 
-    if (form.payment_method === "cash") {
-      if (!form.cash_received || Number.isNaN(parseFloat(form.cash_received))) {
-        return setError("Cash received is required for cash payments.");
-      }
-      if (cashReceived < total) {
-        return setError("Cash received cannot be less than the total amount.");
-      }
+    if (form.discount && !MONEY_INPUT_PATTERN.test(form.discount.trim())) {
+      return setError("Discount must use at most 2 decimal places.");
+    }
+    if (!discountIsValid)
+      return setError(discountValidationMessage || "Invalid discount amount.");
+
+    if (
+      !form.cash_received ||
+      !MONEY_INPUT_PATTERN.test(form.cash_received.trim())
+    ) {
+      return setError(
+        "Cash received is required and must use at most 2 decimal places.",
+      );
+    }
+    if (cashReceived < total) {
+      return setError("Cash received cannot be less than the total amount.");
     }
 
     if (form.need_delivery) {
@@ -349,38 +433,70 @@ export default function ProcessOrder() {
         return setError("Pin the exact delivery location on the map.");
       if (!form.delivery_requested_date)
         return setError("Delivery date is required.");
+      if (form.delivery_requested_date < minimumDeliveryDateTime)
+        return setError("Delivery date and time cannot be in the past.");
+      if (
+        form.delivery_fee &&
+        !MONEY_INPUT_PATTERN.test(form.delivery_fee.trim())
+      ) {
+        return setError("Delivery fee must use at most 2 decimal places.");
+      }
     }
+
+    const payload = {
+      customer_name: form.customer_name.trim(),
+      customer_phone: normalizedPhone,
+      payment_method: "cash",
+      cash_received: cashReceived.toFixed(2),
+      discount: discountAmount.toFixed(2),
+      delivery_fee: form.need_delivery ? deliveryFeeAmt.toFixed(2) : "0.00",
+      expected_total: total.toFixed(2),
+      notes: form.notes,
+      items: cart.map((item) => ({
+        product_id: Number(item.product_id),
+        quantity: Number(item.quantity),
+      })),
+      delivery: form.need_delivery
+        ? {
+            address: form.delivery_address.trim(),
+            lat: form.delivery_lat,
+            lng: form.delivery_lng,
+            requested_date: form.delivery_requested_date,
+            notes: form.delivery_notes.trim(),
+          }
+        : null,
+    };
+
+    const idempotencyKey = getCashIdempotencyKey();
 
     setLoading(true);
 
     try {
-      const payload = {
-        customer_name: form.customer_name.trim(),
-        customer_phone: normalizedPhone,
-        payment_method: form.payment_method,
-        cash_received: form.payment_method === "cash" ? cashReceived : null,
-        change: form.payment_method === "cash" ? change : null,
-        discount: discountAmount,
-        delivery_fee: form.need_delivery ? deliveryFeeAmt : 0,
-        notes: form.notes,
-        items: cart,
-        delivery: form.need_delivery
-          ? {
-              address: form.delivery_address.trim(),
-              lat: form.delivery_lat,
-              lng: form.delivery_lng,
-              requested_date: form.delivery_requested_date,
-              notes: form.delivery_notes.trim(),
-            }
-          : null,
-      };
-
-      const res = await api.post("/pos/orders", payload);
+      const res = await api.post("/pos/orders", payload, {
+        headers: {
+          "Idempotency-Key": idempotencyKey,
+        },
+      });
 
       sessionStorage.removeItem("pos_cart");
+      sessionStorage.removeItem(POS_CASH_IDEMPOTENCY_STORAGE_KEY);
       setSuccess(res.data);
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to process order.");
+      const responseData = err.response?.data;
+
+      if (
+        responseData?.idempotency_conflict &&
+        responseData?.existing_order
+      ) {
+        setSuccess(responseData.existing_order);
+        return;
+      }
+
+      if (responseData?.reset_idempotency_key) {
+        sessionStorage.removeItem(POS_CASH_IDEMPOTENCY_STORAGE_KEY);
+      }
+
+      setError(responseData?.message || "Failed to process order.");
     } finally {
       setLoading(false);
     }
@@ -406,13 +522,19 @@ export default function ProcessOrder() {
       return "Phone number is required for delivery.";
     if (normalizedPhone && !isValidPHPhone(normalizedPhone))
       return "Enter a valid 11-digit PH mobile number starting with 09.";
-    if (!discountIsValid) return "Invalid discount amount.";
+    if (!discountIsValid)
+      return discountValidationMessage || "Invalid discount amount.";
     if (form.need_delivery && !form.delivery_address.trim())
       return "Delivery address is required.";
     if (form.need_delivery && !hasValidDeliveryPin)
       return "Pin the exact delivery location on the map.";
     if (form.need_delivery && !form.delivery_requested_date)
       return "Delivery date is required.";
+    if (
+      form.need_delivery &&
+      form.delivery_requested_date < minimumDeliveryDateTime
+    )
+      return "Delivery date and time cannot be in the past.";
     return null;
   };
 
@@ -926,7 +1048,9 @@ export default function ProcessOrder() {
                 fontWeight: 700,
               }}
             >
-              A newer cart was detected and was not cleared.
+              {success.reconciled_cash_retry
+                ? "A previous cash sale was already completed. Its receipt is shown below, and your newer cart was preserved."
+                : "A newer cart was detected and was not cleared."}
             </p>
           )}
 
@@ -1003,13 +1127,26 @@ export default function ProcessOrder() {
           >
             <button
               style={btnPrimary}
-              onClick={() => navigate(`/staff/receipt/${success.receipt_id}`)}
+              onClick={() => {
+                if (success.reconciled_cash_retry) {
+                  sessionStorage.removeItem(POS_CASH_IDEMPOTENCY_STORAGE_KEY);
+                }
+                navigate(`/staff/receipt/${success.receipt_id}`);
+              }}
             >
               <Receipt size={16} /> View Receipt
             </button>
             <button
               style={btnSecondary}
               onClick={() => {
+                sessionStorage.removeItem(POS_CASH_IDEMPOTENCY_STORAGE_KEY);
+
+                if (success.reconciled_cash_retry) {
+                  setSuccess(null);
+                  navigate("/staff/products");
+                  return;
+                }
+
                 setSuccess(null);
                 setCart([]);
                 persistQrAttempt(null);
@@ -1035,7 +1172,7 @@ export default function ProcessOrder() {
                 navigate("/staff/products");
               }}
             >
-              New Order
+              {success.reconciled_cash_retry ? "Continue New Cart" : "New Order"}
             </button>
           </div>
         </div>
@@ -1129,6 +1266,7 @@ export default function ProcessOrder() {
                     type="text"
                     placeholder="Walk-in Customer"
                     value={form.customer_name}
+                    maxLength={150}
                     onChange={(e) =>
                       setForm({ ...form, customer_name: e.target.value })
                     }
@@ -1289,9 +1427,27 @@ export default function ProcessOrder() {
                       onChange={(e) =>
                         setForm({ ...form, discount: e.target.value })
                       }
-                      style={{ ...inputStyle, flex: 1 }}
+                      style={{
+                        ...inputStyle,
+                        flex: 1,
+                        borderColor: discountValidationMessage
+                          ? "#dc2626"
+                          : "#e4e4e7",
+                      }}
                     />
                   </div>
+                  {discountValidationMessage && (
+                    <div
+                      style={{
+                        color: "#dc2626",
+                        fontSize: 12,
+                        marginTop: 6,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {discountValidationMessage}
+                    </div>
+                  )}
                 </div>
 
                 {effectivePaymentMethod === "cash" && (
@@ -1448,6 +1604,7 @@ export default function ProcessOrder() {
                             name="delivery_requested_date"
                             type="datetime-local"
                             value={form.delivery_requested_date}
+                            min={minimumDeliveryDateTime}
                             onChange={(e) =>
                               setForm({
                                 ...form,
@@ -1892,26 +2049,28 @@ export default function ProcessOrder() {
                     })}
                   </span>
                 </div>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    fontSize: 13,
-                    marginTop: 8,
-                    color: cashReceived >= total ? "#059669" : "#dc2626",
-                    fontWeight: 600,
-                  }}
-                >
-                  <span>
-                    {cashReceived >= total ? "Change" : "Insufficient Cash"}
-                  </span>
-                  <span>
-                    ₱
-                    {Math.abs(cashReceived - total).toLocaleString("en-PH", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
+                {discountIsValid && (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: 13,
+                      marginTop: 8,
+                      color: cashReceived >= total ? "#059669" : "#dc2626",
+                      fontWeight: 600,
+                    }}
+                  >
+                    <span>
+                      {cashReceived >= total ? "Change" : "Insufficient Cash"}
+                    </span>
+                    <span>
+                      ₱
+                      {Math.abs(cashReceived - total).toLocaleString("en-PH", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                )}
               </>
             ) : (
               <>

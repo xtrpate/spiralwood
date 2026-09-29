@@ -72,8 +72,6 @@ export default function ProductSearch() {
     const walkinPrice = Number(
       product?.walkin_price ?? product?.online_price ?? 0,
     );
-    const productionCost = Number(product?.production_cost ?? 0);
-
     let stockStatus = String(product?.stock_status ?? "").toLowerCase();
 
     if (!stockStatus) {
@@ -100,7 +98,6 @@ export default function ProductSearch() {
       barcode: String(product?.barcode ?? "").trim(),
       stock,
       walkin_price: walkinPrice,
-      production_cost: productionCost,
       image_url: buildAssetUrl(
         product?.image_url ||
           product?.product_image ||
@@ -265,7 +262,6 @@ export default function ProductSearch() {
             product_id: product.id,
             product_name: displayName,
             unit_price: Number(product?.walkin_price ?? 0),
-            production_cost: Number(product?.production_cost ?? 0),
             quantity: 1,
             max_stock: stockLimit,
             image_url: product.image_url || "",
