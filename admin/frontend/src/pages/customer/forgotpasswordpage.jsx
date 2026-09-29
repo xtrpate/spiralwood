@@ -8,7 +8,7 @@ export default function ForgotPasswordPage() {
   const { forgotPassword } = useAuthStore();
   const navigate = useNavigate();
 
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [captchaToken, setCaptchaToken] = useState("");
@@ -25,11 +25,17 @@ export default function ForgotPasswordPage() {
     setLoading(true);
 
     try {
-      await forgotPassword(email, captchaToken);
+      await forgotPassword(identifier, captchaToken);
+
+      const recoveryType = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier.trim())
+        ? "email"
+        : "phone";
+
       navigate("/verify-otp", {
         state: {
-          email,
+          email: identifier,
           purpose: "forgot_password",
+          recoveryType,
         },
       });
     } catch (err) {
@@ -57,23 +63,24 @@ export default function ForgotPasswordPage() {
 
           <div className="auth-card-header">
             <h2>Forgot Password</h2>
-            <p>Enter your registered email to continue.</p>
+            <p>Enter your registered email or mobile number to continue.</p>
           </div>
 
           <form className="auth-form" onSubmit={handleSubmit}>
             {error && <div className="alert alert-error">{error}</div>}
 
             <div className="field">
-              <label>Email Address</label>
+              <label>Email or Mobile Number</label>
               <div className="field-input-wrap">
                 <input
-                  type="email"
+                  type="text"
                   className="no-icon"
-                  placeholder=""
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Email or mobile number"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
                   required
                   autoFocus
+                  autoComplete="username"
                 />
               </div>
             </div>

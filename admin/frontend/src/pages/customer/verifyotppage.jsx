@@ -23,8 +23,7 @@ export default function VerifyOtpPage() {
   const isFromLogin = location.state?.fromLogin;
   const requestedRedirectTo = String(location.state?.redirectTo || "").trim();
   const postVerificationRoute =
-    requestedRedirectTo.startsWith("/") &&
-    !requestedRedirectTo.startsWith("//")
+    requestedRedirectTo.startsWith("/") && !requestedRedirectTo.startsWith("//")
       ? requestedRedirectTo
       : "/";
 
@@ -34,8 +33,13 @@ export default function VerifyOtpPage() {
   const RESET_EMAIL_STORAGE_KEY = "wisdom_password_reset_email";
   const RESET_PURPOSE_STORAGE_KEY = "wisdom_password_reset_purpose";
 
+  const RESET_RECOVERY_TYPE_STORAGE_KEY = "wisdom_password_reset_recovery_type";
+
   const locationEmail = String(location.state?.email || "").trim();
   const locationPurpose = location.state?.purpose || "";
+  const locationRecoveryType =
+    location.state?.recoveryType ||
+    (locationEmail.includes("@") ? "email" : "phone");
 
   const storedResetEmail =
     sessionStorage.getItem(RESET_EMAIL_STORAGE_KEY) || "";
@@ -58,6 +62,8 @@ export default function VerifyOtpPage() {
     location.state?.startingStep || "email",
   );
 
+  const recoveryType = locationRecoveryType === "phone" ? "phone" : "email";
+
   const [uiState, setUiState] = useState("form");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [error, setError] = useState("");
@@ -77,6 +83,10 @@ export default function VerifyOtpPage() {
     if (locationEmail && location.state?.purpose === "forgot_password") {
       sessionStorage.setItem(RESET_EMAIL_STORAGE_KEY, locationEmail);
       sessionStorage.setItem(RESET_PURPOSE_STORAGE_KEY, "forgot_password");
+      sessionStorage.setItem(
+        RESET_RECOVERY_TYPE_STORAGE_KEY,
+        locationRecoveryType,
+      );
       return;
     }
 
@@ -87,6 +97,7 @@ export default function VerifyOtpPage() {
     ) {
       sessionStorage.removeItem(RESET_EMAIL_STORAGE_KEY);
       sessionStorage.removeItem(RESET_PURPOSE_STORAGE_KEY);
+      sessionStorage.removeItem(RESET_RECOVERY_TYPE_STORAGE_KEY);
     }
   }, [locationEmail, location.state?.email, location.state?.purpose]);
 
@@ -140,6 +151,7 @@ export default function VerifyOtpPage() {
 
         sessionStorage.removeItem(RESET_EMAIL_STORAGE_KEY);
         sessionStorage.removeItem(RESET_PURPOSE_STORAGE_KEY);
+        sessionStorage.removeItem(RESET_RECOVERY_TYPE_STORAGE_KEY);
 
         navigate("/reset-password", {
           state: {
@@ -400,10 +412,12 @@ export default function VerifyOtpPage() {
           </h1>
           <p>
             {isForgotPassword
-              ? "We sent a 6-digit password reset code to your email. Enter it below to continue."
+              ? recoveryType === "phone"
+                ? "We sent a 6-digit password reset code to your mobile number. Enter the code below to continue."
+                : "We sent a 6-digit password reset code to your email. Enter the code below to continue."
               : verificationStep === "phone"
-                ? "We sent a 6-digit verification code to your phone. Enter it below to confirm your identity."
-                : "We sent a 6-digit verification code to your email address. Enter it below to confirm your identity."}
+                ? "We sent a 6-digit verification code to your phone. Enter the code below to confirm your identity."
+                : "We sent a 6-digit verification code to your email address. Enter the code below to confirm your identity."}
           </p>
         </div>
 
@@ -423,7 +437,9 @@ export default function VerifyOtpPage() {
             </h2>
             <p>
               {isForgotPassword
-                ? "Enter the reset code we sent to your email."
+                ? recoveryType === "phone"
+                  ? "Enter the reset code we sent to your mobile number."
+                  : "Enter the reset code we sent to your email."
                 : verificationStep === "phone"
                   ? "Enter the 6-digit verification code we sent to your phone."
                   : "Enter the verification code we sent to your email."}
@@ -510,6 +526,7 @@ export default function VerifyOtpPage() {
                 if (isForgotPassword) {
                   sessionStorage.removeItem(RESET_EMAIL_STORAGE_KEY);
                   sessionStorage.removeItem(RESET_PURPOSE_STORAGE_KEY);
+                  sessionStorage.removeItem(RESET_RECOVERY_TYPE_STORAGE_KEY);
                   navigate("/forgot-password");
                 } else {
                   navigate("/login");

@@ -276,9 +276,9 @@ const useAuthStore = create((set, get) => ({
     return data;
   },
 
-  verifyResetOtp: async (email, otp) => {
+  verifyResetOtp: async (identifier, otp) => {
     const { data } = await api.post("/customer/auth/verify-reset-otp", {
-      email,
+      identifier: String(identifier || "").trim(),
       otp,
     });
 
@@ -309,18 +309,20 @@ const useAuthStore = create((set, get) => ({
       .includes(authority);
   },
 
-  forgotPassword: async (email, recaptchaToken = "") => {
+  forgotPassword: async (identifier, recaptchaToken = "") => {
     const { data } = await api.post("/customer/auth/forgot-password", {
-      email: String(email || "").trim(),
+      identifier: String(identifier || "").trim(),
       recaptcha_token: recaptchaToken,
     });
+
     return data;
   },
 
-  resendResetOtp: async (email) => {
+  resendResetOtp: async (identifier) => {
     const { data } = await api.post("/customer/auth/resend-reset-otp", {
-      email: String(email || "").trim(),
+      identifier: String(identifier || "").trim(),
     });
+
     return data;
   },
 

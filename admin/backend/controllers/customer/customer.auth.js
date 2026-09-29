@@ -28,6 +28,72 @@ const generateOtp = () => crypto.randomInt(100000, 1000000).toString();
 
 const hashOtp = (otp) => bcrypt.hash(String(otp), 10);
 
+// WISDOM FORGOT PASSWORD RECOVERY LOOKUP
+// Accepts either a registered email address or a Philippine mobile number.
+const findCustomerForPasswordRecovery = async (identifier) => {
+  const value = String(identifier || "").trim();
+
+  if (!value) {
+    return null;
+  }
+
+  // Email recovery
+  if (value.includes("@")) {
+    const normalizedEmail = value.toLowerCase();
+
+    const [rows] = await db.query(
+      `
+      SELECT
+        id,
+        name,
+        email,
+        phone,
+        is_verified,
+        phone_verified,
+        is_active
+      FROM users
+      WHERE email = ?
+        AND role = 'customer'
+      LIMIT 1
+      `,
+      [normalizedEmail],
+    );
+
+    return rows[0] || null;
+  }
+
+  // Phone recovery
+  let normalizedPhone;
+
+  try {
+    normalizedPhone = normalizePhilippinePhone(value);
+  } catch {
+    return null;
+  }
+
+  const phoneVariants = getPhoneLookupVariants(normalizedPhone);
+
+  const [rows] = await db.query(
+    `
+    SELECT
+      id,
+      name,
+      email,
+      phone,
+      is_verified,
+      phone_verified,
+      is_active
+    FROM users
+    WHERE role = 'customer'
+      AND ${phoneDigitsSql("phone")} IN (?, ?, ?)
+    LIMIT 1
+    `,
+    phoneVariants,
+  );
+
+  return rows[0] || null;
+};
+
 const verifyOtpValue = async (storedValue, suppliedOtp) => {
   if (!storedValue) return false;
 
@@ -1158,28 +1224,51 @@ exports.verifyPhoneOtp = async (req, res) => {
 };
 
 exports.verifyResetOtp = async (req, res) => {
-  const { email, otp } = req.body;
+  const { identifier, otp } = req.body;
 
-  if (!email || !otp) {
+  if (!identifier || !otp) {
     return res.status(400).json({
-      message: "Email and reset code are required.",
+      message: "Email or mobile number and reset code are required.",
     });
   }
 
   try {
+    const user = await findCustomerForPasswordRecovery(identifier);
+
+    if (!user) {
+      return res.status(400).json({
+        message: "Invalid or expired reset code.",
+      });
+    }
+
+    if (!user.is_verified || !user.is_active) {
+      return res.status(400).json({
+        message: "Invalid or expired reset code.",
+      });
+    }
+
+    const isPhoneRecovery = !String(identifier).includes("@");
+
+    if (isPhoneRecovery && !user.phone_verified) {
+      return res.status(400).json({
+        message: "Invalid or expired reset code.",
+      });
+    }
+
     const [rows] = await db.query(
       `
       SELECT
         id,
+        email,
         otp_code,
         otp_purpose,
         otp_expires
       FROM users
-      WHERE email = ?
-      AND role='customer'
+      WHERE id = ?
+        AND role = 'customer'
       LIMIT 1
       `,
-      [String(email).trim().toLowerCase()],
+      [user.id],
     );
 
     if (!rows.length) {
@@ -1188,25 +1277,29 @@ exports.verifyResetOtp = async (req, res) => {
       });
     }
 
-    const user = rows[0];
+    const resetUser = rows[0];
 
-    if (user.otp_purpose !== "forgot_password") {
+    if (resetUser.otp_purpose !== "forgot_password") {
       return res.status(400).json({
         message: "Invalid or expired reset code.",
       });
     }
 
     const resetOtpMatches = await verifyOtpValue(
-      user.otp_code,
+      resetUser.otp_code,
       String(otp).trim(),
     );
+
     if (!resetOtpMatches) {
       return res.status(400).json({
         message: "Invalid or expired reset code.",
       });
     }
 
-    if (!user.otp_expires || new Date() > new Date(user.otp_expires)) {
+    if (
+      !resetUser.otp_expires ||
+      new Date() > new Date(resetUser.otp_expires)
+    ) {
       return res.status(400).json({
         message: "Invalid or expired reset code.",
       });
@@ -1219,20 +1312,20 @@ exports.verifyResetOtp = async (req, res) => {
 
     await db.query(
       `
-  UPDATE users
-  SET
-    otp_code = ?,
-    otp_purpose = 'password_reset',
-    otp_expires = ?
-  WHERE id = ?
-  `,
-      [resetJtiHash, resetTokenExpiresAt, user.id],
+      UPDATE users
+      SET
+        otp_code = ?,
+        otp_purpose = 'password_reset',
+        otp_expires = ?
+      WHERE id = ?
+      `,
+      [resetJtiHash, resetTokenExpiresAt, resetUser.id],
     );
 
     const resetToken = jwt.sign(
       {
-        id: user.id,
-        email: String(email).trim().toLowerCase(),
+        id: resetUser.id,
+        email: String(resetUser.email).trim().toLowerCase(),
         purpose: "password_reset",
         jti: resetJti,
       },
@@ -1247,7 +1340,7 @@ exports.verifyResetOtp = async (req, res) => {
       resetToken,
     });
   } catch (err) {
-    console.error(err);
+    console.error("[verify-reset-otp]", err);
 
     return res.status(500).json({
       message: "Server error.",
@@ -1425,119 +1518,51 @@ exports.resendPhoneOtp = async (req, res) => {
 };
 
 exports.forgotPassword = async (req, res) => {
-  const { email, recaptcha_token } = req.body;
+  const { identifier, recaptcha_token } = req.body;
 
-  if (!email) {
-    return res.status(400).json({ message: "Email is required." });
+  if (!identifier) {
+    return res.status(400).json({
+      message: "Email or mobile number is required.",
+    });
   }
 
   const isHuman = await verifyRecaptcha(recaptcha_token);
+
   if (!isHuman) {
-    return res
-      .status(400)
-      .json({ message: "Please complete the CAPTCHA verification." });
-  }
-
-  // Same generic message for every outcome below — this prevents attackers
-  // from using this endpoint to check which emails are registered.
-  const GENERIC_MESSAGE =
-    "If an account with that email exists, we've sent a 6-digit reset code.";
-
-  try {
-    const normalizedEmail = String(email).trim().toLowerCase();
-
-    const [rows] = await db.query(
-      `
-      SELECT id, name, is_verified, is_active
-      FROM users
-      WHERE email = ? AND role = 'customer'
-      LIMIT 1
-      `,
-      [normalizedEmail],
-    );
-
-    // No account, unverified, or inactive: silently do nothing, but still
-    // respond with the same generic message as a successful send.
-    if (rows.length === 0) {
-      return res.json({ message: GENERIC_MESSAGE });
-    }
-
-    const user = rows[0];
-
-    if (!user.is_verified || !user.is_active) {
-      return res.json({ message: GENERIC_MESSAGE });
-    }
-
-    const resetOtp = generateOtp();
-    const resetOtpHash = await hashOtp(resetOtp);
-    const resetExpiry = new Date(
-      Date.now() + RESET_OTP_EXPIRY_MINUTES * 60 * 1000,
-    );
-
-    await db.query(
-      `
-  UPDATE users
-  SET
-    otp_code = ?,
-    otp_purpose = 'forgot_password',
-    otp_expires = ?
-  WHERE id = ?
-  `,
-      [resetOtpHash, resetExpiry, user.id],
-    );
-
-    const firstName = user.name ? user.name.split(" ")[0] : "Customer";
-    await sendResetOtpEmail(normalizedEmail, resetOtp, firstName);
-
-    return res.json({ message: GENERIC_MESSAGE });
-  } catch (err) {
-    console.error("[forgot-password]", err);
-    // Even on internal errors, avoid leaking details — but this one stays
-    // a real 500 since it's a server problem, not an enumeration signal.
-    return res.status(500).json({
-      message: "Server error. Please try again.",
-    });
-  }
-};
-
-exports.resendResetOtp = async (req, res) => {
-  const { email } = req.body || {};
-
-  const GENERIC_MESSAGE =
-    "If an account with that email exists, we've sent a 6-digit reset code.";
-
-  if (!email) {
     return res.status(400).json({
-      message: "Email is required.",
+      message: "Please complete the CAPTCHA verification.",
     });
   }
 
+  // Keep the response generic so attackers cannot determine
+  // whether an email address or phone number belongs to an account.
+  const GENERIC_MESSAGE =
+    "If an active account matches that information, we've sent a 6-digit reset code.";
+
   try {
-    const normalizedEmail = String(email).trim().toLowerCase();
+    const user = await findCustomerForPasswordRecovery(identifier);
 
-    const [rows] = await db.query(
-      `
-      SELECT id, name, is_verified, is_active
-      FROM users
-      WHERE email = ?
-        AND role = 'customer'
-      LIMIT 1
-      `,
-      [normalizedEmail],
-    );
-
-    if (rows.length === 0) {
-      return res.json({ message: GENERIC_MESSAGE });
+    // No account, unverified, or inactive:
+    // always return the same generic response.
+    if (!user || !user.is_verified || !user.is_active) {
+      return res.json({
+        message: GENERIC_MESSAGE,
+      });
     }
 
-    const user = rows[0];
+    // If the user is using phone recovery, the phone number
+    // must have been verified previously.
+    const isPhoneRecovery = !String(identifier).includes("@");
 
-    if (!user.is_verified || !user.is_active) {
-      return res.json({ message: GENERIC_MESSAGE });
+    if (isPhoneRecovery && !user.phone_verified) {
+      return res.json({
+        message: GENERIC_MESSAGE,
+      });
     }
 
     const resetOtp = generateOtp();
     const resetOtpHash = await hashOtp(resetOtp);
+
     const resetExpiry = new Date(
       Date.now() + RESET_OTP_EXPIRY_MINUTES * 60 * 1000,
     );
@@ -1554,9 +1579,103 @@ exports.resendResetOtp = async (req, res) => {
       [resetOtpHash, resetExpiry, user.id],
     );
 
-    const firstName = user.name ? user.name.split(" ")[0] : "Customer";
+    const firstName = user.name ? String(user.name).split(" ")[0] : "Customer";
 
-    await sendResetOtpEmail(normalizedEmail, resetOtp, firstName);
+    if (isPhoneRecovery) {
+      console.log("[forgot-password] Sending password reset SMS.", {
+        userId: user.id,
+      });
+
+      await sendSms({
+        phone: user.phone,
+        message: `Your Spiral Wood Services password reset code is ${resetOtp}. It expires in ${RESET_OTP_EXPIRY_MINUTES} minutes.`,
+      });
+    } else {
+      await sendResetOtpEmail(
+        String(user.email).trim().toLowerCase(),
+        resetOtp,
+        firstName,
+      );
+    }
+
+    return res.json({
+      message: GENERIC_MESSAGE,
+    });
+  } catch (err) {
+    console.error("[forgot-password]", err);
+
+    return res.status(500).json({
+      message: "Server error. Please try again.",
+    });
+  }
+};
+
+exports.resendResetOtp = async (req, res) => {
+  const { identifier } = req.body || {};
+
+  const GENERIC_MESSAGE =
+    "If an active account matches that information, we've sent a 6-digit reset code.";
+
+  if (!identifier) {
+    return res.status(400).json({
+      message: "Email or mobile number is required.",
+    });
+  }
+
+  try {
+    const user = await findCustomerForPasswordRecovery(identifier);
+
+    if (!user || !user.is_verified || !user.is_active) {
+      return res.json({
+        message: GENERIC_MESSAGE,
+      });
+    }
+
+    const isPhoneRecovery = !String(identifier).includes("@");
+
+    if (isPhoneRecovery && !user.phone_verified) {
+      return res.json({
+        message: GENERIC_MESSAGE,
+      });
+    }
+
+    const resetOtp = generateOtp();
+    const resetOtpHash = await hashOtp(resetOtp);
+
+    const resetExpiry = new Date(
+      Date.now() + RESET_OTP_EXPIRY_MINUTES * 60 * 1000,
+    );
+
+    await db.query(
+      `
+      UPDATE users
+      SET
+        otp_code = ?,
+        otp_purpose = 'forgot_password',
+        otp_expires = ?
+      WHERE id = ?
+      `,
+      [resetOtpHash, resetExpiry, user.id],
+    );
+
+    const firstName = user.name ? String(user.name).split(" ")[0] : "Customer";
+
+    if (isPhoneRecovery) {
+      console.log("[resend-reset-otp] Sending password reset SMS.", {
+        userId: user.id,
+      });
+
+      await sendSms({
+        phone: user.phone,
+        message: `Your Spiral Wood Services password reset code is ${resetOtp}. It expires in ${RESET_OTP_EXPIRY_MINUTES} minutes.`,
+      });
+    } else {
+      await sendResetOtpEmail(
+        String(user.email).trim().toLowerCase(),
+        resetOtp,
+        firstName,
+      );
+    }
 
     return res.json({
       message: GENERIC_MESSAGE,
