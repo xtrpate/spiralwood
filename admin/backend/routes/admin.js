@@ -47,6 +47,11 @@ const adminOnly = [
   authorize("admin"),
   verifyAuthority(["admin"]),
 ];
+const adminManagerStaff = [
+  authenticate,
+  authorize("admin", "staff"),
+  verifyAuthority(["manager", "admin"]),
+];
 const adminStaff = [authenticate, authorize("admin", "staff")];
 
 const { v2: cloudinary } = require("cloudinary");
@@ -561,7 +566,7 @@ router.patch(
 
 router.get(
   "/orders/:id/assignable-staff",
-  adminStaff,
+  adminManagerStaff,
   requirePermission("orders.view"),
   orders.getAssignableStaff,
 );
@@ -591,7 +596,7 @@ router.patch(
 
 router.get(
   "/orders",
-  adminStaff,
+  adminManagerStaff,
   requirePermission("orders.view"),
   orders.getAll,
 );
@@ -623,7 +628,7 @@ router.post(
 
 router.get(
   "/orders/:id",
-  adminStaff,
+  adminManagerStaff,
   requirePermission("orders.view"),
   orders.getOne,
 );
@@ -661,14 +666,14 @@ router.post(
 
 router.get(
   "/orders/:id/discussion",
-  adminStaff,
+  adminManagerStaff,
   requirePermission("orders.view"),
   orders.getOrderDiscussion,
 );
 
 router.post(
   "/orders/:id/discussion",
-  adminStaff,
+  adminManagerStaff,
   requirePermission("orders.manage"),
   customDiscussionUpload,
   orders.postOrderDiscussionMessage,

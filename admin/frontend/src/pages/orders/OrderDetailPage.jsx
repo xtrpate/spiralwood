@@ -4,6 +4,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import { getSocket, subscribeSocketReady } from "../../services/socket";
 import toast from "react-hot-toast";
+import useAuthStore from "../../store/authStore";
 import AdminSubmittedDesignPreview from "./AdminSubmittedDesignPreview";
 import OrderDiscussionPanel from "./OrderDiscussionPanel";
 import { exportOrderCompletionReportPdf } from "./OrderCompletionReport";
@@ -48,6 +49,11 @@ const STATUS_STYLE = {
   confirmed: { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
   contract_released: { bg: "#faf5ff", color: "#7e22ce", border: "#e9d5ff" },
   production: { bg: "#faf5ff", color: "#7e22ce", border: "#e9d5ff" },
+  ready_for_pickup: {
+    bg: "#eff6ff",
+    color: "#1d4ed8",
+    border: "#bfdbfe",
+  },
   shipping: { bg: "#fff7ed", color: "#c2410c", border: "#fed7aa" },
   delivered: { bg: "#ecfdf5", color: "#047857", border: "#a7f3d0" },
   completed: { bg: "#ecfdf5", color: "#047857", border: "#a7f3d0" },
@@ -82,6 +88,7 @@ const STATUS_LABELS = {
   confirmed: "Confirmed",
   contract_released: "Contract Released",
   production: "Production",
+  ready_for_pickup: "Ready for Pickup",
   shipping: "Shipping",
   delivered: "Delivered",
   completed: "Completed",
@@ -470,6 +477,16 @@ export default function OrderDetailPage() {
   }, []);
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user, hasPermission } = useAuthStore();
+
+  const isStaffOrdersView = user?.role === "staff";
+  const ordersListPath = isStaffOrdersView
+    ? "/staff/admin/orders"
+    : "/admin/orders";
+  const canAdminManageOrders =
+    user?.role === "admin" && hasPermission("orders.manage");
+  const canEditBlueprints = hasPermission("blueprint_management.edit");
+  const canCreateContracts = hasPermission("contracts.create");
 
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1135,11 +1152,48 @@ export default function OrderDetailPage() {
     (task) => normalize(task?.status) === "completed",
   );
 
-  const existingBlueprintTaskRoles = new Set(
-    blueprintTasks
-      .map((task) => normalizeTaskRole(task?.task_role))
-      .filter(Boolean),
+  const requiredBlueprintTaskBuckets = new Map(
+    REQUIRED_BLUEPRINT_TASK_ROLES.map((role) => [role, []]),
   );
+
+  blueprintTasks.forEach((task) => {
+    const role = normalizeTaskRole(task?.task_role);
+    if (requiredBlueprintTaskBuckets.has(role)) {
+      requiredBlueprintTaskBuckets.get(role).push(task);
+    }
+  });
+
+  const missingRequiredBlueprintTaskRoles =
+    REQUIRED_BLUEPRINT_TASK_ROLES.filter(
+      (role) => requiredBlueprintTaskBuckets.get(role).length === 0,
+    );
+
+  const duplicateRequiredBlueprintTaskRoles =
+    REQUIRED_BLUEPRINT_TASK_ROLES.filter(
+      (role) => requiredBlueprintTaskBuckets.get(role).length > 1,
+    );
+
+  const blueprintMismatchedRequiredTaskRoles =
+    REQUIRED_BLUEPRINT_TASK_ROLES.filter((role) =>
+      requiredBlueprintTaskBuckets
+        .get(role)
+        .some(
+          (task) =>
+            Number(task?.blueprint_id) !== Number(order?.blueprint_id),
+        ),
+    );
+
+  const unsupportedRequiredTaskStatusRoles =
+    REQUIRED_BLUEPRINT_TASK_ROLES.filter((role) =>
+      requiredBlueprintTaskBuckets
+        .get(role)
+        .some(
+          (task) =>
+            !["pending", "in_progress", "blocked", "completed"].includes(
+              normalize(task?.status),
+            ),
+        ),
+    );
 
   const completedBlueprintTaskRoles = new Set(
     completedBlueprintTasks
@@ -1147,20 +1201,47 @@ export default function OrderDetailPage() {
       .filter(Boolean),
   );
 
-  const missingRequiredBlueprintTaskRoles =
-    REQUIRED_BLUEPRINT_TASK_ROLES.filter(
-      (role) => !existingBlueprintTaskRoles.has(role),
-    );
-
   const incompleteRequiredBlueprintTaskRoles =
     REQUIRED_BLUEPRINT_TASK_ROLES.filter(
       (role) => !completedBlueprintTaskRoles.has(role),
     );
 
+  const productionPacketIntegrityIssues = [
+    ...(missingRequiredBlueprintTaskRoles.length
+      ? [
+          `Missing: ${missingRequiredBlueprintTaskRoles
+            .map(getTaskRoleLabel)
+            .join(", ")}`,
+        ]
+      : []),
+    ...(duplicateRequiredBlueprintTaskRoles.length
+      ? [
+          `Duplicate: ${duplicateRequiredBlueprintTaskRoles
+            .map(getTaskRoleLabel)
+            .join(", ")}`,
+        ]
+      : []),
+    ...(blueprintMismatchedRequiredTaskRoles.length
+      ? [
+          `Blueprint mismatch: ${blueprintMismatchedRequiredTaskRoles
+            .map(getTaskRoleLabel)
+            .join(", ")}`,
+        ]
+      : []),
+    ...(unsupportedRequiredTaskStatusRoles.length
+      ? [
+          `Unsupported status: ${unsupportedRequiredTaskStatusRoles
+            .map(getTaskRoleLabel)
+            .join(", ")}`,
+        ]
+      : []),
+  ];
+
   const hasRequiredBlueprintTaskPacket =
-    missingRequiredBlueprintTaskRoles.length === 0;
+    productionPacketIntegrityIssues.length === 0;
 
   const allBlueprintTasksCompleted =
+    hasRequiredBlueprintTaskPacket &&
     incompleteRequiredBlueprintTaskRoles.length === 0;
 
   // A task that is actively being worked on must be put on hold first.
@@ -1201,6 +1282,7 @@ export default function OrderDetailPage() {
   const hasPaymentRecords =
     Array.isArray(order?.payments) && order.payments.length > 0;
   const hasPendingPaymentActions =
+    canAdminManageOrders &&
     hasPaymentRecords &&
     order.payments.some((payment) => normalize(payment?.status) === "pending");
   const verifiedPaymentTotal = Number(order?.payment_verified_total || 0);
@@ -1224,6 +1306,19 @@ export default function OrderDetailPage() {
   const isBlueprintOrder =
     normalize(order?.order_type) === "blueprint" ||
     Boolean(blueprintId || order?.contract);
+
+  const shouldShowProductionPacketIntegrityWarning =
+    isBlueprintOrder &&
+    !hasRequiredBlueprintTaskPacket &&
+    (hasBlueprintTasks ||
+      [
+        "production",
+        "ready_for_pickup",
+        "shipping",
+        "delivered",
+        "completed",
+      ].includes(normalizedOrderStatus));
+
   const hasDeliveryRequirement = Boolean(
     order?.delivery ||
     String(order?.delivery_address || "").trim() ||
@@ -1397,6 +1492,7 @@ export default function OrderDetailPage() {
     requiresDeliveryReceiptForCompletion && !order?.delivery && isDeliveryPhase;
 
   const shouldShowStatusButton =
+    canAdminManageOrders &&
     currentOrderStatus !== "pending" &&
     selectableNextStatuses.length > 0 &&
     !needsContractFirst;
@@ -1546,17 +1642,14 @@ export default function OrderDetailPage() {
 
   const needsCustomRequestAdminReview =
     hasCustomRequestItems && normalizedOrderStatus === "pending";
-  const productionTasksSummary = hasBlueprintTasks
-    ? `${completedBlueprintTasks.length}/${blueprintTasks.length}`
-    : [
-          "contract_released",
-          "production",
-          "shipping",
-          "delivered",
-          "completed",
-        ].includes(normalizedOrderStatus)
-      ? "Ready"
-      : "Waiting";
+  const productionTasksSummary =
+    shouldShowProductionPacketIntegrityWarning
+      ? "Requires Review"
+      : hasBlueprintTasks
+        ? `${completedBlueprintTasks.length}/${blueprintTasks.length}`
+        : normalizedOrderStatus === "contract_released"
+          ? "Ready"
+          : "Waiting";
   const summaryCards = [
     {
       label: "Payment",
@@ -1612,7 +1705,7 @@ export default function OrderDetailPage() {
             <div style={eyebrow}>Order details</div>
 
             <div style={heroTitleRow}>
-              <button onClick={() => navigate("/admin/orders")} style={btnBack}>
+              <button onClick={() => navigate(ordersListPath)} style={btnBack}>
                 ← Orders
               </button>
 
@@ -1691,7 +1784,9 @@ export default function OrderDetailPage() {
           </div>
 
           <div style={heroActions}>
-            {normalizedOrderStatus === "pending" && isOnlineStandardOrder && (
+            {canAdminManageOrders &&
+              normalizedOrderStatus === "pending" &&
+              isOnlineStandardOrder && (
               <>
                 <button onClick={handleAccept} style={btnAccept}>
                   Accept
@@ -1702,7 +1797,8 @@ export default function OrderDetailPage() {
               </>
             )}
 
-            {isBlueprintOrder &&
+            {canEditBlueprints &&
+              isBlueprintOrder &&
               normalizedOrderStatus === "confirmed" &&
               blueprintId &&
               (!hasEstimation ||
@@ -1727,36 +1823,42 @@ export default function OrderDetailPage() {
                 </span>
               )}
 
-            {needsContractFirst && (
-              <>
-                <button
-                  onClick={() =>
-                    navigate("/admin/contracts", {
-                      state: {
-                        contractDraft: {
-                          blueprint_id: String(blueprintId),
-                          order_id: String(order.id),
-                        },
-                      },
-                    })
-                  }
-                  style={btnPrimary}
-                >
-                  Generate Contract
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStatusModalMode("cancel");
-                    setNewStatus("cancelled");
-                    setStatusModal(true);
-                  }}
-                  style={btnDecline}
-                >
-                  Cancel Order
-                </button>
-              </>
-            )}
+            {needsContractFirst &&
+              (canCreateContracts || canAdminManageOrders) && (
+                <>
+                  {canCreateContracts && (
+                    <button
+                      onClick={() =>
+                        navigate("/admin/contracts", {
+                          state: {
+                            contractDraft: {
+                              blueprint_id: String(blueprintId),
+                              order_id: String(order.id),
+                            },
+                          },
+                        })
+                      }
+                      style={btnPrimary}
+                    >
+                      Generate Contract
+                    </button>
+                  )}
+
+                  {canAdminManageOrders && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStatusModalMode("cancel");
+                        setNewStatus("cancelled");
+                        setStatusModal(true);
+                      }}
+                      style={btnDecline}
+                    >
+                      Cancel Order
+                    </button>
+                  )}
+                </>
+              )}
 
             {normalizedOrderStatus === "completed" && (
               <button
@@ -2081,7 +2183,7 @@ export default function OrderDetailPage() {
                   </div>
                 </div>
 
-                {needsCustomRequestAdminReview ? (
+                {needsCustomRequestAdminReview && canAdminManageOrders ? (
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <button
                       onClick={() => handleCustomRequestAction("approve")}
@@ -2103,6 +2205,8 @@ export default function OrderDetailPage() {
                         : "Reject"}
                     </button>
                   </div>
+                ) : needsCustomRequestAdminReview ? (
+                  <span style={mutedBadge}>Awaiting administrator review.</span>
                 ) : (
                   <span style={mutedBadge}>Request already reviewed.</span>
                 )}
@@ -2997,6 +3101,16 @@ export default function OrderDetailPage() {
                 </div>
               )}
 
+              {shouldShowProductionPacketIntegrityWarning && (
+                <div style={{ ...alertWarning, marginTop: 12 }}>
+                  <strong>Production packet requires admin review.</strong>{" "}
+                  {productionPacketIntegrityIssues.join(" · ")}
+                  {isDeliveryPhaseOrDone
+                    ? " Historical order data was left unchanged."
+                    : " Production progression stays guarded until the packet is corrected."}
+                </div>
+              )}
+
               {blueprintTasks.length > 0 ? (
                 <div style={taskList}>
                   <div style={taskListHeader}>Current Blueprint Tasks</div>
@@ -3050,6 +3164,22 @@ export default function OrderDetailPage() {
                             label="Note"
                             value={task.description || "—"}
                           />
+                          {taskStatus === "blocked" && (
+                            <>
+                              <MiniInfo
+                                label="Hold Reason"
+                                value={task.hold_reason || "No reason recorded"}
+                              />
+                              <MiniInfo
+                                label="On Hold Since"
+                                value={
+                                  task.blocked_at
+                                    ? formatDateTime(task.blocked_at)
+                                    : "—"
+                                }
+                              />
+                            </>
+                          )}
                         </div>
 
                         <div style={taskActions}>
@@ -3073,7 +3203,9 @@ export default function OrderDetailPage() {
                 <EmptyText>No blueprint staff assignments yet.</EmptyText>
               )}
 
-              {canAssignBlueprintStaff && !hasBlueprintTasks && (
+              {canAdminManageOrders &&
+                canAssignBlueprintStaff &&
+                !hasBlueprintTasks && (
                 <div style={{ marginTop: 12 }}>
                   <button
                     onClick={openAssignModal}
@@ -3090,7 +3222,9 @@ export default function OrderDetailPage() {
                 </div>
               )}
 
-              {canAssignBlueprintStaff && hasBlueprintTasks && (
+              {canAdminManageOrders &&
+                canAssignBlueprintStaff &&
+                hasBlueprintTasks && (
                 <div style={{ marginTop: 12 }}>
                   {allBlueprintTasksCompleted ? (
                     <span style={mutedBadge}>
@@ -3270,7 +3404,7 @@ export default function OrderDetailPage() {
           </div>
         </div>
       )}
-      {statusModal && (
+      {canAdminManageOrders && statusModal && (
         <div style={overlay}>
           <div style={modalBox}>
             <div style={modalHeader}>
@@ -3500,7 +3634,7 @@ export default function OrderDetailPage() {
         </div>
       )}
 
-      {reassignModal && (
+      {canAdminManageOrders && reassignModal && (
         <div style={overlay}>
           <div style={{ ...modalBox, width: 540 }}>
             <div style={modalHeader}>

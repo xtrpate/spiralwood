@@ -118,6 +118,14 @@ const socketUserHasOrdersViewPermission = async (user) => {
 
   if (!userId || !["admin", "staff"].includes(role)) return false;
 
+  const authority = String(user?.authority_level || "user")
+    .trim()
+    .toLowerCase();
+
+  if (role === "staff" && !["manager", "admin"].includes(authority)) {
+    return false;
+  }
+
   const permissionKey = "orders.view";
 
   const [overrideRows] = await pool.query(
@@ -134,10 +142,6 @@ const socketUserHasOrdersViewPermission = async (user) => {
   if (overrideRows.length) {
     return Number(overrideRows[0].granted) === 1;
   }
-
-  const authority = String(user?.authority_level || "user")
-    .trim()
-    .toLowerCase();
 
   const [authorityRows] = await pool.query(
     `SELECT p.id
