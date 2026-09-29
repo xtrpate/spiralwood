@@ -3540,15 +3540,89 @@ button.detail-thumb img {
   }
 }
 
-/* WISDOM PRODUCT CATALOG - QUICK VIEW DESCRIPTION LIMIT
-   Keep long product descriptions from taking over the product detail view.
-   The full description remains stored in the database. */
-.detail-description {
-  display: -webkit-box !important;
-  -webkit-box-orient: vertical !important;
-  -webkit-line-clamp: 5 !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
+/* WISDOM PRODUCT CATALOG - QUICK VIEW DESCRIPTION EXPAND
+   Interactive description wrapper with CSS line clamping. */
+.detail-description-wrapper {
+  position: relative;
+  cursor: pointer;
+  margin-bottom: 24px;
+}
+
+.detail-description-wrapper .detail-description {
+  margin-bottom: 0 !important;
+  transition: all 0.2s ease;
+  color: #555555;
+}
+
+/* Desktop truncation */
+.detail-description-wrapper:not(.is-expanded) .detail-description {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.detail-description-wrapper:not(.is-expanded)::after {
+  content: "Read more";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  padding-left: 24px;
+  background: linear-gradient(to right, transparent, #ffffff 30%);
+  color: #111111;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.detail-description-wrapper.is-expanded .detail-description {
+  -webkit-line-clamp: unset !important;
+}
+
+.detail-description-wrapper.is-expanded::after {
+  display: none;
+}
+
+/* Mobile overrides: Remove "Read more" and show at least 4 lines */
+@media (max-width: 780px) {
+  .detail-description-wrapper:not(.is-expanded)::after {
+    display: none !important;
+  }
+
+  .detail-description-wrapper:not(.is-expanded) .detail-description {
+    -webkit-line-clamp: 4;
+  }
+}
+
+/* Creates a smooth horizontal fade-out effect for the overflowing text */
+.text-fade-inline {
+  background: linear-gradient(to right, #555555 10%, rgba(85, 85, 85, 0) 90%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  pointer-events: none;
+}
+
+/* Optional: Add a subtle visual fade to hint there is more text */
+.detail-description-wrapper:not(.is-expanded)::after {
+  content: "Read more";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  padding-left: 24px;
+  background: linear-gradient(to right, transparent, #ffffff 30%);
+  color: #111111;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+/* Remove clamping when the container is clicked */
+.detail-description-wrapper.is-expanded .detail-description {
+  -webkit-lineclamp: unset !important;
+}
+
+.detail-description-wrapper.is-expanded::after {
+  display: none;
 }
 
 /* WISDOM PRODUCT QUICK VIEW - MOBILE BUTTON ORDER

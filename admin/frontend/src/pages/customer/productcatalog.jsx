@@ -145,6 +145,7 @@ export default function ProductCatalog() {
   const [selectedImageUrl, setSelectedImageUrl] = useState("");
   const [isImageZoomOpen, setIsImageZoomOpen] = useState(false);
   const [total, setTotal] = useState(0);
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
 
   const { addToCart } = useCart();
   const customerUser = useAuthStore((state) =>
@@ -336,6 +337,7 @@ export default function ProductCatalog() {
     setIsImageZoomOpen(false);
     setQty(isProductUnavailable(product) ? 0 : 1);
     setCartMsg("");
+    setDescriptionExpanded(false);
 
     try {
       const { data } = await api.get(`/customer/products/${product.id}`);
@@ -1254,7 +1256,28 @@ export default function ProductCatalog() {
               </div>
 
               {selected.description ? (
-                <p className="detail-description">{selected.description}</p>
+                <div
+                  className={`detail-description-wrapper ${
+                    descriptionExpanded ? "is-expanded" : ""
+                  }`}
+                  onClick={() => setDescriptionExpanded((prev) => !prev)}
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={descriptionExpanded}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setDescriptionExpanded((prev) => !prev);
+                    }
+                  }}
+                  title={
+                    !descriptionExpanded
+                      ? "Click to expand"
+                      : "Click to collapse"
+                  }
+                >
+                  <p className="detail-description">{selected.description}</p>
+                </div>
               ) : null}
 
               <div className="detail-section">
