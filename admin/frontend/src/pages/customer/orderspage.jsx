@@ -1256,6 +1256,7 @@ export default function OrdersPage() {
   }, []);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [payingOrderId, setPayingOrderId] = useState(null);
   const ordersRequestRef = useRef(0);
   const [selectedId, setSelectedId] = useState(null);
   const [filter, setFilter] = useState("all");
@@ -1604,6 +1605,66 @@ export default function OrdersPage() {
     };
   }, [searchParams, loading, orders]);
 
+  const handleMainListPayNow = async (e, order) => {
+    e.stopPropagation();
+
+    if (payingOrderId || !order?.id) {
+      return;
+    }
+
+    setPayingOrderId(order.id);
+
+    try {
+      const { data } = await api.post(`/customer/orders/${order.id}/pay`);
+
+      if (data?.already_paid) {
+        const verifyResponse = await api.post(
+          "/customer/orders/verify-payment",
+          {
+            order_number: data.order_number || order.order_number,
+          },
+        );
+
+        if (
+          verifyResponse?.data?.success &&
+          verifyResponse?.data?.payment_status === "paid"
+        ) {
+          navigate(
+            `/orders?verify_success=true&order=${encodeURIComponent(
+              data.order_number || order.order_number,
+            )}`,
+            { replace: true },
+          );
+
+          return;
+        }
+
+        throw new Error(
+          "The payment was completed, but the order could not be reconciled yet.",
+        );
+      }
+
+      if (!String(data?.payment_url || "").trim()) {
+        throw new Error("No PayMongo payment URL was returned.");
+      }
+
+      window.location.replace(data.payment_url);
+    } catch (err) {
+      console.error(
+        "[OrdersPage Main List Pay Now]",
+        err?.response?.data || err,
+      );
+
+      window.alert(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Unable to open PayMongo payment. Please try again.",
+      );
+    } finally {
+      setPayingOrderId(null);
+    }
+  };
+
   const STATUS_TABS = [
     { key: "all", label: "All" },
     { key: "pending", label: "To Confirm" },
@@ -1902,13 +1963,14 @@ export default function OrdersPage() {
                     <div className="wisdom-order-actions">
                       {canPayNow && (
                         <button
+                          type="button"
                           className="order-inline-btn order-inline-btn-primary"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            window.location.assign(order.payment_url);
-                          }}
+                          onClick={(e) => handleMainListPayNow(e, order)}
+                          disabled={payingOrderId === order.id}
                         >
-                          Pay Now
+                          {payingOrderId === order.id
+                            ? "Opening Payment..."
+                            : "Pay Now"}
                         </button>
                       )}
 
