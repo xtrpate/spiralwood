@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import api from "../../services/api";
 import { useNavigate } from "react-router-dom";
 import { Search, Calendar, FileText, Printer } from "lucide-react";
 import { formatPHDateTime } from "../../utils/dateTime";
+import "./OrderHistory.css";
 
 const getStatusStyle = (status) => {
   const s = String(status || "").toLowerCase();
@@ -45,6 +46,13 @@ export default function OrderHistory() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const requestSequenceRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      requestSequenceRef.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -56,6 +64,16 @@ export default function OrderHistory() {
   }, [searchInput]);
 
   const fetchHistory = useCallback(async () => {
+    const requestId = ++requestSequenceRef.current;
+
+    if (dateFrom && dateTo && dateFrom > dateTo) {
+      setLoading(false);
+      setError("Start date cannot be after end date.");
+      setOrders([]);
+      setTotal(0);
+      return;
+    }
+
     setLoading(true);
     setError("");
     try {
@@ -68,16 +86,23 @@ export default function OrderHistory() {
           to: dateTo || undefined,
         },
       });
+
+      if (requestId !== requestSequenceRef.current) return;
+
       setOrders(Array.isArray(data?.orders) ? data.orders : []);
       setTotal(Number(data?.total || 0));
     } catch (err) {
+      if (requestId !== requestSequenceRef.current) return;
+
       setError(
         err.response?.data?.message || "Failed to load transaction history.",
       );
       setOrders([]);
       setTotal(0);
     } finally {
-      setLoading(false);
+      if (requestId === requestSequenceRef.current) {
+        setLoading(false);
+      }
     }
   }, [dateFrom, dateTo, search, page]);
 
@@ -92,8 +117,12 @@ export default function OrderHistory() {
   }, [page, totalPages]);
 
   return (
-    <div style={{ fontFamily: "'Inter', sans-serif", paddingBottom: 40 }}>
+    <div
+      className="cashier-history-page"
+      style={{ fontFamily: "'Inter', sans-serif", paddingBottom: 40 }}
+    >
       <div
+        className="cashier-history-header"
         style={{
           display: "flex",
           justifyContent: "space-between",
@@ -127,7 +156,7 @@ export default function OrderHistory() {
           </p>
         </div>
 
-        <div style={historySearchStyle}>
+        <div className="cashier-history-search" style={historySearchStyle}>
           {/* WISDOM CASHIER C3 FORM SEMANTICS R3 */}
           <label
             htmlFor="pos-history-search"
@@ -154,11 +183,14 @@ export default function OrderHistory() {
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search order, customer, phone, or receipt"
             aria-label="Search transaction history"
+            maxLength={100}
+            className="cashier-history-search-input"
             style={historySearchInputStyle}
           />
           {searchInput && (
             <button
               type="button"
+              className="cashier-history-clear-button"
               onClick={() => {
                 setSearchInput("");
                 setSearch("");
@@ -173,6 +205,7 @@ export default function OrderHistory() {
 
         {/* 👉 Date Range Filter */}
         <div
+          className="cashier-history-date-filter"
           style={{
             display: "flex",
             gap: "12px",
@@ -185,8 +218,15 @@ export default function OrderHistory() {
             flexWrap: "wrap",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Calendar size={16} color="#71717a" />
+          <div
+            className="cashier-history-date-row"
+            style={{ display: "flex", alignItems: "center", gap: 8 }}
+          >
+            <Calendar
+              className="cashier-history-calendar-icon"
+              size={16}
+              color="#71717a"
+            />
             <label
               htmlFor="pos-history-from-date"
               style={{
@@ -203,7 +243,9 @@ export default function OrderHistory() {
             >
               From date
             </label>
+            <span className="cashier-history-mobile-date-label">From</span>
             <input
+              className="cashier-history-date-input"
               id="pos-history-from-date"
               name="transaction_history_from_date"
               type="date"
@@ -214,7 +256,10 @@ export default function OrderHistory() {
               }}
               style={dateInputStyle}
             />
-            <span style={{ color: "#71717a", fontSize: 13, fontWeight: 600 }}>
+            <span
+              className="cashier-history-date-separator"
+              style={{ color: "#71717a", fontSize: 13, fontWeight: 600 }}
+            >
               to
             </span>
             <label
@@ -233,7 +278,9 @@ export default function OrderHistory() {
             >
               To date
             </label>
+            <span className="cashier-history-mobile-date-label">To</span>
             <input
+              className="cashier-history-date-input"
               id="pos-history-to-date"
               name="transaction_history_to_date"
               type="date"
@@ -247,6 +294,8 @@ export default function OrderHistory() {
           </div>
           {(dateFrom || dateTo) && (
             <button
+              type="button"
+              className="cashier-history-clear-button cashier-history-clear-dates"
               onClick={() => {
                 setDateFrom("");
                 setDateTo("");
@@ -269,6 +318,7 @@ export default function OrderHistory() {
       <div style={cardStyle}>
         {loading ? (
           <div
+            className="cashier-history-state"
             style={{
               padding: "60px 40px",
               textAlign: "center",
@@ -281,6 +331,7 @@ export default function OrderHistory() {
           </div>
         ) : error ? (
           <div
+            className="cashier-history-state cashier-history-error"
             style={{
               padding: "60px 40px",
               textAlign: "center",
@@ -289,10 +340,21 @@ export default function OrderHistory() {
               fontWeight: 600,
             }}
           >
-            {error}
+            <div>{error}</div>
+            {!(dateFrom && dateTo && dateFrom > dateTo) && (
+              <button
+                type="button"
+                className="cashier-history-retry-button"
+                style={btnClear}
+                onClick={fetchHistory}
+              >
+                Try Again
+              </button>
+            )}
           </div>
         ) : orders.length === 0 ? (
           <div
+            className="cashier-history-state"
             style={{
               padding: "80px 40px",
               textAlign: "center",
@@ -319,8 +381,12 @@ export default function OrderHistory() {
             </p>
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={tableStyle}>
+          <>
+            <div
+              className="cashier-history-desktop-table"
+              style={{ overflowX: "auto" }}
+            >
+              <table style={tableStyle}>
               <thead>
                 <tr style={thRowStyle}>
                   <th style={thStyle}>Date and Time</th>
@@ -448,25 +514,120 @@ export default function OrderHistory() {
                   );
                 })}
               </tbody>
-            </table>
-          </div>
+              </table>
+            </div>
+
+            <div
+              className="cashier-history-mobile-list"
+              aria-label="Transaction history"
+            >
+              {orders.map((order) => {
+                const statusStyle = getStatusStyle(order.status);
+                return (
+                  <article
+                    key={`mobile-${order.id}`}
+                    className="cashier-history-mobile-card"
+                  >
+                    <div className="cashier-history-mobile-card-header">
+                      <div className="cashier-history-mobile-card-heading">
+                        <strong>
+                          {order.order_number || `Order #${order.id}`}
+                        </strong>
+                        <span>
+                          {formatPHDateTime(order.created_at, {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                      </div>
+                      <span
+                        className="cashier-history-mobile-status"
+                        style={statusStyle}
+                      >
+                        {String(order.status || "unknown").replace(/_/g, " ")}
+                      </span>
+                    </div>
+
+                    <div className="cashier-history-mobile-customer">
+                      <strong>
+                        {order.walkin_customer_name || "Walk-in Customer"}
+                      </strong>
+                      {order.walkin_customer_phone && (
+                        <span>{order.walkin_customer_phone}</span>
+                      )}
+                    </div>
+
+                    <dl className="cashier-history-mobile-details">
+                      <div>
+                        <dt>Payment</dt>
+                        <dd>{formatPaymentMethod(order.payment_method) || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>Total</dt>
+                        <dd>
+                          ₱
+                          {Number(order.total || 0).toLocaleString("en-PH", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </dd>
+                      </div>
+                    </dl>
+
+                    <div className="cashier-history-mobile-receipt">
+                      {order.receipt_number ? (
+                        <>
+                          <span>{order.receipt_number}</span>
+                          <button
+                            type="button"
+                            className="cashier-history-mobile-receipt-button"
+                            style={btnReceipt}
+                            onClick={() =>
+                              navigate(`/staff/receipt/${order.receipt_id}`)
+                            }
+                          >
+                            <Printer size={15} /> View Receipt
+                          </button>
+                        </>
+                      ) : (
+                        <span className="cashier-history-mobile-no-receipt">
+                          Receipt not available
+                        </span>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </>
         )}
 
         {!loading && !error && totalPages > 1 && (
-          <div style={paginationStyle}>
+          <div
+            className="cashier-history-pagination"
+            style={paginationStyle}
+          >
             <button
               type="button"
+              className="cashier-history-pagination-button"
               style={paginationButtonStyle}
               disabled={page <= 1}
               onClick={() => setPage((current) => Math.max(1, current - 1))}
             >
               Previous
             </button>
-            <span style={paginationTextStyle}>
+            <span
+              className="cashier-history-pagination-text"
+              style={paginationTextStyle}
+            >
               Page {page} of {totalPages} · {total} transactions
             </span>
             <button
               type="button"
+              className="cashier-history-pagination-button"
               style={paginationButtonStyle}
               disabled={page >= totalPages}
               onClick={() =>
