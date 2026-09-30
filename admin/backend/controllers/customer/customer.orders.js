@@ -8,9 +8,7 @@ const {
   isValidPositiveInteger,
   parseStrictPositiveInt,
 } = require("../../utils/validators");
-const {
-  parseDecimalToCentsStrict,
-} = require("../../utils/paymentAmounts");
+const { parseDecimalToCentsStrict } = require("../../utils/paymentAmounts");
 const {
   isRetryableTransactionError,
   buildConcurrentUpdateResponse,
@@ -1699,7 +1697,11 @@ exports.confirmOrder = async (req, res) => {
         });
       }
 
-      if (String(row.status || "").trim().toLowerCase() === "verified") {
+      if (
+        String(row.status || "")
+          .trim()
+          .toLowerCase() === "verified"
+      ) {
         const nextVerifiedCents = verifiedCents + rowCents;
         if (!Number.isSafeInteger(nextVerifiedCents)) {
           await conn.rollback();
@@ -1810,9 +1812,7 @@ exports.confirmOrder = async (req, res) => {
     }
 
     if (isRetryableTransactionError(err)) {
-      return res
-        .status(409)
-        .json(buildConcurrentUpdateResponse());
+      return res.status(409).json(buildConcurrentUpdateResponse());
     }
 
     console.error("[customer.orders/:id/confirm]", err);
@@ -1932,6 +1932,9 @@ exports.verifyPayment = async (req, res) => {
         message: "Payment has not been completed yet. Order remains unpaid.",
       });
     }
+
+    const providerPaymentId =
+      String(successfulPayment?.id || "").trim() || null;
 
     const providerAmountCents = Number(successfulPayment?.attributes?.amount);
     const expectedAmountCents = Math.round(Number(order.total || 0) * 100);

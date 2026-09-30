@@ -848,6 +848,8 @@ exports.handlePaymongoWebhook = async (req, res) => {
 
     const eventType = eventData?.attributes?.type || eventData?.type || null;
 
+    const eventId = String(eventData?.id || "").trim() || null;
+
     if (eventType !== "checkout_session.payment.paid") {
       return res.status(200).json({
         received: true,
@@ -1103,6 +1105,15 @@ exports.handlePaymongoWebhook = async (req, res) => {
       );
 
       const providerAmountCents = getPaymongoAmountCents(session);
+
+      const providerPaymentId = Array.isArray(session?.attributes?.payments)
+        ? String(
+            session.attributes.payments.find(
+              (payment) =>
+                normalizeWebhookValue(payment?.attributes?.status) === "paid",
+            )?.id || "",
+          ).trim() || null
+        : null;
 
       if (!amountsMatchOrderTotal(providerAmountCents, order.total)) {
         await conn.rollback();
