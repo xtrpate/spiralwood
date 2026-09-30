@@ -9,20 +9,6 @@ import receiptBrandLogoV172 from "../customer/spiral-wood-receipt-logo-v172.png"
 const OFFICIAL_BUSINESS_ADDRESS =
   "8 Laot Street, Near Gavino, Prenza I, Marilao, 3019 Bulacan";
 
-const getVatInclusiveBreakdown = (grossValue) => {
-  const gross = Number(grossValue || 0);
-  const totalCents = Number.isFinite(gross)
-    ? Math.max(0, Math.round((gross + Number.EPSILON) * 100))
-    : 0;
-  const vatableCents = Math.round(totalCents / 1.12);
-
-  return {
-    vatableSales: vatableCents / 100,
-    vatAmount: (totalCents - vatableCents) / 100,
-    total: totalCents / 100,
-  };
-};
-
 export default function ReceiptPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -76,9 +62,6 @@ export default function ReceiptPage() {
     (paymentMethod ? paymentMethod.replace("_", " ") : "");
 
   const paymentSummary = receipt.payment_summary || null;
-  const subtotal = Number(receipt.subtotal ?? 0);
-  const discount = Number(receipt.discount ?? 0);
-  const deliveryFee = Number(receipt.delivery_fee ?? 0);
   const total = Number(
     paymentSummary?.order_total ?? receipt.total_amount ?? receipt.total ?? 0,
   );
@@ -88,20 +71,6 @@ export default function ReceiptPage() {
   const remainingBalance = Number(paymentSummary?.remaining_balance ?? 0);
   const paymentStatusLabel =
     paymentSummary?.status || "Payment status unavailable";
-  const vatBreakdown = getVatInclusiveBreakdown(total);
-
-  // Never print a full customer phone number. Show the first 4 and last 2
-  // digits only; mask everything else. Falls back to nothing if no phone
-  // was captured on the order.
-  const maskPhone = (value) => {
-    const digits = String(value || "").replace(/\D/g, "");
-    if (digits.length < 6) return null;
-    const visibleStart = digits.slice(0, 4);
-    const visibleEnd = digits.slice(-2);
-    const masked = "•".repeat(digits.length - 6);
-    return `${visibleStart}${masked}${visibleEnd}`;
-  };
-  const maskedPhone = maskPhone(receipt.walkin_customer_phone);
 
   // Optional business/footer fields are shown ONLY when actually configured
   // in website_settings -- never fabricated. warranty_period_days is a real
@@ -130,9 +99,11 @@ export default function ReceiptPage() {
 
   const change =
     paymentMethod === "cash"
-      ? cashReceived !== null
-        ? Math.max(0, cashReceived - total)
-        : backendChange
+      ? hasBackendChange
+        ? backendChange
+        : cashReceived !== null
+          ? Math.max(0, cashReceived - total)
+          : 0
       : 0;
 
   const receiptDate = receipt.created_at || receipt.printed_at;
@@ -241,7 +212,7 @@ export default function ReceiptPage() {
             </div>
             <div className="meta-row">
               <span>Customer</span>
-              <span>{receipt.walkin_customer_name || "Walk-in Customer"}</span>
+              <span>{receipt.customer_display || receipt.issued_to || "Customer"}</span>
             </div>
             <div className="meta-row">
               <span>Payment method</span>
@@ -259,15 +230,9 @@ export default function ReceiptPage() {
                 {paymentStatusLabel}
               </span>
             </div>
-            {maskedPhone && (
-              <div className="meta-row">
-                <span>Phone</span>
-                <span>{maskedPhone}</span>
-              </div>
-            )}
             <div className="meta-row">
-              <span>Cashier</span>
-              <span>{receipt.staff_name}</span>
+              <span>Processed by</span>
+              <span>{receipt.processor_display || receipt.staff_name || "Staff"}</span>
             </div>
           </div>
 
@@ -329,62 +294,10 @@ export default function ReceiptPage() {
           {/* Totals */}
           <div className="staff-receipt-section-title-v190">PAYMENT SUMMARY</div>
           <div className="receipt-totals staff-receipt-summary-v190">
-            <div className="total-row">
-              <span>Subtotal</span>
-              <span>
-                ₱
-                {subtotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
-              </span>
-            </div>
-
-            {discount > 0 && (
-              <div className="total-row" style={{ color: "#18181b" }}>
-                <span>Discount</span>
-                <span>
-                  -₱
-                  {discount.toLocaleString("en-PH", {
-                    minimumFractionDigits: 2,
-                  })}
-                </span>
-              </div>
-            )}
-
-            {deliveryFee > 0 && (
-              <div className="total-row">
-                <span>Delivery Fee</span>
-                <span>
-                  ₱
-                  {deliveryFee.toLocaleString("en-PH", {
-                    minimumFractionDigits: 2,
-                  })}
-                </span>
-              </div>
-            )}
-
-            <div className="total-row">
-              <span>VATable Sales</span>
-              <span>
-                ₱{vatBreakdown.vatableSales.toLocaleString("en-PH", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
-              </span>
-            </div>
-
-            <div className="total-row">
-              <span>VAT (12%)</span>
-              <span>
-                ₱{vatBreakdown.vatAmount.toLocaleString("en-PH", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
-              </span>
-            </div>
-
             <div className="total-row grand staff-total-v190">
               <span>ORDER TOTAL</span>
               <span>
-                ₱{vatBreakdown.total.toLocaleString("en-PH", {
+                ₱{total.toLocaleString("en-PH", {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
                 })}

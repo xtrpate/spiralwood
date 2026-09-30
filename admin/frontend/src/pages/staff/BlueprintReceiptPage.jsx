@@ -3,6 +3,7 @@ import api from "../../services/api";
 import { useParams, useNavigate } from "react-router-dom";
 import { Printer, ArrowLeft } from "lucide-react";
 import "./ReceiptPage.css";
+import { formatPHDateTime } from "../../utils/dateTime";
 import receiptBrandLogoV172 from "../customer/spiral-wood-receipt-logo-v172.png";
 
 const PAYMENT_METHOD_LABELS = {
@@ -24,20 +25,6 @@ const formatMoney = (value) =>
   `₱${Number(value || 0).toLocaleString("en-PH", {
     minimumFractionDigits: 2,
   })}`;
-
-const getVatInclusiveBreakdown = (grossValue) => {
-  const gross = Number(grossValue || 0);
-  const totalCents = Number.isFinite(gross)
-    ? Math.max(0, Math.round((gross + Number.EPSILON) * 100))
-    : 0;
-  const vatableCents = Math.round(totalCents / 1.12);
-
-  return {
-    vatableSales: vatableCents / 100,
-    vatAmount: (totalCents - vatableCents) / 100,
-    total: totalCents / 100,
-  };
-};
 
 export default function BlueprintReceiptPage() {
   const { id } = useParams();
@@ -90,7 +77,6 @@ export default function BlueprintReceiptPage() {
 
   const isFullyPaid = receipt.payment_status === "Fully Paid";
   const receiptDate = receipt.created_at || receipt.printed_at;
-  const vatBreakdown = getVatInclusiveBreakdown(receipt.total_amount);
 
   return (
     <div className="staff-receipt-page-v190 staff-blueprint-receipt-v190">
@@ -190,7 +176,16 @@ export default function BlueprintReceiptPage() {
             <div className="meta-row">
               <span>Date and time</span>
               <span>
-                {receiptDate ? new Date(receiptDate).toLocaleString("en-PH") : "—"}
+                {receiptDate
+                  ? formatPHDateTime(receiptDate, {
+                      year: "numeric",
+                      month: "numeric",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    })
+                  : "—"}
               </span>
             </div>
             <div className="meta-row">
@@ -218,17 +213,9 @@ export default function BlueprintReceiptPage() {
           {/* Payment progress */}
           <div className="staff-receipt-section-title-v190">PAYMENT SUMMARY</div>
           <div className="receipt-totals staff-receipt-summary-v190">
-            <div className="total-row">
-              <span>VATable Sales</span>
-              <span>{formatMoney(vatBreakdown.vatableSales)}</span>
-            </div>
-            <div className="total-row">
-              <span>VAT (12%)</span>
-              <span>{formatMoney(vatBreakdown.vatAmount)}</span>
-            </div>
             <div className="total-row grand staff-total-v190">
-              <span>TOTAL</span>
-              <span>{formatMoney(vatBreakdown.total)}</span>
+              <span>ORDER TOTAL</span>
+              <span>{formatMoney(receipt.total_amount)}</span>
             </div>
             <div className="total-row">
               <span>Previous verified payments</span>

@@ -23,7 +23,7 @@ const mockDb = {
     }
 
     if (text.includes("SELECT o.*, r.receipt_number")) {
-      return [[{ id: Number(params[0]), items_snapshot: '[{"product_name":"Test Item","quantity":1,"unit_price":"1.00"}]', total_amount: "1.00", payment_method: "cash" }]];
+      return [[{ id: Number(params[params.length - 1]), items_snapshot: '[{"product_name":"Test Item","quantity":1,"unit_price":"1.00"}]', total_amount: "1.00", payment_method: "cash" }]];
     }
 
     if (text.includes("FROM order_items")) {
@@ -131,10 +131,50 @@ async function run() {
   );
   const cashierCount = firstCallContaining("COUNT(DISTINCT o.id) AS total");
 
-  assert.match(cashierList.sql, /r\.issued_by = \?/);
+  assert.match(cashierList.sql, /SELECT MAX\(r2\.id\)/);
+  assert.match(cashierList.sql, /r2\.receipt_type = 'pos_sale'/);
+  assert.match(cashierList.sql, /r2\.issued_by = \?/);
+  assert.match(cashierList.sql, /r\.id IS NOT NULL/);
   assert.deepEqual(cashierList.params, [42, 20, 0]);
-  assert.match(cashierCount.sql, /r\.issued_by = \?/);
+  assert.match(cashierCount.sql, /SELECT MAX\(r2\.id\)/);
+  assert.match(cashierCount.sql, /r2\.issued_by = \?/);
   assert.deepEqual(cashierCount.params, [42]);
+
+  // Searching an older receipt number must still find the order while the
+  // displayed receipt remains the deterministic latest receipt for that owner.
+  resetCalls();
+  await ordersController.getOrders(
+    { user: cashier, query: { search: "OR-OLD-100" } },
+    makeRes(),
+  );
+
+  const cashierSearchList = firstCallContaining(
+    "SELECT o.id, o.order_number, o.walkin_customer_name",
+  );
+  const cashierSearchCount = firstCallContaining(
+    "COUNT(DISTINCT o.id) AS total",
+  );
+  assert.match(cashierSearchList.sql, /FROM receipts r_search/);
+  assert.match(cashierSearchList.sql, /r_search\.receipt_number LIKE \?/);
+  assert.match(cashierSearchList.sql, /r_search\.issued_by = \?/);
+  assert.deepEqual(cashierSearchList.params, [
+    42,
+    "%OR-OLD-100%",
+    "%OR-OLD-100%",
+    "%OR-OLD-100%",
+    42,
+    20,
+    0,
+  ]);
+  assert.match(cashierSearchCount.sql, /FROM receipts r_search/);
+  assert.match(cashierSearchCount.sql, /r_search\.issued_by = \?/);
+  assert.deepEqual(cashierSearchCount.params, [
+    42,
+    "%OR-OLD-100%",
+    "%OR-OLD-100%",
+    "%OR-OLD-100%",
+    42,
+  ]);
 
   // Admin list remains global.
   resetCalls();
@@ -148,10 +188,41 @@ async function run() {
   );
   const adminCount = firstCallContaining("COUNT(DISTINCT o.id) AS total");
 
-  assert.doesNotMatch(adminList.sql, /r\.issued_by = \?/);
+  assert.match(adminList.sql, /SELECT MAX\(r2\.id\)/);
+  assert.match(adminList.sql, /r2\.receipt_type = 'pos_sale'/);
+  assert.doesNotMatch(adminList.sql, /r2\.issued_by = \?/);
   assert.deepEqual(adminList.params, [20, 0]);
-  assert.doesNotMatch(adminCount.sql, /r\.issued_by = \?/);
+  assert.match(adminCount.sql, /SELECT MAX\(r2\.id\)/);
+  assert.doesNotMatch(adminCount.sql, /r2\.issued_by = \?/);
   assert.deepEqual(adminCount.params, []);
+
+  resetCalls();
+  await ordersController.getOrders(
+    { user: admin, query: { search: "OR-OLD-100" } },
+    makeRes(),
+  );
+  const adminSearchList = firstCallContaining(
+    "SELECT o.id, o.order_number, o.walkin_customer_name",
+  );
+  const adminSearchCount = firstCallContaining(
+    "COUNT(DISTINCT o.id) AS total",
+  );
+  assert.match(adminSearchList.sql, /FROM receipts r_search/);
+  assert.match(adminSearchList.sql, /r_search\.receipt_number LIKE \?/);
+  assert.doesNotMatch(adminSearchList.sql, /r_search\.issued_by = \?/);
+  assert.deepEqual(adminSearchList.params, [
+    "%OR-OLD-100%",
+    "%OR-OLD-100%",
+    "%OR-OLD-100%",
+    20,
+    0,
+  ]);
+  assert.doesNotMatch(adminSearchCount.sql, /r_search\.issued_by = \?/);
+  assert.deepEqual(adminSearchCount.params, [
+    "%OR-OLD-100%",
+    "%OR-OLD-100%",
+    "%OR-OLD-100%",
+  ]);
 
   // Cashier direct order detail must also be owned by the cashier.
   resetCalls();
@@ -161,8 +232,11 @@ async function run() {
   );
 
   const cashierOrderDetail = firstCallContaining("SELECT o.*, r.receipt_number");
-  assert.match(cashierOrderDetail.sql, /r\.issued_by = \?/);
-  assert.deepEqual(cashierOrderDetail.params, [77, 42]);
+  assert.match(cashierOrderDetail.sql, /SELECT MAX\(r2\.id\)/);
+  assert.match(cashierOrderDetail.sql, /r2\.receipt_type = 'pos_sale'/);
+  assert.match(cashierOrderDetail.sql, /r2\.issued_by = \?/);
+  assert.match(cashierOrderDetail.sql, /r\.id IS NOT NULL/);
+  assert.deepEqual(cashierOrderDetail.params, [42, 77]);
 
   // Admin direct order detail remains unrestricted.
   resetCalls();
@@ -172,7 +246,9 @@ async function run() {
   );
 
   const adminOrderDetail = firstCallContaining("SELECT o.*, r.receipt_number");
-  assert.doesNotMatch(adminOrderDetail.sql, /r\.issued_by = \?/);
+  assert.match(adminOrderDetail.sql, /SELECT MAX\(r2\.id\)/);
+  assert.match(adminOrderDetail.sql, /r2\.receipt_type = 'pos_sale'/);
+  assert.doesNotMatch(adminOrderDetail.sql, /r2\.issued_by = \?/);
   assert.deepEqual(adminOrderDetail.params, [77]);
 
   // Cashier receipt-by-id must be owned by the cashier.

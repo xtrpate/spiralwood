@@ -859,16 +859,27 @@ exports.getOrderById = async (req, res) => {
     return res.status(400).json({ message: "A valid order id is required." });
   }
 
+  const latestReceiptJoin = `
+      LEFT JOIN receipts r ON r.id = (
+        SELECT MAX(r2.id)
+        FROM receipts r2
+        WHERE r2.order_id = o.id
+          AND r2.receipt_type = 'pos_sale'
+          ${cashierOwnOnly ? "AND r2.issued_by = ?" : ""}
+      )
+  `;
+  const latestReceiptParams = cashierOwnOnly ? [req.user.id] : [];
+
   try {
     const [orders] = await db.query(
       `
       SELECT o.*, r.receipt_number, r.id AS receipt_id, r.items_snapshot
       FROM orders o
-      LEFT JOIN receipts r ON r.order_id = o.id
+      ${latestReceiptJoin}
       WHERE o.id = ?
-        ${cashierOwnOnly ? "AND r.issued_by = ?" : ""}
+        ${cashierOwnOnly ? "AND r.id IS NOT NULL" : ""}
       `,
-      [orderId, ...(cashierOwnOnly ? [req.user.id] : [])],
+      [...latestReceiptParams, orderId],
     );
 
     if (orders.length === 0)
@@ -896,14 +907,23 @@ exports.getOrders = async (req, res) => {
   const offset = (pageNumber - 1) * limitNumber;
   const cashierOwnOnly =
     req.user?.role === "staff" && req.user?.staff_type === "cashier";
+  const latestReceiptJoin = `
+      LEFT JOIN receipts r ON r.id = (
+        SELECT MAX(r2.id)
+        FROM receipts r2
+        WHERE r2.order_id = o.id
+          AND r2.receipt_type = 'pos_sale'
+          ${cashierOwnOnly ? "AND r2.issued_by = ?" : ""}
+      )
+  `;
+  const latestReceiptParams = cashierOwnOnly ? [req.user.id] : [];
 
   try {
     let where = "WHERE o.type = 'walkin'";
     const params = [];
 
     if (cashierOwnOnly) {
-      where += " AND r.issued_by = ?";
-      params.push(req.user.id);
+      where += " AND r.id IS NOT NULL";
     }
 
     const fromDate = from ? normalizeDateOnly(String(from)) : null;
@@ -938,9 +958,21 @@ exports.getOrders = async (req, res) => {
       const clauses = [
         "o.order_number LIKE ?",
         "o.walkin_customer_name LIKE ?",
-        "COALESCE(r.receipt_number, '') LIKE ?",
+        `EXISTS (
+          SELECT 1
+          FROM receipts r_search
+          WHERE r_search.order_id = o.id
+            AND r_search.receipt_type = 'pos_sale'
+            AND r_search.receipt_number LIKE ?
+            ${cashierOwnOnly ? "AND r_search.issued_by = ?" : ""}
+        )`,
       ];
-      const searchParams = [pattern, pattern, pattern];
+      const searchParams = [
+        pattern,
+        pattern,
+        pattern,
+        ...(cashierOwnOnly ? [req.user.id] : []),
+      ];
 
       const strictOrderId = /^\d+$/.test(term)
         ? parseStrictPositiveInt(term)
@@ -979,21 +1011,21 @@ exports.getOrders = async (req, res) => {
              o.status, o.created_at, r.receipt_number, r.id AS receipt_id,
              u.name AS processed_by
       FROM orders o
-      LEFT JOIN receipts r ON r.order_id = o.id
+      ${latestReceiptJoin}
       LEFT JOIN users u ON u.id = r.issued_by
       ${where}
       ORDER BY o.created_at DESC
       LIMIT ? OFFSET ?
       `,
-      [...params, limitNumber, offset],
+      [...latestReceiptParams, ...params, limitNumber, offset],
     );
 
     const [count] = await db.query(
       `SELECT COUNT(DISTINCT o.id) AS total
        FROM orders o
-       LEFT JOIN receipts r ON r.order_id = o.id
+       ${latestReceiptJoin}
        ${where}`,
-      params,
+      [...latestReceiptParams, ...params],
     );
 
     res.json({

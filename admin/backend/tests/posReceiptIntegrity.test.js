@@ -53,10 +53,42 @@ const baseReceipt = (overrides = {}) => ({
   ...overrides,
 });
 
+const baseBlueprintReceipt = (overrides = {}) => ({
+  id: 12,
+  order_id: 144,
+  payment_transaction_id: 900,
+  receipt_type: 'blueprint_payment',
+  payment_method_snapshot: 'cash',
+  payment_label: 'partial_payment',
+  previous_paid_amount: '1000.00',
+  amount_paid: '2000.00',
+  total_paid_after: '3000.00',
+  remaining_balance_after: '7000.00',
+  provider_reference: null,
+  receipt_number: 'BP-TEST-12',
+  issued_to: 'Blueprint Customer',
+  issued_by: 1,
+  total_amount: '10000.00',
+  items_snapshot: JSON.stringify({
+    order_type: 'blueprint',
+    order_number: 'SWS-SNAPSHOT-144',
+    blueprint_title: 'Snapshot Table',
+    payment_label: 'partial_payment',
+  }),
+  printed_at: null,
+  created_at: '2026-09-30T03:00:00.000Z',
+  order_number: 'SWS-LIVE-CHANGED',
+  order_type: 'blueprint',
+  processor_name: 'Admin Test',
+  ...overrides,
+});
+
 function reset(nextMode = 'legacy', overrides = {}) {
   mode = nextMode;
   calls = [];
-  currentReceipt = baseReceipt(overrides);
+  currentReceipt = nextMode.startsWith('blueprint')
+    ? baseBlueprintReceipt(overrides)
+    : baseReceipt(overrides);
 }
 
 const mockDb = {
@@ -69,7 +101,7 @@ const mockDb = {
     }
 
     if (text.includes("r.receipt_type = 'blueprint_payment'")) {
-      return [[]];
+      return mode.startsWith('blueprint') ? [[{ ...currentReceipt }]] : [[]];
     }
 
     if (text.includes('FROM receipts r')) {
@@ -229,6 +261,49 @@ async function run() {
   assert.equal(res.body.payment_summary.payment_received, 7000);
   assert.equal(res.body.payment_summary.remaining_balance, 0);
 
+  // Payment labels are part of the immutable financial meaning and must
+  // agree with the stored arithmetic, not merely be a recognized string.
+  const badPosPaymentLabels = [
+    {
+      payment_label: 'full_payment',
+      previous_paid_amount: '0.00',
+      amount_paid: '3000.00',
+      total_paid_after: '3000.00',
+      remaining_balance_after: '7000.00',
+    },
+    {
+      payment_label: 'balance_payment',
+      previous_paid_amount: '0.00',
+      amount_paid: '10000.00',
+      total_paid_after: '10000.00',
+      remaining_balance_after: '0.00',
+    },
+    {
+      payment_label: 'partial_payment',
+      previous_paid_amount: '3000.00',
+      amount_paid: '7000.00',
+      total_paid_after: '10000.00',
+      remaining_balance_after: '0.00',
+    },
+    {
+      payment_label: 'down_payment',
+      previous_paid_amount: '0.00',
+      amount_paid: '3000.00',
+      total_paid_after: '3000.00',
+      remaining_balance_after: '7000.00',
+    },
+  ];
+  for (const snapshot of badPosPaymentLabels) {
+    reset('bad_payment_label', snapshot);
+    res = makeRes();
+    await controller.getReceiptById(
+      { user: cashier, params: { id: '88' } },
+      res,
+    );
+    assert.equal(res.statusCode, 500);
+    assert.match(res.body.message, /inconsistent/i);
+  }
+
   // Snapshot arithmetic that does not reconcile must fail closed.
   reset('inconsistent', {
     payment_label: 'partial_payment',
@@ -258,6 +333,100 @@ async function run() {
     assert.match(res.body.message, /inconsistent/i);
     assert.equal(Object.prototype.hasOwnProperty.call(res.body, 'error'), false);
   }
+
+  // Non-empty JSON is not enough: every receipt item must be structurally valid.
+  const malformedItemSnapshots = [
+    JSON.stringify([{ product_name: '', quantity: 1, unit_price: '1.00' }]),
+    JSON.stringify([{ product_name: 'Chair', quantity: 0, unit_price: '1.00' }]),
+    JSON.stringify([{ product_name: 'Chair', quantity: '1.5', unit_price: '1.00' }]),
+    JSON.stringify([{ product_name: 'Chair', quantity: '1e2', unit_price: '1.00' }]),
+    JSON.stringify([{ product_name: 'Chair', quantity: 1, unit_price: 'abc' }]),
+    JSON.stringify([{ product_name: 'Chair', quantity: 1, unit_price: '-1.00' }]),
+    JSON.stringify([{ product_name: { text: 'Chair' }, quantity: 1, unit_price: '1.00' }]),
+    JSON.stringify([{ product_name: 'Chair', quantity: 1, unit_price: '1.00', wood_type: { name: 'Oak' } }]),
+  ];
+  for (const badSnapshot of malformedItemSnapshots) {
+    reset('bad_item_fields', { items_snapshot: badSnapshot });
+    res = makeRes();
+    await controller.getReceiptById(
+      { user: cashier, params: { id: '88' } },
+      res,
+    );
+    assert.equal(res.statusCode, 500);
+    assert.match(res.body.message, /inconsistent/i);
+  }
+
+  // Printed identity comes from the immutable receipt, not the mutable order row.
+  reset('snapshot_identity', {
+    issued_to: 'Frozen Receipt Customer',
+    walkin_customer_name: 'Changed Order Customer',
+    payment_method_snapshot: 'paymongo',
+    staff_name: 'Technical Owner Name',
+  });
+  res = makeRes();
+  await controller.getReceiptById(
+    { user: admin, params: { id: '88' } },
+    res,
+  );
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.customer_display, 'Frozen Receipt Customer');
+  assert.equal(res.body.processor_display, 'Online Payment');
+  assert.equal(res.body.payment_method, 'paymongo');
+
+  reset('cash_processor', { staff_name: 'Cashier Test' });
+  res = makeRes();
+  await controller.getReceiptById(
+    { user: admin, params: { id: '88' } },
+    res,
+  );
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.processor_display, 'Cashier Test');
+
+  // Legacy receipts infer payment method only from immutable receipt evidence.
+  // Mutable order.payment_method must never rewrite an old receipt.
+  reset('legacy_cash_evidence', {
+    payment_method_snapshot: null,
+    payment_method: 'paymongo',
+    cash_received: '12000.00',
+    change_amount: '2000.00',
+  });
+  res = makeRes();
+  await controller.getReceiptById(
+    { user: admin, params: { id: '88' } },
+    res,
+  );
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.payment_method, 'cash');
+
+  reset('legacy_provider_evidence', {
+    payment_method_snapshot: null,
+    payment_method: 'cash',
+    cash_received: null,
+    change_amount: null,
+    provider_reference: 'cs_test_immutable_reference',
+  });
+  res = makeRes();
+  await controller.getReceiptById(
+    { user: admin, params: { id: '88' } },
+    res,
+  );
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.payment_method, 'paymongo');
+
+  reset('legacy_ambiguous_method', {
+    payment_method_snapshot: null,
+    payment_method: 'paymongo',
+    cash_received: null,
+    change_amount: null,
+    provider_reference: null,
+  });
+  res = makeRes();
+  await controller.getReceiptById(
+    { user: admin, params: { id: '88' } },
+    res,
+  );
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.payment_method, '');
 
   // Receipt-by-order uses the same strict snapshot handling and preserves ownership.
   reset('partial', {
@@ -306,6 +475,123 @@ async function run() {
   assert.equal(res.statusCode, 400);
   assert.equal(calls.length, 0);
 
+  // Blueprint receipts must also reconcile strictly and prefer their own snapshot.
+  reset('blueprint_valid');
+  res = makeRes();
+  await controller.getBlueprintReceiptById(
+    { user: cashier, params: { id: '12' } },
+    res,
+  );
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.order_number, 'SWS-SNAPSHOT-144');
+  assert.equal(res.body.blueprint_title, 'Snapshot Table');
+  assert.equal(res.body.payment_status, 'Partially Paid');
+  assert.equal(res.body.previous_paid_amount, 1000);
+  assert.equal(res.body.amount_paid, 2000);
+  assert.equal(res.body.total_paid_after, 3000);
+  assert.equal(res.body.remaining_balance_after, 7000);
+  assert.equal(res.body.total_amount, 10000);
+  assert.equal(res.body.processor_display, 'Admin Test');
+
+  reset('blueprint_bad_math', { total_paid_after: '3500.00' });
+  res = makeRes();
+  await controller.getBlueprintReceiptById(
+    { user: cashier, params: { id: '12' } },
+    res,
+  );
+  assert.equal(res.statusCode, 500);
+  assert.match(res.body.message, /inconsistent/i);
+
+  reset('blueprint_bad_label', {
+    items_snapshot: JSON.stringify({
+      order_type: 'blueprint',
+      order_number: 'SWS-SNAPSHOT-144',
+      blueprint_title: 'Snapshot Table',
+      payment_label: 'full_payment',
+    }),
+  });
+  res = makeRes();
+  await controller.getBlueprintReceiptById(
+    { user: cashier, params: { id: '12' } },
+    res,
+  );
+  assert.equal(res.statusCode, 500);
+  assert.match(res.body.message, /inconsistent/i);
+
+  reset('blueprint_semantic_label_mismatch', {
+    payment_label: 'full_payment',
+    previous_paid_amount: '0.00',
+    amount_paid: '3000.00',
+    total_paid_after: '3000.00',
+    remaining_balance_after: '7000.00',
+    items_snapshot: JSON.stringify({
+      order_type: 'blueprint',
+      order_number: 'SWS-SNAPSHOT-144',
+      blueprint_title: 'Snapshot Table',
+      payment_label: 'full_payment',
+    }),
+  });
+  res = makeRes();
+  await controller.getBlueprintReceiptById(
+    { user: cashier, params: { id: '12' } },
+    res,
+  );
+  assert.equal(res.statusCode, 500);
+  assert.match(res.body.message, /inconsistent/i);
+
+  reset('blueprint_wrong_order_type', {
+    items_snapshot: JSON.stringify({
+      order_type: 'standard',
+      order_number: 'SWS-SNAPSHOT-144',
+      blueprint_title: 'Snapshot Table',
+      payment_label: 'partial_payment',
+    }),
+  });
+  res = makeRes();
+  await controller.getBlueprintReceiptById(
+    { user: cashier, params: { id: '12' } },
+    res,
+  );
+  assert.equal(res.statusCode, 500);
+  assert.match(res.body.message, /inconsistent/i);
+
+  reset('blueprint_bad_field_type', {
+    items_snapshot: JSON.stringify({
+      order_type: 'blueprint',
+      order_number: { value: 'SWS-SNAPSHOT-144' },
+      blueprint_title: 'Snapshot Table',
+      payment_label: 'partial_payment',
+    }),
+  });
+  res = makeRes();
+  await controller.getBlueprintReceiptById(
+    { user: cashier, params: { id: '12' } },
+    res,
+  );
+  assert.equal(res.statusCode, 500);
+  assert.match(res.body.message, /inconsistent/i);
+
+  reset('blueprint_bad_snapshot', { items_snapshot: '{broken-json' });
+  res = makeRes();
+  await controller.getBlueprintReceiptById(
+    { user: cashier, params: { id: '12' } },
+    res,
+  );
+  assert.equal(res.statusCode, 500);
+  assert.match(res.body.message, /inconsistent/i);
+
+  reset('blueprint_paymongo', {
+    payment_method_snapshot: 'paymongo',
+    processor_name: 'Technical Owner',
+  });
+  res = makeRes();
+  await controller.getBlueprintReceiptById(
+    { user: cashier, params: { id: '12' } },
+    res,
+  );
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.processor_display, 'PayMongo / Online Payment');
+
   // Frontend contract: status is no longer hard-coded and payment progress is visible.
   const receiptPagePath = path.resolve(
     __dirname,
@@ -320,8 +606,32 @@ async function run() {
     receiptPageSource.includes('<span style={{ color: "#059669" }}>PAID</span>'),
     false,
   );
+  assert.match(receiptPageSource, /receipt\.customer_display/);
+  assert.match(receiptPageSource, /receipt\.processor_display/);
+  assert.equal(receiptPageSource.includes('receipt.walkin_customer_name'), false);
+  assert.equal(receiptPageSource.includes('VATable Sales'), false);
+  assert.equal(receiptPageSource.includes('VAT (12%)'), false);
+  assert.equal(receiptPageSource.includes('getVatInclusiveBreakdown'), false);
+  assert.match(receiptPageSource, /hasBackendChange[\s\S]*backendChange/);
 
-  console.log('PASS: POS receipt correctness and integrity tests passed.');
+  const blueprintReceiptPagePath = path.resolve(
+    __dirname,
+    '../../frontend/src/pages/staff/BlueprintReceiptPage.jsx',
+  );
+  const blueprintReceiptPageSource = fs.readFileSync(
+    blueprintReceiptPagePath,
+    'utf8',
+  );
+  assert.match(blueprintReceiptPageSource, /formatPHDateTime/);
+  assert.equal(blueprintReceiptPageSource.includes('VATable Sales'), false);
+  assert.equal(blueprintReceiptPageSource.includes('VAT (12%)'), false);
+  assert.equal(
+    blueprintReceiptPageSource.includes('getVatInclusiveBreakdown'),
+    false,
+  );
+  assert.match(blueprintReceiptPageSource, /ORDER TOTAL/);
+
+  console.log('PASS: Receipt correctness and historical integrity tests passed.');
 }
 
 run()
