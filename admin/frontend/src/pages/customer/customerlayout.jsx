@@ -220,24 +220,21 @@ export default function CustomerLayout() {
         if (active) {
           setSiteSettings(res.data);
 
-          // 1. Updates the Browser Tab title dynamically!
-          if (res.data?.display?.site_name) {
-            document.title = res.data.display.site_name;
-          }
-
-          // 2. 👉 Updates the Browser Tab Logo (Favicon) dynamically!
+          // Update the Browser Tab Logo (Favicon) dynamically.
           if (res.data?.display?.site_logo) {
             // We use your existing buildAssetUrl function to get the full image path
             const faviconUrl = buildAssetUrl(res.data.display.site_logo);
 
             // Find the existing favicon tag, or create one if it doesn't exist
             let link = document.querySelector("link[rel~='icon']");
+
             if (!link) {
               link = document.createElement("link");
               link.rel = "icon";
               document.head.appendChild(link);
             }
-            // Swap the image!
+
+            // Swap the image.
             link.href = faviconUrl;
           }
         }
