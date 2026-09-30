@@ -1991,20 +1991,14 @@ exports.verifyPayment = async (req, res) => {
       amount,
       payment_method,
       proof_url,
-      provider_payment_id,
       paymongo_reference,
       status,
       verified_at,
       notes
     )
-   VALUES (?, ?, 'paymongo', '', ?, ?, 'verified', NOW(),
+   VALUES (?, ?, 'paymongo', '', ?, 'verified', NOW(),
            'Automatically verified via PayMongo checkout.')`,
-          [
-            lockedOrder.id,
-            lockedOrder.total,
-            providerPaymentId,
-            lockedOrder.paymongo_session_id,
-          ],
+          [lockedOrder.id, lockedOrder.total, lockedOrder.paymongo_session_id],
         );
 
         verifiedPayment = {
@@ -2396,18 +2390,16 @@ exports.autoCancelExpiredOrders = async (io = null) => {
       amount,
       payment_method,
       proof_url,
-      provider_payment_id,
       paymongo_reference,
       status,
       verified_at,
       notes
     )
-   VALUES (?, ?, 'paymongo', '', ?, ?, 'verified', NOW(),
+   VALUES (?, ?, 'paymongo', '', ?, 'verified', NOW(),
            'Automatically verified via PayMongo checkout (Recovered by System Audit).')`,
               [
                 lockedOrder.id,
                 lockedOrder.total,
-                providerPaidPaymentId,
                 lockedOrder.paymongo_session_id,
               ],
             );

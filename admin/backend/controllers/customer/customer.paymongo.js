@@ -1149,20 +1149,16 @@ exports.handlePaymongoWebhook = async (req, res) => {
      amount,
      payment_method,
      proof_url,
-     provider_payment_id,
-     provider_event_id,
      paymongo_reference,
      status,
      verified_at,
      notes
    )
- VALUES (?, ?, 'paymongo', ?, ?, ?, ?, 'verified', NOW(), ?)`,
+ VALUES (?, ?, 'paymongo', ?, ?, 'verified', NOW(), ?)`,
           [
             order.id,
             amountFromWebhook,
             sessionId || "",
-            providerPaymentId,
-            eventId,
             sessionId || null,
             "Automatically verified via PayMongo webhook.",
           ],
