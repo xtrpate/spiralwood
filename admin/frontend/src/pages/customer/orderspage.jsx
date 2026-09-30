@@ -516,6 +516,7 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
   const navigate = useNavigate();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [payingNow, setPayingNow] = useState(false);
   const orderRequestRef = useRef(0);
 
   useEffect(() => {
@@ -738,6 +739,63 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
       unsubscribeReady();
     };
   }, [orderId]);
+
+  const handlePayNow = async () => {
+    if (payingNow || !order?.id) {
+      return;
+    }
+
+    setPayingNow(true);
+
+    try {
+      const { data } = await api.post(`/customer/orders/${order.id}/pay`);
+
+      if (data?.already_paid) {
+        const verifyResponse = await api.post(
+          "/customer/orders/verify-payment",
+          {
+            order_number: data.order_number || order.order_number,
+          },
+        );
+
+        if (
+          verifyResponse?.data?.success &&
+          verifyResponse?.data?.payment_status === "paid"
+        ) {
+          onClose();
+
+          navigate(
+            `/orders?verify_success=true&order=${encodeURIComponent(
+              data.order_number || order.order_number,
+            )}`,
+            { replace: true },
+          );
+
+          return;
+        }
+
+        throw new Error(
+          "The PayMongo payment was completed, but the order could not be reconciled yet.",
+        );
+      }
+
+      if (!String(data?.payment_url || "").trim()) {
+        throw new Error("No PayMongo payment URL was returned.");
+      }
+
+      window.location.replace(data.payment_url);
+    } catch (err) {
+      console.error("[OrdersPage Pay Now]", err?.response?.data || err);
+
+      window.alert(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Unable to open PayMongo payment. Please try again.",
+      );
+    } finally {
+      setPayingNow(false);
+    }
+  };
 
   const canPayNow =
     String(order?.status || "").toLowerCase() === "pending" &&
@@ -1144,17 +1202,19 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
                     <div className="om-action-stack">
                       {canPayNow && (
                         <button
+                          type="button"
                           className="order-inline-btn order-inline-btn-primary om-action-btn"
-                          onClick={() =>
-                            window.location.assign(order.payment_url)
-                          }
+                          onClick={handlePayNow}
+                          disabled={payingNow}
                           style={{
                             background: "#2563eb",
                             borderColor: "#2563eb",
                             color: "#ffffff",
+                            opacity: payingNow ? 0.7 : 1,
+                            cursor: payingNow ? "wait" : "pointer",
                           }}
                         >
-                          Pay Now
+                          {payingNow ? "Opening Payment..." : "Pay Now"}
                         </button>
                       )}
 

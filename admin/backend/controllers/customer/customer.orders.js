@@ -1,5 +1,6 @@
 // controllers/customer/customer.orders.js
-const db = require("../../config/db"); // Uses the unified db config
+const crypto = require("crypto");
+const db = require("../../config/db");
 const {
   createCheckoutSession,
   retrieveCheckoutSession,
@@ -2091,6 +2092,240 @@ exports.verifyPayment = async (req, res) => {
     res.status(500).json({
       message: "Server error during verification.",
       error: err.message,
+    });
+  }
+};
+
+/* ── Resume / Start PayMongo Payment ── */
+exports.startPayNow = async (req, res) => {
+  const orderId = parseStrictPositiveInt(req.params.id);
+
+  if (!orderId) {
+    return res.status(400).json({
+      message: "Invalid order id.",
+    });
+  }
+
+  try {
+    const [[order]] = await db.query(
+      `SELECT
+         id,
+         order_number,
+         total,
+         status,
+         payment_method,
+         payment_status,
+         paymongo_session_id,
+         payment_url,
+         customer_id,
+         walkin_customer_name,
+         walkin_customer_phone
+       FROM orders
+       WHERE id = ?
+         AND customer_id = ?
+       LIMIT 1`,
+      [orderId, req.user.id],
+    );
+
+    if (!order) {
+      return res.status(404).json({
+        message: "Order not found.",
+      });
+    }
+
+    const normalizedStatus = String(order.status || "")
+      .trim()
+      .toLowerCase();
+
+    const normalizedPaymentMethod = String(order.payment_method || "")
+      .trim()
+      .toLowerCase();
+
+    const normalizedPaymentStatus = String(order.payment_status || "")
+      .trim()
+      .toLowerCase();
+
+    if (normalizedPaymentStatus === "paid") {
+      return res.json({
+        success: true,
+        already_paid: true,
+        order_id: order.id,
+        order_number: order.order_number,
+        payment_status: "paid",
+      });
+    }
+
+    if (
+      normalizedStatus !== "pending" ||
+      normalizedPaymentMethod !== "paymongo" ||
+      normalizedPaymentStatus !== "unpaid"
+    ) {
+      return res.status(409).json({
+        message: "This order is not currently available for PayMongo payment.",
+      });
+    }
+
+    /*
+     * Reuse the existing Checkout Session only when PayMongo confirms
+     * that the session is still active and has not already been paid.
+     */
+    if (order.paymongo_session_id) {
+      let session = null;
+
+      try {
+        session = await retrieveCheckoutSession(order.paymongo_session_id);
+      } catch (providerError) {
+        console.error(
+          "[customer.orders Pay Now] PayMongo session lookup failed",
+          providerError.response?.data || providerError.message,
+        );
+
+        return res.status(502).json({
+          message:
+            "Unable to check the current PayMongo payment session. Please try again.",
+        });
+      }
+
+      const payments = Array.isArray(session?.attributes?.payments)
+        ? session.attributes.payments
+        : [];
+
+      const successfulPayment = payments.find(
+        (payment) =>
+          String(payment?.attributes?.status || "")
+            .trim()
+            .toLowerCase() === "paid",
+      );
+
+      if (successfulPayment) {
+        return res.json({
+          success: true,
+          already_paid: true,
+          order_id: order.id,
+          order_number: order.order_number,
+          payment_status: "paid",
+        });
+      }
+
+      const providerStatus = String(session?.attributes?.status || "")
+        .trim()
+        .toLowerCase();
+
+      if (
+        providerStatus === "active" &&
+        String(order.payment_url || "").trim()
+      ) {
+        return res.json({
+          success: true,
+          already_paid: false,
+          reused_session: true,
+          order_id: order.id,
+          order_number: order.order_number,
+          payment_url: order.payment_url,
+        });
+      }
+    }
+
+    /*
+     * No usable active Checkout Session remains.
+     * Create a fresh PayMongo Checkout Session instead of reopening
+     * an expired/stale one.
+     */
+    const [[userRecord]] = await db.query(
+      `SELECT email
+       FROM users
+       WHERE id = ?
+       LIMIT 1`,
+      [req.user.id],
+    );
+
+    const customerEmail = userRecord?.email || "";
+
+    const frontendUrl = String(
+      process.env.FRONTEND_URL || req.headers.origin || "",
+    ).replace(/\/+$/, "");
+
+    if (!frontendUrl) {
+      return res.status(500).json({
+        message: "Frontend URL is not configured.",
+      });
+    }
+
+    const idempotencyKey = `wisdom-paynow-${order.id}-${crypto.randomUUID()}`;
+
+    let checkout;
+
+    try {
+      checkout = await createCheckoutSession({
+        customer: {
+          name: order.walkin_customer_name || "",
+          phone: order.walkin_customer_phone || "",
+          email: customerEmail,
+        },
+        amount: Number(order.total || 0),
+        description: `Order ${order.order_number} - Spiral Wood`,
+        successUrl: `${frontendUrl}/orders?verify_success=true&order=${encodeURIComponent(
+          order.order_number,
+        )}`,
+        cancelUrl: `${frontendUrl}/orders`,
+        metadata: {
+          order_id: order.id,
+          order_type: "standard",
+          payment_purpose: "initial_payment",
+        },
+        idempotencyKey,
+      });
+    } catch (providerError) {
+      console.error(
+        "[customer.orders Pay Now] PayMongo checkout creation failed",
+        providerError.response?.data || providerError.message,
+      );
+
+      return res.status(502).json({
+        message:
+          "Unable to create a new PayMongo payment session. Please try again.",
+      });
+    }
+
+    if (!checkout?.sessionId || !String(checkout?.checkoutUrl || "").trim()) {
+      return res.status(502).json({
+        message: "PayMongo returned an invalid payment session.",
+      });
+    }
+
+    const [updateResult] = await db.query(
+      `UPDATE orders
+       SET payment_status = 'unpaid',
+           payment_url = ?,
+           paymongo_session_id = ?
+       WHERE id = ?
+         AND customer_id = ?
+         AND status = 'pending'
+         AND payment_method = 'paymongo'
+         AND payment_status = 'unpaid'`,
+      [checkout.checkoutUrl, checkout.sessionId, order.id, req.user.id],
+    );
+
+    if (updateResult.affectedRows !== 1) {
+      return res.status(409).json({
+        message:
+          "The order changed while the payment session was being prepared. Please refresh the order.",
+      });
+    }
+
+    return res.json({
+      success: true,
+      already_paid: false,
+      reused_session: false,
+      order_id: order.id,
+      order_number: order.order_number,
+      payment_url: checkout.checkoutUrl,
+    });
+  } catch (err) {
+    console.error("[customer.orders Pay Now]", err);
+
+    return res.status(500).json({
+      message: "Unable to start PayMongo payment.",
     });
   }
 };

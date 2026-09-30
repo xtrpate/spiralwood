@@ -46,15 +46,11 @@ const upload = multer({
 // website_settings schema and served manual GCash/bank details that are no
 // longer part of the live checkout. Keep an explicit 410 route so "/settings"
 // never falls through to the generic "/:id" order route.
-router.get(
-  "/settings",
-  authenticate,
-  requireCustomer,
-  (req, res) =>
-    res.status(410).json({
-      message:
-        "This legacy payment settings endpoint has been retired. Use the current storefront settings endpoint.",
-    }),
+router.get("/settings", authenticate, requireCustomer, (req, res) =>
+  res.status(410).json({
+    message:
+      "This legacy payment settings endpoint has been retired. Use the current storefront settings endpoint.",
+  }),
 );
 
 // Route to catch the PayMongo Redirect Success
@@ -63,6 +59,13 @@ router.post(
   authenticate,
   requireCustomer,
   orderController.verifyPayment,
+);
+
+router.post(
+  "/:id/pay",
+  authenticate,
+  requireCustomer,
+  orderController.startPayNow,
 );
 
 router.post(
