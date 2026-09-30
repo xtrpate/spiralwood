@@ -13,6 +13,7 @@ const {
 } = require("../../utils/adaptiveUpload");
 const {
   parseDecimalToCentsStrict,
+  parseStrictMoneyToCents,
   centsToDecimalString,
   centsToAmount,
 } = require("../../utils/paymentAmounts");
@@ -87,6 +88,7 @@ const DELIVERY_SCHEDULABLE_ORDER_STATUSES = new Set([
 ]);
 const MAX_DELIVERY_ADDRESS_LENGTH = 1000;
 const MAX_DELIVERY_NOTES_LENGTH = 2000;
+const MAX_COLLECTION_NOTES_LENGTH = 500;
 const MAX_RESCHEDULE_REASON_LENGTH = 500;
 const MAX_STORED_RESCHEDULE_NOTES_LENGTH =
   "Reschedule Reason: ".length +
@@ -307,28 +309,52 @@ const validateDeliverySignatureData = (value) => {
 };
 
 const parseDeliveryAcknowledgementInput = (body = {}) => {
-  const receivedByName = normalizeText(body.received_by_name);
-  const recipientType = normalizeText(body.recipient_type).toLowerCase();
-  const note = normalizeText(body.delivery_acknowledgement_note) || null;
-  const accepted = ["1", "true", "yes", "on"].includes(
-    normalizeText(body.acknowledgement_accepted).toLowerCase(),
-  );
-
-  if (receivedByName.length < 2 || receivedByName.length > 150) {
+  const receivedByNameResult = readBoundedDeliveryText(body.received_by_name, {
+    required: true,
+    maxLength: 150,
+  });
+  if (!receivedByNameResult.ok || receivedByNameResult.value.length < 2) {
     return {
-      error: "Received By must be between 2 and 150 characters.",
+      error:
+        receivedByNameResult.reason === "type"
+          ? "Received By must be text."
+          : "Received By must be between 2 and 150 characters.",
     };
   }
 
-  if (!DELIVERY_RECIPIENT_TYPES.has(recipientType)) {
+  const recipientTypeResult = readBoundedDeliveryText(body.recipient_type, {
+    required: true,
+    maxLength: 50,
+  });
+  if (!recipientTypeResult.ok) {
     return {
       error: "Recipient must be the customer or an authorized representative.",
     };
   }
 
-  if (note && note.length > 500) {
+  const acknowledgementNoteResult = readBoundedDeliveryText(
+    body.delivery_acknowledgement_note,
+    { maxLength: 500 },
+  );
+  if (!acknowledgementNoteResult.ok) {
     return {
-      error: "Delivery acknowledgement note must be 500 characters or fewer.",
+      error:
+        acknowledgementNoteResult.reason === "type"
+          ? "Delivery acknowledgement note must be text."
+          : "Delivery acknowledgement note must be 500 characters or fewer.",
+    };
+  }
+
+  const receivedByName = receivedByNameResult.value;
+  const recipientType = recipientTypeResult.value.toLowerCase();
+  const note = acknowledgementNoteResult.value || null;
+  const accepted = ["1", "true", "yes", "on"].includes(
+    normalizeText(body.acknowledgement_accepted).toLowerCase(),
+  );
+
+  if (!DELIVERY_RECIPIENT_TYPES.has(recipientType)) {
+    return {
+      error: "Recipient must be the customer or an authorized representative.",
     };
   }
 
@@ -2594,44 +2620,9 @@ exports.rescheduleDelivery = async (req, res) => {
 };
 
 exports.updateDeliveryStatus = async (req, res) => {
-  const deliveryId = toNullableInt(req.params.id);
-  const requestedStatus = normalizeText(req.body.status).toLowerCase();
-  const nextNotes =
-    req.body.notes === undefined
-      ? undefined
-      : normalizeText(req.body.notes) || null;
-
-  let uploadedReceiptPath = null;
-
-  if (req.file) {
-    try {
-      const storedReceipt = await storeUploadBuffer({
-        file: req.file,
-        folder: "deliveries",
-      });
-      req.file.storedUpload = storedReceipt;
-      req.file.path = storedReceipt.file_url;
-      uploadedReceiptPath = buildSignedReceiptPath(req.file);
-    } catch (uploadErr) {
-      console.error(
-        "[updateDeliveryStatus] Proof of Delivery upload failed:",
-        uploadErr?.message || uploadErr,
-      );
-      return res.status(Number(uploadErr?.status) || 502).json({
-        message:
-          Number(uploadErr?.status) === 400
-            ? uploadErr.message
-            : "Proof of Delivery upload is unavailable right now. Please try again.",
-      });
-    }
-  }
-
-  const collectedAmount = toPositiveAmount(req.body.collected_amount);
-  const collectedPaymentMethod = normalizeText(
-    req.body.payment_method,
-  ).toLowerCase();
-  const collectionNotes = normalizeText(req.body.collection_notes) || "";
-  const failureReason = normalizeText(req.body.failure_reason);
+  const body = req.body || {};
+  const deliveryId = parseStrictPositiveInt(req.params.id);
+  const requestedStatus = normalizeText(body.status).toLowerCase();
 
   if (!deliveryId) {
     return res.status(400).json({ message: "Invalid delivery id" });
@@ -2641,27 +2632,107 @@ exports.updateDeliveryStatus = async (req, res) => {
     return res.status(400).json({ message: "Invalid delivery status" });
   }
 
+  const collectionNotesResult = readBoundedDeliveryText(
+    body.collection_notes,
+    { maxLength: MAX_COLLECTION_NOTES_LENGTH },
+  );
+  if (!collectionNotesResult.ok) {
+    return res.status(400).json({
+      message:
+        collectionNotesResult.reason === "type"
+          ? "Collection notes must be text."
+          : `Collection notes must be ${MAX_COLLECTION_NOTES_LENGTH} characters or fewer.`,
+    });
+  }
+  const collectionNotes = collectionNotesResult.value;
+
+  let failureReason = "";
   if (requestedStatus === "failed") {
-    if (!failureReason) {
-      return res.status(400).json({ message: "A failure reason is required." });
+    const failureReasonResult = readBoundedDeliveryText(body.failure_reason, {
+      required: true,
+      maxLength: 500,
+    });
+
+    if (!failureReasonResult.ok) {
+      let message = "A failure reason is required.";
+      if (failureReasonResult.reason === "type") {
+        message = "Failure reason must be text.";
+      } else if (failureReasonResult.reason === "length") {
+        message = "Failure reason must be 500 characters or fewer.";
+      }
+      return res.status(400).json({ message });
     }
-    if (failureReason.length > 500) {
-      return res.status(400).json({
-        message: "Failure reason must be 500 characters or fewer.",
-      });
-    }
+
+    failureReason = failureReasonResult.value;
   }
 
-  let conn;
-  // PHASE 5 corrective patch — hoisted so the catch block below can
-  // decide whether an orphaned upload needs cleanup on an unexpected
-  // exception (e.g. the deliveries UPDATE or the payment_transactions
-  // INSERT throwing). Both stay false for every non-blueprint request.
+  let collectedAmountCents = 0;
+  const submittedCollectedAmount = body.collected_amount;
+  if (
+    submittedCollectedAmount !== undefined &&
+    submittedCollectedAmount !== null &&
+    submittedCollectedAmount !== ""
+  ) {
+    const parsedCollectedAmount = parseStrictMoneyToCents(
+      submittedCollectedAmount,
+    );
+    if (!parsedCollectedAmount) {
+      return res.status(400).json({
+        message:
+          "Collected amount must be a positive decimal amount with at most 2 decimal places.",
+      });
+    }
+    collectedAmountCents = parsedCollectedAmount.amountCents;
+  }
+
+  const collectedAmount = centsToAmount(collectedAmountCents);
+  const collectedPaymentMethod = normalizeText(
+    body.payment_method,
+  ).toLowerCase();
+
+  let uploadedReceiptPath = null;
+  let freshUploadNeedsCleanup = false;
+  let commitAttempted = false;
+  let committed = false;
+  let conn = null;
+  let transactionStarted = false;
   let isBlueprintOrder = false;
   let isCompletingDeliveryNow = false;
+
+  const cleanupRequestUpload = () => {
+    if (!freshUploadNeedsCleanup) return;
+    freshUploadNeedsCleanup = false;
+    cleanupFreshUpload(req.file);
+  };
+
   try {
+    if (req.file) {
+      try {
+        const storedReceipt = await storeUploadBuffer({
+          file: req.file,
+          folder: "deliveries",
+        });
+        req.file.storedUpload = storedReceipt;
+        freshUploadNeedsCleanup = true;
+        req.file.path = storedReceipt.file_url;
+        uploadedReceiptPath = buildSignedReceiptPath(req.file);
+      } catch (uploadErr) {
+        console.error(
+          "[updateDeliveryStatus] Proof of Delivery upload failed:",
+          uploadErr?.message || uploadErr,
+        );
+        return res.status(Number(uploadErr?.status) || 502).json({
+          message:
+            Number(uploadErr?.status) === 400
+              ? uploadErr.message
+              : "Proof of Delivery upload is unavailable right now. Please try again.",
+        });
+      }
+    }
+
     conn = await db.getConnection();
     await conn.beginTransaction();
+    transactionStarted = true;
 
     // Probe only the immutable delivery -> order link first. The probe
     // does not take a row lock. Canonical mutation lock order is:
@@ -2673,7 +2744,7 @@ exports.updateDeliveryStatus = async (req, res) => {
 
     if (!deliveryProbe) {
       await conn.rollback();
-      cleanupFreshUpload(req.file);
+      cleanupRequestUpload();
       return res.status(404).json({ message: "Delivery not found" });
     }
 
@@ -2684,7 +2755,7 @@ exports.updateDeliveryStatus = async (req, res) => {
       Number(deliveryProbe.driver_id) !== Number(req.user.id)
     ) {
       await conn.rollback();
-      cleanupFreshUpload(req.file);
+      cleanupRequestUpload();
       return res.status(403).json({
         message: "You can only update deliveries assigned to you.",
       });
@@ -2702,7 +2773,7 @@ exports.updateDeliveryStatus = async (req, res) => {
 
     if (!order) {
       await conn.rollback();
-      cleanupFreshUpload(req.file);
+      cleanupRequestUpload();
       return res.status(404).json({ message: "Linked order not found." });
     }
 
@@ -2716,7 +2787,7 @@ exports.updateDeliveryStatus = async (req, res) => {
       Number(existing.order_id) !== Number(order.id)
     ) {
       await conn.rollback();
-      cleanupFreshUpload(req.file);
+      cleanupRequestUpload();
       return res.status(409).json({
         message:
           "The delivery changed before this update started. Refresh and try again.",
@@ -2728,7 +2799,7 @@ exports.updateDeliveryStatus = async (req, res) => {
       Number(existing.driver_id) !== Number(req.user.id)
     ) {
       await conn.rollback();
-      cleanupFreshUpload(req.file);
+      cleanupRequestUpload();
       return res.status(403).json({
         message: "You can only update deliveries assigned to you.",
       });
@@ -2737,7 +2808,7 @@ exports.updateDeliveryStatus = async (req, res) => {
     const lockedOrderStatus = normalizeText(order.status).toLowerCase();
     if (["cancelled", "completed"].includes(lockedOrderStatus)) {
       await conn.rollback();
-      cleanupFreshUpload(req.file);
+      cleanupRequestUpload();
       return res.status(409).json({
         reason_code: "ORDER_CLOSED_FOR_DELIVERY_MUTATION",
         message:
@@ -2774,7 +2845,7 @@ exports.updateDeliveryStatus = async (req, res) => {
         // scheduled deliveries created before that synchronization rule.
         if (!["production", "shipping"].includes(linkedOrderStatus)) {
           await conn.rollback();
-          cleanupFreshUpload(req.file);
+          cleanupRequestUpload();
           return res.status(409).json({
             message: "This Blueprint order is not ready to start delivery.",
           });
@@ -2786,7 +2857,7 @@ exports.updateDeliveryStatus = async (req, res) => {
         );
         if (!readiness.ok) {
           await conn.rollback();
-          cleanupFreshUpload(req.file);
+          cleanupRequestUpload();
           return res.status(409).json({ message: readiness.message });
         }
       }
@@ -2794,7 +2865,7 @@ exports.updateDeliveryStatus = async (req, res) => {
       if (requestedStatus === "delivered" && currentStatus === "in_transit") {
         if (linkedOrderStatus !== "shipping") {
           await conn.rollback();
-          cleanupFreshUpload(req.file);
+          cleanupRequestUpload();
           return res.status(409).json({
             message:
               "The Blueprint order must be in Shipping before it can be marked Delivered.",
@@ -2807,7 +2878,7 @@ exports.updateDeliveryStatus = async (req, res) => {
         );
         if (!readiness.ok) {
           await conn.rollback();
-          cleanupFreshUpload(req.file);
+          cleanupRequestUpload();
           return res.status(409).json({ message: readiness.message });
         }
       }
@@ -2815,7 +2886,7 @@ exports.updateDeliveryStatus = async (req, res) => {
       if (requestedStatus === "failed" && currentStatus === "in_transit") {
         if (linkedOrderStatus !== "shipping") {
           await conn.rollback();
-          cleanupFreshUpload(req.file);
+          cleanupRequestUpload();
           return res.status(409).json({
             message:
               "A Blueprint delivery can only fail after the order enters Shipping.",
@@ -2866,7 +2937,7 @@ exports.updateDeliveryStatus = async (req, res) => {
 
       if (!isAssignedActiveRider) {
         await conn.rollback();
-        cleanupFreshUpload(req.file);
+        cleanupRequestUpload();
         return res.status(403).json({
           message:
             "Only the assigned delivery rider may complete this blueprint delivery.",
@@ -2885,7 +2956,7 @@ exports.updateDeliveryStatus = async (req, res) => {
 
       if (["cancelled", "completed"].includes(orderStatusNormalized)) {
         await conn.rollback();
-        cleanupFreshUpload(req.file);
+        cleanupRequestUpload();
         return res.status(409).json({
           reason_code: "BLUEPRINT_ORDER_NOT_DELIVERABLE",
           message:
@@ -2940,7 +3011,7 @@ exports.updateDeliveryStatus = async (req, res) => {
 
       if (hasInvalidAmountBlueprint) {
         await conn.rollback();
-        cleanupFreshUpload(req.file);
+        cleanupRequestUpload();
         return res.status(409).json({
           message:
             "This order's payment records are inconsistent. Please contact support.",
@@ -2950,7 +3021,7 @@ exports.updateDeliveryStatus = async (req, res) => {
       const orderTotalCentsBlueprint = parseDecimalToCentsStrict(order.total);
       if (orderTotalCentsBlueprint === null) {
         await conn.rollback();
-        cleanupFreshUpload(req.file);
+        cleanupRequestUpload();
         return res.status(409).json({
           message: "This order's total is invalid. Please contact support.",
         });
@@ -2969,7 +3040,7 @@ exports.updateDeliveryStatus = async (req, res) => {
       if (remainingCentsBlueprint > 0) {
         if (!remainingMethod) {
           await conn.rollback();
-          cleanupFreshUpload(req.file);
+          cleanupRequestUpload();
           return res.status(409).json({
             reason_code: "REMAINING_PAYMENT_METHOD_REQUIRED",
             message:
@@ -2979,7 +3050,7 @@ exports.updateDeliveryStatus = async (req, res) => {
 
         if (remainingMethod === "paymongo") {
           await conn.rollback();
-          cleanupFreshUpload(req.file);
+          cleanupRequestUpload();
           return res.status(409).json({
             reason_code: "ONLINE_PAYMENT_NOT_CONFIRMED",
             message: "Awaiting Online Payment Confirmation.",
@@ -2988,7 +3059,7 @@ exports.updateDeliveryStatus = async (req, res) => {
 
         if (remainingMethod !== "cash") {
           await conn.rollback();
-          cleanupFreshUpload(req.file);
+          cleanupRequestUpload();
           return res.status(409).json({
             message:
               "This order's remaining payment method is invalid. Please contact support.",
@@ -3013,7 +3084,7 @@ exports.updateDeliveryStatus = async (req, res) => {
           !canReusePendingBlueprintDeliveryCollection
         ) {
           await conn.rollback();
-          cleanupFreshUpload(req.file);
+          cleanupRequestUpload();
           return res.status(409).json({
             message:
               "A payment is already awaiting admin review for this order.",
@@ -3034,7 +3105,7 @@ exports.updateDeliveryStatus = async (req, res) => {
         normalizeText(order.payment_status || "").toLowerCase() !== "paid"
       ) {
         await conn.rollback();
-        cleanupFreshUpload(req.file);
+        cleanupRequestUpload();
         return res.status(409).json({
           reason_code: "ONLINE_PAYMENT_NOT_CONFIRMED",
           message: "Awaiting Online Payment Confirmation.",
@@ -3047,7 +3118,7 @@ exports.updateDeliveryStatus = async (req, res) => {
 
       if (acknowledgementResult.error) {
         await conn.rollback();
-        cleanupFreshUpload(req.file);
+        cleanupRequestUpload();
         return res.status(400).json({
           message: acknowledgementResult.error,
         });
@@ -3165,7 +3236,7 @@ exports.updateDeliveryStatus = async (req, res) => {
       !canReusePendingStandardCodCollection
     ) {
       await conn.rollback();
-      cleanupFreshUpload(req.file);
+      cleanupRequestUpload();
       return res.status(409).json({
         reason_code: "COD_PAYMENT_REVIEW_PENDING",
         message:
@@ -3198,10 +3269,12 @@ exports.updateDeliveryStatus = async (req, res) => {
       currentBalance > 0.009 &&
       hasPendingPaymentBefore;
 
+    let collectionBalanceCents = null;
+
     if (shouldRecordDeliveryCollection) {
-      if (!(collectedAmount > 0)) {
+      if (!(collectedAmountCents > 0)) {
         await conn.rollback();
-        cleanupFreshUpload(req.file);
+        cleanupRequestUpload();
         return res.status(400).json({
           message:
             "Please enter the amount collected by the rider before completing this delivery.",
@@ -3214,7 +3287,7 @@ exports.updateDeliveryStatus = async (req, res) => {
 
       if (!paymentMethodIsValid) {
         await conn.rollback();
-        cleanupFreshUpload(req.file);
+        cleanupRequestUpload();
         return res.status(400).json({
           message: isStandardCodOrder
             ? "Cash is the only allowed payment method for COD delivery collection."
@@ -3222,10 +3295,25 @@ exports.updateDeliveryStatus = async (req, res) => {
         });
       }
 
-      const exactRemainingBalance = Number(currentBalance.toFixed(2));
-      if (isStandardCodOrder && collectedAmount !== exactRemainingBalance) {
+      collectionBalanceCents = parseDecimalToCentsStrict(
+        currentBalance.toFixed(2),
+      );
+      if (collectionBalanceCents === null) {
         await conn.rollback();
-        cleanupFreshUpload(req.file);
+        cleanupRequestUpload();
+        return res.status(409).json({
+          message:
+            "This order's remaining balance is invalid. Please contact support.",
+        });
+      }
+
+      const exactRemainingBalance = centsToAmount(collectionBalanceCents);
+      if (
+        isStandardCodOrder &&
+        collectedAmountCents !== collectionBalanceCents
+      ) {
+        await conn.rollback();
+        cleanupRequestUpload();
         return res.status(400).json({
           reason_code: "COD_EXACT_BALANCE_REQUIRED",
           message: `Collect the exact remaining balance of ₱${exactRemainingBalance.toLocaleString(
@@ -3235,11 +3323,14 @@ exports.updateDeliveryStatus = async (req, res) => {
         });
       }
 
-      if (!isStandardCodOrder && collectedAmount > currentBalance + 0.01) {
+      if (
+        !isStandardCodOrder &&
+        collectedAmountCents > collectionBalanceCents + 1
+      ) {
         await conn.rollback();
-        cleanupFreshUpload(req.file);
+        cleanupRequestUpload();
         return res.status(400).json({
-          message: `Collected amount exceeds the remaining balance of ₱${currentBalance.toLocaleString(
+          message: `Collected amount exceeds the remaining balance of ₱${exactRemainingBalance.toLocaleString(
             "en-PH",
             { minimumFractionDigits: 2 },
           )}.`,
@@ -3260,8 +3351,9 @@ exports.updateDeliveryStatus = async (req, res) => {
       deliveredDate = null;
     }
 
-    let nextNotesForUpdate =
-      nextNotes !== undefined ? nextNotes : (existing.notes ?? null);
+    // Rider status requests must never replace scheduling/admin notes.
+    // Only the server-controlled failure reason may be appended here.
+    let nextNotesForUpdate = existing.notes ?? null;
 
     if (requestedStatus === "failed") {
       const failureLine = `Failure Reason: ${failureReason}`;
@@ -3288,7 +3380,7 @@ exports.updateDeliveryStatus = async (req, res) => {
 
       if (activeAcknowledgements.length > 0) {
         await conn.rollback();
-        cleanupFreshUpload(req.file);
+        cleanupRequestUpload();
         return res.status(409).json({
           message:
             "This delivery already has an active recipient acknowledgement. Refresh and try again.",
@@ -3503,9 +3595,9 @@ exports.updateDeliveryStatus = async (req, res) => {
          VALUES (?, ?, ?, ?, NULL, NULL, 'pending', ?)`,
         [
           existing.order_id,
-          isStandardCodOrder
-            ? Number(currentBalance.toFixed(2))
-            : collectedAmount,
+          isStandardCodOrder && collectionBalanceCents !== null
+            ? centsToDecimalString(collectionBalanceCents)
+            : centsToDecimalString(collectedAmountCents),
           isStandardCodOrder ? "cash" : collectedPaymentMethod,
           nextSignedReceipt || null,
           paymentNotes,
@@ -3606,7 +3698,7 @@ exports.updateDeliveryStatus = async (req, res) => {
           normalizeText(nextOrderPaymentStatus).toLowerCase()
       ) {
         await conn.rollback();
-        cleanupFreshUpload(req.file);
+        cleanupRequestUpload();
         return res.status(500).json({
           reason_code: "ORDER_DELIVERY_SYNC_VERIFICATION_FAILED",
           message:
@@ -3906,7 +3998,11 @@ exports.updateDeliveryStatus = async (req, res) => {
       updated.signed_receipt = signUploadPath(updated.signed_receipt);
     }
 
+    commitAttempted = true;
     await conn.commit();
+    committed = true;
+    transactionStarted = false;
+    freshUploadNeedsCleanup = false;
 
     // Dedicated audit is intentionally outside the delivery transaction.
     // At this point the payment/delivery/order changes are committed, so the
@@ -3971,13 +4067,24 @@ exports.updateDeliveryStatus = async (req, res) => {
       delivery: updated,
     });
   } catch (err) {
-    if (conn) await conn.rollback();
-    // If a completion attempt uploaded a fresh proof but the database
-    // transaction failed, remove only that request's new upload. Existing
-    // deliveries.signed_receipt files are never touched.
-    if (isCompletingDeliveryNow && uploadedReceiptPath) {
-      cleanupFreshUpload(req.file);
+    if (conn && transactionStarted && !commitAttempted && !committed) {
+      try {
+        await conn.rollback();
+        transactionStarted = false;
+      } catch (rollbackErr) {
+        console.error(
+          "[updateDeliveryStatus] rollback failed:",
+          rollbackErr?.message || rollbackErr,
+        );
+      }
     }
+
+    if (commitAttempted && !committed && freshUploadNeedsCleanup) {
+      console.error(
+        "[updateDeliveryStatus] commit outcome is uncertain; retaining the fresh Proof of Delivery upload to avoid deleting a file that may already be referenced by a committed delivery.",
+      );
+    }
+
     console.error("PATCH /api/pos/deliveries/:id/status error:", err);
 
     if (isRetryableTransactionError(err)) {
@@ -3988,8 +4095,11 @@ exports.updateDeliveryStatus = async (req, res) => {
       );
     }
 
-    res.status(500).json({ message: "Failed to update delivery status" });
+    return res.status(500).json({ message: "Failed to update delivery status" });
   } finally {
+    if (freshUploadNeedsCleanup && !commitAttempted && !committed) {
+      cleanupRequestUpload();
+    }
     if (conn) conn.release();
   }
 };

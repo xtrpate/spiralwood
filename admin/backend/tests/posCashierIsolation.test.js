@@ -23,7 +23,7 @@ const mockDb = {
     }
 
     if (text.includes("SELECT o.*, r.receipt_number")) {
-      return [[{ id: Number(params[0]), items_snapshot: "[]" }]];
+      return [[{ id: Number(params[0]), items_snapshot: '[{"product_name":"Test Item","quantity":1,"unit_price":"1.00"}]', total_amount: "1.00", payment_method: "cash" }]];
     }
 
     if (text.includes("FROM order_items")) {
@@ -35,7 +35,7 @@ const mockDb = {
       text.includes("WHERE r.id = ?") &&
       text.includes("r.receipt_type = 'pos_sale'")
     ) {
-      return [[{ id: Number(params[0]), items_snapshot: "[]" }]];
+      return [[{ id: Number(params[0]), items_snapshot: '[{"product_name":"Test Item","quantity":1,"unit_price":"1.00"}]', total_amount: "1.00", payment_method: "cash" }]];
     }
 
     if (
@@ -43,7 +43,7 @@ const mockDb = {
       text.includes("WHERE r.order_id = ?") &&
       text.includes("r.receipt_type = 'pos_sale'")
     ) {
-      return [[{ id: 9001, order_id: Number(params[0]), items_snapshot: "[]" }]];
+      return [[{ id: 9001, order_id: Number(params[0]), items_snapshot: '[{"product_name":"Test Item","quantity":1,"unit_price":"1.00"}]', total_amount: "1.00", payment_method: "cash" }]];
     }
 
     if (text.includes("FROM website_content")) {

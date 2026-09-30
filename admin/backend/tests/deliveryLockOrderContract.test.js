@@ -12,6 +12,10 @@ const customOrdersPath = path.join(
   backendRoot,
   "controllers/customer/customer.customorders.js",
 );
+const customerOrdersPath = path.join(
+  backendRoot,
+  "controllers/customer/customer.orders.js",
+);
 const conflictUtilPath = path.join(
   backendRoot,
   "utils/transactionConflict.js",
@@ -56,6 +60,13 @@ const assertOrderBeforeDelivery = (source, label) => {
 
 const fulfillment = read(fulfillmentPath);
 const customOrders = read(customOrdersPath);
+const customerOrders = read(customerOrdersPath);
+
+const confirmOrder = functionSlice(
+  customerOrders,
+  "exports.confirmOrder = async (req, res) => {",
+  "/* ── Verify PayMongo Redirect ── */",
+);
 
 const reassign = functionSlice(
   fulfillment,
@@ -82,6 +93,29 @@ const createRemaining = functionSlice(
   customOrders,
   "exports.createRemainingBalancePayMongoCheckout = async (req, res) => {",
   "// PHASE 5B — Blueprint Remaining Balance Online Payment.",
+);
+
+assertOrderBeforeDelivery(confirmOrder, "confirmOrder");
+
+const confirmDeliveryLockIndex = firstLockIndex(confirmOrder, "deliveries");
+const confirmPaymentLockIndex = firstLockIndex(
+  confirmOrder,
+  "payment_transactions",
+);
+assert.ok(
+  confirmDeliveryLockIndex >= 0 &&
+    confirmPaymentLockIndex > confirmDeliveryLockIndex,
+  "confirmOrder: deliveries must be locked before payment_transactions",
+);
+assert.match(
+  confirmOrder,
+  /parseStrictPositiveInt\s*\(/,
+  "confirmOrder must strictly validate the route order id",
+);
+assert.doesNotMatch(
+  confirmOrder,
+  /parseInt\s*\(\s*req\.params\.id/,
+  "confirmOrder must not use coercive parseInt for the route order id",
 );
 
 assertOrderBeforeDelivery(reassign, "reassignDeliveryRider");
@@ -140,6 +174,7 @@ assert.match(
 );
 
 for (const [label, source] of [
+  ["confirmOrder", confirmOrder],
   ["reassignDeliveryRider", reassign],
   ["rescheduleDelivery", reschedule],
   ["updateDeliveryStatus", updateStatus],
