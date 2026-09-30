@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 
 const dbPath = require.resolve("../config/db");
 const reportsControllerPath = require.resolve("../controllers/staff/pos.reports");
@@ -287,12 +288,56 @@ async function run() {
   assert.equal(invalidSessionRes.body?.message, "Invalid cashier session.");
   assert.equal(calls.length, 0);
 
-  console.log("✅ POS Sales Reports R3B1 integrity tests passed.");
+  const frontendPath = require.resolve(
+    "../../frontend/src/pages/staff/SalesReports.jsx",
+  );
+  const frontend = fs.readFileSync(frontendPath, "utf8");
+
+  // R3B2A frontend contract: filters are drafted before they are applied,
+  // one-sided dates are preserved, stale requests cannot overwrite newer
+  // results, the last good report survives an update failure, and transaction
+  // detail uses the server's explicit pagination contract.
+  assert.match(frontend, /const PAGE_SIZE = 20;/);
+  assert.match(frontend, /draftFilters/);
+  assert.match(frontend, /appliedFilters/);
+  assert.match(frontend, /setAppliedFilters\(\{ \.\.\.draftFilters \}\)/);
+  assert.match(frontend, /loadReport\(appliedFilters, page\)/);
+  assert.match(frontend, /requestSequenceRef/);
+  assert.match(frontend, /requestId !== requestSequenceRef\.current/);
+  assert.match(frontend, /requestSequenceRef\.current \+= 1/);
+  assert.match(frontend, /page: pageToLoad/);
+  assert.match(frontend, /limit: PAGE_SIZE/);
+  assert.match(
+    frontend,
+    /if \(filtersToApply\.from\) params\.from = filtersToApply\.from;/,
+  );
+  assert.match(
+    frontend,
+    /if \(filtersToApply\.to\) params\.to = filtersToApply\.to;/,
+  );
+  assert.doesNotMatch(frontend, /if \(!filters\.from \|\| !filters\.to\)/);
+  assert.doesNotMatch(frontend, /setData\(null\)/);
+  assert.match(frontend, /onClick=\{handleGenerateReport\}/);
+  assert.match(frontend, /Start date cannot be after end date\./);
+  assert.match(frontend, /data\?\.filters_applied/);
+  assert.match(frontend, /data\.generated_at/);
+  assert.match(
+    frontend,
+    /Showing \{pageStart\}–\{pageEnd\} of \{totalTransactions\} transactions/,
+  );
+  assert.match(frontend, /Current Remaining Balance/);
+  assert.match(frontend, /Paid After Payment/);
+  assert.match(frontend, /Balance After Payment/);
+  assert.match(frontend, /Status After Payment/);
+  assert.match(frontend, /Top Products by Included Order Value/);
+  assert.match(frontend, /Print Current View/);
+
+  console.log("✅ POS Sales Reports R3B1/R3B2A integrity tests passed.");
 }
 
 run()
   .catch((error) => {
-    console.error("❌ POS Sales Reports R3B1 integrity tests failed.");
+    console.error("❌ POS Sales Reports R3B1/R3B2A integrity tests failed.");
     console.error(error);
     process.exitCode = 1;
   })

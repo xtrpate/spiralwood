@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import api from "../../services/api";
 import {
   Bar,
@@ -10,6 +10,15 @@ import {
   YAxis,
 } from "recharts";
 import { Printer } from "lucide-react";
+
+const PAGE_SIZE = 20;
+const INITIAL_FILTERS = {
+  source: "all",
+  payment: "all",
+  period: "daily",
+  from: "",
+  to: "",
+};
 
 const money = (value) =>
   `₱${Number(value || 0).toLocaleString("en-PH", {
@@ -45,6 +54,32 @@ const paymentMethodLabel = (value) => {
   if (method === "cod") return "COD";
   if (method === "cop") return "COP";
   return humanize(method);
+};
+
+const sourceFilterLabel = (value) => {
+  const source = String(value || "all").toLowerCase();
+  if (source === "online") return "Website Orders";
+  if (source === "walk_in" || source === "walkin") return "Walk-in Orders";
+  return "All Sources";
+};
+
+const paymentFilterLabel = (value) => {
+  const payment = String(value || "all").toLowerCase();
+  if (payment === "cash") return "Cash";
+  if (payment === "online") return "Online";
+  return "All Payments";
+};
+
+const reportRangeLabel = (filters = {}) => {
+  if (filters.from && filters.to) return `${filters.from} to ${filters.to}`;
+  if (filters.from) return `From ${filters.from}`;
+  if (filters.to) return `Through ${filters.to}`;
+
+  const period = String(filters.period || "daily").toLowerCase();
+  if (period === "weekly") return "This week";
+  if (period === "monthly") return "This month";
+  if (period === "yearly") return "This year";
+  return "Today";
 };
 
 const orderTypeLabel = (row = {}) => {
@@ -119,54 +154,124 @@ function MetricCard({ label, value, note }) {
 
 export default function SalesReports() {
   const [data, setData] = useState(null);
-  const [filters, setFilters] = useState({
-    source: "all",
-    payment: "all",
-    period: "daily",
-    from: "",
-    to: "",
-  });
+  const [draftFilters, setDraftFilters] = useState(() => ({
+    ...INITIAL_FILTERS,
+  }));
+  const [appliedFilters, setAppliedFilters] = useState(() => ({
+    ...INITIAL_FILTERS,
+  }));
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const requestSequenceRef = useRef(0);
 
-  const fetchReport = useCallback(async () => {
+  const loadReport = useCallback(async (filtersToApply, pageToLoad) => {
+    const requestId = ++requestSequenceRef.current;
     setLoading(true);
     setError("");
+
+    const params = {
+      source: filtersToApply.source,
+      payment: filtersToApply.payment,
+      period: filtersToApply.period,
+      page: pageToLoad,
+      limit: PAGE_SIZE,
+    };
+
+    if (filtersToApply.from) params.from = filtersToApply.from;
+    if (filtersToApply.to) params.to = filtersToApply.to;
+
     try {
-      const params = { ...filters };
-      if (!filters.from || !filters.to) {
-        delete params.from;
-        delete params.to;
-      }
       const response = await api.get("/pos/reports", { params });
+
+      if (requestId !== requestSequenceRef.current) return;
+
+      const responseTotalPages = Math.max(
+        1,
+        Number(response.data?.pagination?.total_pages || 1),
+      );
+
+      if (pageToLoad > responseTotalPages) {
+        setPage(responseTotalPages);
+        return;
+      }
+
       setData(response.data);
     } catch (err) {
-      setData(null);
+      if (requestId !== requestSequenceRef.current) return;
+
       setError(
         err.response?.data?.message || "Failed to load POS sales report.",
       );
     } finally {
-      setLoading(false);
+      if (requestId === requestSequenceRef.current) {
+        setLoading(false);
+      }
     }
-  }, [filters]);
+  }, []);
 
   useEffect(() => {
-    fetchReport();
-  }, [fetchReport]);
+    loadReport(appliedFilters, page);
+
+    return () => {
+      requestSequenceRef.current += 1;
+    };
+  }, [appliedFilters, page, loadReport]);
+
+  const hasInvalidRange = Boolean(
+    draftFilters.from &&
+      draftFilters.to &&
+      draftFilters.from > draftFilters.to,
+  );
+
+  const handleGenerateReport = () => {
+    if (hasInvalidRange) {
+      setError("Start date cannot be after end date.");
+      return;
+    }
+
+    setAppliedFilters({ ...draftFilters });
+    setPage(1);
+  };
 
   const totals = data?.totals || {};
   const transactions = data?.transactions || [];
   const paymentBreakdown = data?.payment_breakdown || [];
   const products = data?.top_products || [];
   const isCashierReport = data?.report_scope === "cashier";
+  const displayFilters = data?.filters_applied || appliedFilters;
+  const pagination = data?.pagination || {};
+  const currentPage = Math.max(1, Number(pagination.page || page || 1));
+  const totalPages = Math.max(1, Number(pagination.total_pages || 1));
+  const totalTransactions = Math.max(
+    0,
+    Number(pagination.total ?? transactions.length),
+  );
+  const pageLimit = Math.max(1, Number(pagination.limit || PAGE_SIZE));
+  const pageStart =
+    totalTransactions === 0 ? 0 : (currentPage - 1) * pageLimit + 1;
+  const pageEnd = Math.min(totalTransactions, currentPage * pageLimit);
+
+  const handlePageChange = (nextPage) => {
+    const boundedPage = Math.min(totalPages, Math.max(1, nextPage));
+    if (loading || boundedPage === currentPage) return;
+
+    setAppliedFilters({
+      ...(data?.filters_applied || appliedFilters),
+    });
+    setPage(boundedPage);
+  };
 
   const chartData = useMemo(
     () =>
       (data?.summary || []).map((row) => ({
         ...row,
-        formatted_period: formatPeriodLabel(row.period_label, filters.period),
+        formatted_period: formatPeriodLabel(
+          row.period_label,
+          displayFilters.period,
+        ),
       })),
-    [data?.summary, filters.period],
+    [data?.summary, displayFilters.period],
   );
 
   const paymentMethodTotal = useMemo(
@@ -212,9 +317,9 @@ export default function SalesReports() {
               id="sales-report-source"
               name="sales_report_source"
               style={input}
-              value={filters.source}
+              value={draftFilters.source}
               onChange={(event) =>
-                setFilters((current) => ({
+                setDraftFilters((current) => ({
                   ...current,
                   source: event.target.value,
                 }))
@@ -234,9 +339,9 @@ export default function SalesReports() {
               id="sales-report-payment-type"
               name="sales_report_payment_type"
               style={input}
-              value={filters.payment}
+              value={draftFilters.payment}
               onChange={(event) =>
-                setFilters((current) => ({
+                setDraftFilters((current) => ({
                   ...current,
                   payment: event.target.value,
                 }))
@@ -253,9 +358,9 @@ export default function SalesReports() {
               id="sales-report-period"
               name="sales_report_period"
               style={input}
-              value={filters.period}
+              value={draftFilters.period}
               onChange={(event) =>
-                setFilters((current) => ({
+                setDraftFilters((current) => ({
                   ...current,
                   period: event.target.value,
                 }))
@@ -274,9 +379,9 @@ export default function SalesReports() {
               name="sales_report_from_date"
               style={input}
               type="date"
-              value={filters.from}
+              value={draftFilters.from}
               onChange={(event) =>
-                setFilters((current) => ({
+                setDraftFilters((current) => ({
                   ...current,
                   from: event.target.value,
                 }))
@@ -290,9 +395,9 @@ export default function SalesReports() {
               name="sales_report_to_date"
               style={input}
               type="date"
-              value={filters.to}
+              value={draftFilters.to}
               onChange={(event) =>
-                setFilters((current) => ({
+                setDraftFilters((current) => ({
                   ...current,
                   to: event.target.value,
                 }))
@@ -301,26 +406,53 @@ export default function SalesReports() {
           </FilterField>
 
           <button
+            type="button"
             style={buttonPrimary}
-            onClick={fetchReport}
-            disabled={
-              loading ||
-              Boolean(filters.from && filters.to && filters.from > filters.to)
-            }
+            onClick={handleGenerateReport}
+            disabled={loading && !data}
           >
-            {loading ? "Loading..." : "Generate Report"}
+            {loading && !data ? "Loading..." : "Generate Report"}
           </button>
 
-          <button style={buttonGhost} onClick={() => window.print()}>
-            <Printer size={15} /> Print Report
+          <button
+            type="button"
+            style={buttonGhost}
+            onClick={() => window.print()}
+          >
+            <Printer size={15} /> Print Current View
           </button>
+        </div>
+        <div style={filterHelp}>
+          Date fields are optional. With no dates, Period uses the current
+          day/week/month/year. With dates, Period controls chart grouping.
         </div>
       </div>
 
       {error ? <div style={errorBox}>{error}</div> : null}
-      {loading ? <div style={loadingBox}>Loading report...</div> : null}
+      {data ? (
+        <div style={reportMeta}>
+          <strong>Applied report:</strong>{" "}
+          {sourceFilterLabel(displayFilters.source)}
+          {" · "}
+          {paymentFilterLabel(displayFilters.payment)}
+          {" · "}
+          {reportRangeLabel(displayFilters)}
+          {" · Grouped "}
+          {humanize(displayFilters.period).toLowerCase()}
+          {" · Generated "}
+          {formatDateTime(data.generated_at)}
+        </div>
+      ) : null}
+      {loading && !data ? (
+        <div style={loadingBox}>Loading report...</div>
+      ) : null}
+      {loading && data ? (
+        <div style={updatingBox}>
+          Updating report while the last valid result stays visible...
+        </div>
+      ) : null}
 
-      {!loading && data ? (
+      {data ? (
         <>
           <div style={metricGrid}>
             <MetricCard
@@ -338,9 +470,9 @@ export default function SalesReports() {
               note={`${totals.collection_count || 0} verified payment${Number(totals.collection_count || 0) === 1 ? "" : "s"}`}
             />
             <MetricCard
-              label="Remaining Balance"
+              label="Current Remaining Balance"
               value={money(totals.outstanding_balance)}
-              note="Unpaid balance on orders included in this report"
+              note="Current unpaid balance of included orders; not the historical balance at the end of the selected period"
             />
             <MetricCard
               label="Orders Included"
@@ -479,9 +611,9 @@ export default function SalesReports() {
                       "Payment Method",
                       "Amount Paid",
                       "Order Total",
-                      "Total Paid",
-                      "Balance",
-                      "Status",
+                      "Paid After Payment",
+                      "Balance After Payment",
+                      "Status After Payment",
                       "Processed By",
                     ].map((label) => (
                       <th key={label} style={th}>
@@ -520,7 +652,11 @@ export default function SalesReports() {
                           {money(row.amount)}
                         </td>
                         <td style={td}>{money(row.order_total)}</td>
-                        <td style={td}>{money(row.lifetime_collected)}</td>
+                        <td style={td}>
+                          {money(
+                            row.total_paid_after ?? row.lifetime_collected,
+                          )}
+                        </td>
                         <td style={td}>{money(row.remaining_balance)}</td>
                         <td style={td}>{humanize(row.payment_status)}</td>
                         <td style={td}>{processedByLabel(row.processed_by)}</td>
@@ -530,12 +666,39 @@ export default function SalesReports() {
                 </tbody>
               </table>
             </div>
+            {totalTransactions > 0 ? (
+              <div style={paginationBar}>
+                <div style={paginationText}>
+                  Showing {pageStart}–{pageEnd} of {totalTransactions} transactions
+                  {" · Page "}
+                  {currentPage} of {totalPages}
+                </div>
+                <div style={paginationActions}>
+                  <button
+                    type="button"
+                    style={paginationButton}
+                    disabled={loading || currentPage <= 1}
+                    onClick={() => handlePageChange(currentPage - 1)}
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    style={paginationButton}
+                    disabled={loading || currentPage >= totalPages}
+                    onClick={() => handlePageChange(currentPage + 1)}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </section>
 
           <section style={card}>
             <SectionHeader
-              title="Product Sales"
-              subtitle="Custom furniture may be priced as one complete project instead of per item."
+              title="Top Products by Included Order Value"
+              subtitle="Top 20 item values from orders tied to the selected verified-payment scope. Custom furniture may be priced as one complete project instead of per item."
             />
             <div style={tableScroll}>
               <table style={table}>
@@ -678,6 +841,21 @@ const filterGrid = {
   alignItems: "flex-end",
   flexWrap: "wrap",
 };
+const filterHelp = {
+  marginTop: 10,
+  fontSize: 10.5,
+  color: "#77787e",
+  lineHeight: 1.45,
+};
+const reportMeta = {
+  padding: "9px 11px",
+  marginBottom: 12,
+  border: "1px solid #e2e2e5",
+  background: "#fafafa",
+  color: "#626269",
+  fontSize: 10.5,
+  lineHeight: 1.45,
+};
 const fieldWrap = {
   display: "flex",
   flexDirection: "column",
@@ -727,6 +905,14 @@ const loadingBox = {
   border: "1px solid #dcdde0",
   borderRadius: 0,
   background: "#fff",
+};
+const updatingBox = {
+  padding: "9px 11px",
+  marginBottom: 12,
+  color: "#55565b",
+  border: "1px solid #dcdde0",
+  background: "#fff",
+  fontSize: 10.5,
 };
 const metricGrid = {
   display: "grid",
@@ -840,6 +1026,37 @@ const methodEmpty = {
   fontSize: 11.5,
 };
 const tableScroll = { overflowX: "auto" };
+const paginationBar = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  padding: "11px 12px",
+  borderTop: "1px solid #ececee",
+  background: "#fafafa",
+  flexWrap: "wrap",
+};
+const paginationText = {
+  color: "#66666c",
+  fontSize: 10.5,
+  lineHeight: 1.4,
+};
+const paginationActions = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+};
+const paginationButton = {
+  minHeight: 36,
+  padding: "7px 11px",
+  border: "1px solid #cfd0d4",
+  borderRadius: 0,
+  background: "#fff",
+  color: "#18181b",
+  fontSize: 11,
+  fontWeight: 800,
+  cursor: "pointer",
+};
 const table = { width: "100%", borderCollapse: "collapse", fontSize: 11.5 };
 const th = {
   textAlign: "left",
