@@ -737,12 +737,52 @@ export default function CustomRequestDetailPage() {
   const discussionTypingStopTimerRef = useRef(null);
   const discussionRemoteTypingTimerRef = useRef(null);
 
+  // WISDOM PAYMONGO IDEMPOTENCY KEYS
+  // One key is kept for each logical payment attempt in this page.
+  // The amount is part of the lookup key so changing the payment amount
+  // creates a new provider idempotency key rather than reusing the old one.
+  const paymongoIdempotencyKeysRef = useRef(new Map());
+
   // WISDOM CUSTOM REQUEST REFRESH GUARDS B3
   // Each loader keeps track of its latest request so older responses
   // cannot overwrite newer customer-visible state.
   const requestDetailRequestRef = useRef(0);
   const paymentHistoryRequestRef = useRef(0);
   const cancellationRequestRef = useRef(0);
+  const getPayMongoIdempotencyKey = useCallback(
+    ({ orderId, purpose, amountCents }) => {
+      const normalizedOrderId = String(orderId || "").trim();
+      const normalizedPurpose = String(purpose || "")
+        .trim()
+        .toLowerCase();
+      const normalizedAmount = Number.isSafeInteger(amountCents)
+        ? amountCents
+        : 0;
+
+      const lookupKey = `${normalizedOrderId}:${normalizedPurpose}:${normalizedAmount}`;
+
+      const existingKey = paymongoIdempotencyKeysRef.current.get(lookupKey);
+
+      if (existingKey) {
+        return existingKey;
+      }
+
+      let generatedKey = "";
+
+      if (window.crypto?.randomUUID) {
+        generatedKey = window.crypto.randomUUID();
+      } else {
+        generatedKey = `wisdom-${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random()
+          .toString(36)
+          .slice(2)}`;
+      }
+
+      paymongoIdempotencyKeysRef.current.set(lookupKey, generatedKey);
+
+      return generatedKey;
+    },
+    [],
+  );
   const [selectingMethod, setSelectingMethod] = useState(false);
   const [selectionError, setSelectionError] = useState("");
   const [initialOnlineAmount, setInitialOnlineAmount] = useState("");
@@ -2060,11 +2100,26 @@ export default function CustomRequestDetailPage() {
     setPayingInitialOnline(true);
 
     try {
+      const paymentAmountCents = paymentMethodChangeLocked
+        ? initialOnlineMinimumCents
+        : amountCents;
+
+      const paymongoIdempotencyKey = getPayMongoIdempotencyKey({
+        orderId: requestData.id,
+        purpose: "initial",
+        amountCents: paymentAmountCents,
+      });
+
       const res = await api.post(
         `/customer/custom-orders/${requestData.id}/pay`,
         paymentMethodChangeLocked
           ? {}
           : { amount: (amountCents / 100).toFixed(2) },
+        {
+          headers: {
+            "Idempotency-Key": paymongoIdempotencyKey,
+          },
+        },
       );
 
       if (!res.data?.payment_url) {
@@ -2093,8 +2148,25 @@ export default function CustomRequestDetailPage() {
     setPayingRemainingBalance(true);
 
     try {
+      const remainingBalanceCents = Math.max(
+        0,
+        Math.round((Number(balanceDue || 0) + Number.EPSILON) * 100),
+      );
+
+      const paymongoIdempotencyKey = getPayMongoIdempotencyKey({
+        orderId: requestData.id,
+        purpose: "remaining",
+        amountCents: remainingBalanceCents,
+      });
+
       const res = await api.post(
         `/customer/custom-orders/${requestData.id}/remaining-balance/pay`,
+        {},
+        {
+          headers: {
+            "Idempotency-Key": paymongoIdempotencyKey,
+          },
+        },
       );
 
       if (!res.data?.payment_url) {
@@ -2201,8 +2273,25 @@ export default function CustomRequestDetailPage() {
         );
       }
 
+      const remainingBalanceCents = Math.max(
+        0,
+        Math.round((Number(balanceDue || 0) + Number.EPSILON) * 100),
+      );
+
+      const paymongoIdempotencyKey = getPayMongoIdempotencyKey({
+        orderId: requestData.id,
+        purpose: "remaining",
+        amountCents: remainingBalanceCents,
+      });
+
       const res = await api.post(
         `/customer/custom-orders/${requestData.id}/remaining-balance/pay`,
+        {},
+        {
+          headers: {
+            "Idempotency-Key": paymongoIdempotencyKey,
+          },
+        },
       );
 
       if (!res.data?.payment_url) {

@@ -10,6 +10,20 @@ const {
 const {
   createStandardOnlineReceipt,
 } = require("../../services/receiptService");
+const {
+  resolveLifecycleByOrder,
+} = require("../../services/blueprintLifecycleService");
+const {
+  resolveInitialOnlinePaymentAmount,
+  validateInitialPayMongoSessionContext,
+  analyzeInitialPayMongoSession,
+  summarizeVerifiedPaymentRows,
+} = require("../../services/blueprintInitialOnlinePaymentService");
+const {
+  calcDownPaymentAmount,
+  parseDecimalToCentsStrict,
+  centsToDecimalString,
+} = require("../../utils/paymentAmounts");
 
 const WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = 5 * 60;
 
@@ -114,6 +128,645 @@ const amountsMatchOrderTotal = (providerAmountCents, orderTotal) => {
   if (!Number.isSafeInteger(providerAmountCents)) return false;
   const expectedCents = Math.round(Number(orderTotal || 0) * 100);
   return providerAmountCents === expectedCents;
+};
+
+const normalizeWebhookValue = (value) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase();
+
+const extractBlueprintWebhookPaidAmount = (session) => {
+  const attributes = session?.attributes || {};
+
+  const payments = Array.isArray(attributes.payments)
+    ? attributes.payments
+    : [];
+
+  const paidPayments = payments.filter(
+    (payment) => normalizeWebhookValue(payment?.attributes?.status) === "paid",
+  );
+
+  if (paidPayments.length > 1) {
+    return {
+      ok: false,
+      reason: "AMBIGUOUS_SUCCESSFUL_PAYMENTS",
+      paidCents: null,
+    };
+  }
+
+  const successfulPayment = paidPayments[0] || null;
+
+  const paymentIntent = attributes.payment_intent || null;
+
+  const intentSucceeded =
+    normalizeWebhookValue(paymentIntent?.attributes?.status) === "succeeded";
+
+  const paymentAmountCents = successfulPayment
+    ? Number(successfulPayment?.attributes?.amount)
+    : null;
+
+  const intentAmountCents = intentSucceeded
+    ? Number(paymentIntent?.attributes?.amount)
+    : null;
+
+  if (
+    successfulPayment &&
+    (!Number.isSafeInteger(paymentAmountCents) || paymentAmountCents <= 0)
+  ) {
+    return {
+      ok: false,
+      reason: "INVALID_PROVIDER_PAID_AMOUNT",
+      paidCents: null,
+    };
+  }
+
+  if (
+    intentSucceeded &&
+    !successfulPayment &&
+    (!Number.isSafeInteger(intentAmountCents) || intentAmountCents <= 0)
+  ) {
+    return {
+      ok: false,
+      reason: "INVALID_PROVIDER_PAID_AMOUNT",
+      paidCents: null,
+    };
+  }
+
+  if (
+    paymentAmountCents !== null &&
+    intentAmountCents !== null &&
+    Number.isSafeInteger(intentAmountCents) &&
+    paymentAmountCents !== intentAmountCents
+  ) {
+    return {
+      ok: false,
+      reason: "PROVIDER_PAID_AMOUNT_MISMATCH",
+      paidCents: null,
+    };
+  }
+
+  const paidCents =
+    successfulPayment !== null
+      ? paymentAmountCents
+      : intentSucceeded
+        ? intentAmountCents
+        : null;
+
+  if (!Number.isSafeInteger(paidCents) || paidCents <= 0) {
+    return {
+      ok: false,
+      reason: "NO_SUCCESSFUL_PAYMENT",
+      paidCents: null,
+    };
+  }
+
+  return {
+    ok: true,
+    reason: null,
+    paidCents,
+  };
+};
+
+const resolveBlueprintWebhookPaymentPurpose = ({
+  session,
+  orderId,
+  verifiedTotalCents,
+}) => {
+  const metadata =
+    session?.attributes?.metadata &&
+    typeof session.attributes.metadata === "object" &&
+    !Array.isArray(session.attributes.metadata)
+      ? session.attributes.metadata
+      : {};
+
+  const metadataOrderId =
+    metadata.order_id !== undefined &&
+    metadata.order_id !== null &&
+    String(metadata.order_id).trim() !== ""
+      ? String(metadata.order_id).trim()
+      : null;
+
+  const metadataOrderType =
+    metadata.order_type !== undefined &&
+    metadata.order_type !== null &&
+    String(metadata.order_type).trim() !== ""
+      ? normalizeWebhookValue(metadata.order_type)
+      : null;
+
+  const metadataPurpose =
+    metadata.payment_purpose !== undefined &&
+    metadata.payment_purpose !== null &&
+    String(metadata.payment_purpose).trim() !== ""
+      ? normalizeWebhookValue(metadata.payment_purpose)
+      : null;
+
+  if (metadataOrderId !== null && metadataOrderId !== String(orderId)) {
+    return {
+      ok: false,
+      reason: "SESSION_ORDER_ID_MISMATCH",
+    };
+  }
+
+  if (metadataOrderType !== null && metadataOrderType !== "blueprint") {
+    return {
+      ok: false,
+      reason: "SESSION_ORDER_TYPE_MISMATCH",
+    };
+  }
+
+  if (
+    metadataPurpose !== null &&
+    !["initial_payment", "remaining_balance"].includes(metadataPurpose)
+  ) {
+    return {
+      ok: false,
+      reason: "SESSION_PAYMENT_PURPOSE_INVALID",
+    };
+  }
+
+  /*
+   * New WISDOM sessions explicitly identify their payment purpose.
+   *
+   * Older blueprint sessions may not contain payment_purpose.
+   * In that case:
+   *   verifiedTotal = 0  -> initial payment
+   *   verifiedTotal > 0  -> remaining balance
+   */
+  const purpose =
+    metadataPurpose ||
+    (Number(verifiedTotalCents || 0) > 0
+      ? "remaining_balance"
+      : "initial_payment");
+
+  return {
+    ok: true,
+    purpose,
+    metadata,
+    legacy: metadataPurpose === null,
+  };
+};
+
+const processBlueprintPayMongoWebhook = async (
+  conn,
+  { orderId, sessionId, session },
+) => {
+  const parsedOrderId = Number(orderId);
+  const providerSessionId = String(sessionId || "").trim();
+
+  if (!Number.isSafeInteger(parsedOrderId) || parsedOrderId <= 0) {
+    return {
+      ok: false,
+      httpStatus: 400,
+      reason: "INVALID_ORDER_ID",
+      message: "Invalid blueprint order reference.",
+    };
+  }
+
+  if (!/^cs_[A-Za-z0-9]+$/.test(providerSessionId)) {
+    return {
+      ok: false,
+      httpStatus: 400,
+      reason: "INVALID_SESSION_ID",
+      message: "Invalid PayMongo Checkout Session reference.",
+    };
+  }
+
+  const lifecycle = await resolveLifecycleByOrder(conn, {
+    orderId: parsedOrderId,
+    lockOrder: true,
+    lockBlueprint: true,
+    lockEstimation: true,
+  });
+
+  if (
+    lifecycle.status !== "OK" ||
+    !lifecycle.order ||
+    !lifecycle.blueprint ||
+    !lifecycle.estimation
+  ) {
+    return {
+      ok: false,
+      httpStatus: 409,
+      reason: "LIFECYCLE_INCONSISTENT",
+      message: "Blueprint payment state could not be resolved safely.",
+    };
+  }
+
+  const order = lifecycle.order;
+
+  if (normalizeWebhookValue(order.order_type) !== "blueprint") {
+    return {
+      ok: false,
+      httpStatus: 409,
+      reason: "NOT_BLUEPRINT",
+      message: "This payment does not belong to a blueprint order.",
+    };
+  }
+
+  if (
+    ["cancelled", "completed"].includes(normalizeWebhookValue(order.status))
+  ) {
+    return {
+      ok: false,
+      httpStatus: 409,
+      reason: "ORDER_CLOSED",
+      message: "This blueprint order is already closed.",
+    };
+  }
+
+  const orderTotalCents = parseDecimalToCentsStrict(order.total);
+
+  const estimationTotalCents = parseDecimalToCentsStrict(
+    lifecycle.estimation.grand_total,
+  );
+
+  if (
+    orderTotalCents === null ||
+    orderTotalCents <= 0 ||
+    estimationTotalCents === null ||
+    estimationTotalCents <= 0 ||
+    orderTotalCents !== estimationTotalCents
+  ) {
+    return {
+      ok: false,
+      httpStatus: 409,
+      reason: "ORDER_TOTAL_INCONSISTENT",
+      message:
+        "The blueprint order total does not match its approved quotation.",
+    };
+  }
+
+  /*
+   * Lock every real payment transaction belonging to the order.
+   * This serializes:
+   *   - duplicate webhook delivery
+   *   - customer redirect verification
+   *   - concurrent payment actions
+   */
+  const [paymentRows] = await conn.query(
+    `SELECT
+       id,
+       amount,
+       payment_method,
+       proof_url,
+       status
+     FROM payment_transactions
+     WHERE order_id = ?
+     ORDER BY id
+     FOR UPDATE`,
+    [parsedOrderId],
+  );
+
+  /*
+   * Exact provider-session idempotency.
+   *
+   * proof_url is the existing PayMongo provider-reference field used
+   * by the current blueprint verification flow.
+   */
+  const existingProviderPayment = paymentRows.find(
+    (row) =>
+      normalizeWebhookValue(row.payment_method) === "paymongo" &&
+      normalizeWebhookValue(row.status) === "verified" &&
+      String(row.proof_url || "").trim() === providerSessionId,
+  );
+
+  if (existingProviderPayment) {
+    const existingAmountCents = parseDecimalToCentsStrict(
+      existingProviderPayment.amount,
+    );
+
+    return {
+      ok: true,
+      alreadyProcessed: true,
+      paymentTransactionId: Number(existingProviderPayment.id),
+      paymentStatus: normalizeWebhookValue(order.payment_status) || "unpaid",
+      orderStatus: order.status,
+      oldPaymentStatus: normalizeWebhookValue(order.payment_status) || "unpaid",
+      oldOrderStatus: order.status,
+      amountCents: existingAmountCents,
+      paymentPurpose: null,
+      providerSessionPresent: true,
+    };
+  }
+
+  /*
+   * A webhook may contain metadata for an old session that is no
+   * longer active. Never attach such a payment to the order.
+   */
+  if (String(order.paymongo_session_id || "").trim() !== providerSessionId) {
+    return {
+      ok: false,
+      httpStatus: 409,
+      reason: "STALE_PROVIDER_SESSION",
+      message:
+        "This PayMongo session is no longer the active payment session for the order.",
+    };
+  }
+
+  const paymentSummary = summarizeVerifiedPaymentRows(paymentRows);
+
+  if (paymentSummary.hasInvalidAmount) {
+    return {
+      ok: false,
+      httpStatus: 409,
+      reason: "INVALID_PAYMENT_RECORD",
+      message: "Existing payment records for this order are inconsistent.",
+    };
+  }
+
+  if (paymentSummary.hasPendingPayment) {
+    return {
+      ok: false,
+      httpStatus: 409,
+      reason: "PENDING_PAYMENT_EXISTS",
+      message: "Another payment is already awaiting review for this order.",
+    };
+  }
+
+  if (paymentSummary.verifiedTotalCents > orderTotalCents) {
+    return {
+      ok: false,
+      httpStatus: 409,
+      reason: "PAYMENT_TOTAL_OVER_ORDER",
+      message: "Existing verified payments already exceed the order total.",
+    };
+  }
+
+  const purposeResult = resolveBlueprintWebhookPaymentPurpose({
+    session,
+    orderId: parsedOrderId,
+    verifiedTotalCents: paymentSummary.verifiedTotalCents,
+  });
+
+  if (!purposeResult.ok) {
+    return {
+      ok: false,
+      httpStatus: 409,
+      reason: purposeResult.reason,
+      message:
+        "The PayMongo session metadata does not match this blueprint order.",
+    };
+  }
+
+  const paymentPurpose = purposeResult.purpose;
+
+  let paymentAmountCents = null;
+
+  if (paymentPurpose === "initial_payment") {
+    /*
+     * Reuse the existing strict initial-payment validation.
+     * This keeps webhook verification subject to the same
+     * 30%-100% rules already used by customer redirect verification.
+     */
+    if (paymentSummary.verifiedTotalCents > 0) {
+      return {
+        ok: false,
+        httpStatus: 409,
+        reason: "INITIAL_PAYMENT_ALREADY_EXISTS",
+        message:
+          "Another verified payment already exists for this blueprint order.",
+      };
+    }
+
+    const amountBounds = resolveInitialOnlinePaymentAmount({
+      orderTotalRaw: order.total,
+      amountRaw: undefined,
+    });
+
+    if (!amountBounds.ok) {
+      return {
+        ok: false,
+        httpStatus: 409,
+        reason: "INVALID_INITIAL_PAYMENT_BOUNDS",
+        message: "The initial blueprint payment amount could not be validated.",
+      };
+    }
+
+    const providerContext = validateInitialPayMongoSessionContext(session, {
+      orderId: parsedOrderId,
+    });
+
+    if (!providerContext.ok) {
+      return {
+        ok: false,
+        httpStatus: 409,
+        reason: providerContext.reason,
+        message:
+          "The PayMongo initial-payment session does not match this order.",
+      };
+    }
+
+    const analysis = analyzeInitialPayMongoSession(session, {
+      fallbackExpectedCents: amountBounds.minimumCents,
+    });
+
+    if (
+      !analysis.ok ||
+      !analysis.hasSuccessfulPayment ||
+      !Number.isSafeInteger(analysis.expectedCents) ||
+      !Number.isSafeInteger(analysis.paidCents)
+    ) {
+      return {
+        ok: false,
+        httpStatus: 409,
+        reason: analysis.reason || "INVALID_INITIAL_PAYMENT_SESSION",
+        message: "The PayMongo initial payment could not be verified safely.",
+      };
+    }
+
+    const expectedAmountValidation = resolveInitialOnlinePaymentAmount({
+      orderTotalRaw: order.total,
+      amountRaw: centsToDecimalString(analysis.expectedCents),
+    });
+
+    if (!expectedAmountValidation.ok) {
+      return {
+        ok: false,
+        httpStatus: 409,
+        reason: "INVALID_INITIAL_PAYMENT_AMOUNT",
+        message:
+          "The PayMongo initial-payment amount is outside the allowed range.",
+      };
+    }
+
+    if (analysis.paidCents !== analysis.expectedCents) {
+      return {
+        ok: false,
+        httpStatus: 409,
+        reason: "INITIAL_PROVIDER_AMOUNT_MISMATCH",
+        message: "The PayMongo paid amount does not match the checkout amount.",
+      };
+    }
+
+    paymentAmountCents = analysis.paidCents;
+  } else {
+    /*
+     * Remaining balance:
+     * PayMongo must have paid the exact current balance.
+     */
+    if (paymentSummary.verifiedTotalCents <= 0) {
+      return {
+        ok: false,
+        httpStatus: 409,
+        reason: "REMAINING_PAYMENT_WITHOUT_INITIAL_PAYMENT",
+        message:
+          "A verified initial payment is required before the remaining balance.",
+      };
+    }
+
+    const remainingCents = orderTotalCents - paymentSummary.verifiedTotalCents;
+
+    if (remainingCents <= 0) {
+      return {
+        ok: false,
+        httpStatus: 409,
+        reason: "ORDER_ALREADY_FULLY_PAID",
+        message: "The blueprint order is already fully paid.",
+      };
+    }
+
+    const providerResult = extractBlueprintWebhookPaidAmount(session);
+
+    if (!providerResult.ok) {
+      return {
+        ok: false,
+        httpStatus: 409,
+        reason: providerResult.reason,
+        message: "The PayMongo remaining payment could not be verified safely.",
+      };
+    }
+
+    if (providerResult.paidCents !== remainingCents) {
+      return {
+        ok: false,
+        httpStatus: 409,
+        reason: "REMAINING_PROVIDER_AMOUNT_MISMATCH",
+        message:
+          "The PayMongo paid amount does not match the current remaining balance.",
+      };
+    }
+
+    paymentAmountCents = remainingCents;
+  }
+
+  if (!Number.isSafeInteger(paymentAmountCents) || paymentAmountCents <= 0) {
+    return {
+      ok: false,
+      httpStatus: 409,
+      reason: "INVALID_PAYMENT_AMOUNT",
+      message: "The PayMongo payment amount is invalid.",
+    };
+  }
+
+  if (
+    paymentSummary.verifiedTotalCents + paymentAmountCents >
+    orderTotalCents
+  ) {
+    return {
+      ok: false,
+      httpStatus: 409,
+      reason: "PAYMENT_OVERPAYMENT",
+      message: "Recording this PayMongo payment would exceed the order total.",
+    };
+  }
+
+  const oldPaymentStatus =
+    normalizeWebhookValue(order.payment_status) || "unpaid";
+
+  const oldOrderStatus = order.status;
+
+  const finalVerifiedCents =
+    paymentSummary.verifiedTotalCents + paymentAmountCents;
+
+  const nextPaymentStatus =
+    finalVerifiedCents >= orderTotalCents
+      ? "paid"
+      : finalVerifiedCents > 0
+        ? "partial"
+        : "unpaid";
+
+  let nextOrderStatus = order.status;
+
+  if (
+    paymentPurpose === "initial_payment" &&
+    oldOrderStatus === "confirmed" &&
+    lifecycle.contract?.signed_at
+  ) {
+    nextOrderStatus = "contract_released";
+  }
+
+  const [insertResult] = await conn.execute(
+    `INSERT INTO payment_transactions
+    (
+      order_id,
+      amount,
+      payment_method,
+      proof_url,
+      paymongo_reference,
+      verified_by,
+      verified_at,
+      status,
+      notes
+    )
+   VALUES (?, ?, 'paymongo', ?, ?, NULL, NOW(), 'verified', ?)`,
+    [
+      order.id,
+      centsToDecimalString(paymentAmountCents),
+      providerSessionId,
+      providerSessionId,
+      paymentPurpose === "initial_payment"
+        ? "Initial blueprint payment automatically verified via PayMongo webhook."
+        : "Remaining blueprint payment automatically verified via PayMongo webhook.",
+    ],
+  );
+
+  if (
+    insertResult.affectedRows !== 1 ||
+    !Number.isSafeInteger(insertResult.insertId) ||
+    insertResult.insertId <= 0
+  ) {
+    return {
+      ok: false,
+      httpStatus: 409,
+      reason: "PAYMENT_INSERT_FAILED",
+      message: "The PayMongo payment could not be recorded.",
+    };
+  }
+
+  const [orderUpdateResult] = await conn.execute(
+    `UPDATE orders
+     SET payment_status = ?,
+         status = ?,
+         payment_url = NULL,
+         paymongo_session_id = NULL,
+         updated_at = NOW()
+     WHERE id = ?
+       AND paymongo_session_id = ?`,
+    [nextPaymentStatus, nextOrderStatus, order.id, providerSessionId],
+  );
+
+  if (orderUpdateResult.affectedRows !== 1) {
+    return {
+      ok: false,
+      httpStatus: 409,
+      reason: "ORDER_STATE_UPDATE_FAILED",
+      message:
+        "The PayMongo payment could not be attached safely to the order.",
+    };
+  }
+
+  return {
+    ok: true,
+    alreadyProcessed: false,
+    paymentTransactionId: insertResult.insertId,
+    paymentStatus: nextPaymentStatus,
+    orderStatus: nextOrderStatus,
+    oldPaymentStatus,
+    oldOrderStatus,
+    amountCents: paymentAmountCents,
+    paymentPurpose,
+    providerSessionPresent: true,
+  };
 };
 
 const createReceiptIfNeeded = async (conn, order, paymentTransactionId) => {
@@ -293,24 +946,140 @@ exports.handlePaymongoWebhook = async (req, res) => {
       }
 
       /*
-       * For this first webhook implementation, only handle
-       * standard customer orders.
+       * Blueprint/custom orders use the same PayMongo webhook as
+       * standard orders, but they need their own reconciliation rules
+       * because one blueprint order can contain:
        *
-       * Blueprint/custom-order payment continues using the existing
-       * custom-order verification flow.
+       *   initial payment
+       *   +
+       *   remaining balance payment
+       *
+       * Standard customer orders continue through the existing webhook
+       * logic below.
        */
       const orderType = String(order.order_type || "standard")
         .trim()
         .toLowerCase();
 
       if (orderType === "blueprint") {
-        await conn.rollback();
+        const blueprintWebhookResult = await processBlueprintPayMongoWebhook(
+          conn,
+          {
+            orderId: order.id,
+            sessionId,
+            session,
+          },
+        );
+
+        if (!blueprintWebhookResult.ok) {
+          await conn.rollback();
+
+          console.warn(
+            "[PayMongo Webhook] Blueprint payment rejected.",
+            JSON.stringify({
+              orderId: order.id,
+              orderNumber: order.order_number,
+              reason: blueprintWebhookResult.reason,
+            }),
+          );
+
+          return res
+            .status(Number(blueprintWebhookResult.httpStatus) || 409)
+            .json({
+              received: true,
+              processed: false,
+              message:
+                blueprintWebhookResult.message ||
+                "Blueprint payment could not be reconciled safely.",
+              reason: blueprintWebhookResult.reason,
+              order_id: order.id,
+            });
+        }
+
+        /*
+         * The payment/order changes were performed inside the current
+         * transaction. Commit before emitting realtime events and audit
+         * records.
+         */
+        await conn.commit();
+
+        const paymentStatusChanged =
+          String(blueprintWebhookResult.oldPaymentStatus || "")
+            .trim()
+            .toLowerCase() !==
+          String(blueprintWebhookResult.paymentStatus || "")
+            .trim()
+            .toLowerCase();
+
+        const orderStatusChanged =
+          String(blueprintWebhookResult.oldOrderStatus || "")
+            .trim()
+            .toLowerCase() !==
+          String(blueprintWebhookResult.orderStatus || "")
+            .trim()
+            .toLowerCase();
+
+        const io = req.app.get("io");
+
+        if (orderStatusChanged && blueprintWebhookResult.orderStatus) {
+          emitOrderStatusUpdate(io, {
+            orderId: order.id,
+            orderNumber: order.order_number,
+            status: blueprintWebhookResult.orderStatus,
+            customerId: order.customer_id,
+          });
+        } else if (paymentStatusChanged) {
+          emitOrderPaymentUpdate(io, {
+            orderId: order.id,
+            orderNumber: order.order_number,
+            paymentStatus: blueprintWebhookResult.paymentStatus,
+            paymentMethod: "paymongo",
+            paymentTransactionId: blueprintWebhookResult.paymentTransactionId,
+            customerId: order.customer_id,
+          });
+        }
+
+        await writeAuditLogSafe({
+          userId: null,
+          action: "confirm_paymongo_webhook_payment",
+          tableName: "payment_transactions",
+          recordId: blueprintWebhookResult.paymentTransactionId,
+          oldValues: {
+            order_id: order.id,
+            order_status: blueprintWebhookResult.oldOrderStatus || null,
+            payment_status: blueprintWebhookResult.oldPaymentStatus || null,
+            payment_purpose: blueprintWebhookResult.paymentPurpose || null,
+            payment_transaction_existed: Boolean(
+              blueprintWebhookResult.alreadyProcessed,
+            ),
+          },
+          newValues: {
+            order_id: order.id,
+            payment_transaction_id: blueprintWebhookResult.paymentTransactionId,
+            payment_transaction_created:
+              !blueprintWebhookResult.alreadyProcessed,
+            amount: Number(blueprintWebhookResult.amountCents || 0) / 100,
+            payment_method: "paymongo",
+            payment_purpose: blueprintWebhookResult.paymentPurpose || null,
+            payment_transaction_status: "verified",
+            order_status: blueprintWebhookResult.orderStatus || null,
+            payment_status: blueprintWebhookResult.paymentStatus || null,
+            event_type: eventType,
+            provider_session_present: true,
+          },
+          ipAddress: req.ip || null,
+          actorType: "webhook",
+          responseStatus: 200,
+        });
 
         return res.status(200).json({
           received: true,
-          ignored: true,
-          reason: "blueprint_order_uses_existing_verification",
+          processed: true,
+          already_processed: Boolean(blueprintWebhookResult.alreadyProcessed),
+          event_type: eventType,
           order_id: order.id,
+          order_number: order.order_number,
+          payment_status: blueprintWebhookResult.paymentStatus || null,
         });
       }
 
@@ -364,13 +1133,26 @@ exports.handlePaymongoWebhook = async (req, res) => {
          */
         const [insertResult] = await conn.query(
           `INSERT INTO payment_transactions
-             (order_id, amount, payment_method, proof_url,
-              status, verified_at, notes)
-           VALUES (?, ?, 'paymongo', ?, 'verified', NOW(), ?)`,
+   (
+     order_id,
+     amount,
+     payment_method,
+     proof_url,
+     provider_payment_id,
+     provider_event_id,
+     paymongo_reference,
+     status,
+     verified_at,
+     notes
+   )
+ VALUES (?, ?, 'paymongo', ?, ?, ?, ?, 'verified', NOW(), ?)`,
           [
             order.id,
             amountFromWebhook,
             sessionId || "",
+            providerPaymentId,
+            eventId,
+            sessionId || null,
             "Automatically verified via PayMongo webhook.",
           ],
         );

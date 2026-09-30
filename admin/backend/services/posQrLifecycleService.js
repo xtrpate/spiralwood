@@ -516,11 +516,21 @@ const finalizePaidAttempt = async ({
 
     const [paymentResult] = await conn.query(
       `INSERT INTO payment_transactions
-        (order_id, amount, payment_method, status, verified_by, verified_at, notes)
-       VALUES (?, ?, 'paymongo', 'verified', ?, NOW(), ?)`,
+    (
+      order_id,
+      amount,
+      payment_method,
+      paymongo_reference,
+      status,
+      verified_by,
+      verified_at,
+      notes
+    )
+   VALUES (?, ?, 'paymongo', ?, 'verified', ?, NOW(), ?)`,
       [
         orderId,
         snapshot.total,
+        attempt.provider_session_id || null,
         resolvedActorUserId,
         "Verified via PayMongo POS QR payment attempt.",
       ],

@@ -55,6 +55,47 @@ const {
   getGlobalEmailFooter,
   sendBrevoEmail,
 } = require("../../utils/emailHelper");
+const normalizeOptionalPayMongoIdempotencyKey = (req) => {
+  const raw = req.get("Idempotency-Key");
+
+  // Backward compatible: older clients may not send the header yet.
+  if (raw === undefined || raw === null || String(raw).trim() === "") {
+    return {
+      ok: true,
+      key: null,
+    };
+  }
+
+  const key = String(raw).trim();
+
+  /*
+   * The frontend generates UUID-style keys.
+   * Keep the accepted format intentionally narrow so arbitrary
+   * header content cannot become part of the provider key.
+   */
+  if (key.length < 16 || key.length > 64 || !/^[A-Za-z0-9_-]+$/.test(key)) {
+    return {
+      ok: false,
+      key: null,
+    };
+  }
+
+  return {
+    ok: true,
+    key,
+  };
+};
+
+const buildBlueprintPayMongoIdempotencyKey = ({
+  clientKey,
+  orderId,
+  purpose,
+  amountCents,
+}) => {
+  if (!clientKey) return undefined;
+
+  return `wisdom-bp-${orderId}-${purpose}-${amountCents}-${clientKey}`;
+};
 
 const customRequestAssetsDir = path.join(
   __dirname,
@@ -121,6 +162,46 @@ const getBlueprintPaymentAvailability = async (conn) => {
       true,
     ),
   };
+};
+
+const getPayMongoCheckoutAmountCents = (session) => {
+  const lineItems = Array.isArray(session?.attributes?.line_items)
+    ? session.attributes.line_items
+    : null;
+
+  if (!lineItems || lineItems.length === 0) {
+    return null;
+  }
+
+  let totalCents = 0;
+
+  for (const item of lineItems) {
+    const amountCents = Number(item?.amount);
+    const quantity = Number(item?.quantity ?? 1);
+
+    if (
+      !Number.isSafeInteger(amountCents) ||
+      amountCents <= 0 ||
+      !Number.isSafeInteger(quantity) ||
+      quantity <= 0
+    ) {
+      return null;
+    }
+
+    const lineTotalCents = amountCents * quantity;
+
+    if (!Number.isSafeInteger(lineTotalCents) || lineTotalCents <= 0) {
+      return null;
+    }
+
+    totalCents += lineTotalCents;
+
+    if (!Number.isSafeInteger(totalCents)) {
+      return null;
+    }
+  }
+
+  return totalCents > 0 ? totalCents : null;
 };
 
 // Strict coordinate parser for blueprint/custom request delivery pins.
@@ -273,12 +354,7 @@ const SNAPSHOT_WOODWORKING_OPERATION_TYPES = new Set([
 ]);
 const SNAPSHOT_WOODWORKING_SURFACES = new Set(["face_a", "face_b"]);
 const SNAPSHOT_WOODWORKING_DIRECTIONS = new Set(["u", "v"]);
-const SNAPSHOT_WOODWORKING_EDGES = new Set([
-  "top",
-  "right",
-  "bottom",
-  "left",
-]);
+const SNAPSHOT_WOODWORKING_EDGES = new Set(["top", "right", "bottom", "left"]);
 
 const clampSnapshotNumber = (value, min, max, fallback = min) => {
   const numeric = Number(value);
@@ -287,7 +363,9 @@ const clampSnapshotNumber = (value, min, max, fallback = min) => {
 };
 
 const sanitizeSnapshotId = (value, fallback) => {
-  const text = String(value ?? "").trim().slice(0, 120);
+  const text = String(value ?? "")
+    .trim()
+    .slice(0, 120);
   return text || fallback;
 };
 
@@ -297,7 +375,9 @@ const sanitizeSnapshotMachiningCutouts = (value) => {
   return value
     .slice(0, 12)
     .map((item, index) => {
-      const type = String(item?.type || "").trim().toLowerCase();
+      const type = String(item?.type || "")
+        .trim()
+        .toLowerCase();
       if (!SNAPSHOT_MACHINING_CUTOUT_TYPES.has(type)) return null;
 
       return {
@@ -319,12 +399,20 @@ const sanitizeSnapshotWoodworkingOperations = (value) => {
   return value
     .slice(0, 16)
     .map((item, index) => {
-      const type = String(item?.type || "").trim().toLowerCase();
+      const type = String(item?.type || "")
+        .trim()
+        .toLowerCase();
       if (!SNAPSHOT_WOODWORKING_OPERATION_TYPES.has(type)) return null;
 
-      const surface = String(item?.surface || "").trim().toLowerCase();
-      const direction = String(item?.direction || "").trim().toLowerCase();
-      const edge = String(item?.edge || "").trim().toLowerCase();
+      const surface = String(item?.surface || "")
+        .trim()
+        .toLowerCase();
+      const direction = String(item?.direction || "")
+        .trim()
+        .toLowerCase();
+      const edge = String(item?.edge || "")
+        .trim()
+        .toLowerCase();
 
       return {
         id: sanitizeSnapshotId(item?.id, `woodop_${index + 1}`),
@@ -350,7 +438,9 @@ const sanitizeSnapshotWoodworkingOperations = (value) => {
 };
 
 const sanitizeSnapshotMachiningPlane = (value) => {
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
   return SNAPSHOT_MACHINING_PLANES.has(normalized) ? normalized : null;
 };
 
@@ -1784,6 +1874,109 @@ const normalize = (value) =>
   String(value || "")
     .trim()
     .toLowerCase();
+
+const validateRemainingPayMongoSessionContext = (
+  session,
+  { orderId, fulfillmentMethod, requirePurpose = true } = {},
+) => {
+  const expectedOrderId = String(orderId ?? "").trim();
+
+  if (!/^[1-9]\d*$/.test(expectedOrderId)) {
+    return {
+      ok: false,
+      reason: "INVALID_EXPECTED_ORDER_CONTEXT",
+    };
+  }
+
+  const metadata =
+    session?.attributes?.metadata &&
+    typeof session.attributes.metadata === "object" &&
+    !Array.isArray(session.attributes.metadata)
+      ? session.attributes.metadata
+      : {};
+
+  const hasValue = (value) =>
+    value !== undefined && value !== null && String(value).trim() !== "";
+
+  const metadataOrderId = hasValue(metadata.order_id)
+    ? String(metadata.order_id).trim()
+    : null;
+
+  const metadataOrderType = hasValue(metadata.order_type)
+    ? normalize(metadata.order_type)
+    : null;
+
+  const metadataPurpose = hasValue(metadata.payment_purpose)
+    ? normalize(metadata.payment_purpose)
+    : null;
+
+  const metadataFulfillmentMethod = hasValue(metadata.fulfillment_method)
+    ? normalize(metadata.fulfillment_method)
+    : null;
+
+  if (metadataOrderId !== null && metadataOrderId !== expectedOrderId) {
+    return {
+      ok: false,
+      reason: "SESSION_ORDER_ID_MISMATCH",
+    };
+  }
+
+  if (metadataOrderType !== null && metadataOrderType !== "blueprint") {
+    return {
+      ok: false,
+      reason: "SESSION_ORDER_TYPE_MISMATCH",
+    };
+  }
+
+  /*
+   * Current remaining-balance sessions always contain:
+   *   payment_purpose = remaining_balance
+   *
+   * Missing purpose is accepted only for older legacy sessions.
+   * The locked verification path below will only permit that
+   * legacy case when an initial verified payment already exists.
+   */
+  if (metadataPurpose !== null && metadataPurpose !== "remaining_balance") {
+    return {
+      ok: false,
+      reason: "SESSION_PAYMENT_PURPOSE_MISMATCH",
+    };
+  }
+
+  if (requirePurpose && metadataPurpose === null) {
+    return {
+      ok: false,
+      reason: "MISSING_REMAINING_PAYMENT_PURPOSE",
+    };
+  }
+
+  const expectedFulfillmentMethod = normalize(fulfillmentMethod);
+
+  /*
+   * Delivery sessions historically did not always carry
+   * fulfillment_method metadata, so absence is allowed.
+   *
+   * When PayMongo does provide it, it must agree with the
+   * current locked order.
+   */
+  if (
+    metadataFulfillmentMethod !== null &&
+    expectedFulfillmentMethod &&
+    metadataFulfillmentMethod !== expectedFulfillmentMethod
+  ) {
+    return {
+      ok: false,
+      reason: "SESSION_FULFILLMENT_METHOD_MISMATCH",
+    };
+  }
+
+  return {
+    ok: true,
+    reason: null,
+    legacy: metadataPurpose === null,
+    metadata,
+  };
+};
 
 const toAllowedBlueprintPaymentMethod = (value) => {
   const key = normalize(value).replace(/\s+/g, "_");
@@ -4391,11 +4584,21 @@ exports.verifyPayment = async (req, res) => {
 
     const [paymentInsertResult] = await conn.execute(
       `INSERT INTO payment_transactions
-        (order_id, amount, payment_method, proof_url, status, verified_at, notes)
-       VALUES (?, ?, 'paymongo', ?, 'verified', NOW(), ?)`,
+    (
+      order_id,
+      amount,
+      payment_method,
+      proof_url,
+      paymongo_reference,
+      status,
+      verified_at,
+      notes
+    )
+   VALUES (?, ?, 'paymongo', ?, ?, 'verified', NOW(), ?)`,
       [
         lockedOrder.id,
         paymentAmountDecimal,
+        session.id,
         session.id,
         "Initial blueprint payment automatically verified via PayMongo checkout.",
       ],
@@ -4530,6 +4733,14 @@ exports.createPayMongoCheckout = async (req, res) => {
 
     if (!orderId) {
       return res.status(400).json({ message: "Invalid custom request ID." });
+    }
+
+    const paymongoIdempotency = normalizeOptionalPayMongoIdempotencyKey(req);
+
+    if (!paymongoIdempotency.ok) {
+      return res.status(400).json({
+        message: "Invalid payment idempotency key.",
+      });
     }
 
     conn = await db.getConnection();
@@ -4678,6 +4889,13 @@ exports.createPayMongoCheckout = async (req, res) => {
           "Enter a valid payment amount using no more than two decimal places.",
       });
     }
+
+    const paymongoIdempotencyKey = buildBlueprintPayMongoIdempotencyKey({
+      clientKey: paymongoIdempotency.key,
+      orderId: order.id,
+      purpose: "initial",
+      amountCents: amountResolution.amountCents,
+    });
 
     const quotationCents = parseDecimalToCentsStrict(
       Number(normalizedEstimation.grand_total || 0).toFixed(2),
@@ -4881,6 +5099,7 @@ exports.createPayMongoCheckout = async (req, res) => {
         initial_payment_amount_cents: String(amountResolution.amountCents),
         minimum_down_payment_cents: String(amountResolution.minimumCents),
       },
+      idempotencyKey: paymongoIdempotencyKey,
     });
 
     const checkoutUrl = checkout.checkoutUrl;
@@ -5401,7 +5620,16 @@ const createPickupRemainingBalancePayMongoCheckout = async ({
 }) => {
   let conn = null;
   let transactionActive = false;
+
   try {
+    const paymongoIdempotency = normalizeOptionalPayMongoIdempotencyKey(req);
+
+    if (!paymongoIdempotency.ok) {
+      return res.status(400).json({
+        message: "Invalid payment idempotency key.",
+      });
+    }
+
     conn = await db.getConnection();
     await conn.beginTransaction();
     transactionActive = true;
@@ -5497,6 +5725,12 @@ const createPickupRemainingBalancePayMongoCheckout = async ({
         .status(400)
         .json({ message: "This order has already been fully paid." });
     }
+    const paymongoIdempotencyKey = buildBlueprintPayMongoIdempotencyKey({
+      clientKey: paymongoIdempotency.key,
+      orderId: order.id,
+      purpose: "remaining",
+      amountCents: remainingCents,
+    });
 
     const hasSessionId = Boolean(order.paymongo_session_id);
     const hasPaymentUrl = Boolean(order.payment_url);
@@ -5519,40 +5753,126 @@ const createPickupRemainingBalancePayMongoCheckout = async ({
 
     if (hasSessionId && hasPaymentUrl) {
       let session;
+
       try {
         session = await retrieveCheckoutSession(order.paymongo_session_id);
       } catch (pmErr) {
         await conn.rollback();
         transactionActive = false;
+
+        console.error(
+          "[createPickupRemainingBalancePayMongoCheckout] PayMongo session check failed:",
+          pmErr.response?.data || pmErr,
+        );
+
         return res.status(502).json({
           message: "Unable to reach the payment provider. Please try again.",
         });
       }
-      const payments = session.attributes?.payments || [];
-      const intent = session.attributes?.payment_intent;
-      const paid =
-        payments.some((p) => p.attributes?.status === "paid") ||
-        intent?.attributes?.status === "succeeded";
-      const active = normalize(session.attributes?.status) === "active";
-      if (paid || active) {
-        await conn.commit();
-        transactionActive = false;
-        return res.json({ payment_url: order.payment_url, reused: true });
-      }
 
-      if (!blueprintPaymentAvailability.paymongo) {
+      const sessionAmountCents = getPayMongoCheckoutAmountCents(session);
+
+      if (!Number.isSafeInteger(sessionAmountCents)) {
         await conn.rollback();
         transactionActive = false;
-        return res.status(400).json({
-          message: "Online Payment is currently unavailable.",
+
+        console.error(
+          "[createPickupRemainingBalancePayMongoCheckout] Invalid PayMongo checkout amount",
+          {
+            orderId: order.id,
+            sessionId: order.paymongo_session_id,
+          },
+        );
+
+        return res.status(409).json({
+          message:
+            "The existing online payment session could not be verified safely. Please try again.",
         });
       }
 
-      await conn.execute(
-        `UPDATE orders SET payment_url = NULL, paymongo_session_id = NULL
-         WHERE id = ? AND customer_id = ? AND paymongo_session_id = ? AND payment_url = ?`,
-        [order.id, req.user.id, order.paymongo_session_id, order.payment_url],
-      );
+      const payments = session.attributes?.payments || [];
+      const intent = session.attributes?.payment_intent;
+
+      const hasSuccessfulPayment =
+        payments.some(
+          (payment) => normalize(payment?.attributes?.status) === "paid",
+        ) || normalize(intent?.attributes?.status) === "succeeded";
+
+      const sessionStatus = normalize(session.attributes?.status);
+
+      const sessionStillActive = sessionStatus === "active";
+
+      const sessionAmountMatchesBalance = sessionAmountCents === remainingCents;
+
+      /*
+       * Never silently replace a provider session that already shows
+       * a successful payment but has the wrong amount.
+       */
+      if (hasSuccessfulPayment && !sessionAmountMatchesBalance) {
+        await conn.rollback();
+        transactionActive = false;
+
+        console.error(
+          "[createPickupRemainingBalancePayMongoCheckout] Paid session amount mismatch",
+          {
+            orderId: order.id,
+            sessionId: order.paymongo_session_id,
+            sessionAmountCents,
+            remainingCents,
+          },
+        );
+
+        return res.status(409).json({
+          message:
+            "The existing PayMongo payment does not match the current remaining balance. Please contact support.",
+        });
+      }
+
+      /*
+       * Only reuse an active/paid session whose amount exactly matches
+       * the current remaining balance.
+       */
+      if (
+        sessionAmountMatchesBalance &&
+        (hasSuccessfulPayment || sessionStillActive)
+      ) {
+        await conn.commit();
+        transactionActive = false;
+
+        return res.json({
+          payment_url: order.payment_url,
+          reused: true,
+        });
+      }
+
+      /*
+       * Expired/failed/unknown or active-but-wrong-amount:
+       * clear only the exact session we just inspected.
+       */
+      if (!sessionAmountMatchesBalance || !sessionStillActive) {
+        const [clearResult] = await conn.execute(
+          `UPDATE orders
+       SET payment_url = NULL,
+           paymongo_session_id = NULL
+       WHERE id = ?
+         AND customer_id = ?
+         AND order_type = 'blueprint'
+         AND fulfillment_method = 'pickup'
+         AND paymongo_session_id = ?
+         AND payment_url = ?`,
+          [order.id, req.user.id, order.paymongo_session_id, order.payment_url],
+        );
+
+        if (clearResult.affectedRows !== 1) {
+          await conn.rollback();
+          transactionActive = false;
+
+          return res.status(409).json({
+            message:
+              "This order's state changed. Please refresh and try again.",
+          });
+        }
+      }
     }
 
     const [[customer]] = await conn.execute(
@@ -5573,6 +5893,7 @@ const createPickupRemainingBalancePayMongoCheckout = async ({
         payment_purpose: "remaining_balance",
         fulfillment_method: "pickup",
       },
+      idempotencyKey: paymongoIdempotencyKey,
     });
     const [updateResult] = await conn.execute(
       `UPDATE orders SET payment_url = ?, paymongo_session_id = ?, updated_at = NOW()
@@ -5598,13 +5919,23 @@ const createPickupRemainingBalancePayMongoCheckout = async ({
         await conn.rollback();
       } catch {}
     }
+
     console.error(
       "[customer.customorders pickup remaining checkout]",
-      err.response?.data || err,
+      err.response?.data || err.message || err,
     );
-    return res
-      .status(500)
-      .json({ message: "Failed to create the online payment session." });
+
+    const isPayMongoProviderError = Boolean(
+      err?.response ||
+      err?.request ||
+      ["ECONNABORTED", "ETIMEDOUT"].includes(err?.code),
+    );
+
+    return res.status(isPayMongoProviderError ? 502 : 500).json({
+      message: isPayMongoProviderError
+        ? "Unable to start the online payment right now. Please try again."
+        : "Failed to create the online payment session.",
+    });
   } finally {
     if (conn) conn.release();
   }
@@ -5934,11 +6265,13 @@ exports.selectRemainingPaymentMethod = async (req, res) => {
     console.error("[customer.customorders selectRemainingPaymentMethod]", err);
 
     if (isRetryableTransactionError(err)) {
-      return res.status(409).json(
-        buildConcurrentUpdateResponse(
-          "This order was updated at the same time by another process. Refresh and choose the remaining payment method again.",
-        ),
-      );
+      return res
+        .status(409)
+        .json(
+          buildConcurrentUpdateResponse(
+            "This order was updated at the same time by another process. Refresh and choose the remaining payment method again.",
+          ),
+        );
     }
 
     return res
@@ -5961,26 +6294,16 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
 
   try {
     const orderId = parseStrictPositiveInt(req.params.id);
+
     if (!orderId) {
       return res.status(400).json({ message: "Invalid custom request ID." });
     }
 
-    const [[fulfillmentProbe]] = await db.execute(
-      `SELECT fulfillment_method FROM orders WHERE id = ? AND customer_id = ? AND order_type = 'blueprint' LIMIT 1`,
-      [orderId, req.user.id],
-    );
+    const paymongoIdempotency = normalizeOptionalPayMongoIdempotencyKey(req);
 
-    // Do not let an unauthorized/unknown order reach a FOR UPDATE lock.
-    // The transaction still revalidates the same ownership after it begins.
-    if (!fulfillmentProbe) {
-      return res.status(404).json({ message: "Custom order not found." });
-    }
-
-    if (normalize(fulfillmentProbe.fulfillment_method) === "pickup") {
-      return createPickupRemainingBalancePayMongoCheckout({
-        req,
-        res,
-        orderId,
+    if (!paymongoIdempotency.ok) {
+      return res.status(400).json({
+        message: "Invalid payment idempotency key.",
       });
     }
 
@@ -6154,6 +6477,13 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
         .json({ message: "This order has already been fully paid." });
     }
 
+    const paymongoIdempotencyKey = buildBlueprintPayMongoIdempotencyKey({
+      clientKey: paymongoIdempotency.key,
+      orderId: order.id,
+      purpose: "remaining",
+      amountCents: remainingCents,
+    });
+
     const hasSessionId = Boolean(order.paymongo_session_id);
     const hasPaymentUrl = Boolean(order.payment_url);
     const hasIncompleteSession = hasSessionId !== hasPaymentUrl;
@@ -6178,80 +6508,138 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
     }
 
     if (hasCompleteSession) {
-      // Live re-check with PayMongo before deciding to reuse or replace
-      // the existing session — unlike the initial down-payment flow,
-      // which blindly reuses without ever asking PayMongo. This network
-      // call runs with the order/delivery/payment locks already held,
-      // matching the existing down-payment flow's own precedent of
-      // calling PayMongo (to CREATE a session) while those same locks
-      // are held; it is not a new class of risk, only an additional
-      // call in the same spot.
       let session;
+
       try {
         session = await retrieveCheckoutSession(order.paymongo_session_id);
       } catch (pmErr) {
         await conn.rollback();
         transactionActive = false;
+
         console.error(
           "[createRemainingBalancePayMongoCheckout] PayMongo session check failed:",
           pmErr.response?.data || pmErr,
         );
+
         return res.status(502).json({
           message: "Unable to reach the payment provider. Please try again.",
         });
       }
 
+      const sessionAmountCents = getPayMongoCheckoutAmountCents(session);
+
+      if (!Number.isSafeInteger(sessionAmountCents)) {
+        await conn.rollback();
+        transactionActive = false;
+
+        console.error(
+          "[createRemainingBalancePayMongoCheckout] Invalid PayMongo checkout amount",
+          {
+            orderId: order.id,
+            sessionId: order.paymongo_session_id,
+          },
+        );
+
+        return res.status(409).json({
+          message:
+            "The existing online payment session could not be verified safely. Please try again.",
+        });
+      }
+
       const payments = session.attributes?.payments || [];
       const paymentIntent = session.attributes?.payment_intent;
-      const hasSuccessfulPayment =
-        payments.some((p) => p.attributes?.status === "paid") ||
-        (paymentIntent && paymentIntent.attributes?.status === "succeeded");
 
-      // NOTE: "active" is PayMongo's documented checkout_session status
-      // for a session still open for payment; anything else (expired,
-      // or an unrecognized/missing value) is treated conservatively as
-      // no longer usable. Re-verify this against PayMongo's current API
-      // reference at integration/staging time before relying on it in
-      // production, since this sandbox has no live PayMongo access to
-      // confirm the exact enum today.
+      const hasSuccessfulPayment =
+        payments.some(
+          (payment) => normalize(payment?.attributes?.status) === "paid",
+        ) || normalize(paymentIntent?.attributes?.status) === "succeeded";
+
       const sessionStatus = normalize(session.attributes?.status);
+
       const sessionStillActive = sessionStatus === "active";
 
-      if (hasSuccessfulPayment || sessionStillActive) {
+      /*
+       * The provider checkout must always equal the CURRENT remaining
+       * balance calculated from the locked payment rows above.
+       */
+      const sessionAmountMatchesBalance = sessionAmountCents === remainingCents;
+
+      /*
+       * A successful payment with the wrong amount must never be
+       * silently discarded or replaced. Money may already have moved
+       * at the provider, so stop and require reconciliation.
+       */
+      if (hasSuccessfulPayment && !sessionAmountMatchesBalance) {
+        await conn.rollback();
+        transactionActive = false;
+
+        console.error(
+          "[createRemainingBalancePayMongoCheckout] Paid session amount mismatch",
+          {
+            orderId: order.id,
+            sessionId: order.paymongo_session_id,
+            sessionAmountCents,
+            remainingCents,
+          },
+        );
+
+        return res.status(409).json({
+          message:
+            "The existing PayMongo payment does not match the current remaining balance. Please contact support.",
+        });
+      }
+
+      /*
+       * Reuse the session only when:
+       *
+       *   1. PayMongo confirms it is still active OR already paid, AND
+       *   2. The checkout amount exactly matches the current balance.
+       */
+      if (
+        sessionAmountMatchesBalance &&
+        (hasSuccessfulPayment || sessionStillActive)
+      ) {
         await conn.commit();
         transactionActive = false;
-        return res.json({ payment_url: order.payment_url, reused: true });
-      }
 
-      if (!blueprintPaymentAvailability.paymongo) {
-        await conn.rollback();
-        transactionActive = false;
-        return res.status(400).json({
-          message: "Online Payment is currently unavailable.",
+        return res.json({
+          payment_url: order.payment_url,
+          reused: true,
         });
       }
 
-      // Stale (expired/failed/unknown) — clear the old session fields
-      // under a guarded UPDATE (never a blind clear) before creating a
-      // fresh checkout below.
-      const [clearResult] = await conn.execute(
-        `UPDATE orders
-         SET payment_url = NULL,
-             paymongo_session_id = NULL
-         WHERE id = ?
-           AND customer_id = ?
-           AND order_type = 'blueprint'
-           AND paymongo_session_id = ?
-           AND payment_url = ?`,
-        [orderId, req.user.id, order.paymongo_session_id, order.payment_url],
-      );
+      /*
+       * The old session is no longer usable:
+       *
+       *   - expired
+       *   - failed
+       *   - unknown status
+       *   - active with the wrong amount
+       *
+       * Only clear the exact session we just inspected.
+       */
+      if (!sessionAmountMatchesBalance || !sessionStillActive) {
+        const [clearResult] = await conn.execute(
+          `UPDATE orders
+       SET payment_url = NULL,
+           paymongo_session_id = NULL
+       WHERE id = ?
+         AND customer_id = ?
+         AND order_type = 'blueprint'
+         AND paymongo_session_id = ?
+         AND payment_url = ?`,
+          [orderId, req.user.id, order.paymongo_session_id, order.payment_url],
+        );
 
-      if (clearResult.affectedRows !== 1) {
-        await conn.rollback();
-        transactionActive = false;
-        return res.status(409).json({
-          message: "This order's state changed. Please refresh and try again.",
-        });
+        if (clearResult.affectedRows !== 1) {
+          await conn.rollback();
+          transactionActive = false;
+
+          return res.status(409).json({
+            message:
+              "This order's state changed. Please refresh and try again.",
+          });
+        }
       }
     }
 
@@ -6270,10 +6658,12 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
       successUrl: `${frontendUrl}/custom-requests/${order.id}?verify_remaining_success=true`,
       cancelUrl: `${frontendUrl}/custom-requests/${order.id}`,
       metadata: {
-        order_id: order.id,
+        order_id: String(order.id),
         order_type: "blueprint",
         payment_purpose: "remaining_balance",
+        fulfillment_method: "delivery",
       },
+      idempotencyKey: paymongoIdempotencyKey,
     });
 
     const checkoutUrl = checkout.checkoutUrl;
@@ -6326,16 +6716,26 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
     );
 
     if (isRetryableTransactionError(err)) {
-      return res.status(409).json(
-        buildConcurrentUpdateResponse(
-          "This order was updated at the same time by another process. Refresh and try creating the online payment session again.",
-        ),
-      );
+      return res
+        .status(409)
+        .json(
+          buildConcurrentUpdateResponse(
+            "This order was updated at the same time by another process. Refresh and try creating the online payment session again.",
+          ),
+        );
     }
 
-    return res
-      .status(500)
-      .json({ message: "Failed to create the online payment session." });
+    const isPayMongoProviderError = Boolean(
+      err?.response ||
+      err?.request ||
+      ["ECONNABORTED", "ETIMEDOUT"].includes(err?.code),
+    );
+
+    return res.status(isPayMongoProviderError ? 502 : 500).json({
+      message: isPayMongoProviderError
+        ? "Unable to start the online payment right now. Please try again."
+        : "Failed to create the online payment session.",
+    });
   } finally {
     if (conn) conn.release();
   }
@@ -6365,23 +6765,34 @@ exports.verifyRemainingBalancePayment = async (req, res) => {
 
     // 1. FAST READ — idempotency check without locking anything.
     const [[fastOrder]] = await conn.execute(
-      `SELECT id, customer_id, order_type, payment_status, paymongo_session_id
-       FROM orders WHERE id = ? LIMIT 1`,
+      `SELECT
+     id,
+     customer_id,
+     order_type,
+     payment_status,
+     fulfillment_method,
+     paymongo_session_id
+   FROM orders
+   WHERE id = ?
+   LIMIT 1`,
       [orderId],
     );
 
     if (!fastOrder) {
       conn.release();
+      conn = null;
       return res.status(404).json({ message: "Custom order not found." });
     }
 
     if (Number(fastOrder.customer_id) !== Number(req.user.id)) {
       conn.release();
+      conn = null;
       return res.status(403).json({ message: "Unauthorized." });
     }
 
     if (normalize(fastOrder.order_type) !== "blueprint") {
       conn.release();
+      conn = null;
       return res
         .status(400)
         .json({ message: "This order does not support this action." });
@@ -6389,33 +6800,86 @@ exports.verifyRemainingBalancePayment = async (req, res) => {
 
     if (!fastOrder.paymongo_session_id) {
       conn.release();
+      conn = null;
+
       if (normalize(fastOrder.payment_status) === "paid") {
         return res.json({
           success: true,
           message: "Payment already verified.",
         });
       }
+
       return res
         .status(400)
         .json({ success: false, message: "No pending payment session found." });
     }
 
-    // 2. NETWORK CALL — no DB connection held idle during this wait.
-    const session = await retrieveCheckoutSession(
-      fastOrder.paymongo_session_id,
-    );
-    const payments = session.attributes?.payments || [];
-    const paymentIntent = session.attributes?.payment_intent;
+    const providerSessionId = fastOrder.paymongo_session_id;
 
-    const successfulPayment = payments.find(
-      (p) => p.attributes?.status === "paid",
-    );
-    const hasSuccessfulPayment =
-      Boolean(successfulPayment) ||
-      (paymentIntent && paymentIntent.attributes?.status === "succeeded");
+    // 2. NETWORK CALL — release the DB connection before waiting
+    // for PayMongo. The provider request must not occupy a MySQL
+    // pool connection for the duration of the network call.
+    conn.release();
+    conn = null;
 
-    if (!hasSuccessfulPayment) {
-      conn.release();
+    let session;
+
+    try {
+      session = await retrieveCheckoutSession(providerSessionId);
+    } catch (pmErr) {
+      console.error(
+        "[customer.customorders verifyRemainingBalancePayment provider]",
+        pmErr.response?.data || pmErr.message || pmErr,
+      );
+
+      return res.status(502).json({
+        success: false,
+        message:
+          "Unable to confirm the online payment right now. Please try again.",
+      });
+    }
+
+    const providerContext = validateRemainingPayMongoSessionContext(session, {
+      orderId,
+      fulfillmentMethod: fastOrder.fulfillment_method,
+      requirePurpose: false,
+    });
+
+    if (!providerContext.ok) {
+      console.error(
+        "[verifyRemainingBalancePayment] provider session context failure",
+        {
+          orderId,
+          reason: providerContext.reason,
+        },
+      );
+
+      return res.status(409).json({
+        success: false,
+        message:
+          "The online payment session does not match this remaining-balance payment. Please contact support.",
+      });
+    }
+
+    const providerAnalysis = analyzeInitialPayMongoSession(session);
+
+    if (!providerAnalysis.ok) {
+      console.error(
+        "[verifyRemainingBalancePayment] provider session integrity failure",
+        {
+          orderId,
+          reason: providerAnalysis.reason || "invalid_provider_session",
+        },
+      );
+
+      return res.status(409).json({
+        success: false,
+        message:
+          "The online payment details could not be verified safely. Please contact support.",
+      });
+    }
+
+    if (!providerAnalysis.hasSuccessfulPayment) {
       return res.status(400).json({
         success: false,
         message:
@@ -6423,24 +6887,46 @@ exports.verifyRemainingBalancePayment = async (req, res) => {
       });
     }
 
-    // PayMongo amounts are already integer centavos on their side — no
-    // conversion needed, only strict parsing of whatever they report.
-    const rawPaidAmountCents = Number(
-      successfulPayment?.attributes?.amount ??
-        paymentIntent?.attributes?.amount,
-    );
+    if (!Number.isSafeInteger(providerAnalysis.paidCents)) {
+      console.error(
+        "[verifyRemainingBalancePayment] provider paid amount integrity failure",
+        {
+          orderId,
+          reason: "missing_or_invalid_paid_amount",
+        },
+      );
 
-    // 3. SECURE WRITE — lock and re-verify everything fresh.
+      return res.status(409).json({
+        success: false,
+        message:
+          "The online payment amount could not be verified safely. Please contact support.",
+      });
+    }
+
+    // 3. SECURE WRITE — acquire a fresh DB connection, then
+    // lock and re-verify everything fresh. The database connection
+    // used for the fast read is intentionally not reused.
+    conn = await db.getConnection();
+
     await conn.beginTransaction();
     transactionActive = true;
 
     const [[order]] = await conn.query(
-      `SELECT id, order_number, customer_id, order_type, status, payment_status,
-              total, remaining_payment_method, paymongo_session_id
-       FROM orders
-       WHERE id = ?
-       LIMIT 1
-       FOR UPDATE`,
+      `SELECT
+      id,
+      order_number,
+      customer_id,
+      order_type,
+      status,
+      payment_status,
+      total,
+      fulfillment_method,
+      remaining_payment_method,
+      paymongo_session_id
+   FROM orders
+   WHERE id = ?
+   LIMIT 1
+   FOR UPDATE`,
       [orderId],
     );
 
@@ -6467,6 +6953,33 @@ exports.verifyRemainingBalancePayment = async (req, res) => {
       return res.status(409).json({
         message:
           "This order's payment session changed. Please refresh and try again.",
+      });
+    }
+
+    const lockedProviderContext = validateRemainingPayMongoSessionContext(
+      session,
+      {
+        orderId: order.id,
+        fulfillmentMethod: order.fulfillment_method,
+        requirePurpose: false,
+      },
+    );
+
+    if (!lockedProviderContext.ok) {
+      await conn.rollback();
+      transactionActive = false;
+
+      console.error(
+        "[verifyRemainingBalancePayment] locked provider session context failure",
+        {
+          orderId,
+          reason: lockedProviderContext.reason,
+        },
+      );
+
+      return res.status(409).json({
+        message:
+          "The online payment session does not match this order's remaining balance. Please contact support.",
       });
     }
 
@@ -6511,6 +7024,105 @@ exports.verifyRemainingBalancePayment = async (req, res) => {
 
     const remainingCents = Math.max(0, orderTotalCents - verifiedCents);
 
+    const finalProviderAnalysis = analyzeInitialPayMongoSession(session, {
+      fallbackExpectedCents: remainingCents,
+    });
+
+    if (
+      !finalProviderAnalysis.ok ||
+      !finalProviderAnalysis.hasSuccessfulPayment ||
+      !Number.isSafeInteger(finalProviderAnalysis.expectedCents) ||
+      !Number.isSafeInteger(finalProviderAnalysis.paidCents)
+    ) {
+      await conn.rollback();
+      transactionActive = false;
+
+      console.error(
+        "[verifyRemainingBalancePayment] final provider amount integrity failure",
+        {
+          orderId,
+          reason: finalProviderAnalysis.reason || "invalid_provider_amount",
+        },
+      );
+
+      return res.status(409).json({
+        message:
+          "The online payment details could not be verified safely. Please contact support.",
+      });
+    }
+
+    if (finalProviderAnalysis.expectedCents !== remainingCents) {
+      await conn.rollback();
+      transactionActive = false;
+
+      console.error(
+        "[verifyRemainingBalancePayment] checkout amount mismatch",
+        {
+          orderId,
+          checkoutAmountCents: finalProviderAnalysis.expectedCents,
+          remainingCents,
+        },
+      );
+
+      return res.status(409).json({
+        message:
+          "The PayMongo checkout amount does not match the current remaining balance. Please contact support.",
+      });
+    }
+
+    if (finalProviderAnalysis.paidCents !== remainingCents) {
+      await conn.rollback();
+      transactionActive = false;
+
+      console.error("[verifyRemainingBalancePayment] paid amount mismatch", {
+        orderId,
+        paidCents: finalProviderAnalysis.paidCents,
+        remainingCents,
+      });
+
+      return res.status(409).json({
+        message:
+          "The paid amount does not match the current remaining balance. Please contact support.",
+      });
+    }
+
+    /*
+     * Current remaining-payment sessions must explicitly identify
+     * themselves as remaining_balance.
+     *
+     * A legacy session without payment_purpose is accepted only when
+     * the order already has a verified payment, proving that this is
+     * not an initial-payment-only order.
+     */
+    const requiresCurrentRemainingPurpose = verifiedCents > 0;
+
+    const finalProviderContext = validateRemainingPayMongoSessionContext(
+      session,
+      {
+        orderId: order.id,
+        fulfillmentMethod: order.fulfillment_method,
+        requirePurpose: requiresCurrentRemainingPurpose,
+      },
+    );
+
+    if (!finalProviderContext.ok) {
+      await conn.rollback();
+      transactionActive = false;
+
+      console.error(
+        "[verifyRemainingBalancePayment] final provider session context failure",
+        {
+          orderId,
+          reason: finalProviderContext.reason,
+        },
+      );
+
+      return res.status(409).json({
+        message:
+          "The PayMongo session is not a valid remaining-balance payment session. Please start a new online payment.",
+      });
+    }
+
     if (remainingCents <= 0) {
       // Already fully paid through another route (rider cash, admin
       // manual verify) while this PayMongo session was still pending.
@@ -6528,16 +7140,21 @@ exports.verifyRemainingBalancePayment = async (req, res) => {
     }
 
     if (
-      !Number.isSafeInteger(rawPaidAmountCents) ||
-      rawPaidAmountCents !== remainingCents
+      !Number.isSafeInteger(providerAnalysis.paidCents) ||
+      providerAnalysis.paidCents !== remainingCents
     ) {
       await conn.rollback();
       transactionActive = false;
-      console.error("[verifyRemainingBalancePayment] amount mismatch", {
-        orderId,
-        rawPaidAmountCents,
-        remainingCents,
-      });
+
+      console.error(
+        "[verifyRemainingBalancePayment] provider paid amount mismatch",
+        {
+          orderId,
+          paidCents: providerAnalysis.paidCents,
+          expectedRemainingCents: remainingCents,
+        },
+      );
+
       return res.status(409).json({
         message:
           "The paid amount does not match the current remaining balance. Please contact support.",
@@ -6548,11 +7165,21 @@ exports.verifyRemainingBalancePayment = async (req, res) => {
 
     const [insertResult] = await conn.execute(
       `INSERT INTO payment_transactions
-        (order_id, amount, payment_method, proof_url, status, verified_at, notes)
-       VALUES (?, ?, 'paymongo', ?, 'verified', NOW(), ?)`,
+    (
+      order_id,
+      amount,
+      payment_method,
+      proof_url,
+      paymongo_reference,
+      status,
+      verified_at,
+      notes
+    )
+   VALUES (?, ?, 'paymongo', ?, ?, 'verified', NOW(), ?)`,
       [
         order.id,
         remainingAmountDecimal,
+        session.id,
         session.id,
         "Remaining balance verified via PayMongo checkout.",
       ],

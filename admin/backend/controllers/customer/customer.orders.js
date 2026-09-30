@@ -397,9 +397,7 @@ exports.createOrder = async (req, res) => {
     const order_number = `SWS-${dateStr}-${rand}`;
 
     /* Payment status logic */
-    const payment_status = ["cod", "cop"].includes(normalizedPaymentMethod)
-      ? "unpaid"
-      : "partial";
+    const payment_status = "unpaid";
 
     const proof_path = req.file ? req.file.path : null; // Use the Cloudinary URL
     /* Insert order */
@@ -1011,8 +1009,7 @@ exports.getOrders = async (req, res) => {
 
         order.item_count = stats.item_count;
         order.total_qty = stats.total_qty;
-        order.items_preview =
-          itemsByOrderId.get(Number(order.id)) || [];
+        order.items_preview = itemsByOrderId.get(Number(order.id)) || [];
 
         const blueprintId = Number(order.blueprint_id);
         order.blueprint_preview =
@@ -1296,11 +1293,7 @@ exports.getOrderPreview = async (req, res) => {
             ? item.customization_json
             : JSON.parse(item.customization_json);
 
-        if (
-          parsed &&
-          typeof parsed === "object" &&
-          !Array.isArray(parsed)
-        ) {
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
           customization = parsed;
         }
       } catch {
@@ -1356,9 +1349,7 @@ exports.getOrderPreview = async (req, res) => {
     }
 
     const submittedImage = String(
-      customization?.preview_image_url ||
-        customization?.image_url ||
-        "",
+      customization?.preview_image_url || customization?.image_url || "",
     ).trim();
 
     if (item?.id && submittedImage) {
@@ -1366,8 +1357,7 @@ exports.getOrderPreview = async (req, res) => {
         kind: "image",
         order_id: order.id,
         order_item_id: item.id,
-        blueprint_preview_revision:
-          `submitted-order-item-${item.id}`,
+        blueprint_preview_revision: `submitted-order-item-${item.id}`,
         title,
         image_url: submittedImage,
       });
@@ -1797,10 +1787,25 @@ exports.verifyPayment = async (req, res) => {
       if (!verifiedPayment) {
         const [paymentInsertResult] = await conn.query(
           `INSERT INTO payment_transactions
-            (order_id, amount, payment_method, proof_url, status, verified_at, notes)
-           VALUES (?, ?, 'paymongo', '', 'verified', NOW(),
-                   'Automatically verified via PayMongo checkout.')`,
-          [lockedOrder.id, lockedOrder.total],
+    (
+      order_id,
+      amount,
+      payment_method,
+      proof_url,
+      provider_payment_id,
+      paymongo_reference,
+      status,
+      verified_at,
+      notes
+    )
+   VALUES (?, ?, 'paymongo', '', ?, ?, 'verified', NOW(),
+           'Automatically verified via PayMongo checkout.')`,
+          [
+            lockedOrder.id,
+            lockedOrder.total,
+            providerPaymentId,
+            lockedOrder.paymongo_session_id,
+          ],
         );
 
         verifiedPayment = {
@@ -2187,10 +2192,25 @@ exports.autoCancelExpiredOrders = async (io = null) => {
           if (!verifiedPayment) {
             const [paymentInsertResult] = await conn.query(
               `INSERT INTO payment_transactions
-                (order_id, amount, payment_method, proof_url, status, verified_at, notes)
-               VALUES (?, ?, 'paymongo', '', 'verified', NOW(),
-                       'Automatically verified via PayMongo checkout (Recovered by System Audit).')`,
-              [lockedOrder.id, lockedOrder.total],
+    (
+      order_id,
+      amount,
+      payment_method,
+      proof_url,
+      provider_payment_id,
+      paymongo_reference,
+      status,
+      verified_at,
+      notes
+    )
+   VALUES (?, ?, 'paymongo', '', ?, ?, 'verified', NOW(),
+           'Automatically verified via PayMongo checkout (Recovered by System Audit).')`,
+              [
+                lockedOrder.id,
+                lockedOrder.total,
+                providerPaidPaymentId,
+                lockedOrder.paymongo_session_id,
+              ],
             );
             verifiedPayment = { id: paymentInsertResult.insertId };
           }
