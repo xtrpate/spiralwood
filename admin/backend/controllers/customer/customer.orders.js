@@ -1832,8 +1832,8 @@ exports.verifyPayment = async (req, res) => {
     }
 
     const [[order]] = await db.query(
-      `SELECT id, order_number, total, status, payment_status, paymongo_session_id,
-                customer_id,
+      `SELECT id, order_number, subtotal, total, status, payment_status, paymongo_session_id,
+            customer_id,
               COALESCE(
                 (SELECT name FROM users WHERE id = customer_id LIMIT 1),
                 walkin_customer_name,
@@ -1858,8 +1858,8 @@ exports.verifyPayment = async (req, res) => {
         await conn.beginTransaction();
 
         const [[lockedOrder]] = await conn.query(
-          `SELECT id, order_number, total, payment_status, paymongo_session_id,
-                  customer_id,
+          `SELECT id, order_number, subtotal, total, payment_status, paymongo_session_id,
+          customer_id,
                   COALESCE(
                     (SELECT name FROM users WHERE id = customer_id LIMIT 1),
                     walkin_customer_name,
@@ -1901,6 +1901,8 @@ exports.verifyPayment = async (req, res) => {
           order_id: lockedOrder.id,
           order_number: lockedOrder.order_number,
           payment_status: "paid",
+          subtotal: Number(lockedOrder.subtotal || 0),
+          total: Number(lockedOrder.total || 0),
           receipt_id: receipt?.receiptId || null,
           receipt_number: receipt?.receiptNumber || null,
         });
@@ -2070,6 +2072,8 @@ exports.verifyPayment = async (req, res) => {
         order_id: lockedOrder.id,
         order_number: lockedOrder.order_number,
         payment_status: "paid",
+        subtotal: Number(lockedOrder.subtotal || 0),
+        total: Number(lockedOrder.total || 0),
         receipt_id: receipt.receiptId,
         receipt_number: receipt.receiptNumber,
       });
@@ -2345,8 +2349,8 @@ exports.autoCancelExpiredOrders = async (io = null) => {
           // RECOVERED PAYMENT. Lock + re-check so the cron and customer
           // return flow cannot create two verified rows for the same standard order.
           const [[lockedOrder]] = await conn.query(
-            `SELECT id, order_number, total, status, payment_status, paymongo_session_id,
-                    customer_id,
+            `SELECT id, order_number, subtotal, total, payment_status, paymongo_session_id,
+          customer_id,
                     COALESCE(
                       (SELECT name FROM users WHERE id = customer_id LIMIT 1),
                       walkin_customer_name,

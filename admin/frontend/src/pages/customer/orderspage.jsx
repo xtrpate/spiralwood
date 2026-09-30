@@ -19,7 +19,6 @@ const MY_ORDERS_PREVIEW_PRESET = "isometric";
 const MY_ORDERS_PREVIEW_HEIGHT = 64;
 const MY_ORDERS_PREVIEW_PREFETCH_MARGIN = "240px 0px";
 
-
 const STATUS_META = {
   pending: {
     badge: "Pending",
@@ -279,11 +278,7 @@ function TrackingList({ order }) {
 function OrderBlueprintPlaceholder() {
   return (
     <div className="wisdom-order-blueprint-placeholder">
-      <svg
-        viewBox="0 0 48 48"
-        aria-hidden="true"
-        focusable="false"
-      >
+      <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
         <rect x="8" y="5" width="32" height="38" />
         <path d="M14 14h20M14 20h20M14 26h9M27 26h7M14 32h20M18 10v28M31 10v28" />
       </svg>
@@ -309,10 +304,7 @@ function DeferredCustomerBlueprintViewer({
         />
       }
     >
-      <LazyCustomerBlueprintViewer
-        {...props}
-        compactHeight={compactHeight}
-      />
+      <LazyCustomerBlueprintViewer {...props} compactHeight={compactHeight} />
     </Suspense>
   );
 }
@@ -332,9 +324,7 @@ function OrderBlueprintPreview({ order, item }) {
   const hostRef = useRef(null);
   const requestedKeyRef = useRef("");
 
-  const previewSource = String(
-    item?.blueprint_preview_source || "none",
-  ).trim();
+  const previewSource = String(item?.blueprint_preview_source || "none").trim();
 
   const previewIdentity = {
     id:
@@ -356,13 +346,10 @@ function OrderBlueprintPreview({ order, item }) {
   );
 
   const canReadGeneratedCache =
-    previewSource === "submitted_scene" ||
-    previewSource === "linked_blueprint";
+    previewSource === "submitted_scene" || previewSource === "linked_blueprint";
 
   const [cachedPreview, setCachedPreview] = useState(() =>
-    canReadGeneratedCache
-      ? readGeneratedCompactPreview(cacheKey)
-      : "",
+    canReadGeneratedCache ? readGeneratedCompactPreview(cacheKey) : "",
   );
   const [nearVisible, setNearVisible] = useState(false);
   const [previewPayload, setPreviewPayload] = useState(null);
@@ -375,9 +362,7 @@ function OrderBlueprintPreview({ order, item }) {
     setStaticPreview("");
     setPreviewFailed(false);
     setCachedPreview(
-      canReadGeneratedCache
-        ? readGeneratedCompactPreview(cacheKey)
-        : "",
+      canReadGeneratedCache ? readGeneratedCompactPreview(cacheKey) : "",
     );
   }, [cacheKey, canReadGeneratedCache]);
 
@@ -470,13 +455,7 @@ function OrderBlueprintPreview({ order, item }) {
       active = false;
       controller.abort();
     };
-  }, [
-    cacheKey,
-    cachedPreview,
-    nearVisible,
-    order?.id,
-    previewSource,
-  ]);
+  }, [cacheKey, cachedPreview, nearVisible, order?.id, previewSource]);
 
   return (
     <div ref={hostRef} className="wisdom-order-blueprint-live">
@@ -533,12 +512,7 @@ function OrderBlueprintPreview({ order, item }) {
   );
 }
 
-function OrderModal({
-  orderId,
-  onClose,
-  onConfirmOrder,
-  onCancelOrder,
-}) {
+function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
   const navigate = useNavigate();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1287,9 +1261,7 @@ export default function OrdersPage() {
       api
         .get("/customer/orders", { params: { summary: 1 } })
         .then((response) => {
-          const nextOrders = Array.isArray(response.data)
-            ? response.data
-            : [];
+          const nextOrders = Array.isArray(response.data) ? response.data : [];
 
           setOrders(nextOrders);
         })
@@ -1441,6 +1413,12 @@ export default function OrdersPage() {
                     orderNumber,
                   payment_method: "paymongo",
                   payment_status: "paid",
+                  subtotal: Number.isFinite(Number(data?.subtotal))
+                    ? Number(data.subtotal)
+                    : Number(confirmation?.subtotal || 0),
+                  total: Number.isFinite(Number(data?.total))
+                    ? Number(data.total)
+                    : Number(confirmation?.total || 0),
                   receipt_id: data.receipt_id || null,
                   receipt_number: data.receipt_number || null,
                 }),
