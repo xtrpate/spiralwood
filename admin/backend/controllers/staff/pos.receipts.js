@@ -20,13 +20,233 @@ const RECEIPT_DATA_ERROR_MESSAGE =
 const hasStoredValue = (value) =>
   value !== undefined && value !== null && String(value).trim() !== "";
 
+const parseStoredPositiveInt = (value) => {
+  if (value === undefined || value === null) return null;
+  const str = String(value).trim();
+  if (!/^\d+$/.test(str)) return null;
+  const parsed = Number(str);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const validatePosReceiptItem = (item) => {
+  if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+  if (typeof item.product_name !== "string") return false;
+
+  const productName = item.product_name.trim();
+  const quantity = parseStoredPositiveInt(item.quantity);
+  const unitPriceCents = parseDecimalToCentsStrict(item.unit_price);
+
+  if (
+    productName.length === 0 ||
+    productName.length > 500 ||
+    quantity === null ||
+    unitPriceCents === null
+  ) {
+    return false;
+  }
+
+  if (
+    hasStoredValue(item.product_id) &&
+    parseStoredPositiveInt(item.product_id) === null
+  ) {
+    return false;
+  }
+
+  for (const field of ["variation_name", "wood_type"]) {
+    if (
+      item[field] !== undefined &&
+      item[field] !== null &&
+      typeof item[field] !== "string"
+    ) {
+      return false;
+    }
+  }
+
+  for (const field of ["subtotal", "production_cost"]) {
+    if (
+      hasStoredValue(item[field]) &&
+      parseDecimalToCentsStrict(item[field]) === null
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
 const parsePosReceiptItems = (receipt) => {
   try {
     const parsed = JSON.parse(receipt.items_snapshot);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
+    return Array.isArray(parsed) &&
+      parsed.length > 0 &&
+      parsed.every(validatePosReceiptItem)
+      ? parsed
+      : null;
   } catch {
     return null;
   }
+};
+
+const BLUEPRINT_PAYMENT_LABELS = new Set([
+  "down_payment",
+  "partial_payment",
+  "balance_payment",
+  "full_payment",
+]);
+const POS_PAYMENT_LABELS = new Set([
+  "partial_payment",
+  "balance_payment",
+  "full_payment",
+]);
+
+const isPaymentLabelConsistent = ({
+  paymentLabel,
+  previousPaidCents,
+  amountPaidCents,
+  totalPaidAfterCents,
+  remainingBalanceCents,
+  orderTotalCents,
+}) => {
+  if (amountPaidCents <= 0 || orderTotalCents <= 0) return false;
+
+  switch (paymentLabel) {
+    case "full_payment":
+      return (
+        previousPaidCents === 0 &&
+        totalPaidAfterCents === orderTotalCents &&
+        remainingBalanceCents === 0
+      );
+    case "balance_payment":
+      return (
+        previousPaidCents > 0 &&
+        totalPaidAfterCents === orderTotalCents &&
+        remainingBalanceCents === 0
+      );
+    case "down_payment":
+    case "partial_payment":
+      return (
+        totalPaidAfterCents < orderTotalCents &&
+        remainingBalanceCents > 0
+      );
+    default:
+      return false;
+  }
+};
+
+const parseBlueprintReceiptSnapshot = (receipt) => {
+  try {
+    const parsed = JSON.parse(receipt.items_snapshot || "");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+
+    if (parsed.order_type !== "blueprint") return null;
+    if (typeof parsed.order_number !== "string") return null;
+    if (
+      parsed.blueprint_title !== undefined &&
+      parsed.blueprint_title !== null &&
+      typeof parsed.blueprint_title !== "string"
+    ) {
+      return null;
+    }
+    if (
+      parsed.payment_label !== undefined &&
+      parsed.payment_label !== null &&
+      typeof parsed.payment_label !== "string"
+    ) {
+      return null;
+    }
+
+    const orderNumber = parsed.order_number.trim();
+    const blueprintTitle = String(parsed.blueprint_title || "").trim();
+    const paymentLabel = String(parsed.payment_label || "")
+      .trim()
+      .toLowerCase();
+
+    if (!orderNumber || orderNumber.length > 150) return null;
+    if (blueprintTitle.length > 500) return null;
+    if (paymentLabel && !BLUEPRINT_PAYMENT_LABELS.has(paymentLabel)) {
+      return null;
+    }
+
+    return {
+      order_type: "blueprint",
+      order_number: orderNumber,
+      blueprint_title: blueprintTitle || null,
+      payment_label: paymentLabel || null,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const buildBlueprintReceiptPaymentSummary = (receipt, snapshot) => {
+  const paymentLabel = String(receipt.payment_label || "")
+    .trim()
+    .toLowerCase();
+
+  if (!BLUEPRINT_PAYMENT_LABELS.has(paymentLabel)) return null;
+  if (snapshot?.payment_label && snapshot.payment_label !== paymentLabel) {
+    return null;
+  }
+
+  const totalCents = parseDecimalToCentsStrict(receipt.total_amount);
+  const previousPaidCents = parseDecimalToCentsStrict(
+    receipt.previous_paid_amount,
+  );
+  const amountPaidCents = parseDecimalToCentsStrict(receipt.amount_paid);
+  const totalPaidAfterCents = parseDecimalToCentsStrict(
+    receipt.total_paid_after,
+  );
+  const remainingBalanceCents = parseDecimalToCentsStrict(
+    receipt.remaining_balance_after,
+  );
+
+  if (
+    totalCents === null ||
+    previousPaidCents === null ||
+    amountPaidCents === null ||
+    totalPaidAfterCents === null ||
+    remainingBalanceCents === null ||
+    totalCents <= 0 ||
+    amountPaidCents <= 0
+  ) {
+    return null;
+  }
+
+  if (previousPaidCents + amountPaidCents !== totalPaidAfterCents) {
+    return null;
+  }
+
+  if (totalPaidAfterCents + remainingBalanceCents !== totalCents) {
+    return null;
+  }
+
+  if (
+    !isPaymentLabelConsistent({
+      paymentLabel,
+      previousPaidCents,
+      amountPaidCents,
+      totalPaidAfterCents,
+      remainingBalanceCents,
+      orderTotalCents: totalCents,
+    })
+  ) {
+    return null;
+  }
+
+  const isFullyPaid = remainingBalanceCents === 0;
+
+  return {
+    payment_label: paymentLabel,
+    order_total: centsToAmount(totalCents),
+    previous_paid: centsToAmount(previousPaidCents),
+    payment_received: centsToAmount(amountPaidCents),
+    total_paid_after: centsToAmount(totalPaidAfterCents),
+    remaining_balance: centsToAmount(remainingBalanceCents),
+    status: isFullyPaid ? "Fully Paid" : "Partially Paid",
+    is_fully_paid: isFullyPaid,
+  };
 };
 
 const buildPosReceiptPaymentSummary = (receipt) => {
@@ -61,6 +281,11 @@ const buildPosReceiptPaymentSummary = (receipt) => {
 
   if (!progressFields.every(hasStoredValue)) return null;
 
+  const paymentLabel = String(receipt.payment_label || "")
+    .trim()
+    .toLowerCase();
+  if (!POS_PAYMENT_LABELS.has(paymentLabel)) return null;
+
   const previousPaidCents = parseDecimalToCentsStrict(
     receipt.previous_paid_amount,
   );
@@ -89,6 +314,19 @@ const buildPosReceiptPaymentSummary = (receipt) => {
     return null;
   }
 
+  if (
+    !isPaymentLabelConsistent({
+      paymentLabel,
+      previousPaidCents,
+      amountPaidCents,
+      totalPaidAfterCents,
+      remainingBalanceCents,
+      orderTotalCents,
+    })
+  ) {
+    return null;
+  }
+
   const isFullyPaid = remainingBalanceCents === 0;
 
   return {
@@ -114,14 +352,30 @@ const preparePosReceiptForResponse = (rawReceipt) => {
   )
     .trim()
     .toLowerCase();
-  const fallbackPaymentMethod = String(rawReceipt.payment_method || "")
-    .trim()
-    .toLowerCase();
+  const hasCashSnapshot =
+    hasStoredValue(rawReceipt.cash_received) ||
+    hasStoredValue(rawReceipt.change_amount);
+  const hasProviderSnapshot = hasStoredValue(rawReceipt.provider_reference);
+
+  let paymentMethod = snapshotPaymentMethod;
+  if (!paymentMethod && hasCashSnapshot) {
+    paymentMethod = "cash";
+  } else if (!paymentMethod && hasProviderSnapshot) {
+    paymentMethod = "paymongo";
+  }
+  const customerDisplay =
+    String(rawReceipt.issued_to || "").trim() || "Customer";
+  const processorDisplay =
+    paymentMethod === "paymongo"
+      ? "Online Payment"
+      : String(rawReceipt.staff_name || "").trim() || "Staff";
 
   return {
     ...rawReceipt,
     items,
-    payment_method: snapshotPaymentMethod || fallbackPaymentMethod,
+    payment_method: paymentMethod,
+    customer_display: customerDisplay,
+    processor_display: processorDisplay,
     payment_summary: paymentSummary,
   };
 };
@@ -346,14 +600,16 @@ exports.getBlueprintReceiptById = async (req, res) => {
       return res.status(404).json({ message: "Receipt not found" });
     }
 
-    let blueprintTitle = null;
-    let snapshotOrderNumber = null;
-    try {
-      const snapshot = JSON.parse(receipt.items_snapshot || "{}");
-      blueprintTitle = snapshot.blueprint_title || null;
-      snapshotOrderNumber = snapshot.order_number || null;
-    } catch {
-      blueprintTitle = null;
+    const snapshot = parseBlueprintReceiptSnapshot(receipt);
+    const paymentSummary = snapshot
+      ? buildBlueprintReceiptPaymentSummary(receipt, snapshot)
+      : null;
+
+    if (!snapshot || !paymentSummary) {
+      console.error(
+        "GET /api/pos/blueprint-receipts/:id integrity error: invalid receipt snapshot.",
+      );
+      return res.status(500).json({ message: RECEIPT_DATA_ERROR_MESSAGE });
     }
 
     // Processor display: PayMongo payments are always shown as processed
@@ -394,27 +650,25 @@ exports.getBlueprintReceiptById = async (req, res) => {
     biz.site_logo = biz.site_logo || null;
     biz.thank_you_message = biz.thank_you_message || DEFAULT_THANK_YOU_MESSAGE;
 
-    const remainingBalance = Number(receipt.remaining_balance_after || 0);
-
     return res.json({
       id: receipt.id,
       order_id: receipt.order_id,
-      order_number: receipt.order_number || snapshotOrderNumber,
-      blueprint_title: blueprintTitle,
+      order_number: snapshot.order_number,
+      blueprint_title: snapshot.blueprint_title,
       receipt_number: receipt.receipt_number,
       payment_method_snapshot: receipt.payment_method_snapshot,
-      payment_label: receipt.payment_label,
-      previous_paid_amount: receipt.previous_paid_amount,
-      amount_paid: receipt.amount_paid,
-      total_paid_after: receipt.total_paid_after,
-      remaining_balance_after: receipt.remaining_balance_after,
+      payment_label: paymentSummary.payment_label,
+      previous_paid_amount: paymentSummary.previous_paid,
+      amount_paid: paymentSummary.payment_received,
+      total_paid_after: paymentSummary.total_paid_after,
+      remaining_balance_after: paymentSummary.remaining_balance,
       provider_reference: receipt.provider_reference,
-      issued_to: receipt.issued_to,
-      total_amount: receipt.total_amount,
+      issued_to: String(receipt.issued_to || "").trim() || "Customer",
+      total_amount: paymentSummary.order_total,
       processor_display: processorDisplay,
       printed_at: receipt.printed_at,
       created_at: receipt.created_at,
-      payment_status: remainingBalance <= 0 ? "Fully Paid" : "Partially Paid",
+      payment_status: paymentSummary.status,
       business: biz,
     });
   } catch (err) {
