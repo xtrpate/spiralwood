@@ -14,6 +14,7 @@ import "leaflet/dist/leaflet.css";
 import { Toaster } from "react-hot-toast";
 import useAuthStore from "./store/authStore";
 import ErrorBoundary from "./components/ErrorBoundary";
+import SEO from "./components/SEO";
 import { SessionLoginFeedback } from "./components/MotionFeedbackOverlay";
 
 import { CartProvider } from "./pages/customer/cartcontext";
@@ -369,6 +370,8 @@ export default function App() {
       <BrowserRouter
         future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
       >
+        <SEO />
+
         <CartProvider>
           <CustomCartProvider>
             <Toaster position="top-center" toastOptions={{ duration: 4000 }} />
