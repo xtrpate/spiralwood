@@ -345,20 +345,17 @@ export default function App() {
     api
       .get("/website/settings")
       .then((res) => {
-        // 1. Change the Browser Tab Title
-        if (res.data?.display?.site_name) {
-          document.title = res.data.display.site_name;
-        }
-
-        // 2. Change the Browser Tab Logo
+        // Change the Browser Tab Logo
         if (res.data?.display?.site_logo) {
           const faviconUrl = buildAssetUrl(res.data.display.site_logo);
           let link = document.querySelector("link[rel~='icon']");
+
           if (!link) {
             link = document.createElement("link");
             link.rel = "icon";
             document.head.appendChild(link);
           }
+
           link.href = faviconUrl;
         }
       })

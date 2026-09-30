@@ -157,8 +157,6 @@ export default function SEO() {
           addressCountry: "PH",
         },
       });
-    } else {
-      removeMeta("property", "og:type");
     }
   }, [location.pathname]);
 
