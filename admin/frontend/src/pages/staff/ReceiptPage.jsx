@@ -75,10 +75,19 @@ export default function ReceiptPage() {
     PAYMENT_METHOD_LABELS[paymentMethod] ||
     (paymentMethod ? paymentMethod.replace("_", " ") : "");
 
+  const paymentSummary = receipt.payment_summary || null;
   const subtotal = Number(receipt.subtotal ?? 0);
   const discount = Number(receipt.discount ?? 0);
   const deliveryFee = Number(receipt.delivery_fee ?? 0);
-  const total = Number(receipt.total ?? 0);
+  const total = Number(
+    paymentSummary?.order_total ?? receipt.total_amount ?? receipt.total ?? 0,
+  );
+  const paymentReceived = Number(paymentSummary?.payment_received ?? total);
+  const previousPaid = Number(paymentSummary?.previous_paid ?? 0);
+  const totalPaidAfter = Number(paymentSummary?.total_paid_after ?? total);
+  const remainingBalance = Number(paymentSummary?.remaining_balance ?? 0);
+  const paymentStatusLabel =
+    paymentSummary?.status || "Payment status unavailable";
   const vatBreakdown = getVatInclusiveBreakdown(total);
 
   // Never print a full customer phone number. Show the first 4 and last 2
@@ -242,7 +251,13 @@ export default function ReceiptPage() {
             </div>
             <div className="meta-row">
               <span>Payment status</span>
-              <span style={{ color: "#059669" }}>PAID</span>
+              <span
+                style={{
+                  color: paymentSummary?.is_fully_paid ? "#059669" : "#b45309",
+                }}
+              >
+                {paymentStatusLabel}
+              </span>
             </div>
             {maskedPhone && (
               <div className="meta-row">
@@ -367,9 +382,41 @@ export default function ReceiptPage() {
             </div>
 
             <div className="total-row grand staff-total-v190">
-              <span>TOTAL</span>
+              <span>ORDER TOTAL</span>
               <span>
                 ₱{vatBreakdown.total.toLocaleString("en-PH", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </span>
+            </div>
+
+            <div className="total-row staff-payment-received-v190">
+              <span>Payment Received</span>
+              <span>
+                ₱{paymentReceived.toLocaleString("en-PH", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </span>
+            </div>
+
+            {(previousPaid > 0 || totalPaidAfter !== paymentReceived) && (
+              <div className="total-row">
+                <span>Total Paid</span>
+                <span>
+                  ₱{totalPaidAfter.toLocaleString("en-PH", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </span>
+              </div>
+            )}
+
+            <div className="total-row staff-remaining-balance-v190">
+              <span>Remaining Balance</span>
+              <span>
+                ₱{remainingBalance.toLocaleString("en-PH", {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
                 })}

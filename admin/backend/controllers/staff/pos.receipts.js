@@ -1,5 +1,10 @@
 // controllers/staff/pos.receipts_reports.js (or similar)
 const db = require("../../config/db");
+const { parseStrictPositiveInt } = require("../../utils/validators");
+const {
+  parseDecimalToCentsStrict,
+  centsToAmount,
+} = require("../../utils/paymentAmounts");
 
 // Business/site settings now live in website_content (content_type='setting'),
 // replacing the removed website_settings table. These are the safe fallbacks
@@ -9,9 +14,126 @@ const DEFAULT_THANK_YOU_MESSAGE = "Thank you for your purchase!";
 const isCashierRequest = (req) =>
   req.user?.role === "staff" && req.user?.staff_type === "cashier";
 
+const RECEIPT_DATA_ERROR_MESSAGE =
+  "Receipt data is inconsistent and cannot be displayed safely.";
+
+const hasStoredValue = (value) =>
+  value !== undefined && value !== null && String(value).trim() !== "";
+
+const parsePosReceiptItems = (receipt) => {
+  try {
+    const parsed = JSON.parse(receipt.items_snapshot);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const buildPosReceiptPaymentSummary = (receipt) => {
+  const orderTotalCents = parseDecimalToCentsStrict(receipt.total_amount);
+  if (orderTotalCents === null) return null;
+
+  const progressFields = [
+    receipt.previous_paid_amount,
+    receipt.amount_paid,
+    receipt.total_paid_after,
+    receipt.remaining_balance_after,
+  ];
+  const hasPaymentProgressSnapshot =
+    hasStoredValue(receipt.payment_label) ||
+    progressFields.some(hasStoredValue);
+
+  // Legacy POS receipts predate payment-progress snapshot columns. Those
+  // receipts represent a completed POS sale, so the immutable receipt total
+  // is also the amount paid and the remaining balance is zero.
+  if (!hasPaymentProgressSnapshot) {
+    return {
+      order_total: centsToAmount(orderTotalCents),
+      previous_paid: 0,
+      payment_received: centsToAmount(orderTotalCents),
+      total_paid_after: centsToAmount(orderTotalCents),
+      remaining_balance: 0,
+      status: "Fully Paid",
+      is_fully_paid: true,
+      has_payment_progress: false,
+    };
+  }
+
+  if (!progressFields.every(hasStoredValue)) return null;
+
+  const previousPaidCents = parseDecimalToCentsStrict(
+    receipt.previous_paid_amount,
+  );
+  const amountPaidCents = parseDecimalToCentsStrict(receipt.amount_paid);
+  const totalPaidAfterCents = parseDecimalToCentsStrict(
+    receipt.total_paid_after,
+  );
+  const remainingBalanceCents = parseDecimalToCentsStrict(
+    receipt.remaining_balance_after,
+  );
+
+  if (
+    previousPaidCents === null ||
+    amountPaidCents === null ||
+    totalPaidAfterCents === null ||
+    remainingBalanceCents === null
+  ) {
+    return null;
+  }
+
+  if (previousPaidCents + amountPaidCents !== totalPaidAfterCents) {
+    return null;
+  }
+
+  if (totalPaidAfterCents + remainingBalanceCents !== orderTotalCents) {
+    return null;
+  }
+
+  const isFullyPaid = remainingBalanceCents === 0;
+
+  return {
+    order_total: centsToAmount(orderTotalCents),
+    previous_paid: centsToAmount(previousPaidCents),
+    payment_received: centsToAmount(amountPaidCents),
+    total_paid_after: centsToAmount(totalPaidAfterCents),
+    remaining_balance: centsToAmount(remainingBalanceCents),
+    status: isFullyPaid ? "Fully Paid" : "Partially Paid",
+    is_fully_paid: isFullyPaid,
+    has_payment_progress: true,
+  };
+};
+
+const preparePosReceiptForResponse = (rawReceipt) => {
+  const items = parsePosReceiptItems(rawReceipt);
+  const paymentSummary = buildPosReceiptPaymentSummary(rawReceipt);
+
+  if (!items || !paymentSummary) return null;
+
+  const snapshotPaymentMethod = String(
+    rawReceipt.payment_method_snapshot || "",
+  )
+    .trim()
+    .toLowerCase();
+  const fallbackPaymentMethod = String(rawReceipt.payment_method || "")
+    .trim()
+    .toLowerCase();
+
+  return {
+    ...rawReceipt,
+    items,
+    payment_method: snapshotPaymentMethod || fallbackPaymentMethod,
+    payment_summary: paymentSummary,
+  };
+};
+
 /* ── Get Receipt by ID ── */
 exports.getReceiptById = async (req, res) => {
   const cashierOwnOnly = isCashierRequest(req);
+  const receiptId = parseStrictPositiveInt(req.params.id);
+
+  if (!receiptId) {
+    return res.status(400).json({ message: "Invalid receipt id." });
+  }
 
   try {
     // ── FIXED: Switched to .query and parsed ID ──
@@ -40,22 +162,20 @@ exports.getReceiptById = async (req, res) => {
         ${cashierOwnOnly ? "AND r.issued_by = ?" : ""}
       LIMIT 1
       `,
-      [
-        parseInt(req.params.id),
-        ...(cashierOwnOnly ? [req.user.id] : []),
-      ],
+      [receiptId, ...(cashierOwnOnly ? [req.user.id] : [])],
     );
 
     if (rows.length === 0) {
       return res.status(404).json({ message: "Receipt not found" });
     }
 
-    const receipt = rows[0];
+    const receipt = preparePosReceiptForResponse(rows[0]);
 
-    try {
-      receipt.items = JSON.parse(receipt.items_snapshot || "[]");
-    } catch {
-      receipt.items = [];
+    if (!receipt) {
+      console.error(
+        "GET /api/pos/receipts/:id integrity error: invalid receipt snapshot.",
+      );
+      return res.status(500).json({ message: RECEIPT_DATA_ERROR_MESSAGE });
     }
 
     // IMPORTANT FIX:
@@ -103,20 +223,17 @@ exports.getReceiptById = async (req, res) => {
     return res.json(receipt);
   } catch (err) {
     console.error("GET /api/pos/receipts/:id error:", err);
-    return res.status(500).json({
-      message: "Failed to load receipt",
-      error: err.message,
-    });
+    return res.status(500).json({ message: "Failed to load receipt." });
   }
 };
 
 /* ── Get Receipt by Order ID ── */
 exports.getReceiptByOrderId = async (req, res) => {
-  const { order_id } = req.query;
   const cashierOwnOnly = isCashierRequest(req);
+  const orderId = parseStrictPositiveInt(req.query.order_id);
 
-  if (!order_id) {
-    return res.status(400).json({ message: "order_id required" });
+  if (!orderId) {
+    return res.status(400).json({ message: "A valid order_id is required." });
   }
 
   try {
@@ -147,31 +264,26 @@ exports.getReceiptByOrderId = async (req, res) => {
       ORDER BY r.id DESC
       LIMIT 1
       `,
-      [
-        parseInt(order_id),
-        ...(cashierOwnOnly ? [req.user.id] : []),
-      ],
+      [orderId, ...(cashierOwnOnly ? [req.user.id] : [])],
     );
 
     if (rows.length === 0) {
       return res.status(404).json({ message: "Receipt not found" });
     }
 
-    const receipt = rows[0];
+    const receipt = preparePosReceiptForResponse(rows[0]);
 
-    try {
-      receipt.items = JSON.parse(receipt.items_snapshot || "[]");
-    } catch {
-      receipt.items = [];
+    if (!receipt) {
+      console.error(
+        "GET /api/pos/receipts?order_id= integrity error: invalid receipt snapshot.",
+      );
+      return res.status(500).json({ message: RECEIPT_DATA_ERROR_MESSAGE });
     }
 
     return res.json(receipt);
   } catch (err) {
     console.error("GET /api/pos/receipts?order_id= error:", err);
-    return res.status(500).json({
-      message: "Failed to load receipt",
-      error: err.message,
-    });
+    return res.status(500).json({ message: "Failed to load receipt." });
   }
 };
 
@@ -184,8 +296,8 @@ exports.getReceiptByOrderId = async (req, res) => {
    receipts. ── */
 exports.getBlueprintReceiptById = async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
-    if (!Number.isInteger(id) || id <= 0) {
+    const id = parseStrictPositiveInt(req.params.id);
+    if (!id) {
       return res.status(400).json({ message: "Invalid receipt id." });
     }
 
@@ -307,10 +419,7 @@ exports.getBlueprintReceiptById = async (req, res) => {
     });
   } catch (err) {
     console.error("GET /api/pos/blueprint-receipts/:id error:", err);
-    return res.status(500).json({
-      message: "Failed to load receipt",
-      error: err.message,
-    });
+    return res.status(500).json({ message: "Failed to load receipt." });
   }
 };
 
