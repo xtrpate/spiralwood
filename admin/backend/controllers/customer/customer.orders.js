@@ -4,7 +4,17 @@ const {
   createCheckoutSession,
   retrieveCheckoutSession,
 } = require("../../services/paymongoService");
-const { isValidPositiveInteger } = require("../../utils/validators");
+const {
+  isValidPositiveInteger,
+  parseStrictPositiveInt,
+} = require("../../utils/validators");
+const {
+  parseDecimalToCentsStrict,
+} = require("../../utils/paymentAmounts");
+const {
+  isRetryableTransactionError,
+  buildConcurrentUpdateResponse,
+} = require("../../utils/transactionConflict");
 const {
   getGlobalEmailFooter,
   sendBrevoEmail,
@@ -14,6 +24,7 @@ const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const {
   emitOrderStatusUpdate,
   emitOrderCreated,
+  emitDeliveryUpdate,
 } = require("../../utils/orderStatusSocket");
 const {
   createStandardOnlineReceipt,
@@ -1566,62 +1577,202 @@ exports.getOrderById = async (req, res) => {
 
 /* ── Customer Confirms Delivery ── */
 exports.confirmOrder = async (req, res) => {
+  const orderId = parseStrictPositiveInt(req.params.id);
+
+  if (!orderId) {
+    return res.status(400).json({ message: "Invalid order id." });
+  }
+
+  let conn = null;
+  let committed = false;
+
   try {
-    const [[order]] = await db.query(
-      `SELECT id, order_number, customer_id, status, payment_status, payment_method
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+
+    // Canonical mutation lock order: orders -> deliveries -> payment rows.
+    // Ownership is part of the locked order query so another customer's
+    // order is never disclosed through this endpoint.
+    const [[order]] = await conn.query(
+      `SELECT id, order_number, customer_id, status, payment_status, total
        FROM orders
        WHERE id = ? AND customer_id = ?
-       LIMIT 1`,
-      [parseInt(req.params.id), req.user.id],
+       LIMIT 1
+       FOR UPDATE`,
+      [orderId, req.user.id],
     );
 
     if (!order) {
+      await conn.rollback();
       return res.status(404).json({ message: "Order not found." });
     }
 
-    if (order.status !== "delivered") {
+    const orderStatus = String(order.status || "")
+      .trim()
+      .toLowerCase();
+    const paymentStatus = String(order.payment_status || "")
+      .trim()
+      .toLowerCase();
+
+    // Only the latest delivery attempt represents the current fulfillment
+    // state. Historical failed/rescheduled attempts must remain immutable.
+    const [[latestDelivery]] = await conn.query(
+      `SELECT id, order_id, status, driver_id, scheduled_date
+       FROM deliveries
+       WHERE order_id = ?
+       ORDER BY id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [order.id],
+    );
+
+    const latestDeliveryStatus = String(latestDelivery?.status || "")
+      .trim()
+      .toLowerCase();
+
+    // Safe replay for double-clicks/retries after the first request already
+    // completed both records. No second audit event or socket mutation is
+    // emitted because this branch performs no business-state change.
+    if (orderStatus === "completed") {
+      if (!latestDelivery || latestDeliveryStatus !== "completed") {
+        await conn.rollback();
+        return res.status(409).json({
+          reason_code: "ORDER_DELIVERY_STATE_MISMATCH",
+          message:
+            "This order is completed but its latest delivery record is inconsistent. Please contact support.",
+        });
+      }
+
+      await conn.rollback();
+      return res.json({
+        message: "Order was already confirmed.",
+        already_confirmed: true,
+      });
+    }
+
+    if (orderStatus !== "delivered") {
+      await conn.rollback();
       return res.status(400).json({
         message: "Only delivered orders can be confirmed by the customer.",
       });
     }
 
-    if (String(order.payment_status || "").toLowerCase() !== "paid") {
+    if (paymentStatus !== "paid") {
+      await conn.rollback();
       return res.status(400).json({
         message:
           "This order cannot be completed yet because payment is not fully settled.",
       });
     }
 
-    const parsedOrderId = parseInt(req.params.id);
-
-    // ── FIXED: Switched to .query and parsed ID ──
-    const [result] = await db.query(
-      `UPDATE orders
-       SET status = 'completed'
-       WHERE id = ? AND customer_id = ? AND status = 'delivered' AND payment_status = 'paid'`,
-      [parsedOrderId, req.user.id],
-    );
-
-    if (result.affectedRows === 0) {
-      return res.status(400).json({
-        message: "Order could not be confirmed.",
+    if (!latestDelivery || latestDeliveryStatus !== "delivered") {
+      await conn.rollback();
+      return res.status(409).json({
+        reason_code: "ORDER_DELIVERY_STATE_MISMATCH",
+        message:
+          "The latest delivery record is not in Delivered status. Refresh the order and contact support if the issue continues.",
       });
     }
 
-    await db.query(
-      `UPDATE deliveries 
-       SET status = 'completed', updated_at = NOW() 
-       WHERE order_id = ? AND status = 'delivered'`,
-      [parsedOrderId],
+    // orders.payment_status is a summary field. Before allowing a terminal
+    // lifecycle transition, verify the authoritative payment ledger under
+    // the same transaction and lock it after order/delivery as established
+    // by the B2A lock-order contract.
+    const [paymentRows] = await conn.query(
+      `SELECT id, amount, status
+       FROM payment_transactions
+       WHERE order_id = ?
+       ORDER BY id
+       FOR UPDATE`,
+      [order.id],
     );
 
-    const io = req.app.get("io");
-    emitOrderStatusUpdate(io, {
-      orderId: order.id,
-      orderNumber: order.order_number,
-      status: "completed",
-      customerId: order.customer_id,
-    });
+    const orderTotalCents = parseDecimalToCentsStrict(order.total);
+    if (orderTotalCents === null || orderTotalCents <= 0) {
+      await conn.rollback();
+      return res.status(409).json({
+        reason_code: "PAYMENT_LEDGER_INVALID",
+        message:
+          "This order's payment records are inconsistent. Please contact support.",
+      });
+    }
+
+    let verifiedCents = 0;
+    for (const row of paymentRows) {
+      const rowCents = parseDecimalToCentsStrict(row.amount);
+      if (rowCents === null) {
+        await conn.rollback();
+        return res.status(409).json({
+          reason_code: "PAYMENT_LEDGER_INVALID",
+          message:
+            "This order's payment records are inconsistent. Please contact support.",
+        });
+      }
+
+      if (String(row.status || "").trim().toLowerCase() === "verified") {
+        const nextVerifiedCents = verifiedCents + rowCents;
+        if (!Number.isSafeInteger(nextVerifiedCents)) {
+          await conn.rollback();
+          return res.status(409).json({
+            reason_code: "PAYMENT_LEDGER_INVALID",
+            message:
+              "This order's payment records are inconsistent. Please contact support.",
+          });
+        }
+        verifiedCents = nextVerifiedCents;
+      }
+    }
+
+    if (verifiedCents < orderTotalCents) {
+      await conn.rollback();
+      return res.status(409).json({
+        reason_code: "PAYMENT_LEDGER_MISMATCH",
+        message:
+          "Verified payments do not fully cover this order yet. Refresh the payment status before confirming receipt.",
+      });
+    }
+
+    const [orderUpdate] = await conn.query(
+      `UPDATE orders
+       SET status = 'completed'
+       WHERE id = ?
+         AND customer_id = ?
+         AND status = 'delivered'
+         AND payment_status = 'paid'`,
+      [order.id, req.user.id],
+    );
+
+    if (Number(orderUpdate.affectedRows || 0) !== 1) {
+      await conn.rollback();
+      return res.status(409).json({
+        reason_code: "ORDER_CONFIRMATION_CHANGED",
+        message:
+          "This order changed before confirmation could finish. Refresh and try again.",
+      });
+    }
+
+    // Update exactly the locked latest attempt. Never rewrite historical
+    // delivered/failed attempts for this order.
+    const [deliveryUpdate] = await conn.query(
+      `UPDATE deliveries
+       SET status = 'completed', updated_at = NOW()
+       WHERE id = ?
+         AND order_id = ?
+         AND status = 'delivered'`,
+      [latestDelivery.id, order.id],
+    );
+
+    if (Number(deliveryUpdate.affectedRows || 0) !== 1) {
+      await conn.rollback();
+      return res.status(409).json({
+        reason_code: "ORDER_CONFIRMATION_CHANGED",
+        message:
+          "This delivery changed before confirmation could finish. Refresh and try again.",
+      });
+    }
+
+    await conn.commit();
+    committed = true;
 
     req.auditRecord = {
       id: order.id,
@@ -1629,10 +1780,55 @@ exports.confirmOrder = async (req, res) => {
       new: { status: "completed" },
     };
 
-    res.json({ message: "Order confirmed successfully." });
+    // Realtime notifications only happen after the DB transaction commits,
+    // so no UI can observe a state that later rolls back.
+    const io = req.app.get("io");
+    emitDeliveryUpdate(io, {
+      deliveryId: latestDelivery.id,
+      orderId: order.id,
+      orderNumber: order.order_number,
+      status: "completed",
+      driverId: latestDelivery.driver_id,
+      scheduledDate: latestDelivery.scheduled_date,
+      customerId: order.customer_id,
+      changeType: "customer_confirmed",
+      orderStatusChanged: true,
+      notifyCustomer: false,
+      notifyDriver: true,
+    });
+    emitOrderStatusUpdate(io, {
+      orderId: order.id,
+      orderNumber: order.order_number,
+      status: "completed",
+      customerId: order.customer_id,
+    });
+
+    return res.json({
+      message: "Order confirmed successfully.",
+      already_confirmed: false,
+    });
   } catch (err) {
+    if (conn && !committed) {
+      try {
+        await conn.rollback();
+      } catch (rollbackErr) {
+        console.error(
+          "[customer.orders/:id/confirm rollback]",
+          rollbackErr?.message || rollbackErr,
+        );
+      }
+    }
+
+    if (isRetryableTransactionError(err)) {
+      return res
+        .status(409)
+        .json(buildConcurrentUpdateResponse());
+    }
+
     console.error("[customer.orders/:id/confirm]", err);
-    res.status(500).json({ message: "Server error.", error: err.message });
+    return res.status(500).json({ message: "Server error." });
+  } finally {
+    if (conn) conn.release();
   }
 };
 
