@@ -2012,8 +2012,11 @@ exports.verifyPayment = async (req, res) => {
 
       await conn.query(
         `UPDATE orders
-         SET payment_status = 'paid', status = 'confirmed'
-         WHERE id = ?`,
+   SET payment_status = 'paid',
+       status = 'confirmed',
+       payment_url = NULL,
+       paymongo_session_id = NULL
+   WHERE id = ?`,
         [lockedOrder.id],
       );
 
