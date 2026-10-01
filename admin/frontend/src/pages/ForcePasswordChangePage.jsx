@@ -7,7 +7,7 @@ const nextRouteFor = (user) => {
   if (user?.role === "admin") return "/admin/dashboard";
   if (user?.role === "staff") {
     if (user.staff_type === "delivery_rider") return "/staff/rider-dashboard";
-    if (user.staff_type === "cashier") return "/staff/order";
+    if (user.staff_type === "cashier") return "/staff/products";
     return "/staff/dashboard";
   }
   return "/";
