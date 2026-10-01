@@ -8,6 +8,18 @@ const LABELS = {
   full_product_replacement: "Full Product Replacement",
 };
 
+const MAX_WARRANTY_FULFILLMENT_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+const WARRANTY_FULFILLMENT_ACCEPT =
+  "image/jpeg,image/png,image/webp,.jfif,application/pdf";
+const WARRANTY_FULFILLMENT_EXTENSIONS = new Set([
+  "jpg",
+  "jpeg",
+  "jfif",
+  "png",
+  "webp",
+  "pdf",
+]);
+
 export default function WarrantyResolutionModal({ row, onClose, onSubmit }) {
   const [loading, setLoading] = useState(true);
   const [options, setOptions] = useState(null);
@@ -44,6 +56,38 @@ export default function WarrantyResolutionModal({ row, onClose, onSubmit }) {
   const selectedMaterials = Object.entries(usage)
     .map(([materialId, quantity]) => ({ material_id: Number(materialId), quantity: Number(quantity) }))
     .filter((item) => Number.isFinite(item.quantity) && item.quantity > 0);
+
+  const handleProofChange = (event) => {
+    const selected = event.target.files?.[0] || null;
+    if (!selected) {
+      setFile(null);
+      return;
+    }
+
+    const extension = String(selected.name || "")
+      .split(".")
+      .pop()
+      .toLowerCase();
+
+    if (!WARRANTY_FULFILLMENT_EXTENSIONS.has(extension)) {
+      event.target.value = "";
+      setFile(null);
+      setError(
+        "Fulfillment proof must be JPG, JPEG, JFIF, PNG, WEBP, or PDF.",
+      );
+      return;
+    }
+
+    if (selected.size > MAX_WARRANTY_FULFILLMENT_FILE_SIZE_BYTES) {
+      event.target.value = "";
+      setFile(null);
+      setError("Fulfillment proof must be 10 MB or smaller.");
+      return;
+    }
+
+    setError("");
+    setFile(selected);
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -149,8 +193,12 @@ export default function WarrantyResolutionModal({ row, onClose, onSubmit }) {
 
             <label className="wrm-field">
               <span>Fulfillment proof *</span>
-              <input type="file" accept="image/*,.pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-              <small>Existing fulfillment proof requirement is preserved.</small>
+              <input
+                type="file"
+                accept={WARRANTY_FULFILLMENT_ACCEPT}
+                onChange={handleProofChange}
+              />
+              <small>JPG, JPEG, JFIF, PNG, WEBP, or PDF - max 10 MB</small>
             </label>
 
             {error && <div className="wrm-error">{error}</div>}

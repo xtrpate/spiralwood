@@ -326,8 +326,12 @@ exports.fulfillClaimWithInventory = async ({
 
   const conn = await pool.getConnection();
   let claim;
+  let transactionStarted = false;
+  let commitAttempted = false;
+  let committed = false;
   try {
     await conn.beginTransaction();
+    transactionStarted = true;
     claim = await getClaimBase(conn, id, true);
     if (!claim) fail("Warranty claim not found.", 404);
     if (String(claim.status || "").toLowerCase() !== "approved") {
@@ -390,7 +394,10 @@ exports.fulfillClaimWithInventory = async ({
     );
     if (update.affectedRows !== 1) fail("Warranty status changed while fulfilling. Refresh and try again.", 409);
 
+    commitAttempted = true;
     await conn.commit();
+    committed = true;
+    transactionStarted = false;
     return {
       claim: {
         id: Number(claim.id), customer_id: Number(claim.customer_id), order_id: Number(claim.order_id),
@@ -405,7 +412,24 @@ exports.fulfillClaimWithInventory = async ({
       material_lines: usages.length,
     };
   } catch (error) {
-    try { await conn.rollback(); } catch {}
+    if (error && typeof error === "object") {
+      error.warrantyFulfillmentCommitted = committed;
+      error.warrantyFulfillmentCommitOutcomeUncertain =
+        commitAttempted && !committed;
+    }
+
+    if (transactionStarted && !committed) {
+      try {
+        await conn.rollback();
+        transactionStarted = false;
+      } catch (rollbackError) {
+        console.error(
+          "[warrantyInventoryService] rollback failed:",
+          rollbackError?.message || rollbackError,
+        );
+      }
+    }
+
     throw error;
   } finally {
     conn.release();

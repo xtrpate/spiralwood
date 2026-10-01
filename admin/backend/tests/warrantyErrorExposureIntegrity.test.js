@@ -19,6 +19,7 @@ const validatorsPath = require.resolve("../utils/validators");
 const warrantyInventoryServicePath = require.resolve(
   "../services/warrantyInventoryService",
 );
+const adaptiveUploadPath = require.resolve("../utils/adaptiveUpload");
 
 const SECRET = "ER_NO_SUCH_TABLE: SECRET_WARRANTY_INTERNAL";
 const originals = new Map();
@@ -182,6 +183,19 @@ async function run() {
   });
   install(validatorsPath, { parseStrictPositiveInt });
   install(warrantyInventoryServicePath, warrantyInventoryServiceStub);
+  install(adaptiveUploadPath, {
+    storeUploadBuffer: async () => ({
+      storage: "cloudinary",
+      file_url: "https://example.invalid/warranty-replacements/test.jpg",
+      file_name: "test.jpg",
+      mime_type: "image/jpeg",
+      file_size: 4,
+      public_id: "wisdom_uploads/warranty-replacements/w4-test",
+      resource_type: "image",
+      local_path: null,
+    }),
+    cleanupStoredUpload: async () => true,
+  });
 
   remember(customerControllerPath);
   remember(adminControllerPath);
@@ -304,7 +318,12 @@ async function run() {
         {
           params: { id: "1" },
           body: { resolution_type: "repair" },
-          file: { path: "uploads/warranty-replacements/test.jpg" },
+          file: {
+            originalname: "test.jpg",
+            mimetype: "image/jpeg",
+            size: 4,
+            buffer: Buffer.from([0xff, 0xd8, 0xff, 0xd9]),
+          },
           user: { id: 1 },
         },
         res,
@@ -336,7 +355,12 @@ async function run() {
         {
           params: { id: "77" },
           body: { resolution_type: "repair" },
-          file: { path: "uploads/warranty-replacements/test.jpg" },
+          file: {
+            originalname: "test.jpg",
+            mimetype: "image/jpeg",
+            size: 4,
+            buffer: Buffer.from([0xff, 0xd8, 0xff, 0xd9]),
+          },
           user: { id: 1 },
         },
         res,

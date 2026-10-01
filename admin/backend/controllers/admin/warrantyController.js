@@ -12,6 +12,10 @@ const {
   getResolutionOptions,
   fulfillClaimWithInventory,
 } = require("../../services/warrantyInventoryService");
+const {
+  storeUploadBuffer,
+  cleanupStoredUpload,
+} = require("../../utils/adaptiveUpload");
 
 const splitStoredProofs = (value) => {
   const parts = String(value || "")
@@ -553,12 +557,31 @@ exports.fulfillClaim = async (req, res) => {
       .status(400)
       .json({ message: "Valid warranty claim ID is required." });
 
-  const uploadedReceipt =
-    req.file?.path ||
-    (req.file?.filename
-      ? `uploads/warranty-replacements/${req.file.filename}`
-      : null);
+  let freshUpload = null;
+  let freshUploadNeedsCleanup = false;
+  let fulfillmentCommitted = false;
+
   try {
+    if (req.file) {
+      try {
+        freshUpload = await storeUploadBuffer({
+          file: req.file,
+          folder: "warranty-replacements",
+        });
+        freshUploadNeedsCleanup = true;
+      } catch (uploadErr) {
+        console.error("[admin.warranty fulfill upload]", uploadErr);
+        const uploadStatus = Number(uploadErr?.status);
+        return res.status(uploadStatus === 400 ? 400 : 502).json({
+          message:
+            uploadStatus === 400
+              ? uploadErr.message
+              : "Fulfillment proof upload is unavailable right now. Please try again.",
+        });
+      }
+    }
+
+    const uploadedReceipt = freshUpload?.file_url || null;
     const result = await fulfillClaimWithInventory({
       claimId: id,
       actorId: req.user.id,
@@ -569,6 +592,9 @@ exports.fulfillClaim = async (req, res) => {
       returnDisposition: req.body?.return_disposition,
       materials: req.body?.materials_json,
     });
+
+    fulfillmentCommitted = true;
+    freshUploadNeedsCleanup = false;
 
     const claim = result.claim;
     if (claim.customer_id) {
@@ -601,6 +627,30 @@ exports.fulfillClaim = async (req, res) => {
       message: "Warranty claim resolved and fulfilled successfully.",
     });
   } catch (err) {
+    const mustRetainFreshUpload = Boolean(
+      fulfillmentCommitted ||
+        err?.warrantyFulfillmentCommitted ||
+        err?.warrantyFulfillmentCommitOutcomeUncertain,
+    );
+
+    if (freshUploadNeedsCleanup && freshUpload) {
+      if (mustRetainFreshUpload) {
+        console.error(
+          "[admin.warranty fulfill upload] retaining fresh proof because the fulfillment commit may already be durable.",
+        );
+      } else {
+        try {
+          await cleanupStoredUpload(freshUpload);
+        } catch (cleanupErr) {
+          console.error(
+            "[admin.warranty fulfill upload cleanup]",
+            cleanupErr?.message || cleanupErr,
+          );
+        }
+      }
+      freshUploadNeedsCleanup = false;
+    }
+
     console.error("[admin.warranty fulfill]", err);
     const status = Number(err?.status);
     if (Number.isInteger(status) && status >= 400 && status < 500) {
