@@ -987,6 +987,10 @@ export default function MyTasks() {
                                       ...stepHint,
                                       color: "#991b1b",
                                       marginTop: 4,
+                                      overflowWrap: "anywhere",
+                                      wordBreak: "break-word",
+                                      whiteSpace: "normal",
+                                      lineHeight: 1.4,
                                     }}
                                   >
                                     Hold reason: {step.task.hold_reason}
