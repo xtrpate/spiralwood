@@ -528,8 +528,7 @@ exports.generateContract = async (req, res) => {
 
   const requestedBlueprintId = req.body?.blueprint_id;
   const { terms, warranty_terms } = req.body || {};
-  const normalizedTerms =
-    typeof terms === "string" ? terms.trim() : "";
+  const normalizedTerms = typeof terms === "string" ? terms.trim() : "";
   const normalizedWarrantyTerms =
     typeof warranty_terms === "string" ? warranty_terms.trim() : "";
 
@@ -866,13 +865,29 @@ exports.getCustomers = async (req, res) => {
       limit = 20,
     } = req.query;
 
-    const pageNumber = Math.max(1, parseInt(page, 10) || 1);
-    const limitNumber = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const parsedPage = Number(page);
+    const parsedLimit = Number(limit);
+
+    const pageNumber =
+      Number.isSafeInteger(parsedPage) && parsedPage >= 1 ? parsedPage : 1;
+
+    const limitNumber =
+      Number.isSafeInteger(parsedLimit) && parsedLimit >= 1
+        ? Math.min(parsedLimit, 100)
+        : 20;
+
     const offset = (pageNumber - 1) * limitNumber;
     const where = ["u.role = 'customer'"];
     const params = [];
 
     const term = String(search || "").trim();
+
+    if (term.length > 100) {
+      return res.status(400).json({
+        message: "Search must be 100 characters or less.",
+      });
+    }
+
     if (term) {
       const pattern = `%${term}%`;
       const clauses = ["u.name LIKE ?", "u.email LIKE ?"];
@@ -984,7 +999,15 @@ exports.getCustomers = async (req, res) => {
 exports.updateCustomerStatus = async (req, res) => {
   try {
     const { action } = req.body;
-    const targetId = parseInt(req.params.id);
+
+    const targetId = Number(req.params.id);
+
+    if (!Number.isSafeInteger(targetId) || targetId <= 0) {
+      return res.status(400).json({
+        message: "Invalid customer ID.",
+      });
+    }
+
     const map = {
       approve: { approval_status: "approved", is_active: 1 },
       reject: { approval_status: "rejected" },

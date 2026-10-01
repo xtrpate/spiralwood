@@ -11,7 +11,6 @@ import toast from "react-hot-toast";
 import {
   BadgeCheck,
   Eye,
-  MoreHorizontal,
   Search,
   UserRoundCheck,
   UserRoundX,
@@ -111,20 +110,7 @@ export default function CustomersPage() {
   const [filters, setFilters] = useState(FILTERS);
   const [searchInput, setSearchInput] = useState("");
   const [detail, setDetail] = useState(null);
-  const [openMenuId, setOpenMenuId] = useState(null);
-
-  const menuRef = useRef(null);
-
-  useEffect(() => {
-    const handleOutsideClick = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setOpenMenuId(null);
-      }
-    };
-
-    document.addEventListener("mousedown", handleOutsideClick);
-    return () => document.removeEventListener("mousedown", handleOutsideClick);
-  }, []);
+  const [statusAction, setStatusAction] = useState(null);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -182,19 +168,29 @@ export default function CustomersPage() {
     load();
   }, [load]);
 
-  const doAction = async (id, action, name) => {
-    const message =
-      action === "activate"
-        ? `Activate ${name}'s customer account?`
-        : `Deactivate ${name}'s customer account? Their order and warranty history will remain available.`;
+  const doAction = (id, action, name) => {
+    setStatusAction({
+      id,
+      action,
+      name,
+    });
+  };
 
-    if (!window.confirm(message)) return;
+  const confirmStatusAction = async () => {
+    if (!statusAction) return;
+
+    const { id, action } = statusAction;
 
     try {
-      const { data } = await api.put(`/customers/${id}/status`, { action });
+      const { data } = await api.put(`/customers/${id}/status`, {
+        action,
+      });
+
       toast.success(data?.message || "Customer account updated.");
+
+      setStatusAction(null);
       setDetail(null);
-      setOpenMenuId(null);
+
       await load();
     } catch (err) {
       toast.error(err?.response?.data?.message || "Action failed.");
@@ -298,6 +294,7 @@ export default function CustomersPage() {
                 value={searchInput}
                 onChange={(event) => setSearchInput(event.target.value)}
                 placeholder="Search name, email, or phone..."
+                maxLength={100}
               />
             </div>
           </label>
@@ -391,14 +388,9 @@ export default function CustomersPage() {
                   <CustomerRow
                     key={row.id}
                     row={row}
-                    openMenuId={openMenuId}
-                    setOpenMenuId={setOpenMenuId}
-                    menuRef={menuRef}
                     onView={() => {
                       setDetail(row);
-                      setOpenMenuId(null);
                     }}
-                    onAction={doAction}
                   />
                 ))
               )}
@@ -450,6 +442,15 @@ export default function CustomersPage() {
           onAction={doAction}
         />
       )}
+
+      {statusAction && (
+        <CustomerStatusConfirmModal
+          action={statusAction.action}
+          customerName={statusAction.name}
+          onCancel={() => setStatusAction(null)}
+          onConfirm={confirmStatusAction}
+        />
+      )}
     </div>
   );
 }
@@ -471,14 +472,7 @@ function SummaryCard({ label, value, icon, alert = false }) {
   );
 }
 
-function CustomerRow({
-  row,
-  openMenuId,
-  setOpenMenuId,
-  menuRef,
-  onView,
-  onAction,
-}) {
+function CustomerRow({ row, onView }) {
   const verified = Number(row.is_verified) === 1;
   const active = !!row.is_active;
 
@@ -545,46 +539,6 @@ function CustomerRow({
             <Eye size={13} strokeWidth={1.9} />
             View
           </button>
-
-          <div
-            className="cm-more-wrap"
-            ref={openMenuId === row.id ? menuRef : null}
-          >
-            <button
-              type="button"
-              className="cm-icon-btn"
-              aria-label={`More actions for ${row.name}`}
-              aria-expanded={openMenuId === row.id}
-              onClick={() =>
-                setOpenMenuId((current) => (current === row.id ? null : row.id))
-              }
-            >
-              <MoreHorizontal size={17} strokeWidth={2} />
-            </button>
-
-            {openMenuId === row.id && (
-              <div className="cm-action-menu">
-                {active ? (
-                  <button
-                    type="button"
-                    className="cm-menu-danger"
-                    onClick={() => onAction(row.id, "deactivate", row.name)}
-                  >
-                    <UserRoundX size={14} strokeWidth={1.9} />
-                    Deactivate Account
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => onAction(row.id, "activate", row.name)}
-                  >
-                    <UserRoundCheck size={14} strokeWidth={1.9} />
-                    Activate Account
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
         </div>
       </td>
     </tr>
@@ -733,6 +687,131 @@ function CustomerDetailModal({ row, onClose, onAction }) {
               onClick={() => onAction(row.id, "activate", row.name)}
             >
               Activate Account
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CustomerStatusConfirmModal({
+  action,
+  customerName,
+  onCancel,
+  onConfirm,
+}) {
+  const isActivate = action === "activate";
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        onCancel();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onCancel]);
+
+  return (
+    <div
+      className="cm-overlay cm-confirm-overlay"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onCancel();
+        }
+      }}
+    >
+      <div
+        className="cm-confirm-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="customer-status-confirm-title"
+      >
+        <div className="cm-confirm-header">
+          <div>
+            <div className="cm-modal-eyebrow">
+              {isActivate ? "Activate Account" : "Deactivate Account"}
+            </div>
+
+            <h3 id="customer-status-confirm-title">
+              {isActivate
+                ? "Activate customer account?"
+                : "Deactivate customer account?"}
+            </h3>
+          </div>
+
+          <button
+            type="button"
+            className="cm-modal-close"
+            aria-label="Close"
+            onClick={onCancel}
+          >
+            <X size={17} strokeWidth={1.9} />
+          </button>
+        </div>
+
+        <div className="cm-confirm-body">
+          <div
+            className={`cm-confirm-icon ${
+              isActivate
+                ? "cm-confirm-icon-activate"
+                : "cm-confirm-icon-deactivate"
+            }`}
+          >
+            {isActivate ? (
+              <UserRoundCheck size={22} strokeWidth={1.8} />
+            ) : (
+              <UserRoundX size={22} strokeWidth={1.8} />
+            )}
+          </div>
+
+          <div className="cm-confirm-copy">
+            <strong>
+              {isActivate
+                ? `Activate ${customerName || "this customer"}'s account?`
+                : `Deactivate ${customerName || "this customer"}'s account?`}
+            </strong>
+
+            <p>
+              {isActivate
+                ? "The customer will be able to sign in and use their account again."
+                : "The customer will no longer be able to use their account. Their order and warranty history will remain available."}
+            </p>
+          </div>
+        </div>
+
+        <div className="cm-confirm-footer">
+          <button
+            type="button"
+            className="cm-btn cm-btn-secondary"
+            onClick={onCancel}
+          >
+            Cancel
+          </button>
+
+          {isActivate ? (
+            <button
+              type="button"
+              className="cm-btn cm-btn-primary"
+              onClick={onConfirm}
+            >
+              <UserRoundCheck size={14} strokeWidth={1.9} />
+              Activate Account
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="cm-btn cm-btn-danger"
+              onClick={onConfirm}
+            >
+              <UserRoundX size={14} strokeWidth={1.9} />
+              Deactivate Account
             </button>
           )}
         </div>
@@ -998,14 +1077,111 @@ const styles = `
   }
 
   .cm-btn-danger-outline {
-    border-color: #e4aaa5;
-    background: #ffffff;
-    color: #b42318;
-  }
+  border-color: #e4aaa5;
+  background: #ffffff;
+  color: #b42318;
+}
 
-  .cm-btn-danger-outline:hover:not(:disabled) {
-    background: #fff5f4;
-  }
+.cm-btn-danger-outline:hover:not(:disabled) {
+  background: #fff5f4;
+}
+
+.cm-btn-danger {
+  border-color: #b42318;
+  background: #b42318;
+  color: #ffffff;
+}
+
+.cm-btn-danger:hover:not(:disabled) {
+  border-color: #912018;
+  background: #912018;
+}
+
+.cm-confirm-overlay {
+  z-index: 1100;
+}
+
+.cm-confirm-modal {
+  width: min(100%, 500px);
+  overflow: hidden;
+  border: 1px solid #d8dce1;
+  border-radius: 4px;
+  background: #ffffff;
+  box-shadow: 0 22px 56px rgba(0, 0, 0, 0.2);
+}
+
+.cm-confirm-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 19px 15px;
+  border-bottom: 1px solid #e1e4e8;
+}
+
+.cm-confirm-header h3 {
+  margin: 0;
+  color: #17191d;
+  font-size: 18px;
+  line-height: 1.25;
+  font-weight: 740;
+}
+
+.cm-confirm-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px 19px;
+}
+
+.cm-confirm-icon {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+}
+
+.cm-confirm-icon-activate {
+  background: #eef8f1;
+  color: #2f7d4a;
+}
+
+.cm-confirm-icon-deactivate {
+  background: #fff0ee;
+  color: #b42318;
+}
+
+.cm-confirm-copy {
+  min-width: 0;
+}
+
+.cm-confirm-copy strong {
+  display: block;
+  margin-bottom: 5px;
+  color: #292d32;
+  font-size: 12.5px;
+  line-height: 1.4;
+  font-weight: 650;
+}
+
+.cm-confirm-copy p {
+  margin: 0;
+  color: #727881;
+  font-size: 11.5px;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+.cm-confirm-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 13px 19px;
+  border-top: 1px solid #e1e4e8;
+  background: #fafafa;
+}
 
   .cm-reset-btn {
     min-width: 100px;
@@ -1182,70 +1358,24 @@ const styles = `
     font-size: 10.5px;
   }
 
-  .cm-more-wrap {
-    position: relative;
-  }
-
-  .cm-icon-btn,
   .cm-modal-close {
-    width: 32px;
-    height: 32px;
-    display: inline-grid;
-    place-items: center;
-    padding: 0;
-    border: 1px solid #cfd4da;
-    border-radius: 3px;
-    background: #ffffff;
-    color: #50565e;
-    cursor: pointer;
-  }
+  width: 32px;
+  height: 32px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #cfd4da;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #50565e;
+  cursor: pointer;
+}
 
-  .cm-icon-btn:hover,
-  .cm-modal-close:hover {
-    background: #f7f7f8;
-  }
+.cm-modal-close:hover {
+  background: #f7f7f8;
+}
 
-  .cm-action-menu {
-    position: absolute;
-    z-index: 30;
-    top: calc(100% + 5px);
-    right: 0;
-    width: 190px;
-    padding: 5px;
-    border: 1px solid #d6dae0;
-    border-radius: 3px;
-    background: #ffffff;
-    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
-  }
-
-  .cm-action-menu button {
-    width: 100%;
-    min-height: 34px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0 9px;
-    border: 0;
-    border-radius: 2px;
-    background: transparent;
-    color: #34383e;
-    cursor: pointer;
-    font-size: 11.5px;
-    font-weight: 550;
-    text-align: left;
-  }
-
-  .cm-action-menu button:hover {
-    background: #f5f6f7;
-  }
-
-  .cm-action-menu .cm-menu-danger {
-    color: #b42318;
-  }
-
-  .cm-action-menu .cm-menu-danger:hover {
-    background: #fff4f2;
-  }
+  
 
   .cm-empty {
     height: 170px;
@@ -1431,23 +1561,39 @@ const styles = `
   }
 
   @media (max-width: 720px) {
-    .wisdom-admin-customers-v2 {
-      width: 100%;
-    }
-
-    .cm-summary-grid,
-    .cm-toolbar,
-    .cm-detail-grid {
-      grid-template-columns: 1fr;
-    }
-
-    .cm-card-heading {
-      flex-direction: column;
-      align-items: flex-start;
-    }
-
-    .cm-detail-item.is-wide {
-      grid-column: auto;
-    }
+  .wisdom-admin-customers-v2 {
+    width: 100%;
   }
+
+  .cm-summary-grid,
+  .cm-toolbar,
+  .cm-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cm-card-heading {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .cm-detail-item.is-wide {
+    grid-column: auto;
+  }
+
+  .cm-confirm-modal {
+    width: min(100%, 500px);
+  }
+
+  .cm-confirm-body {
+    padding: 17px;
+  }
+
+  .cm-confirm-footer {
+    flex-direction: column-reverse;
+  }
+
+  .cm-confirm-footer .cm-btn {
+    width: 100%;
+  }
+}
 `;
