@@ -77,6 +77,7 @@ export default function WarrantyPage() {
   const [selectedRow, setSelectedRow] = useState(null);
   const [fulfillTarget, setFulfillTarget] = useState(null);
   const [decisionModal, setDecisionModal] = useState(null);
+  const [decisionBusy, setDecisionBusy] = useState(false);
 
   const loadClaims = async () => {
     setLoading(true);
@@ -146,6 +147,9 @@ export default function WarrantyPage() {
   );
 
   const handleDecision = async ({ id, decision, admin_note }) => {
+    if (decisionBusy) return;
+
+    setDecisionBusy(true);
     try {
       await api.patch(`/warranty/${id}/decision`, { decision, admin_note });
 
@@ -157,12 +161,26 @@ export default function WarrantyPage() {
 
       setDecisionModal(null);
       setSelectedRow(null);
-      loadClaims();
+      await loadClaims();
     } catch (err) {
-      toast.error(
+      const status = Number(err?.response?.status);
+      const message =
         err?.response?.data?.message ||
-          "Failed to update warranty claim status.",
-      );
+        "Failed to update warranty claim status.";
+
+      // The shared API interceptor already shows server messages such as the
+      // stale-decision 409. Avoid showing the same 409 toast a second time here.
+      if (status !== 409) {
+        toast.error(message);
+      }
+
+      if (status === 409) {
+        setDecisionModal(null);
+        setSelectedRow(null);
+        await loadClaims();
+      }
+    } finally {
+      setDecisionBusy(false);
     }
   };
 
@@ -431,6 +449,7 @@ export default function WarrantyPage() {
         <DecisionModal
           row={decisionModal.row}
           decision={decisionModal.decision}
+          busy={decisionBusy}
           onClose={() => setDecisionModal(null)}
           onSubmit={handleDecision}
         />
@@ -637,7 +656,7 @@ function ReviewModal({
   );
 }
 
-function DecisionModal({ row, decision, onClose, onSubmit }) {
+function DecisionModal({ row, decision, busy, onClose, onSubmit }) {
   const isReject = decision === "rejected";
   const [adminNote, setAdminNote] = useState(
     isReject ? row.admin_note || "" : row.admin_note || "",
@@ -660,7 +679,7 @@ function DecisionModal({ row, decision, onClose, onSubmit }) {
             </div>
           </div>
 
-          <button onClick={onClose} style={closeBtn}>
+          <button onClick={onClose} style={closeBtn} disabled={busy}>
             ✕
           </button>
         </div>
@@ -676,6 +695,8 @@ function DecisionModal({ row, decision, onClose, onSubmit }) {
             value={adminNote}
             onChange={(e) => setAdminNote(e.target.value)}
             rows={5}
+            maxLength={1000}
+            disabled={busy}
             placeholder={
               isReject
                 ? "Explain clearly why this warranty claim is being rejected..."
@@ -687,16 +708,20 @@ function DecisionModal({ row, decision, onClose, onSubmit }) {
           <div style={helperText}>
             {isReject
               ? "This note will be shown to the customer."
-              : "Optional note for this decision."}
+              : "Optional note for this decision."}{" "}
+            {adminNote.length} / 1000
           </div>
         </div>
 
         <div style={modalFooter} className="warranty-modal-footer">
-          <button onClick={onClose} style={ghostButton}>
+          <button onClick={onClose} style={ghostButton} disabled={busy}>
             Cancel
           </button>
           <button
+            disabled={busy}
             onClick={() => {
+              if (busy) return;
+
               if (isReject && !adminNote.trim()) {
                 toast.error("Please enter the rejection reason first.");
                 return;
@@ -710,7 +735,11 @@ function DecisionModal({ row, decision, onClose, onSubmit }) {
             }}
             style={isReject ? rejectBtn : approveBtn}
           >
-            {isReject ? "Save Rejection" : "Save Approval"}
+            {busy
+              ? "Saving..."
+              : isReject
+                ? "Save Rejection"
+                : "Save Approval"}
           </button>
         </div>
       </div>
