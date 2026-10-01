@@ -55,7 +55,7 @@ const formatDate = (str) => {
   });
 };
 
-const FileUpload = ({ label, hint, name, file, onChange, onClear, accept }) => (
+const FileUpload = ({ label, hint, name, file, onChange, onClear, accept, typeHint }) => (
   <div className="w-upload-box">
     <div className="w-upload-label">{label}</div>
     {hint && <div className="w-upload-hint">{hint}</div>}
@@ -83,7 +83,7 @@ const FileUpload = ({ label, hint, name, file, onChange, onClear, accept }) => (
       <label className="w-upload-trigger">
         <Upload size={20} />
         <span>Click to upload</span>
-        <span className="w-upload-types">JPG, PNG, PDF · max 5 MB</span>
+        <span className="w-upload-types">{typeHint}</span>
         <input
           type="file"
           name={name}
@@ -795,6 +795,7 @@ export default function WarrantyPage() {
                               name="photo"
                               file={photoFile}
                               accept="image/jpeg,image/png,image/webp,.jfif"
+                              typeHint="JPG, JPEG, PNG, WEBP, JFIF · max 5 MB"
                               onChange={(e) => {
                                 const file = e.target.files?.[0] || null;
 
@@ -829,6 +830,7 @@ export default function WarrantyPage() {
                               name="proof"
                               file={proofFile}
                               accept="image/jpeg,image/png,image/webp,.jfif,application/pdf"
+                              typeHint="JPG, JPEG, PNG, WEBP, JFIF, PDF · max 5 MB"
                               onChange={(e) => {
                                 const file = e.target.files?.[0] || null;
 
