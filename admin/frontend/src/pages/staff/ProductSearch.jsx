@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import api, { buildAssetUrl } from "../../services/api";
 import {
   Search,
@@ -35,6 +35,92 @@ const readStoredQrAttempt = () => {
   }
 };
 
+const readStoredCart = () => {
+  try {
+    const raw = sessionStorage.getItem("pos_cart");
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const reconcileCartWithProducts = (currentCart, currentProducts) => {
+  const productsById = new Map(
+    (Array.isArray(currentProducts) ? currentProducts : []).map((product) => [
+      Number(product?.id),
+      product,
+    ]),
+  );
+
+  let changed = false;
+  let removedCount = 0;
+  let adjustedCount = 0;
+  const nextCart = [];
+
+  for (const item of Array.isArray(currentCart) ? currentCart : []) {
+    const productId = Number(item?.product_id);
+    const product = productsById.get(productId);
+    const price = Number(product?.price);
+    const stock = Math.max(0, Math.floor(Number(product?.stock ?? 0)));
+
+    if (
+      !Number.isSafeInteger(productId) ||
+      productId <= 0 ||
+      !product ||
+      product.cashier_sale_available !== true ||
+      !Number.isFinite(price) ||
+      price <= 0 ||
+      stock <= 0
+    ) {
+      changed = true;
+      removedCount += 1;
+      continue;
+    }
+
+    const oldQuantity = Number(item?.quantity);
+    const safeQuantity =
+      Number.isSafeInteger(oldQuantity) && oldQuantity > 0 ? oldQuantity : 1;
+    const quantity = Math.min(safeQuantity, stock);
+
+    const nextItem = {
+      ...item,
+      key: String(product.id),
+      product_id: product.id,
+      product_name: product.name,
+      unit_price: price,
+      quantity,
+      max_stock: stock,
+      image_url: product.image_url || item?.image_url || "",
+      wood_type: product.material || item?.wood_type || "",
+      dimensions: product.dimensions || item?.dimensions || "",
+    };
+
+    const itemChanged =
+      String(item?.key) !== String(nextItem.key) ||
+      Number(item?.product_id) !== Number(nextItem.product_id) ||
+      String(item?.product_name || "") !== String(nextItem.product_name || "") ||
+      Number(item?.unit_price) !== Number(nextItem.unit_price) ||
+      Number(item?.quantity) !== Number(nextItem.quantity) ||
+      Number(item?.max_stock) !== Number(nextItem.max_stock) ||
+      String(item?.image_url || "") !== String(nextItem.image_url || "");
+
+    if (itemChanged) {
+      changed = true;
+      adjustedCount += 1;
+    }
+
+    nextCart.push(nextItem);
+  }
+
+  return {
+    cart: nextCart,
+    changed,
+    removedCount,
+    adjustedCount,
+  };
+};
+
 export default function ProductSearch() {
   const [query, setQuery] = useState("");
   const [allProducts, setAllProducts] = useState([]);
@@ -52,6 +138,7 @@ export default function ProductSearch() {
   const [searching, setSearching] = useState(true);
   const [searchMessage, setSearchMessage] = useState("");
   const [searchMessageType, setSearchMessageType] = useState("info");
+  const cartRefreshNoticeRef = useRef("");
   const [brokenImages, setBrokenImages] = useState({});
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
 
@@ -67,11 +154,21 @@ export default function ProductSearch() {
     setSearchMessageType("info");
   }, []);
 
+  useEffect(() => {
+    const notice = cartRefreshNoticeRef.current;
+    if (!notice) return;
+
+    cartRefreshNoticeRef.current = "";
+    showMessage(notice, "info");
+  }, [cart, showMessage]);
+
   const normalizeProduct = useCallback((product) => {
     const stock = Number(product?.stock ?? 0);
-    const walkinPrice = Number(
-      product?.walkin_price ?? product?.online_price ?? 0,
-    );
+    const salePrice = Number(product?.price ?? 0);
+    const cashierSaleAvailable =
+      product?.cashier_sale_available !== false &&
+      Number.isFinite(salePrice) &&
+      salePrice > 0;
     let stockStatus = String(product?.stock_status ?? "").toLowerCase();
 
     if (!stockStatus) {
@@ -97,7 +194,8 @@ export default function ProductSearch() {
       name: product?.name || "Unnamed Product",
       barcode: String(product?.barcode ?? "").trim(),
       stock,
-      walkin_price: walkinPrice,
+      price: cashierSaleAvailable ? salePrice : null,
+      cashier_sale_available: cashierSaleAvailable,
       image_url: buildAssetUrl(
         product?.image_url ||
           product?.product_image ||
@@ -152,6 +250,106 @@ export default function ProductSearch() {
   useEffect(() => {
     loadProducts();
   }, [loadProducts]);
+
+  // Revalidate a persisted cashier cart against the live product rows when
+  // Product Search opens. This is deliberately skipped while an online/QR
+  // attempt owns the cart; that lifecycle is handled separately.
+  useEffect(() => {
+    if (cartLocked) return undefined;
+
+    const storedCart = readStoredCart();
+    const productIds = [
+      ...new Set(
+        storedCart
+          .map((item) => Number(item?.product_id))
+          .filter(
+            (productId) =>
+              Number.isSafeInteger(productId) && productId > 0,
+          ),
+      ),
+    ];
+
+    if (productIds.length === 0) return undefined;
+
+    let active = true;
+
+    api
+      .get("/pos/products", {
+        params: { ids: productIds.join(",") },
+      })
+      .then((response) => {
+        if (!active) return;
+
+        const liveProducts = Array.isArray(response.data)
+          ? response.data.map(normalizeProduct)
+          : [];
+        const requestedProductIds = new Set(productIds);
+
+        // Use the latest React cart state when the request returns. This keeps
+        // add/remove/quantity actions made while the refresh was in flight.
+        setCart((currentCart) => {
+          const targetedCurrentCart = currentCart.filter((item) =>
+            requestedProductIds.has(Number(item?.product_id)),
+          );
+          const reconciliation = reconcileCartWithProducts(
+            targetedCurrentCart,
+            liveProducts,
+          );
+
+          if (!reconciliation.changed) return currentCart;
+
+          const refreshedById = new Map(
+            reconciliation.cart.map((item) => [
+              Number(item.product_id),
+              item,
+            ]),
+          );
+
+          const nextCart = currentCart.flatMap((item) => {
+            const productId = Number(item?.product_id);
+
+            // A product added after this refresh request began was never part
+            // of the request, so preserve it exactly as the cashier entered it.
+            if (!requestedProductIds.has(productId)) {
+              return [item];
+            }
+
+            const refreshedItem = refreshedById.get(productId);
+
+            // If the requested product became unavailable, remove only that
+            // product. A product the cashier already removed is not recreated.
+            return refreshedItem ? [refreshedItem] : [];
+          });
+
+          const details = [];
+          if (reconciliation.adjustedCount > 0) {
+            details.push(
+              `${reconciliation.adjustedCount} cart item(s) were refreshed to the latest price or stock.`,
+            );
+          }
+          if (reconciliation.removedCount > 0) {
+            details.push(
+              `${reconciliation.removedCount} unavailable cart item(s) were removed.`,
+            );
+          }
+
+          cartRefreshNoticeRef.current = details.join(" ");
+          return nextCart;
+        });
+      })
+      .catch((error) => {
+        if (!active) return;
+        console.error("CART REFRESH ERROR:", error);
+        showMessage(
+          "The saved cart could not be refreshed. Review the products before checkout.",
+          "error",
+        );
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [cartLocked, normalizeProduct, showMessage]);
 
   useEffect(() => {
     sessionStorage.setItem("pos_cart", JSON.stringify(cart));
@@ -224,6 +422,19 @@ export default function ProductSearch() {
       const key = `${product.id}`;
       const stockLimit = Number(product?.stock ?? 0);
       const displayName = product.name;
+      const unitPrice = Number(product?.price);
+
+      if (
+        product?.cashier_sale_available !== true ||
+        !Number.isFinite(unitPrice) ||
+        unitPrice <= 0
+      ) {
+        showMessage(
+          `${displayName} does not have a valid selling price for cashier sale.`,
+          "error",
+        );
+        return false;
+      }
 
       if (stockLimit <= 0) {
         showMessage(`${displayName} is currently out of stock.`, "error");
@@ -261,7 +472,7 @@ export default function ProductSearch() {
             key,
             product_id: product.id,
             product_name: displayName,
-            unit_price: Number(product?.walkin_price ?? 0),
+            unit_price: unitPrice,
             quantity: 1,
             max_stock: stockLimit,
             image_url: product.image_url || "",
@@ -537,7 +748,14 @@ export default function ProductSearch() {
                       <div className="product-name">{product.name}</div>
                       <div className="product-card-meta">
                         <div className="product-price">
-                          ₱{formatCurrency(product.walkin_price)}
+                          {product.cashier_sale_available ? (
+                            <>
+                              {"\u20B1"}
+                              {formatCurrency(product.price)}
+                            </>
+                          ) : (
+                            "Price unavailable"
+                          )}
                         </div>
 
                         <div className={`stock-chip ${statusClass}`}>
@@ -554,9 +772,16 @@ export default function ProductSearch() {
                         type="button"
                         className="add-btn"
                         onClick={() => addToCart(product)}
-                        disabled={product.stock <= 0 || cartLocked}
+                        disabled={
+                          product.stock <= 0 ||
+                          cartLocked ||
+                          !product.cashier_sale_available
+                        }
                       >
-                        <Plus size={15} /> Add to Cart
+                        <Plus size={15} />{" "}
+                        {product.cashier_sale_available
+                          ? "Add to Cart"
+                          : "Unavailable"}
                       </button>
                     </div>
                   </div>

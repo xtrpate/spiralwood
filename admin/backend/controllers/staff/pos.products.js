@@ -48,12 +48,43 @@ exports.getAllInventory = async (req, res) => {
 
 /* ── Search Products (Barcode or Keyword) ── */
 exports.searchProducts = async (req, res) => {
-  const { q, barcode } = req.query;
+  const { q, barcode, ids } = req.query;
   const normalizedQuery = typeof q === "string" ? q.trim() : "";
   const normalizedBarcode = typeof barcode === "string" ? barcode.trim() : "";
 
   if (normalizedQuery.length > 100 || normalizedBarcode.length > 100) {
     return res.status(400).json({ message: "Product search is too long." });
+  }
+
+  let normalizedIds = [];
+  if (ids !== undefined) {
+    if (typeof ids !== "string" || !ids.trim()) {
+      return res.status(400).json({ message: "Product ids are invalid." });
+    }
+
+    const rawIds = ids.split(",");
+    if (rawIds.length > 100) {
+      return res.status(400).json({ message: "Too many product ids." });
+    }
+
+    normalizedIds = [
+      ...new Set(
+        rawIds.map((value) => {
+          const trimmed = value.trim();
+          if (!/^\d+$/.test(trimmed)) return null;
+
+          const parsed = Number(trimmed);
+          return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+        }),
+      ),
+    ];
+
+    if (
+      normalizedIds.length === 0 ||
+      normalizedIds.some((value) => value === null)
+    ) {
+      return res.status(400).json({ message: "Product ids are invalid." });
+    }
   }
 
   try {
@@ -82,7 +113,11 @@ exports.searchProducts = async (req, res) => {
     `;
     const params = [];
 
-    if (normalizedBarcode) {
+    if (normalizedIds.length > 0) {
+      const placeholders = normalizedIds.map(() => "?").join(",");
+      query += ` AND p.id IN (${placeholders})`;
+      params.push(...normalizedIds);
+    } else if (normalizedBarcode) {
       query += ` AND p.barcode = ?`;
       params.push(normalizedBarcode);
     } else if (normalizedQuery) {
@@ -112,10 +147,16 @@ exports.searchProducts = async (req, res) => {
     const [rows] = await db.query(query, params);
 
     for (const product of rows) {
-      product.price =
-        parseFloat(product.walkin_price) > 0
-          ? parseFloat(product.walkin_price)
-          : parseFloat(product.online_price || 0);
+      // The current business UI has one selling price. The database still
+      // carries legacy online/walk-in columns, so the POS must expose the
+      // exact same legacy field consumed by cash checkout instead of falling
+      // back to a different price and showing a value checkout will reject.
+      const cashierPrice = Number(product.walkin_price);
+      const hasValidCashierPrice =
+        Number.isFinite(cashierPrice) && cashierPrice > 0;
+
+      product.price = hasValidCashierPrice ? cashierPrice : null;
+      product.cashier_sale_available = hasValidCashierPrice;
     }
 
     res.json(rows);
