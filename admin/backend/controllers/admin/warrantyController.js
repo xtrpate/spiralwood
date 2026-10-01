@@ -386,7 +386,7 @@ exports.getClaims = async (req, res) => {
     console.error("[admin.warranty GET]", err);
     return res
       .status(500)
-      .json({ message: "Server error.", error: err.message });
+      .json({ message: "Server error." });
   }
 };
 
@@ -522,7 +522,7 @@ exports.decideClaim = async (req, res) => {
     console.error("[admin.warranty decide]", err);
     return res
       .status(500)
-      .json({ message: "Server error.", error: err.message });
+      .json({ message: "Server error." });
   }
 };
 
@@ -531,13 +531,18 @@ exports.getResolutionOptions = async (req, res) => {
     const data = await getResolutionOptions(req.params.id);
     return res.json(data);
   } catch (err) {
-    const status = Number(err?.status) || 500;
-    return res
-      .status(status)
-      .json({
+    const status = Number(err?.status);
+    if (Number.isInteger(status) && status >= 400 && status < 500) {
+      return res.status(status).json({
         message: err?.message || "Failed to load warranty resolution options.",
         ...(err?.details ? { details: err.details } : {}),
       });
+    }
+
+    console.error("[admin.warranty resolution-options]", err);
+    return res.status(500).json({
+      message: "Failed to load warranty resolution options.",
+    });
   }
 };
 
@@ -597,12 +602,16 @@ exports.fulfillClaim = async (req, res) => {
     });
   } catch (err) {
     console.error("[admin.warranty fulfill]", err);
-    const status = Number(err?.status) || 500;
-    return res
-      .status(status)
-      .json({
+    const status = Number(err?.status);
+    if (Number.isInteger(status) && status >= 400 && status < 500) {
+      return res.status(status).json({
         message: err?.message || "Warranty fulfillment failed.",
         ...(err?.details ? { details: err.details } : {}),
       });
+    }
+
+    return res.status(500).json({
+      message: "Warranty fulfillment failed.",
+    });
   }
 };
