@@ -382,7 +382,8 @@ const generalApiLimiter = rateLimit({
 
 app.use("/api", generalApiLimiter);
 
-const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, "uploads");
+const { getUploadsRoot } = require("./utils/uploadRoot");
+const uploadDir = getUploadsRoot();
 
 // NOTE: Backup files are no longer served via a public express.static route.
 // They are downloaded through the authenticated, admin-only

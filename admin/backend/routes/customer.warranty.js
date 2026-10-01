@@ -7,11 +7,12 @@ const { authenticate, requireCustomer } = require("../middleware/auth");
 const { logAction } = require("../middleware/auditLog");
 const warrantyController = require("../controllers/customer/customer.warranty");
 const { verifyFileSignature } = require("../utils/verifyFileSignature");
+const { getUploadsRoot } = require("../utils/uploadRoot");
 
 /* ── Multer storage ── */
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const dir = path.join(__dirname, "../uploads/warranty");
+    const dir = path.join(getUploadsRoot(), "warranty");
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
@@ -116,6 +117,14 @@ const upload = (req, res, next) => {
      */
     res.on("finish", () => {
       if (res.statusCode >= 400) {
+        if (req.warrantySubmissionRetainUploads === true) {
+          console.warn(
+            "[customer.warranty upload cleanup skipped]",
+            "Retaining evidence because the claim commit may already be durable.",
+          );
+          return;
+        }
+
         void cleanupWarrantyUploadFiles(
           files,
           "response status " + res.statusCode,
