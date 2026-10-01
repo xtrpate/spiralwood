@@ -8,7 +8,7 @@ const SEO_CONFIG = {
   "/": {
     title: "Spiral Wood Services | Custom Furniture & Wood Solutions",
     description:
-      "Spiral Wood Services offers custom furniture, modular kitchen cabinets, closets, and made-to-fit wood solutions through its online catalog and custom design service.",
+      "Spiral Wood Services offers custom furniture, modular kitchen cabinets, closets, and made-to-fit wood solutions. Browse products or create a custom design online.",
   },
 
   "/catalog": {
