@@ -292,6 +292,10 @@ async function run() {
     "../../frontend/src/pages/staff/SalesReports.jsx",
   );
   const frontend = fs.readFileSync(frontendPath, "utf8");
+  const cssPath = require.resolve(
+    "../../frontend/src/pages/staff/SalesReports.css",
+  );
+  const css = fs.readFileSync(cssPath, "utf8");
 
   // R3B2A frontend contract: filters are drafted before they are applied,
   // one-sided dates are preserved, stale requests cannot overwrite newer
@@ -332,12 +336,84 @@ async function run() {
   assert.match(frontend, /Top Products by Included Order Value/);
   assert.match(frontend, /Print Current View/);
 
-  console.log("✅ POS Sales Reports R3B1/R3B2A integrity tests passed.");
+  // R3B2B1 responsive contract: keep the desktop report intact while phones
+  // receive touch-sized filters, stacked charts, mobile transaction/product
+  // cards, and pagination that is usable without page-level horizontal scroll.
+  assert.match(frontend, /import "\.\/SalesReports\.css";/);
+  assert.match(frontend, /cashier-sales-mobile-transaction-list/);
+  assert.match(frontend, /cashier-sales-mobile-transaction-card/);
+  assert.match(frontend, /cashier-sales-mobile-product-list/);
+  assert.match(frontend, /cashier-sales-mobile-product-card/);
+  assert.match(
+    frontend,
+    /cashier-sales-mobile-transaction-list[\s\S]*Paid After Payment[\s\S]*Balance After Payment[\s\S]*Processed By/,
+  );
+  assert.match(css, /@media \(max-width: 899px\)/);
+  assert.match(css, /@media \(max-width: 767px\)/);
+  assert.match(
+    css,
+    /\.cashier-sales-chart-grid[\s\S]*grid-template-columns: minmax\(0, 1fr\) !important;/,
+  );
+  assert.match(
+    css,
+    /\.cashier-sales-input[\s\S]*min-height: 44px !important;[\s\S]*font-size: 16px !important;/,
+  );
+  assert.match(
+    css,
+    /\.cashier-sales-action[\s\S]*min-height: 44px !important;/,
+  );
+  assert.match(
+    css,
+    /\.cashier-sales-desktop-table[\s\S]*display: none !important;/,
+  );
+  assert.match(
+    css,
+    /\.cashier-sales-mobile-transaction-list,[\s\S]*display: grid;/,
+  );
+  assert.match(
+    css,
+    /\.cashier-sales-pagination-button[\s\S]*min-height: 44px !important;/,
+  );
+  assert.doesNotMatch(css, /@media\s+print/);
+
+
+  // R3B2B1.2 tablet contract: the responsive card layout extends through
+  // 899px while 768-899px gets a denser two-column filter grid and row-style
+  // pagination without restoring the wide desktop tables.
+  assert.match(
+    css,
+    /@media \(min-width: 768px\) and \(max-width: 899px\)/,
+  );
+  assert.match(
+    css,
+    /\.cashier-sales-filter-grid[\s\S]*repeat\(2, minmax\(0, 1fr\)\) !important;/,
+  );
+  assert.match(css, /\.cashier-sales-print[\s\S]*grid-column: 1 \/ -1;/);
+  assert.match(
+    css,
+    /@media \(max-width: 899px\)[\s\S]*\.cashier-sales-desktop-table[\s\S]*display: none !important;/,
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 899px\)[\s\S]*\.cashier-sales-mobile-transaction-list,[\s\S]*display: grid;/,
+  );
+
+  // R3B2B1.1 mobile-card clarity contract: the prominent header amount is
+  // explicitly identified as Amount Paid, while historical status remains
+  // explicitly labeled Status After Payment instead of looking current.
+  assert.match(frontend, /cashier-sales-mobile-summary-label[\s\S]*Amount Paid/);
+  assert.match(
+    frontend,
+    /cashier-sales-mobile-transaction-list[\s\S]*Status After Payment[\s\S]*Processed By/,
+  );
+  assert.match(css, /\.cashier-sales-mobile-summary-label/);
+
+  console.log("✅ POS Sales Reports R3B1/R3B2A/R3B2B1/R3B2B1.1/R3B2B1.2 integrity tests passed.");
 }
 
 run()
   .catch((error) => {
-    console.error("❌ POS Sales Reports R3B1/R3B2A integrity tests failed.");
+    console.error("❌ POS Sales Reports R3B1/R3B2A/R3B2B1/R3B2B1.1/R3B2B1.2 integrity tests failed.");
     console.error(error);
     process.exitCode = 1;
   })

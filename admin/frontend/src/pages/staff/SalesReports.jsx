@@ -10,6 +10,7 @@ import {
   YAxis,
 } from "recharts";
 import { Printer } from "lucide-react";
+import "./SalesReports.css";
 
 const PAGE_SIZE = 20;
 const INITIAL_FILTERS = {
@@ -144,10 +145,14 @@ const formatPeriodLabel = (value, period) => {
 
 function MetricCard({ label, value, note }) {
   return (
-    <div style={metricCard}>
-      <div style={metricLabel}>{label}</div>
-      <div style={metricValue}>{value}</div>
-      {note ? <div style={metricNote}>{note}</div> : null}
+    <div className="cashier-sales-metric-card" style={metricCard}>
+      <div className="cashier-sales-metric-label" style={metricLabel}>{label}</div>
+      <div className="cashier-sales-metric-value" style={metricValue}>{value}</div>
+      {note ? (
+        <div className="cashier-sales-metric-note" style={metricNote}>
+          {note}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -284,13 +289,13 @@ export default function SalesReports() {
   );
 
   return (
-    <div style={{ paddingBottom: 40 }}>
-      <div style={headerRow}>
+    <div className="cashier-sales-report-page" style={{ paddingBottom: 40 }}>
+      <div className="cashier-sales-header" style={headerRow}>
         <div>
-          <h1 style={pageTitle}>
+          <h1 className="cashier-sales-title" style={pageTitle}>
             {isCashierReport ? "My Sales Report" : "Sales Report"}
           </h1>
-          <p style={pageSubtitle}>
+          <p className="cashier-sales-subtitle" style={pageSubtitle}>
             {isCashierReport
               ? "Review only the verified payments and orders processed under your cashier account."
               : "Review verified payments, balances, and sales activity."}
@@ -298,7 +303,7 @@ export default function SalesReports() {
         </div>
       </div>
 
-      <div style={noticeBox}>
+      <div className="cashier-sales-notice" style={noticeBox}>
         <strong>
           {isCashierReport
             ? "Your cashier transactions only."
@@ -309,13 +314,14 @@ export default function SalesReports() {
           : "Blueprint down payments and remaining balances are recorded as separate payment transactions."}
       </div>
 
-      <div style={filterCard}>
-        <div style={filterGrid}>
+      <div className="cashier-sales-filter-card" style={filterCard}>
+        <div className="cashier-sales-filter-grid" style={filterGrid}>
           {/* WISDOM CASHIER C3 FORM SEMANTICS R3 */}
           <FilterField label="Order Source" htmlFor="sales-report-source">
             <select
               id="sales-report-source"
               name="sales_report_source"
+              className="cashier-sales-input"
               style={input}
               value={draftFilters.source}
               onChange={(event) =>
@@ -338,6 +344,7 @@ export default function SalesReports() {
             <select
               id="sales-report-payment-type"
               name="sales_report_payment_type"
+              className="cashier-sales-input"
               style={input}
               value={draftFilters.payment}
               onChange={(event) =>
@@ -357,6 +364,7 @@ export default function SalesReports() {
             <select
               id="sales-report-period"
               name="sales_report_period"
+              className="cashier-sales-input"
               style={input}
               value={draftFilters.period}
               onChange={(event) =>
@@ -377,6 +385,7 @@ export default function SalesReports() {
             <input
               id="sales-report-from-date"
               name="sales_report_from_date"
+              className="cashier-sales-input"
               style={input}
               type="date"
               value={draftFilters.from}
@@ -393,6 +402,7 @@ export default function SalesReports() {
             <input
               id="sales-report-to-date"
               name="sales_report_to_date"
+              className="cashier-sales-input"
               style={input}
               type="date"
               value={draftFilters.to}
@@ -407,6 +417,7 @@ export default function SalesReports() {
 
           <button
             type="button"
+            className="cashier-sales-action cashier-sales-generate"
             style={buttonPrimary}
             onClick={handleGenerateReport}
             disabled={loading && !data}
@@ -416,13 +427,14 @@ export default function SalesReports() {
 
           <button
             type="button"
+            className="cashier-sales-action cashier-sales-print"
             style={buttonGhost}
             onClick={() => window.print()}
           >
             <Printer size={15} /> Print Current View
           </button>
         </div>
-        <div style={filterHelp}>
+        <div className="cashier-sales-filter-help" style={filterHelp}>
           Date fields are optional. With no dates, Period uses the current
           day/week/month/year. With dates, Period controls chart grouping.
         </div>
@@ -430,7 +442,7 @@ export default function SalesReports() {
 
       {error ? <div style={errorBox}>{error}</div> : null}
       {data ? (
-        <div style={reportMeta}>
+        <div className="cashier-sales-report-meta" style={reportMeta}>
           <strong>Applied report:</strong>{" "}
           {sourceFilterLabel(displayFilters.source)}
           {" · "}
@@ -454,7 +466,7 @@ export default function SalesReports() {
 
       {data ? (
         <>
-          <div style={metricGrid}>
+          <div className="cashier-sales-metric-grid" style={metricGrid}>
             <MetricCard
               label="Order Value"
               value={money(totals.gross_order_value)}
@@ -485,13 +497,13 @@ export default function SalesReports() {
             />
           </div>
 
-          <div style={chartGrid}>
-            <section style={card}>
+          <div className="cashier-sales-chart-grid" style={chartGrid}>
+            <section className="cashier-sales-card" style={card}>
               <SectionHeader
                 title="Payment Activity"
                 subtitle="Verified payments grouped by payment date"
               />
-              <div style={{ padding: 18 }}>
+              <div className="cashier-sales-chart-body" style={{ padding: 18 }}>
                 {chartData.length === 0 ? (
                   <div style={emptyChart}>
                     No verified payments for this period.
@@ -512,6 +524,7 @@ export default function SalesReports() {
                         tick={{ fontSize: 11, fill: "#71717a" }}
                         axisLine={false}
                         tickLine={false}
+                        minTickGap={18}
                       />
                       <YAxis
                         tick={{ fontSize: 11, fill: "#71717a" }}
@@ -538,12 +551,12 @@ export default function SalesReports() {
               </div>
             </section>
 
-            <section style={card}>
+            <section className="cashier-sales-card" style={card}>
               <SectionHeader
                 title="Payment Methods"
                 subtitle="Verified payments grouped by payment method"
               />
-              <div style={methodPanel}>
+              <div className="cashier-sales-method-panel" style={methodPanel}>
                 {paymentBreakdown.length === 0 ? (
                   <div style={methodEmpty}>No verified payment data.</div>
                 ) : (
@@ -555,8 +568,12 @@ export default function SalesReports() {
                         : 0;
 
                     return (
-                      <div key={row.payment_method} style={methodBlock}>
-                        <div style={methodRow}>
+                      <div
+                        key={row.payment_method}
+                        className="cashier-sales-method-block"
+                        style={methodBlock}
+                      >
+                        <div className="cashier-sales-method-row" style={methodRow}>
                           <div>
                             <strong style={methodName}>
                               {paymentMethodLabel(row.payment_method)}
@@ -566,7 +583,7 @@ export default function SalesReports() {
                               {Number(row.count || 0) === 1 ? "" : "s"}
                             </div>
                           </div>
-                          <strong style={methodAmount}>
+                          <strong className="cashier-sales-method-amount" style={methodAmount}>
                             {money(row.total_amount)}
                           </strong>
                         </div>
@@ -589,7 +606,7 @@ export default function SalesReports() {
             </section>
           </div>
 
-          <section style={card}>
+          <section className="cashier-sales-card" style={card}>
             <SectionHeader
               title="Payment Transactions"
               subtitle={
@@ -598,8 +615,8 @@ export default function SalesReports() {
                   : "Verified payments recorded during the selected period."
               }
             />
-            <div style={tableScroll}>
-              <table style={table}>
+            <div className="cashier-sales-desktop-table" style={tableScroll}>
+              <table className="cashier-sales-table" style={table}>
                 <thead>
                   <tr>
                     {[
@@ -666,16 +683,87 @@ export default function SalesReports() {
                 </tbody>
               </table>
             </div>
+            <div
+              className="cashier-sales-mobile-transaction-list"
+              aria-label="Payment transactions"
+            >
+              {transactions.length === 0 ? (
+                <div className="cashier-sales-mobile-empty">
+                  No verified payment transactions for this period.
+                </div>
+              ) : (
+                transactions.map((row) => (
+                  <article
+                    key={"mobile-" + row.payment_transaction_id}
+                    className="cashier-sales-mobile-transaction-card"
+                  >
+                    <div className="cashier-sales-mobile-transaction-header">
+                      <div className="cashier-sales-mobile-transaction-heading">
+                        <strong>{row.order_number || "#" + row.order_id}</strong>
+                        <span>{formatDateTime(row.payment_date)}</span>
+                      </div>
+                      <div className="cashier-sales-mobile-transaction-summary">
+                        <span className="cashier-sales-mobile-summary-label">
+                          Amount Paid
+                        </span>
+                        <strong>{money(row.amount)}</strong>
+                      </div>
+                    </div>
+
+                    <div className="cashier-sales-mobile-customer">
+                      <strong>{row.customer_name || "—"}</strong>
+                      {row.customer_phone ? <span>{row.customer_phone}</span> : null}
+                    </div>
+
+                    <dl className="cashier-sales-mobile-details">
+                      <div>
+                        <dt>Receipt</dt>
+                        <dd>{row.receipt_number || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>Order Type</dt>
+                        <dd>{orderTypeLabel(row)}</dd>
+                      </div>
+                      <div>
+                        <dt>Payment Method</dt>
+                        <dd>{paymentMethodLabel(row.payment_method)}</dd>
+                      </div>
+                      <div>
+                        <dt>Order Total</dt>
+                        <dd>{money(row.order_total)}</dd>
+                      </div>
+                      <div>
+                        <dt>Paid After Payment</dt>
+                        <dd>{money(row.total_paid_after ?? row.lifetime_collected)}</dd>
+                      </div>
+                      <div>
+                        <dt>Balance After Payment</dt>
+                        <dd>{money(row.remaining_balance)}</dd>
+                      </div>
+                      <div>
+                        <dt>Status After Payment</dt>
+                        <dd>{humanize(row.payment_status)}</dd>
+                      </div>
+                      <div>
+                        <dt>Processed By</dt>
+                        <dd>{processedByLabel(row.processed_by)}</dd>
+                      </div>
+                    </dl>
+                  </article>
+                ))
+              )}
+            </div>
             {totalTransactions > 0 ? (
-              <div style={paginationBar}>
-                <div style={paginationText}>
+              <div className="cashier-sales-pagination" style={paginationBar}>
+                <div className="cashier-sales-pagination-text" style={paginationText}>
                   Showing {pageStart}–{pageEnd} of {totalTransactions} transactions
                   {" · Page "}
                   {currentPage} of {totalPages}
                 </div>
-                <div style={paginationActions}>
+                <div className="cashier-sales-pagination-actions" style={paginationActions}>
                   <button
                     type="button"
+                    className="cashier-sales-pagination-button"
                     style={paginationButton}
                     disabled={loading || currentPage <= 1}
                     onClick={() => handlePageChange(currentPage - 1)}
@@ -684,6 +772,7 @@ export default function SalesReports() {
                   </button>
                   <button
                     type="button"
+                    className="cashier-sales-pagination-button"
                     style={paginationButton}
                     disabled={loading || currentPage >= totalPages}
                     onClick={() => handlePageChange(currentPage + 1)}
@@ -695,13 +784,13 @@ export default function SalesReports() {
             ) : null}
           </section>
 
-          <section style={card}>
+          <section className="cashier-sales-card" style={card}>
             <SectionHeader
               title="Top Products by Included Order Value"
               subtitle="Top 20 item values from orders tied to the selected verified-payment scope. Custom furniture may be priced as one complete project instead of per item."
             />
-            <div style={tableScroll}>
-              <table style={table}>
+            <div className="cashier-sales-desktop-table" style={tableScroll}>
+              <table className="cashier-sales-table" style={table}>
                 <thead>
                   <tr>
                     {["Product", "Units", "Order Value"].map((label) => (
@@ -746,6 +835,48 @@ export default function SalesReports() {
                 </tbody>
               </table>
             </div>
+            <div
+              className="cashier-sales-mobile-product-list"
+              aria-label="Top products by included order value"
+            >
+              {products.length === 0 ? (
+                <div className="cashier-sales-mobile-empty">
+                  No product sales data for this period.
+                </div>
+              ) : (
+                products.map((row, index) => {
+                  const hasOrderValue =
+                    Math.abs(Number(row.gross_order_value || 0)) > 0.009;
+
+                  return (
+                    <article
+                      key={"mobile-product-" + row.product_name + "-" + index}
+                      className="cashier-sales-mobile-product-card"
+                    >
+                      <strong className="cashier-sales-mobile-product-name">
+                        {row.product_name || "—"}
+                      </strong>
+                      <div className="cashier-sales-mobile-product-meta">
+                        <div>
+                          <span>Units</span>
+                          <strong>
+                            {Number(row.qty || 0).toLocaleString("en-PH")}
+                          </strong>
+                        </div>
+                        <div>
+                          <span>Included Order Value</span>
+                          <strong>
+                            {hasOrderValue
+                              ? money(row.gross_order_value)
+                              : "Not separately priced"}
+                          </strong>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })
+              )}
+            </div>
           </section>
         </>
       ) : null}
@@ -755,8 +886,14 @@ export default function SalesReports() {
 
 function FilterField({ label, htmlFor, children }) {
   return (
-    <label htmlFor={htmlFor} style={fieldWrap}>
-      <span style={fieldLabel}>{label}</span>
+    <label
+      className="cashier-sales-filter-field"
+      htmlFor={htmlFor}
+      style={fieldWrap}
+    >
+      <span className="cashier-sales-filter-label" style={fieldLabel}>
+        {label}
+      </span>
       {children}
     </label>
   );
@@ -764,9 +901,15 @@ function FilterField({ label, htmlFor, children }) {
 
 function SectionHeader({ title, subtitle }) {
   return (
-    <div style={sectionHeader}>
-      <h3 style={sectionTitle}>{title}</h3>
-      {subtitle ? <p style={sectionSubtitle}>{subtitle}</p> : null}
+    <div className="cashier-sales-section-header" style={sectionHeader}>
+      <h3 className="cashier-sales-section-title" style={sectionTitle}>
+        {title}
+      </h3>
+      {subtitle ? (
+        <p className="cashier-sales-section-subtitle" style={sectionSubtitle}>
+          {subtitle}
+        </p>
+      ) : null}
     </div>
   );
 }
