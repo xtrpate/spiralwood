@@ -85,6 +85,18 @@ const settingsRows = [
 ];
 
 const mockDb = {
+  async getConnection() {
+    return {
+      async beginTransaction() {},
+      async commit() {},
+      async rollback() {},
+      release() {},
+      query(sql, params = []) {
+        return mockDb.query(sql, params);
+      },
+    };
+  },
+
   async query(sql, params = []) {
     const text = String(sql);
     dbCalls.push({ sql: text, params: [...params] });

@@ -5,6 +5,7 @@ const { signUploadPath } = require("../../utils/signedUrl");
 const { createNotificationSafe } = require("../../utils/notificationHelper");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const { getPhilippineDateKey } = require("../../utils/philippineTime");
+const { parseStrictPositiveInt } = require("../../utils/validators");
 
 const WARRANTY_PERIOD_KEY = "warranty_period_days";
 const WARRANTY_POLICY_VERSION_KEY = "warranty_policy_version";
@@ -86,6 +87,11 @@ const splitStoredProofs = (value) => {
     .filter(Boolean);
   return { photo_url: parts[0] || null, proof_url: parts[1] || null };
 };
+
+const isWarrantySubmissionLockConflict = (err) =>
+  ["ER_LOCK_DEADLOCK", "ER_LOCK_WAIT_TIMEOUT"].includes(
+    String(err?.code || ""),
+  ) || [1205, 1213].includes(Number(err?.errno));
 
 const getEligibleOrders = async (req, res) => {
   try {
@@ -206,26 +212,34 @@ const getClaims = async (req, res) => {
 };
 
 const submitClaim = async (req, res) => {
-  const orderId = Number(req.body?.order_id);
-  const orderItemId = Number(req.body?.order_item_id);
-  const claimQuantity = Number(req.body?.claim_quantity);
-  const description = String(req.body?.description || "").trim();
+  const orderId = parseStrictPositiveInt(req.body?.order_id);
+  const orderItemId = parseStrictPositiveInt(req.body?.order_item_id);
+  const claimQuantity = parseStrictPositiveInt(req.body?.claim_quantity);
+  const rawDescription = req.body?.description;
 
-  if (!Number.isInteger(orderId) || orderId <= 0) {
+  if (!orderId) {
     return res
       .status(400)
       .json({ message: "Please select an eligible completed and paid order." });
   }
-  if (!Number.isInteger(orderItemId) || orderItemId <= 0) {
+  if (!orderItemId) {
     return res.status(400).json({
       message: "Please select the exact affected item from the order.",
     });
   }
-  if (!Number.isInteger(claimQuantity) || claimQuantity <= 0) {
+  if (!claimQuantity) {
     return res.status(400).json({
       message: "Claim quantity must be a whole number greater than 0.",
     });
   }
+  if (typeof rawDescription !== "string") {
+    return res.status(400).json({
+      message: "Description of the issue must be text.",
+    });
+  }
+
+  const description = rawDescription.trim();
+
   if (!description) {
     return res
       .status(400)
@@ -244,17 +258,39 @@ const submitClaim = async (req, res) => {
   const proofUrl = req.files?.proof?.[0]
     ? `uploads/warranty/${req.files.proof[0].filename}`
     : null;
+
   if (!photoUrl || !proofUrl) {
     return res.status(400).json({
       message: "Both defect photo and proof of purchase are required.",
     });
   }
+
   const combinedUrls = [photoUrl, proofUrl].join(",");
+  let connection = null;
+  let transactionOpen = false;
+
+  const rollbackWithResponse = async (status, message) => {
+    if (connection && transactionOpen) {
+      await connection.rollback();
+      transactionOpen = false;
+    }
+    return res.status(status).json({ message });
+  };
 
   try {
     const warrantyPeriodDays = await getWarrantyPeriodDays();
     const todayKey = getPhilippineDateKey();
-    const [[item]] = await db.query(
+
+    connection = await db.getConnection();
+    await connection.beginTransaction();
+    transactionOpen = true;
+
+    /*
+     * Lock the exact purchased order-item row first. Every submission for the
+     * same item must acquire this lock, so concurrent requests are serialized
+     * before the existing-claim check and INSERT.
+     */
+    const [[item]] = await connection.query(
       `SELECT
          o.id AS order_id, o.order_number, o.customer_id, o.status, o.payment_status,
          DATE_FORMAT((${WARRANTY_EXPIRY_DATE_SQL}), '%Y-%m-%d') AS warranty_expiry,
@@ -263,7 +299,8 @@ const submitClaim = async (req, res) => {
        FROM orders o
        INNER JOIN order_items oi ON oi.order_id = o.id
        WHERE o.customer_id = ? AND o.id = ? AND oi.id = ?
-       LIMIT 1`,
+       LIMIT 1
+       FOR UPDATE`,
       [
         warrantyPeriodDays,
         warrantyPeriodDays,
@@ -275,50 +312,64 @@ const submitClaim = async (req, res) => {
     );
 
     if (!item) {
-      return res.status(404).json({
-        message: "The selected order item was not found for this customer.",
-      });
+      return await rollbackWithResponse(
+        404,
+        "The selected order item was not found for this customer.",
+      );
     }
+
     if (String(item.status || "").toLowerCase() !== "completed") {
-      return res.status(400).json({
-        message: "Only completed orders can be used for warranty claims.",
-      });
+      return await rollbackWithResponse(
+        400,
+        "Only completed orders can be used for warranty claims.",
+      );
     }
+
     if (String(item.payment_status || "").toLowerCase() !== "paid") {
-      return res.status(400).json({
-        message: "Only fully paid orders are eligible for warranty claims.",
-      });
+      return await rollbackWithResponse(
+        400,
+        "Only fully paid orders are eligible for warranty claims.",
+      );
     }
 
     if (!item.warranty_expiry || Number(item.warranty_is_active) !== 1) {
-      return res.status(400).json({
-        message: "This order is no longer within the warranty period.",
-      });
+      return await rollbackWithResponse(
+        400,
+        "This order is no longer within the warranty period.",
+      );
     }
 
     const orderedQuantity = Number(item.ordered_quantity || 0);
     if (claimQuantity > orderedQuantity) {
-      return res.status(400).json({
-        message: `Claim quantity cannot exceed the ordered quantity (${orderedQuantity}).`,
-      });
+      return await rollbackWithResponse(
+        400,
+        `Claim quantity cannot exceed the ordered quantity (${orderedQuantity}).`,
+      );
     }
 
-    const [existingClaims] = await db.query(
+    /*
+     * Recheck under the transaction after the order-item lock is acquired.
+     * The FOR UPDATE read is a current read, so a request that waited for a
+     * competing submission will see the winner's committed claim here.
+     */
+    const [existingClaims] = await connection.query(
       `SELECT id, status
        FROM warranties
        WHERE customer_id = ? AND order_id = ? AND status <> 'cancelled'
          AND (order_item_id = ? OR order_item_id IS NULL)
-       LIMIT 1`,
+       LIMIT 1
+       FOR UPDATE`,
       [req.user.id, item.order_id, item.order_item_id],
     );
+
     if (existingClaims.length) {
-      return res.status(400).json({
-        message:
-          "An active warranty claim already exists for this exact order item.",
-      });
+      return await rollbackWithResponse(
+        409,
+        "A warranty claim already exists for this order item. Refresh your warranty claims to view its latest status.",
+      );
     }
 
-    const [result] = await db.query(
+    const [result] = await connection.query(
       `INSERT INTO warranties
          (customer_id, order_id, order_item_id, product_name, claim_quantity,
           reason, proof_url, warranty_expiry, status)
@@ -335,6 +386,15 @@ const submitClaim = async (req, res) => {
       ],
     );
 
+    await connection.commit();
+    transactionOpen = false;
+    connection.release();
+    connection = null;
+
+    /*
+     * Side effects happen only after the claim itself is committed. A stale or
+     * concurrent loser never reaches audit/notification creation.
+     */
     await writeAuditLogSafe({
       userId: req.user.id,
       action: "submit_warranty_claim",
@@ -357,6 +417,7 @@ const submitClaim = async (req, res) => {
         `SELECT id FROM users WHERE role = 'admin' AND is_active = 1`,
       );
       const customerName = req.user.name || "A customer";
+
       for (const admin of admins) {
         await createNotificationSafe(db, {
           userId: admin.id,
@@ -380,13 +441,35 @@ const submitClaim = async (req, res) => {
       claim_id: result.insertId,
     });
   } catch (err) {
+    if (connection && transactionOpen) {
+      try {
+        await connection.rollback();
+      } catch (rollbackErr) {
+        console.error(
+          "[customer.warranty rollback failed]",
+          rollbackErr.message || rollbackErr,
+        );
+      }
+      transactionOpen = false;
+    }
+
+    if (isWarrantySubmissionLockConflict(err)) {
+      return res.status(409).json({
+        message:
+          "Another warranty submission is being processed for this item. Refresh and try again.",
+      });
+    }
+
     console.error("[customer.warranty POST]", err);
     return res
       .status(500)
       .json({ message: "Server error.", error: err.message });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
   }
 };
-
 const cancelClaim = async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
