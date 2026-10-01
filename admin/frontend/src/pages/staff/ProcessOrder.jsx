@@ -224,6 +224,7 @@ export default function ProcessOrder() {
   const [qrVerifying, setQrVerifying] = useState(false);
   const [qrReconciling, setQrReconciling] = useState(false);
   const [qrRetrying, setQrRetrying] = useState(false);
+  const [qrRetryConfirmOpen, setQrRetryConfirmOpen] = useState(false);
   const [qrNotice, setQrNotice] = useState("");
   const [qrNoticeTone, setQrNoticeTone] = useState("info");
   const resumeStartedRef = useRef(false);
@@ -970,7 +971,7 @@ export default function ProcessOrder() {
     }
   };
 
-  const handleRetryOnlinePayment = async () => {
+  const handleRetryOnlinePayment = () => {
     const activeAttempt = readStoredQrAttempt();
     const attemptId = Number(activeAttempt?.attempt_id);
 
@@ -984,14 +985,25 @@ export default function ProcessOrder() {
       return;
     }
 
-    const confirmed = window.confirm(
-      "The current unpaid PayMongo payment session will be closed and a new payment session will be created. Continue?",
-    );
+    setQrRetryConfirmOpen(true);
+  };
 
-    if (!confirmed) {
+  const confirmRetryOnlinePayment = async () => {
+    if (qrRetrying || qrCreating || qrVerifying || qrReconciling) {
       return;
     }
 
+    const activeAttempt = readStoredQrAttempt();
+    const attemptId = Number(activeAttempt?.attempt_id);
+
+    if (!Number.isSafeInteger(attemptId) || attemptId <= 0) {
+      setQrRetryConfirmOpen(false);
+      setQrNoticeTone("error");
+      setQrNotice("No valid online payment attempt is available to retry.");
+      return;
+    }
+
+    setQrRetryConfirmOpen(false);
     setQrRetrying(true);
     setError("");
     setQrNoticeTone("info");
@@ -1055,15 +1067,12 @@ export default function ProcessOrder() {
       checkoutTokenRef.current = data.checkout_token || "";
 
       /*
-       * IMPORTANT:
        * This URL belongs to the NEW Checkout Session.
        */
       window.location.replace(data.checkout_url);
     } catch (err) {
       const statusCode = err.response?.status;
       const data = err.response?.data || {};
-
-      console.error("[ProcessOrder retry payment]", data || err);
 
       if (statusCode === 404 || statusCode === 409) {
         if (
@@ -1326,902 +1335,1036 @@ export default function ProcessOrder() {
   }
 
   return (
-    <div
-      className="pos-process-order"
-      style={{ fontFamily: "'Inter', sans-serif", paddingBottom: 40 }}
-    >
-      <div style={pageHeader}>
-        <h1 style={pageTitle}>Process Order</h1>
-        <p style={pageSubtitle}>
-          Enter customer details and complete the sale.
-        </p>
-      </div>
-
-      <div className="pos-order-grid">
+    <>
+      {qrRetryConfirmOpen && (
         <div
-          className="pos-order-form-card"
-          style={{ ...cardStyle, padding: 32 }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="retry-payment-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 12000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+            background: "rgba(0,0,0,0.52)",
+          }}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setQrRetryConfirmOpen(false);
+            }
+          }}
         >
-          <h3
+          <div
             style={{
-              margin: "0 0 24px",
-              fontWeight: 700,
-              fontSize: 18,
-              color: "#0a0a0a",
-              letterSpacing: "-0.01em",
+              width: "100%",
+              maxWidth: "390px",
+              background: "#ffffff",
+              border: "1px solid #d9d9dc",
+              borderRadius: 6,
+              boxShadow: "0 18px 46px rgba(0,0,0,0.18)",
+              padding: "24px",
             }}
           >
-            {qrAttempt
-              ? qrReconciling
-                ? "Restoring Online Payment"
-                : qrNeedsManualReview
-                  ? "Online Payment Needs Review"
-                  : "Online Payment Pending"
-              : "Sale Details"}
-          </h3>
+            <h3
+              id="retry-payment-title"
+              style={{
+                margin: 0,
+                color: "#111111",
+                fontSize: "22px",
+                fontWeight: 750,
+                lineHeight: 1.2,
+                letterSpacing: "-0.015em",
+              }}
+            >
+              Retry Payment
+            </h3>
 
-          <form className="pos-order-form" onSubmit={handleSubmit}>
-            {!qrAttempt && (
-              <fieldset
-                disabled={Boolean(qrAttempt)}
-                className="pos-order-fieldset"
+            <p
+              style={{
+                margin: "8px 0 0",
+                color: "#66666b",
+                fontSize: "14px",
+                fontWeight: 400,
+                lineHeight: 1.5,
+              }}
+            >
+              Are you sure you want to create a new PayMongo payment session?
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "8px",
+                marginTop: "22px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setQrRetryConfirmOpen(false)}
+                disabled={qrRetrying}
+                style={{
+                  minWidth: "96px",
+                  height: "40px",
+                  padding: "0 14px",
+                  border: "1px solid #bfc0c4",
+                  borderRadius: 6,
+                  background: "#ffffff",
+                  color: "#111111",
+                  cursor: qrRetrying ? "not-allowed" : "pointer",
+                  fontSize: "13px",
+                  fontWeight: 650,
+                  opacity: qrRetrying ? 0.6 : 1,
+                }}
               >
-                <div
-                  className="pos-form-field pos-field-customer"
-                  style={formField}
-                >
-                  {/* WISDOM CASHIER C3 FORM SEMANTICS R3 */}
-                  <label htmlFor="pos-customer-name" style={labelStyle}>
-                    Customer Name *
-                  </label>
-                  <input
-                    id="pos-customer-name"
-                    name="customer_name"
-                    type="text"
-                    placeholder="Walk-in Customer"
-                    value={form.customer_name}
-                    maxLength={150}
-                    onChange={(e) =>
-                      setForm({ ...form, customer_name: e.target.value })
-                    }
-                    required
-                    style={inputStyle}
-                  />
-                </div>
+                Cancel
+              </button>
 
-                <div
-                  className="pos-form-field pos-field-phone"
-                  style={formField}
-                >
-                  <label htmlFor="pos-customer-phone" style={labelStyle}>
-                    Phone Number{phoneIsRequired ? " *" : ""}
-                  </label>
-                  <input
-                    id="pos-customer-phone"
-                    name="customer_phone"
-                    type="tel"
-                    placeholder="09XXXXXXXXX"
-                    value={form.customer_phone}
-                    maxLength={11}
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        customer_phone: e.target.value
-                          .replace(/\D/g, "")
-                          .slice(0, 11),
-                      })
-                    }
-                    style={{
-                      ...inputStyle,
-                      borderColor:
-                        form.customer_phone && !phoneIsValid
-                          ? "#dc2626"
-                          : "#e4e4e7",
-                    }}
-                  />
-                  {form.customer_phone && !phoneIsValid && (
-                    <div
-                      style={{
-                        color: "#dc2626",
-                        fontSize: 12,
-                        marginTop: 6,
-                        fontWeight: 600,
-                      }}
-                    >
-                      Enter a valid 11-digit PH mobile number starting with 09.
-                    </div>
-                  )}
-                </div>
+              <button
+                type="button"
+                onClick={confirmRetryOnlinePayment}
+                disabled={qrRetrying}
+                style={{
+                  minWidth: "96px",
+                  height: "40px",
+                  padding: "0 14px",
+                  border: "1px solid #111111",
+                  borderRadius: 6,
+                  background: "#111111",
+                  color: "#ffffff",
+                  cursor: qrRetrying ? "not-allowed" : "pointer",
+                  fontSize: "13px",
+                  fontWeight: 650,
+                  opacity: qrRetrying ? 0.6 : 1,
+                }}
+              >
+                {qrRetrying ? "Retrying..." : "Retry Payment"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-                <div
-                  className="pos-form-field pos-field-payment"
-                  style={formField}
+      <div
+        className="pos-process-order"
+        style={{ fontFamily: "'Inter', sans-serif", paddingBottom: 40 }}
+      >
+        <div style={pageHeader}>
+          <h1 style={pageTitle}>Process Order</h1>
+          <p style={pageSubtitle}>
+            Enter customer details and complete the sale.
+          </p>
+        </div>
+
+        <div className="pos-order-grid">
+          <div
+            className="pos-order-form-card"
+            style={{ ...cardStyle, padding: 32 }}
+          >
+            <h3
+              style={{
+                margin: "0 0 24px",
+                fontWeight: 700,
+                fontSize: 18,
+                color: "#0a0a0a",
+                letterSpacing: "-0.01em",
+              }}
+            >
+              {qrAttempt
+                ? qrReconciling
+                  ? "Restoring Online Payment"
+                  : qrNeedsManualReview
+                    ? "Online Payment Needs Review"
+                    : "Online Payment Pending"
+                : "Sale Details"}
+            </h3>
+
+            <form className="pos-order-form" onSubmit={handleSubmit}>
+              {!qrAttempt && (
+                <fieldset
+                  disabled={Boolean(qrAttempt)}
+                  className="pos-order-fieldset"
                 >
-                  <label htmlFor="pos-payment-method" style={labelStyle}>
-                    Payment Method *
-                  </label>
-                  <select
-                    id="pos-payment-method"
-                    name="payment_method"
-                    value={effectivePaymentMethod}
-                    disabled={Boolean(qrAttempt) || !POS_QR_ENABLED}
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        payment_method: e.target.value,
-                        cash_received:
-                          e.target.value === "cash" ? form.cash_received : "",
-                      })
-                    }
-                    style={{
-                      ...inputStyle,
-                      background: POS_QR_ENABLED ? "#ffffff" : "#f4f4f5",
-                      color: "#52525b",
-                    }}
-                  >
-                    <option value="cash">Cash</option>
-                    {POS_QR_ENABLED && (
-                      <option value="online">Online Payment</option>
-                    )}
-                  </select>
                   <div
-                    style={{
-                      fontSize: 12,
-                      color: "#71717a",
-                      marginTop: 6,
-                    }}
-                  >
-                    {POS_QR_ENABLED
-                      ? "Choose cash or online payment."
-                      : "Cash only."}
-                  </div>
-                </div>
-
-                <div
-                  className="pos-form-field pos-field-discount"
-                  style={formField}
-                >
-                  <label htmlFor="pos-discount-value" style={labelStyle}>
-                    Discount
-                  </label>
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <label
-                      htmlFor="pos-discount-type"
-                      style={{
-                        position: "absolute",
-                        width: 1,
-                        height: 1,
-                        padding: 0,
-                        margin: -1,
-                        overflow: "hidden",
-                        clip: "rect(0, 0, 0, 0)",
-                        whiteSpace: "nowrap",
-                        border: 0,
-                      }}
-                    >
-                      Discount type
-                    </label>
-                    <select
-                      id="pos-discount-type"
-                      name="discount_type"
-                      value={form.discount_type}
-                      onChange={(e) =>
-                        setForm({
-                          ...form,
-                          discount_type: e.target.value,
-                          discount: "",
-                        })
-                      }
-                      style={{
-                        width: "80px",
-                        padding: "10px 14px",
-                        border: "1px solid #e4e4e7",
-                        borderRadius: 8,
-                        outline: "none",
-                        background: "#fff",
-                        color: "#18181b",
-                        fontSize: 13,
-                      }}
-                    >
-                      <option value="amount">₱</option>
-                      <option value="percent">%</option>
-                    </select>
-                    <input
-                      id="pos-discount-value"
-                      name="discount"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder={
-                        form.discount_type === "amount"
-                          ? "Amount (e.g. 500)"
-                          : "Percent (e.g. 20)"
-                      }
-                      value={form.discount}
-                      onChange={(e) =>
-                        setForm({ ...form, discount: e.target.value })
-                      }
-                      style={{
-                        ...inputStyle,
-                        flex: 1,
-                        borderColor: discountValidationMessage
-                          ? "#dc2626"
-                          : "#e4e4e7",
-                      }}
-                    />
-                  </div>
-                  {discountValidationMessage && (
-                    <div
-                      style={{
-                        color: "#dc2626",
-                        fontSize: 12,
-                        marginTop: 6,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {discountValidationMessage}
-                    </div>
-                  )}
-                </div>
-
-                {effectivePaymentMethod === "cash" && (
-                  <div
-                    className="pos-form-field pos-field-cash"
+                    className="pos-form-field pos-field-customer"
                     style={formField}
                   >
-                    <label htmlFor="pos-cash-received" style={labelStyle}>
-                      Cash Received (₱) *
+                    {/* WISDOM CASHIER C3 FORM SEMANTICS R3 */}
+                    <label htmlFor="pos-customer-name" style={labelStyle}>
+                      Customer Name *
                     </label>
                     <input
-                      id="pos-cash-received"
-                      name="cash_received"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder="Enter amount received"
-                      value={form.cash_received}
+                      id="pos-customer-name"
+                      name="customer_name"
+                      type="text"
+                      placeholder="Walk-in Customer"
+                      value={form.customer_name}
+                      maxLength={150}
                       onChange={(e) =>
-                        setForm({ ...form, cash_received: e.target.value })
+                        setForm({ ...form, customer_name: e.target.value })
                       }
                       required
                       style={inputStyle}
                     />
                   </div>
-                )}
 
-                <div
-                  className="pos-delivery-section"
-                  style={{
-                    marginTop: 24,
-                    marginBottom: 24,
-                    background: "#fafafa",
-                    border: "1px solid #e4e4e7",
-                    borderRadius: 12,
-                    padding: 24,
-                  }}
-                >
-                  <h4
-                    style={{
-                      margin: "0 0 16px",
-                      fontWeight: 700,
-                      fontSize: 15,
-                      color: "#0a0a0a",
-                    }}
-                  >
-                    Delivery
-                  </h4>
                   <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 16,
-                    }}
+                    className="pos-form-field pos-field-phone"
+                    style={formField}
                   >
-                    <div
+                    <label htmlFor="pos-customer-phone" style={labelStyle}>
+                      Phone Number{phoneIsRequired ? " *" : ""}
+                    </label>
+                    <input
+                      id="pos-customer-phone"
+                      name="customer_phone"
+                      type="tel"
+                      placeholder="09XXXXXXXXX"
+                      value={form.customer_phone}
+                      maxLength={11}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          customer_phone: e.target.value
+                            .replace(/\D/g, "")
+                            .slice(0, 11),
+                        })
+                      }
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: "#18181b",
+                        ...inputStyle,
+                        borderColor:
+                          form.customer_phone && !phoneIsValid
+                            ? "#dc2626"
+                            : "#e4e4e7",
+                      }}
+                    />
+                    {form.customer_phone && !phoneIsValid && (
+                      <div
+                        style={{
+                          color: "#dc2626",
+                          fontSize: 12,
+                          marginTop: 6,
+                          fontWeight: 600,
+                        }}
+                      >
+                        Enter a valid 11-digit PH mobile number starting with
+                        09.
+                      </div>
+                    )}
+                  </div>
+
+                  <div
+                    className="pos-form-field pos-field-payment"
+                    style={formField}
+                  >
+                    <label htmlFor="pos-payment-method" style={labelStyle}>
+                      Payment Method *
+                    </label>
+                    <select
+                      id="pos-payment-method"
+                      name="payment_method"
+                      value={effectivePaymentMethod}
+                      disabled={Boolean(qrAttempt) || !POS_QR_ENABLED}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          payment_method: e.target.value,
+                          cash_received:
+                            e.target.value === "cash" ? form.cash_received : "",
+                        })
+                      }
+                      style={{
+                        ...inputStyle,
+                        background: POS_QR_ENABLED ? "#ffffff" : "#f4f4f5",
+                        color: "#52525b",
                       }}
                     >
-                      <div
-                        className={`pos-delivery-toggle ${
-                          form.need_delivery ? "is-on" : "is-off"
-                        }`}
-                        onClick={() =>
+                      <option value="cash">Cash</option>
+                      {POS_QR_ENABLED && (
+                        <option value="online">Online Payment</option>
+                      )}
+                    </select>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "#71717a",
+                        marginTop: 6,
+                      }}
+                    >
+                      {POS_QR_ENABLED
+                        ? "Choose cash or online payment."
+                        : "Cash only."}
+                    </div>
+                  </div>
+
+                  <div
+                    className="pos-form-field pos-field-discount"
+                    style={formField}
+                  >
+                    <label htmlFor="pos-discount-value" style={labelStyle}>
+                      Discount
+                    </label>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <label
+                        htmlFor="pos-discount-type"
+                        style={{
+                          position: "absolute",
+                          width: 1,
+                          height: 1,
+                          padding: 0,
+                          margin: -1,
+                          overflow: "hidden",
+                          clip: "rect(0, 0, 0, 0)",
+                          whiteSpace: "nowrap",
+                          border: 0,
+                        }}
+                      >
+                        Discount type
+                      </label>
+                      <select
+                        id="pos-discount-type"
+                        name="discount_type"
+                        value={form.discount_type}
+                        onChange={(e) =>
                           setForm({
                             ...form,
-                            need_delivery: !form.need_delivery,
+                            discount_type: e.target.value,
+                            discount: "",
                           })
                         }
                         style={{
-                          width: 44,
-                          height: 24,
-                          borderRadius: 12,
-                          cursor: "pointer",
-                          background: form.need_delivery
-                            ? "#18181b"
-                            : "#d4d4d8",
-                          position: "relative",
-                          transition: "background .2s",
-                          flexShrink: 0,
+                          width: "80px",
+                          padding: "10px 14px",
+                          border: "1px solid #e4e4e7",
+                          borderRadius: 8,
+                          outline: "none",
+                          background: "#fff",
+                          color: "#18181b",
+                          fontSize: 13,
+                        }}
+                      >
+                        <option value="amount">₱</option>
+                        <option value="percent">%</option>
+                      </select>
+                      <input
+                        id="pos-discount-value"
+                        name="discount"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder={
+                          form.discount_type === "amount"
+                            ? "Amount (e.g. 500)"
+                            : "Percent (e.g. 20)"
+                        }
+                        value={form.discount}
+                        onChange={(e) =>
+                          setForm({ ...form, discount: e.target.value })
+                        }
+                        style={{
+                          ...inputStyle,
+                          flex: 1,
+                          borderColor: discountValidationMessage
+                            ? "#dc2626"
+                            : "#e4e4e7",
+                        }}
+                      />
+                    </div>
+                    {discountValidationMessage && (
+                      <div
+                        style={{
+                          color: "#dc2626",
+                          fontSize: 12,
+                          marginTop: 6,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {discountValidationMessage}
+                      </div>
+                    )}
+                  </div>
+
+                  {effectivePaymentMethod === "cash" && (
+                    <div
+                      className="pos-form-field pos-field-cash"
+                      style={formField}
+                    >
+                      <label htmlFor="pos-cash-received" style={labelStyle}>
+                        Cash Received (₱) *
+                      </label>
+                      <input
+                        id="pos-cash-received"
+                        name="cash_received"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="Enter amount received"
+                        value={form.cash_received}
+                        onChange={(e) =>
+                          setForm({ ...form, cash_received: e.target.value })
+                        }
+                        required
+                        style={inputStyle}
+                      />
+                    </div>
+                  )}
+
+                  <div
+                    className="pos-delivery-section"
+                    style={{
+                      marginTop: 24,
+                      marginBottom: 24,
+                      background: "#fafafa",
+                      border: "1px solid #e4e4e7",
+                      borderRadius: 12,
+                      padding: 24,
+                    }}
+                  >
+                    <h4
+                      style={{
+                        margin: "0 0 16px",
+                        fontWeight: 700,
+                        fontSize: 15,
+                        color: "#0a0a0a",
+                      }}
+                    >
+                      Delivery
+                    </h4>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 16,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: "#18181b",
                         }}
                       >
                         <div
-                          className="pos-delivery-toggle-knob"
+                          className={`pos-delivery-toggle ${
+                            form.need_delivery ? "is-on" : "is-off"
+                          }`}
+                          onClick={() =>
+                            setForm({
+                              ...form,
+                              need_delivery: !form.need_delivery,
+                            })
+                          }
                           style={{
-                            width: 18,
-                            height: 18,
-                            borderRadius: "50%",
-                            background: "#fff",
-                            position: "absolute",
-                            top: 3,
-                            left: form.need_delivery ? 23 : 3,
-                            transition: "left .2s",
-                            boxShadow: "0 1px 3px rgba(0,0,0,.2)",
+                            width: 44,
+                            height: 24,
+                            borderRadius: 12,
+                            cursor: "pointer",
+                            background: form.need_delivery
+                              ? "#18181b"
+                              : "#d4d4d8",
+                            position: "relative",
+                            transition: "background .2s",
+                            flexShrink: 0,
                           }}
-                        />
+                        >
+                          <div
+                            className="pos-delivery-toggle-knob"
+                            style={{
+                              width: 18,
+                              height: 18,
+                              borderRadius: "50%",
+                              background: "#fff",
+                              position: "absolute",
+                              top: 3,
+                              left: form.need_delivery ? 23 : 3,
+                              transition: "left .2s",
+                              boxShadow: "0 1px 3px rgba(0,0,0,.2)",
+                            }}
+                          />
+                        </div>
+                        Add delivery
                       </div>
-                      Add delivery
+
+                      {form.need_delivery && (
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr",
+                            gap: 16,
+                            marginTop: 8,
+                          }}
+                        >
+                          <div style={{ gridColumn: "1 / -1" }}>
+                            <LocationPicker
+                              label="Delivery Address *"
+                              addressValue={form.delivery_address}
+                              onAddressChange={handleDeliveryAddressChange}
+                              value={deliveryPin}
+                              onChange={handleDeliveryPinChange}
+                              height={220}
+                              showCurrentLocation={false}
+                              reverseGeocodeOnPin={true}
+                            />
+                          </div>
+
+                          <div>
+                            <label
+                              htmlFor="pos-delivery-fee"
+                              style={labelStyle}
+                            >
+                              Delivery Fee (₱)
+                            </label>
+                            <input
+                              id="pos-delivery-fee"
+                              name="delivery_fee"
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="e.g. 150"
+                              value={form.delivery_fee}
+                              onChange={(e) =>
+                                setForm({
+                                  ...form,
+                                  delivery_fee: e.target.value,
+                                })
+                              }
+                              style={inputStyle}
+                            />
+                          </div>
+
+                          <div>
+                            <label
+                              htmlFor="pos-delivery-date"
+                              style={labelStyle}
+                            >
+                              Delivery Date *
+                            </label>
+                            <input
+                              id="pos-delivery-date"
+                              name="delivery_requested_date"
+                              type="datetime-local"
+                              value={form.delivery_requested_date}
+                              min={minimumDeliveryDateTime}
+                              onChange={(e) =>
+                                setForm({
+                                  ...form,
+                                  delivery_requested_date: e.target.value,
+                                })
+                              }
+                              required={form.need_delivery}
+                              style={inputStyle}
+                            />
+                          </div>
+
+                          <div style={{ gridColumn: "1 / -1" }}>
+                            <label
+                              htmlFor="pos-delivery-notes"
+                              style={labelStyle}
+                            >
+                              Delivery Notes
+                            </label>
+                            <input
+                              id="pos-delivery-notes"
+                              name="delivery_notes"
+                              type="text"
+                              placeholder="Optional delivery notes"
+                              value={form.delivery_notes}
+                              onChange={(e) =>
+                                setForm({
+                                  ...form,
+                                  delivery_notes: e.target.value,
+                                })
+                              }
+                              style={inputStyle}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div
+                    className="pos-form-field pos-field-notes"
+                    style={formField}
+                  >
+                    <label htmlFor="pos-order-notes" style={labelStyle}>
+                      Order Notes
+                    </label>
+                    <textarea
+                      id="pos-order-notes"
+                      name="notes"
+                      rows={3}
+                      placeholder="Add optional notes for this order"
+                      value={form.notes}
+                      onChange={(e) =>
+                        setForm({ ...form, notes: e.target.value })
+                      }
+                      style={{
+                        ...inputStyle,
+                        resize: "vertical",
+                        fontFamily: "inherit",
+                      }}
+                    />
+                  </div>
+                </fieldset>
+              )}
+
+              {error && (
+                <div
+                  style={{
+                    background: "#fef2f2",
+                    color: "#991b1b",
+                    padding: "12px 16px",
+                    borderRadius: 8,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    marginTop: 20,
+                    border: "1px solid #fecaca",
+                  }}
+                >
+                  {error}
+                </div>
+              )}
+
+              {qrAttempt && (
+                <div className="pos-qr-pending-panel">
+                  <div>
+                    <div className="pos-qr-pending-title">
+                      Online Payment Pending
                     </div>
 
-                    {form.need_delivery && (
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "1fr 1fr",
-                          gap: 16,
-                          marginTop: 8,
-                        }}
-                      >
-                        <div style={{ gridColumn: "1 / -1" }}>
-                          <LocationPicker
-                            label="Delivery Address *"
-                            addressValue={form.delivery_address}
-                            onAddressChange={handleDeliveryAddressChange}
-                            value={deliveryPin}
-                            onChange={handleDeliveryPinChange}
-                            height={220}
-                            showCurrentLocation={false}
-                            reverseGeocodeOnPin={true}
-                          />
-                        </div>
+                    <p className="pos-qr-pending-copy">
+                      The order is reserved for online payment. Complete the
+                      payment through the secure PayMongo Checkout page.
+                    </p>
 
-                        <div>
-                          <label htmlFor="pos-delivery-fee" style={labelStyle}>
-                            Delivery Fee (₱)
-                          </label>
-                          <input
-                            id="pos-delivery-fee"
-                            name="delivery_fee"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="e.g. 150"
-                            value={form.delivery_fee}
-                            onChange={(e) =>
-                              setForm({ ...form, delivery_fee: e.target.value })
-                            }
-                            style={inputStyle}
-                          />
-                        </div>
+                    <div className="pos-qr-pending-amount">
+                      ₱
+                      {qrDisplayTotal.toLocaleString("en-PH", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </div>
 
-                        <div>
-                          <label htmlFor="pos-delivery-date" style={labelStyle}>
-                            Delivery Date *
-                          </label>
-                          <input
-                            id="pos-delivery-date"
-                            name="delivery_requested_date"
-                            type="datetime-local"
-                            value={form.delivery_requested_date}
-                            min={minimumDeliveryDateTime}
-                            onChange={(e) =>
-                              setForm({
-                                ...form,
-                                delivery_requested_date: e.target.value,
-                              })
-                            }
-                            required={form.need_delivery}
-                            style={inputStyle}
-                          />
-                        </div>
+                    {!qrCartMatchesCurrent && hasServerCheckout && (
+                      <div className="pos-qr-notice pos-qr-notice-info">
+                        {cart.length === 0
+                          ? "Reserved order details were restored from the server."
+                          : "Reserved order details were restored from the server. A different local cart was preserved and was not overwritten."}
+                      </div>
+                    )}
 
-                        <div style={{ gridColumn: "1 / -1" }}>
-                          <label
-                            htmlFor="pos-delivery-notes"
-                            style={labelStyle}
-                          >
-                            Delivery Notes
-                          </label>
-                          <input
-                            id="pos-delivery-notes"
-                            name="delivery_notes"
-                            type="text"
-                            placeholder="Optional delivery notes"
-                            value={form.delivery_notes}
-                            onChange={(e) =>
-                              setForm({
-                                ...form,
-                                delivery_notes: e.target.value,
-                              })
-                            }
-                            style={inputStyle}
-                          />
-                        </div>
+                    {!qrCartMatchesCurrent && !hasServerCheckout && (
+                      <div className="pos-qr-notice pos-qr-notice-error">
+                        The current cart differs from the cart reserved for this
+                        payment attempt. The existing PayMongo checkout remains
+                        authoritative, and this local cart will not be cleared.
                       </div>
                     )}
                   </div>
-                </div>
 
-                <div
-                  className="pos-form-field pos-field-notes"
-                  style={formField}
-                >
-                  <label htmlFor="pos-order-notes" style={labelStyle}>
-                    Order Notes
-                  </label>
-                  <textarea
-                    id="pos-order-notes"
-                    name="notes"
-                    rows={3}
-                    placeholder="Add optional notes for this order"
-                    value={form.notes}
-                    onChange={(e) =>
-                      setForm({ ...form, notes: e.target.value })
-                    }
-                    style={{
-                      ...inputStyle,
-                      resize: "vertical",
-                      fontFamily: "inherit",
-                    }}
-                  />
-                </div>
-              </fieldset>
-            )}
+                  {qrNotice && (
+                    <div
+                      className={`pos-qr-notice pos-qr-notice-${qrNoticeTone}`}
+                    >
+                      {qrNotice}
+                    </div>
+                  )}
 
-            {error && (
-              <div
-                style={{
-                  background: "#fef2f2",
-                  color: "#991b1b",
-                  padding: "12px 16px",
-                  borderRadius: 8,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  marginTop: 20,
-                  border: "1px solid #fecaca",
-                }}
-              >
-                {error}
-              </div>
-            )}
+                  <div className="pos-qr-actions">
+                    {qrAttempt.checkout_url && (
+                      <button
+                        type="button"
+                        style={btnPrimary}
+                        onClick={handleRetryOnlinePayment}
+                        disabled={
+                          qrCreating ||
+                          qrVerifying ||
+                          qrReconciling ||
+                          qrRetrying
+                        }
+                      >
+                        {qrRetrying
+                          ? "Creating New Payment..."
+                          : "Retry PayMongo Payment"}
+                      </button>
+                    )}
 
-            {qrAttempt && (
-              <div className="pos-qr-pending-panel">
-                <div>
-                  <div className="pos-qr-pending-title">
-                    Online Payment Pending
+                    {!qrAttempt.checkout_url && (
+                      <button
+                        type="button"
+                        style={btnPrimary}
+                        onClick={() => reconcileQrAttempt(qrAttempt)}
+                        disabled={qrCreating || qrVerifying || qrReconciling}
+                      >
+                        {qrReconciling
+                          ? "Checking Payment..."
+                          : "Check Payment Status"}
+                      </button>
+                    )}
+
+                    {(qrCanVerify || qrNeedsManualReview) && (
+                      <button
+                        type="button"
+                        style={btnSecondary}
+                        onClick={() => verifyOnlineAttempt(qrAttempt)}
+                        disabled={
+                          qrCreating ||
+                          qrVerifying ||
+                          qrReconciling ||
+                          qrNeedsManualReview
+                        }
+                      >
+                        {qrNeedsManualReview
+                          ? "Admin Review Required"
+                          : qrVerifying
+                            ? "Verifying..."
+                            : "Verify Payment"}
+                      </button>
+                    )}
                   </div>
 
-                  <p className="pos-qr-pending-copy">
-                    The order is reserved for online payment. Complete the
-                    payment through the secure PayMongo Checkout page.
+                  <p className="pos-qr-lock-note">
+                    Order details are locked while this payment attempt is
+                    active. Complete or resolve the PayMongo payment before
+                    creating another payment attempt.
                   </p>
+                </div>
+              )}
 
-                  <div className="pos-qr-pending-amount">
+              {!qrAttempt && (
+                <div
+                  className="pos-order-actions"
+                  style={{
+                    display: "flex",
+                    gap: 12,
+                    marginTop: 32,
+                    justifyContent: "space-between",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <button
+                    type="button"
+                    style={btnSecondary}
+                    onClick={() => navigate("/staff/products")}
+                  >
+                    ← Back to Catalog
+                  </button>
+
+                  {form.payment_method === "online" ? (
+                    <button
+                      type="button"
+                      style={
+                        canSubmitOnline
+                          ? btnPrimary
+                          : {
+                              ...btnPrimary,
+                              opacity: 0.5,
+                              cursor: "not-allowed",
+                            }
+                      }
+                      disabled={!canSubmitOnline}
+                      onClick={handleCreateOnlinePayment}
+                    >
+                      {qrCreating
+                        ? "Opening PayMongo..."
+                        : "Continue to PayMongo Payment"}
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      style={
+                        canSubmit || loading // Keep button fully opaque while loading so spinner looks good
+                          ? btnPrimary
+                          : {
+                              ...btnPrimary,
+                              opacity: 0.5,
+                              cursor: "not-allowed",
+                            }
+                      }
+                      disabled={!canSubmit || loading}
+                    >
+                      {loading ? (
+                        <>
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            style={{ animation: "wSpin 0.7s linear infinite" }}
+                          >
+                            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                          </svg>
+                          Processing...
+                        </>
+                      ) : (
+                        "Confirm Order and Payment"
+                      )}
+                    </button>
+                  )}
+                </div>
+              )}
+            </form>
+          </div>
+
+          {/* Right Sidebar - Summary */}
+          <div
+            className="pos-order-summary-card"
+            style={{ ...cardStyle, padding: 0, height: "fit-content" }}
+          >
+            <div
+              className="pos-order-summary-header"
+              style={{
+                padding: "20px 24px",
+                borderBottom: "1px solid #f4f4f5",
+                background: "#fafafa",
+              }}
+            >
+              <h3
+                style={{
+                  margin: 0,
+                  fontWeight: 700,
+                  fontSize: 15,
+                  color: "#0a0a0a",
+                  letterSpacing: "0",
+                  textTransform: "none",
+                }}
+              >
+                Order Summary
+              </h3>
+            </div>
+
+            <div
+              className="pos-order-summary-items"
+              style={{ maxHeight: 320, overflowY: "auto", padding: "0 24px" }}
+            >
+              {displayCart.map((item) => (
+                <div
+                  key={item.key || `reserved-${item.product_id}`}
+                  className="pos-order-summary-item"
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    padding: "16px 0",
+                    borderBottom: "1px solid #f4f4f5",
+                    fontSize: 13,
+                  }}
+                >
+                  <div className="pos-order-summary-thumb">
+                    {getOrderSummaryImage(item) ? (
+                      <img
+                        src={getOrderSummaryImage(item)}
+                        alt={item.product_name}
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                        }}
+                      />
+                    ) : (
+                      <div
+                        className="pos-order-summary-thumb-fallback"
+                        aria-hidden="true"
+                      />
+                    )}
+                  </div>
+
+                  <div className="pos-order-summary-copy">
+                    <div
+                      style={{
+                        fontWeight: 600,
+                        color: "#0a0a0a",
+                        marginBottom: 2,
+                      }}
+                    >
+                      {item.product_name}
+                    </div>
+
+                    <div
+                      style={{
+                        color: "#71717a",
+                        marginTop: 4,
+                        fontWeight: 500,
+                      }}
+                    >
+                      Quantity {item.quantity} at ₱
+                      {Number(item.unit_price).toLocaleString()} each
+                    </div>
+                  </div>
+                  <div style={{ fontWeight: 650, color: "#0a0a0a" }}>
                     ₱
-                    {qrDisplayTotal.toLocaleString("en-PH", {
+                    {(Number.isFinite(Number(item.subtotal))
+                      ? Number(item.subtotal)
+                      : Number(item.unit_price) * Number(item.quantity)
+                    ).toLocaleString("en-PH", {
                       minimumFractionDigits: 2,
                     })}
                   </div>
-
-                  {!qrCartMatchesCurrent && hasServerCheckout && (
-                    <div className="pos-qr-notice pos-qr-notice-info">
-                      {cart.length === 0
-                        ? "Reserved order details were restored from the server."
-                        : "Reserved order details were restored from the server. A different local cart was preserved and was not overwritten."}
-                    </div>
-                  )}
-
-                  {!qrCartMatchesCurrent && !hasServerCheckout && (
-                    <div className="pos-qr-notice pos-qr-notice-error">
-                      The current cart differs from the cart reserved for this
-                      payment attempt. The existing PayMongo checkout remains
-                      authoritative, and this local cart will not be cleared.
-                    </div>
-                  )}
                 </div>
-
-                {qrNotice && (
-                  <div
-                    className={`pos-qr-notice pos-qr-notice-${qrNoticeTone}`}
-                  >
-                    {qrNotice}
-                  </div>
-                )}
-
-                <div className="pos-qr-actions">
-                  {qrAttempt.checkout_url && (
-                    <button
-                      type="button"
-                      style={btnPrimary}
-                      onClick={handleRetryOnlinePayment}
-                      disabled={
-                        qrCreating || qrVerifying || qrReconciling || qrRetrying
-                      }
-                    >
-                      {qrRetrying
-                        ? "Creating New Payment..."
-                        : "Retry PayMongo Payment"}
-                    </button>
-                  )}
-
-                  {!qrAttempt.checkout_url && (
-                    <button
-                      type="button"
-                      style={btnPrimary}
-                      onClick={() => reconcileQrAttempt(qrAttempt)}
-                      disabled={qrCreating || qrVerifying || qrReconciling}
-                    >
-                      {qrReconciling
-                        ? "Checking Payment..."
-                        : "Check Payment Status"}
-                    </button>
-                  )}
-
-                  {(qrCanVerify || qrNeedsManualReview) && (
-                    <button
-                      type="button"
-                      style={btnSecondary}
-                      onClick={() => verifyOnlineAttempt(qrAttempt)}
-                      disabled={
-                        qrCreating ||
-                        qrVerifying ||
-                        qrReconciling ||
-                        qrNeedsManualReview
-                      }
-                    >
-                      {qrNeedsManualReview
-                        ? "Admin Review Required"
-                        : qrVerifying
-                          ? "Verifying..."
-                          : "Verify Payment"}
-                    </button>
-                  )}
-                </div>
-
-                <p className="pos-qr-lock-note">
-                  Order details are locked while this payment attempt is active.
-                  Complete or resolve the PayMongo payment before creating
-                  another payment attempt.
-                </p>
-              </div>
-            )}
-
-            {!qrAttempt && (
-              <div
-                className="pos-order-actions"
-                style={{
-                  display: "flex",
-                  gap: 12,
-                  marginTop: 32,
-                  justifyContent: "space-between",
-                  flexWrap: "wrap",
-                }}
-              >
-                <button
-                  type="button"
-                  style={btnSecondary}
-                  onClick={() => navigate("/staff/products")}
-                >
-                  ← Back to Catalog
-                </button>
-
-                {form.payment_method === "online" ? (
-                  <button
-                    type="button"
-                    style={
-                      canSubmitOnline
-                        ? btnPrimary
-                        : {
-                            ...btnPrimary,
-                            opacity: 0.5,
-                            cursor: "not-allowed",
-                          }
-                    }
-                    disabled={!canSubmitOnline}
-                    onClick={handleCreateOnlinePayment}
-                  >
-                    {qrCreating
-                      ? "Opening PayMongo..."
-                      : "Continue to PayMongo Payment"}
-                  </button>
-                ) : (
-                  <button
-                    type="submit"
-                    style={
-                      canSubmit || loading // Keep button fully opaque while loading so spinner looks good
-                        ? btnPrimary
-                        : {
-                            ...btnPrimary,
-                            opacity: 0.5,
-                            cursor: "not-allowed",
-                          }
-                    }
-                    disabled={!canSubmit || loading}
-                  >
-                    {loading ? (
-                      <>
-                        <svg
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="3"
-                          strokeLinecap="round"
-                          style={{ animation: "wSpin 0.7s linear infinite" }}
-                        >
-                          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                        </svg>
-                        Processing...
-                      </>
-                    ) : (
-                      "Confirm Order and Payment"
-                    )}
-                  </button>
-                )}
-              </div>
-            )}
-          </form>
-        </div>
-
-        {/* Right Sidebar - Summary */}
-        <div
-          className="pos-order-summary-card"
-          style={{ ...cardStyle, padding: 0, height: "fit-content" }}
-        >
-          <div
-            className="pos-order-summary-header"
-            style={{
-              padding: "20px 24px",
-              borderBottom: "1px solid #f4f4f5",
-              background: "#fafafa",
-            }}
-          >
-            <h3
-              style={{
-                margin: 0,
-                fontWeight: 700,
-                fontSize: 15,
-                color: "#0a0a0a",
-                letterSpacing: "0",
-                textTransform: "none",
-              }}
-            >
-              Order Summary
-            </h3>
-          </div>
-
-          <div
-            className="pos-order-summary-items"
-            style={{ maxHeight: 320, overflowY: "auto", padding: "0 24px" }}
-          >
-            {displayCart.map((item) => (
-              <div
-                key={item.key || `reserved-${item.product_id}`}
-                className="pos-order-summary-item"
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  padding: "16px 0",
-                  borderBottom: "1px solid #f4f4f5",
-                  fontSize: 13,
-                }}
-              >
-                <div className="pos-order-summary-thumb">
-                  {getOrderSummaryImage(item) ? (
-                    <img
-                      src={getOrderSummaryImage(item)}
-                      alt={item.product_name}
-                      onError={(e) => {
-                        e.currentTarget.style.display = "none";
-                      }}
-                    />
-                  ) : (
-                    <div
-                      className="pos-order-summary-thumb-fallback"
-                      aria-hidden="true"
-                    />
-                  )}
-                </div>
-
-                <div className="pos-order-summary-copy">
-                  <div
-                    style={{
-                      fontWeight: 600,
-                      color: "#0a0a0a",
-                      marginBottom: 2,
-                    }}
-                  >
-                    {item.product_name}
-                  </div>
-
-                  <div
-                    style={{ color: "#71717a", marginTop: 4, fontWeight: 500 }}
-                  >
-                    Quantity {item.quantity} at ₱
-                    {Number(item.unit_price).toLocaleString()} each
-                  </div>
-                </div>
-                <div style={{ fontWeight: 650, color: "#0a0a0a" }}>
-                  ₱
-                  {(Number.isFinite(Number(item.subtotal))
-                    ? Number(item.subtotal)
-                    : Number(item.unit_price) * Number(item.quantity)
-                  ).toLocaleString("en-PH", {
-                    minimumFractionDigits: 2,
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div
-            className="pos-order-summary-totals"
-            style={{
-              padding: 24,
-              background: "#fafafa",
-              borderTop: "1px solid #e4e4e7",
-            }}
-          >
-            <div style={summaryRowStyle}>
-              <span>Subtotal</span>
-              <span style={{ fontWeight: 600, color: "#18181b" }}>
-                ₱
-                {displaySubtotal.toLocaleString("en-PH", {
-                  minimumFractionDigits: 2,
-                })}
-              </span>
+              ))}
             </div>
-
-            {displayDiscountAmount > 0 && (
-              <div style={{ ...summaryRowStyle, color: "#dc2626" }}>
-                <span>
-                  Discount{" "}
-                  {!serverCheckout &&
-                    (form.discount_type === "percent"
-                      ? `(${discountInput}%)`
-                      : `(Flat)`)}
-                </span>
-                <span style={{ fontWeight: 600 }}>
-                  -₱
-                  {displayDiscountAmount.toLocaleString("en-PH", {
-                    minimumFractionDigits: 2,
-                  })}
-                </span>
-              </div>
-            )}
-
-            {displayDeliveryFee > 0 && (
-              <div style={summaryRowStyle}>
-                <span>Delivery Fee</span>
-                <span style={{ fontWeight: 600, color: "#18181b" }}>
-                  +₱
-                  {displayDeliveryFee.toLocaleString("en-PH", {
-                    minimumFractionDigits: 2,
-                  })}
-                </span>
-              </div>
-            )}
 
             <div
+              className="pos-order-summary-totals"
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                fontSize: 20,
-                fontWeight: 700,
-                color: "#0a0a0a",
-                marginTop: 16,
-                paddingTop: 16,
+                padding: 24,
+                background: "#fafafa",
                 borderTop: "1px solid #e4e4e7",
-                letterSpacing: "-0.01em",
               }}
             >
-              <span>Total</span>
-              <span>
-                ₱
-                {displayTotal.toLocaleString("en-PH", {
-                  minimumFractionDigits: 2,
-                })}
-              </span>
-            </div>
+              <div style={summaryRowStyle}>
+                <span>Subtotal</span>
+                <span style={{ fontWeight: 600, color: "#18181b" }}>
+                  ₱
+                  {displaySubtotal.toLocaleString("en-PH", {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
+              </div>
 
-            {effectivePaymentMethod === "cash" ? (
-              <>
-                <div
-                  style={{
-                    ...summaryRowStyle,
-                    marginTop: 16,
-                    color: "#52525b",
-                  }}
-                >
-                  <span>Cash Received</span>
-                  <span style={{ fontWeight: 600, color: "#18181b" }}>
-                    ₱
-                    {cashReceived.toLocaleString("en-PH", {
+              {displayDiscountAmount > 0 && (
+                <div style={{ ...summaryRowStyle, color: "#dc2626" }}>
+                  <span>
+                    Discount{" "}
+                    {!serverCheckout &&
+                      (form.discount_type === "percent"
+                        ? `(${discountInput}%)`
+                        : `(Flat)`)}
+                  </span>
+                  <span style={{ fontWeight: 600 }}>
+                    -₱
+                    {displayDiscountAmount.toLocaleString("en-PH", {
                       minimumFractionDigits: 2,
                     })}
                   </span>
                 </div>
-                {discountIsValid && (
+              )}
+
+              {displayDeliveryFee > 0 && (
+                <div style={summaryRowStyle}>
+                  <span>Delivery Fee</span>
+                  <span style={{ fontWeight: 600, color: "#18181b" }}>
+                    +₱
+                    {displayDeliveryFee.toLocaleString("en-PH", {
+                      minimumFractionDigits: 2,
+                    })}
+                  </span>
+                </div>
+              )}
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: 20,
+                  fontWeight: 700,
+                  color: "#0a0a0a",
+                  marginTop: 16,
+                  paddingTop: 16,
+                  borderTop: "1px solid #e4e4e7",
+                  letterSpacing: "-0.01em",
+                }}
+              >
+                <span>Total</span>
+                <span>
+                  ₱
+                  {displayTotal.toLocaleString("en-PH", {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
+              </div>
+
+              {effectivePaymentMethod === "cash" ? (
+                <>
+                  <div
+                    style={{
+                      ...summaryRowStyle,
+                      marginTop: 16,
+                      color: "#52525b",
+                    }}
+                  >
+                    <span>Cash Received</span>
+                    <span style={{ fontWeight: 600, color: "#18181b" }}>
+                      ₱
+                      {cashReceived.toLocaleString("en-PH", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                  {discountIsValid && (
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        fontSize: 13,
+                        marginTop: 8,
+                        color: cashReceived >= total ? "#059669" : "#dc2626",
+                        fontWeight: 600,
+                      }}
+                    >
+                      <span>
+                        {cashReceived >= total ? "Change" : "Insufficient Cash"}
+                      </span>
+                      <span>
+                        ₱
+                        {Math.abs(cashReceived - total).toLocaleString(
+                          "en-PH",
+                          {
+                            minimumFractionDigits: 2,
+                          },
+                        )}
+                      </span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div
+                    style={{
+                      ...summaryRowStyle,
+                      marginTop: 16,
+                      color: "#52525b",
+                    }}
+                  >
+                    <span>Payment Method</span>
+                    <span style={{ fontWeight: 600, color: "#18181b" }}>
+                      Online Payment
+                    </span>
+                  </div>
                   <div
                     style={{
                       display: "flex",
                       justifyContent: "space-between",
                       fontSize: 13,
                       marginTop: 8,
-                      color: cashReceived >= total ? "#059669" : "#dc2626",
-                      fontWeight: 600,
+                      color: "#b45309",
+                      fontWeight: 700,
                     }}
                   >
+                    <span>Status</span>
                     <span>
-                      {cashReceived >= total ? "Change" : "Insufficient Cash"}
-                    </span>
-                    <span>
-                      ₱
-                      {Math.abs(cashReceived - total).toLocaleString("en-PH", {
-                        minimumFractionDigits: 2,
-                      })}
+                      {qrAttempt
+                        ? qrNeedsManualReview
+                          ? "Needs Review"
+                          : qrReconciling
+                            ? "Restoring"
+                            : "Payment Pending"
+                        : "Ready"}
                     </span>
                   </div>
-                )}
-              </>
-            ) : (
-              <>
-                <div
-                  style={{
-                    ...summaryRowStyle,
-                    marginTop: 16,
-                    color: "#52525b",
-                  }}
-                >
-                  <span>Payment Method</span>
-                  <span style={{ fontWeight: 600, color: "#18181b" }}>
-                    Online Payment
-                  </span>
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    fontSize: 13,
-                    marginTop: 8,
-                    color: "#b45309",
-                    fontWeight: 700,
-                  }}
-                >
-                  <span>Status</span>
-                  <span>
-                    {qrAttempt
-                      ? qrNeedsManualReview
-                        ? "Needs Review"
-                        : qrReconciling
-                          ? "Restoring"
-                          : "Payment Pending"
-                      : "Ready"}
-                  </span>
-                </div>
-              </>
-            )}
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
