@@ -804,7 +804,7 @@ router.get(
 router.get(
   "/warranty/:id/resolution-options",
   adminStaff,
-  requirePermission("warranty.view"),
+  requirePermission("warranty.manage"),
   warrantyController.getResolutionOptions,
 );
 

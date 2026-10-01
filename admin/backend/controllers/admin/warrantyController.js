@@ -27,6 +27,41 @@ const splitStoredProofs = (value) => {
 
 const MAX_WARRANTY_ADMIN_NOTE_LENGTH = 1000;
 
+const classifyWarrantyClaimType = (row) => {
+  const linkedOrderItemId = Number(row?.linked_order_item_id);
+  if (!Number.isSafeInteger(linkedOrderItemId) || linkedOrderItemId <= 0) {
+    return "legacy_unlinked";
+  }
+
+  const orderType = String(row?.order_type || "").trim().toLowerCase();
+  const catalogProductId = Number(row?.catalog_product_id);
+  const catalogProductType = String(row?.catalog_product_type || "")
+    .trim()
+    .toLowerCase();
+  const hasCustomization = Number(row?.has_customization || 0) === 1;
+
+  if (
+    orderType === "standard" &&
+    Number.isSafeInteger(catalogProductId) &&
+    catalogProductId > 0 &&
+    catalogProductType === "standard"
+  ) {
+    return "standard";
+  }
+
+  if (
+    orderType === "blueprint" ||
+    catalogProductType === "blueprint" ||
+    hasCustomization
+  ) {
+    return "custom";
+  }
+
+  return "legacy_unlinked";
+};
+
+exports.classifyWarrantyClaimType = classifyWarrantyClaimType;
+
 const OPERATIONS_WARRANTY_DATE_FILTERS = new Set([
   "all",
   "today",
@@ -359,12 +394,21 @@ exports.getClaims = async (req, res) => {
          w.status, w.replacement_receipt, w.resolution_type, w.resolution_notes,
          w.replacement_source, w.return_disposition, w.fulfilled_at, w.fulfilled_by,
          w.created_at, w.updated_at, o.order_number,
+         o.order_type,
+         oi.id AS linked_order_item_id,
+         oi.product_id,
          oi.quantity AS ordered_quantity,
+         CASE WHEN oi.customization_json IS NULL THEN 0 ELSE 1 END AS has_customization,
+         p.id AS catalog_product_id,
+         p.type AS catalog_product_type,
          COALESCE(c.name, o.walkin_customer_name, 'Customer') AS customer_name,
          fulfiller.name AS fulfilled_by_name
        FROM warranties w
        LEFT JOIN orders o ON o.id = w.order_id
-       LEFT JOIN order_items oi ON oi.id = w.order_item_id
+       LEFT JOIN order_items oi
+         ON oi.id = w.order_item_id
+        AND oi.order_id = w.order_id
+       LEFT JOIN products p ON p.id = oi.product_id
        LEFT JOIN users c ON c.id = w.customer_id
        LEFT JOIN users fulfiller ON fulfiller.id = w.fulfilled_by
        ORDER BY FIELD(w.status, 'pending', 'approved', 'fulfilled', 'rejected', 'cancelled'), w.created_at DESC`,
@@ -374,8 +418,20 @@ exports.getClaims = async (req, res) => {
     return res.json(
       rows.map((row) => {
         const { photo_url, proof_url } = splitStoredProofs(row.proof_url);
+        const claimType = classifyWarrantyClaimType(row);
+        const {
+          order_type,
+          linked_order_item_id,
+          product_id,
+          has_customization,
+          catalog_product_id,
+          catalog_product_type,
+          ...publicRow
+        } = row;
+
         return {
-          ...row,
+          ...publicRow,
+          claim_type: claimType,
           claim_quantity: Number(row.claim_quantity || 1),
           ordered_quantity: Number(row.ordered_quantity || 0),
           description: row.reason,
