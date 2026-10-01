@@ -64,6 +64,17 @@ const removeKeys = (storage, keys) => {
   keys.forEach((key) => storage.removeItem(key));
 };
 
+const hasStoredPosQrAttempt = () =>
+  Boolean(sessionStorage.getItem("pos_qr_attempt"));
+
+const clearCashierCashState = ({ preserveQrCart = false } = {}) => {
+  sessionStorage.removeItem("pos_cash_checkout");
+
+  if (!preserveQrCart || !hasStoredPosQrAttempt()) {
+    sessionStorage.removeItem("pos_cart");
+  }
+};
+
 const persistSession = (token, user, rememberMe = false) => {
   const targetStorage = rememberMe ? localStorage : sessionStorage;
   const otherStorage = rememberMe ? sessionStorage : localStorage;
@@ -73,6 +84,11 @@ const persistSession = (token, user, rememberMe = false) => {
 
   removeKeys(localStorage, POS_KEYS);
   removeKeys(sessionStorage, POS_KEYS);
+
+  // A successful login starts a new cash workspace. If a QR attempt is
+  // already stored, leave its cart alone because that flow has its own
+  // server-backed recovery lifecycle.
+  clearCashierCashState({ preserveQrCart: true });
 
   targetStorage.setItem("wisdom_token", token);
   targetStorage.setItem("wisdom_user", JSON.stringify(user));
@@ -102,7 +118,10 @@ const clearSession = () => {
   sessionStorage.removeItem("cust_custom_cart");
   sessionStorage.removeItem("cust_selected_keys");
   sessionStorage.removeItem("cust_selected_custom_checkout");
-  sessionStorage.removeItem("pos_cart");
+
+  // Normal logout already cleared the cashier cart before C3A. Keep that
+  // behavior and also remove the cash checkout safety key.
+  clearCashierCashState();
 
   syncAuthHeader(null);
 };
