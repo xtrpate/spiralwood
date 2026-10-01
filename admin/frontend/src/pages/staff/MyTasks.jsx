@@ -355,10 +355,7 @@ export default function MyTasks() {
   };
 
   const closeTaskActionDialog = () => {
-    if (
-      taskActionTarget &&
-      Number(busyId) === Number(taskActionTarget.id)
-    ) {
+    if (taskActionTarget && Number(busyId) === Number(taskActionTarget.id)) {
       return;
     }
 
@@ -371,10 +368,9 @@ export default function MyTasks() {
     try {
       setBusyId(taskId);
 
-      const { data } = await api.post(
-        `/tasks/${taskId}/undo-completion`,
-        { undo_reason: reason },
-      );
+      const { data } = await api.post(`/tasks/${taskId}/undo-completion`, {
+        undo_reason: reason,
+      });
 
       setTasks((previous) =>
         previous.map((task) =>
@@ -425,10 +421,7 @@ export default function MyTasks() {
     const saved =
       taskActionMode === "complete"
         ? await updateTaskStatus(taskActionTarget.id, "completed")
-        : await undoTaskCompletion(
-            taskActionTarget.id,
-            normalizedUndoReason,
-          );
+        : await undoTaskCompletion(taskActionTarget.id, normalizedUndoReason);
 
     if (saved) {
       setTaskActionTarget(null);
@@ -500,8 +493,7 @@ export default function MyTasks() {
         const packetIssues = [];
 
         const steps = REQUIRED_STEPS.map((stepLabel) => {
-          const matches =
-            requiredTaskBuckets.get(normalize(stepLabel)) || [];
+          const matches = requiredTaskBuckets.get(normalize(stepLabel)) || [];
 
           let integrityIssue = "";
           if (matches.length === 0) {
@@ -710,6 +702,7 @@ export default function MyTasks() {
           name="staff_production_search"
           type="search"
           value={search}
+          maxLength={100}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Search order or production step"
           aria-label="Search production work"
@@ -773,9 +766,18 @@ export default function MyTasks() {
                   className="indoor-task-order-card"
                   style={orderCard}
                 >
-                  <div className="indoor-task-order-summary" style={orderSummary}>
-                    <div className="indoor-task-order-primary" style={orderPrimary}>
-                      <div className="indoor-task-order-heading" style={orderHeadingRow}>
+                  <div
+                    className="indoor-task-order-summary"
+                    style={orderSummary}
+                  >
+                    <div
+                      className="indoor-task-order-primary"
+                      style={orderPrimary}
+                    >
+                      <div
+                        className="indoor-task-order-heading"
+                        style={orderHeadingRow}
+                      >
                         <div>
                           <div style={orderNumber}>{order.orderNumber}</div>
                           <div style={currentStepText}>{currentStep}</div>
@@ -810,8 +812,14 @@ export default function MyTasks() {
                       </div>
                     </div>
 
-                    <div className="indoor-task-action-column" style={orderActionColumn}>
-                      <div className="indoor-task-progress-area" style={progressArea}>
+                    <div
+                      className="indoor-task-action-column"
+                      style={orderActionColumn}
+                    >
+                      <div
+                        className="indoor-task-progress-area"
+                        style={progressArea}
+                      >
                         <div style={progressTrack}>
                           <div
                             style={{
@@ -878,7 +886,9 @@ export default function MyTasks() {
                             lineHeight: 1.5,
                           }}
                         >
-                          <strong>Production packet requires admin review.</strong>{" "}
+                          <strong>
+                            Production packet requires admin review.
+                          </strong>{" "}
                           {order.packetIntegrityMessage}. Production actions are
                           temporarily disabled until the five-step packet is
                           corrected.
@@ -893,10 +903,7 @@ export default function MyTasks() {
 
                           const canStartThisStep =
                             order.packetIntegrityOk &&
-                            canStartStepInSequence(
-                              order.steps,
-                              stepIndex,
-                            );
+                            canStartStepInSequence(order.steps, stepIndex);
 
                           const canUndoThisStep =
                             order.packetIntegrityOk &&
@@ -995,7 +1002,10 @@ export default function MyTasks() {
                                 ) : null}
                               </div>
 
-                              <div className="indoor-task-step-right" style={stepRight}>
+                              <div
+                                className="indoor-task-step-right"
+                                style={stepRight}
+                              >
                                 <span
                                   style={{
                                     ...statusBadge,
@@ -1010,7 +1020,10 @@ export default function MyTasks() {
                                 {order.packetIntegrityOk &&
                                 step.task &&
                                 isOwnedByCurrentUser ? (
-                                  <div className="indoor-task-step-actions" style={stepActions}>
+                                  <div
+                                    className="indoor-task-step-actions"
+                                    style={stepActions}
+                                  >
                                     {step.status === "pending" &&
                                     canStartThisStep ? (
                                       <button
@@ -1701,9 +1714,15 @@ function ProductionMaterialsPanel({ materials = [] }) {
           No recorded required inventory materials for this order.
         </div>
       ) : (
-        <div className="indoor-task-materials-table-wrap" style={materialsTableWrap}>
+        <div
+          className="indoor-task-materials-table-wrap"
+          style={materialsTableWrap}
+        >
           <div className="indoor-task-materials-table" style={materialsTable}>
-            <div className="indoor-task-materials-header-row" style={{ ...materialsRow, ...materialsTableHeader }}>
+            <div
+              className="indoor-task-materials-header-row"
+              style={{ ...materialsRow, ...materialsTableHeader }}
+            >
               <div>Material</div>
               <div>Required Qty</div>
               <div>Unit</div>
@@ -1806,8 +1825,14 @@ function ProductionBlueprintPanel({ orderId, orderNumber }) {
     : "";
 
   return (
-    <div className="indoor-task-blueprint-panel" style={productionBlueprintPanel}>
-      <div className="indoor-task-blueprint-preview" style={productionBlueprintPreview}>
+    <div
+      className="indoor-task-blueprint-panel"
+      style={productionBlueprintPanel}
+    >
+      <div
+        className="indoor-task-blueprint-preview"
+        style={productionBlueprintPreview}
+      >
         {loading ? (
           <div style={productionPreviewState}>Loading design...</div>
         ) : blueprint && has3D ? (
@@ -1823,7 +1848,10 @@ function ProductionBlueprintPanel({ orderId, orderNumber }) {
         )}
       </div>
 
-      <div className="indoor-task-blueprint-content" style={productionBlueprintContent}>
+      <div
+        className="indoor-task-blueprint-content"
+        style={productionBlueprintContent}
+      >
         <div style={productionBlueprintKicker}>Production Blueprint</div>
         <div style={productionBlueprintTitle}>
           {loading
@@ -1845,14 +1873,21 @@ function ProductionBlueprintPanel({ orderId, orderNumber }) {
 
         {record?.order_item ? (
           <div style={productionBlueprintDimensions}>
-            Quantity: {Math.max(1, Number(record.order_item.quantity) || 1).toLocaleString("en-PH")}
+            Quantity:{" "}
+            {Math.max(
+              1,
+              Number(record.order_item.quantity) || 1,
+            ).toLocaleString("en-PH")}
           </div>
         ) : null}
 
         <span style={productionReadOnlyBadge}>Read Only</span>
       </div>
 
-      <div className="indoor-task-blueprint-action" style={productionBlueprintAction}>
+      <div
+        className="indoor-task-blueprint-action"
+        style={productionBlueprintAction}
+      >
         <button
           type="button"
           onClick={() => navigate(`/staff/tasks/${Number(orderId)}/blueprint`)}
