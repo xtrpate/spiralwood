@@ -1649,6 +1649,498 @@ exports.createAttempt = async (req, res) => {
 };
 
 /* ══════════════════════════════════════════════════════════════
+   CASHIER RETRY — REPLACE AN UNPAID POS PAYMENT ATTEMPT
+
+   Used when the cashier explicitly chooses "Retry PayMongo Payment"
+   after the existing payment attempt failed/expired.
+
+   Safety rules:
+   - The existing attempt must still be awaiting_payment.
+   - PayMongo is checked before replacing anything.
+   - If PayMongo already received payment, the old attempt is finalized
+     instead of being replaced.
+   - If the provider session is unpaid, the old Checkout Session is
+     expired first.
+   - The existing stock reservation is transferred to the new attempt
+     instead of releasing and re-reserving stock.
+   - A brand-new checkout_token, idempotency_key, and POS attempt are
+     generated.
+   - PayMongo is then called through the existing claimAndCreateSession()
+     lifecycle.
+══════════════════════════════════════════════════════════════ */
+
+exports.retryAttempt = async (req, res) => {
+  if (!isPosQrTestSafeConfigured()) {
+    return res.status(503).json({
+      message: "Online payment (QR Ph) is not yet available at this terminal.",
+    });
+  }
+
+  const attemptId = parseStrictPositiveInt(req.params.id);
+
+  if (!attemptId) {
+    return res.status(400).json({
+      message: "A valid payment attempt id is required.",
+    });
+  }
+
+  try {
+    const [[attemptRow]] = await db.query(
+      `SELECT *
+       FROM pos_qr_payment_attempts
+       WHERE id = ?
+         AND cashier_id = ?
+       LIMIT 1`,
+      [attemptId, req.user.id],
+    );
+
+    if (!attemptRow) {
+      return res.status(404).json({
+        message: "Payment attempt not found.",
+      });
+    }
+
+    if (attemptRow.status !== "awaiting_payment") {
+      return res.status(409).json({
+        attempt_id: attemptRow.id,
+        status: attemptRow.status,
+        message:
+          "This payment attempt is not available for retry. Refresh the payment status first.",
+      });
+    }
+
+    if (
+      attemptRow.order_id ||
+      attemptRow.payment_transaction_id ||
+      attemptRow.provider_payment_id
+    ) {
+      return res.status(409).json({
+        attempt_id: attemptRow.id,
+        status: attemptRow.status,
+        message:
+          "This payment attempt already has payment records and cannot be retried.",
+      });
+    }
+
+    if (!isNonEmptyString(attemptRow.provider_session_id)) {
+      return res.status(409).json({
+        attempt_id: attemptRow.id,
+        status: attemptRow.status,
+        message:
+          "This payment attempt has no PayMongo Checkout Session to replace.",
+      });
+    }
+
+    const expectedTotalCents = getSnapshotTotalCents(
+      attemptRow.checkout_snapshot,
+    );
+
+    if (!expectedTotalCents) {
+      console.error("[pos.qrPayments retryAttempt] invalid checkout_snapshot", {
+        attemptId,
+      });
+
+      return res.status(500).json({
+        message: "Server error.",
+      });
+    }
+
+    /*
+     * Retrieve the existing PayMongo Checkout Session BEFORE modifying
+     * the WISDOM attempt.
+     */
+    let session;
+
+    try {
+      session = await retrieveCheckoutSession(attemptRow.provider_session_id, {
+        timeoutMs: 15000,
+      });
+    } catch (providerError) {
+      console.error(
+        "[pos.qrPayments retryAttempt] PayMongo session lookup failed",
+        providerError.response?.data || providerError.message,
+      );
+
+      return res.status(502).json({
+        message:
+          "Unable to check the current PayMongo payment session. The existing payment was not changed.",
+      });
+    }
+
+    let analysis = analyzeCheckoutSession({
+      session,
+      expectedSessionId: attemptRow.provider_session_id,
+      expectedTotalCents,
+    });
+
+    /*
+     * If the existing payment already succeeded, NEVER replace it.
+     * Finalize the original attempt instead.
+     */
+    if (analysis.kind === "paid") {
+      const finalized = await finalizePaidAttempt({
+        attemptId,
+        matchedPayment: analysis.payment,
+        actorUserId: req.user.id,
+        requireOwner: true,
+      });
+
+      if (finalized.freshCommit && finalized.auditRecord) {
+        req.auditRecord = finalized.auditRecord;
+      }
+
+      return res.status(finalized.httpStatus).json(finalized.payload);
+    }
+
+    /*
+     * Only an active unpaid Checkout Session can be safely replaced
+     * after explicitly expiring it.
+     *
+     * An already-expired Checkout Session is already safe to replace.
+     */
+    if (analysis.kind === "pending") {
+      try {
+        await expireCheckoutSession(attemptRow.provider_session_id, {
+          timeoutMs: 15000,
+        });
+      } catch (providerError) {
+        console.error(
+          "[pos.qrPayments retryAttempt] failed to expire old session",
+          providerError.response?.data || providerError.message,
+        );
+
+        return res.status(502).json({
+          message:
+            "Unable to close the previous PayMongo payment session. Please try again.",
+        });
+      }
+
+      /*
+       * Re-read PayMongo after expiration.
+       * This closes the race where a payment completed while the first
+       * provider lookup was in progress.
+       */
+      try {
+        session = await retrieveCheckoutSession(
+          attemptRow.provider_session_id,
+          {
+            timeoutMs: 15000,
+          },
+        );
+      } catch (providerError) {
+        console.error(
+          "[pos.qrPayments retryAttempt] old session recheck failed",
+          providerError.response?.data || providerError.message,
+        );
+
+        return res.status(502).json({
+          message:
+            "The previous PayMongo session was closed, but its final status could not be confirmed. Please try again.",
+        });
+      }
+
+      analysis = analyzeCheckoutSession({
+        session,
+        expectedSessionId: attemptRow.provider_session_id,
+        expectedTotalCents,
+      });
+
+      /*
+       * If payment won the race and completed before expiration was
+       * effective, finalize the old attempt rather than creating another.
+       */
+      if (analysis.kind === "paid") {
+        const finalized = await finalizePaidAttempt({
+          attemptId,
+          matchedPayment: analysis.payment,
+          actorUserId: req.user.id,
+          requireOwner: true,
+        });
+
+        if (finalized.freshCommit && finalized.auditRecord) {
+          req.auditRecord = finalized.auditRecord;
+        }
+
+        return res.status(finalized.httpStatus).json(finalized.payload);
+      }
+    }
+
+    if (analysis.kind !== "expired_unpaid") {
+      if (analysis.kind === "payment_mismatch") {
+        return res.status(409).json({
+          attempt_id: attemptId,
+          status: "payment_mismatch",
+          message:
+            "A payment was found, but its amount did not match this order. Manual review is required.",
+        });
+      }
+
+      if (analysis.kind === "ambiguous_payment") {
+        return res.status(409).json({
+          attempt_id: attemptId,
+          status: "ambiguous_payment",
+          message:
+            "Multiple payments were found for this Checkout Session. Manual review is required.",
+        });
+      }
+
+      if (analysis.kind === "malformed") {
+        return res.status(502).json({
+          attempt_id: attemptId,
+          status: "provider_response_malformed",
+          message:
+            "The PayMongo response could not be safely verified. The existing attempt was not replaced.",
+        });
+      }
+
+      return res.status(409).json({
+        attempt_id: attemptId,
+        status: "retry_not_safe",
+        message:
+          "The previous PayMongo payment could not be safely replaced. Please refresh and check the payment status.",
+      });
+    }
+
+    /*
+     * PayMongo has now confirmed that the old session is expired and
+     * unpaid. Create a completely new WISDOM POS attempt while
+     * transferring the existing stock reservation to it.
+     */
+    const snapshot = parseAndValidateSnapshot(attemptRow.checkout_snapshot);
+
+    if (!snapshot) {
+      return res.status(500).json({
+        message: "Server error.",
+      });
+    }
+
+    const newCheckoutToken =
+      `retry_${crypto.randomUUID().replace(/-/g, "")}`.slice(
+        0,
+        MAX_TOKEN_LENGTH,
+      );
+
+    const newIdempotencyKey =
+      `retry_${crypto.randomUUID().replace(/-/g, "")}`.slice(
+        0,
+        MAX_TOKEN_LENGTH,
+      );
+
+    const ttlMinutes = getTtlMinutes();
+
+    let conn;
+
+    try {
+      conn = await db.getConnection();
+      await conn.beginTransaction();
+
+      /*
+       * Lock the old attempt so another retry/verification cannot
+       * replace it at the same time.
+       */
+      const [[lockedAttempt]] = await conn.query(
+        `SELECT *
+         FROM pos_qr_payment_attempts
+         WHERE id = ?
+         FOR UPDATE`,
+        [attemptId],
+      );
+
+      if (!lockedAttempt) {
+        await conn.rollback();
+        return res.status(404).json({
+          message: "Payment attempt not found.",
+        });
+      }
+
+      if (Number(lockedAttempt.cashier_id) !== Number(req.user.id)) {
+        await conn.rollback();
+        return res.status(403).json({
+          message: "This payment attempt does not belong to you.",
+        });
+      }
+
+      if (lockedAttempt.status !== "awaiting_payment") {
+        await conn.rollback();
+        return res.status(409).json({
+          attempt_id: lockedAttempt.id,
+          status: lockedAttempt.status,
+          message:
+            "This payment attempt changed while retry was being prepared. Refresh and try again.",
+        });
+      }
+
+      if (
+        lockedAttempt.order_id ||
+        lockedAttempt.payment_transaction_id ||
+        lockedAttempt.provider_payment_id
+      ) {
+        await conn.rollback();
+        return res.status(409).json({
+          attempt_id: lockedAttempt.id,
+          status: lockedAttempt.status,
+          message:
+            "This payment attempt already has finalized payment records.",
+        });
+      }
+
+      /*
+       * Lock all active reservations in deterministic product order.
+       */
+      const [reservations] = await conn.query(
+        `SELECT id, product_id, quantity
+         FROM pos_qr_stock_reservations
+         WHERE payment_attempt_id = ?
+           AND status = 'active'
+         ORDER BY product_id ASC
+         FOR UPDATE`,
+        [lockedAttempt.id],
+      );
+
+      if (reservations.length === 0) {
+        await conn.rollback();
+        return res.status(409).json({
+          attempt_id: lockedAttempt.id,
+          status: lockedAttempt.status,
+          message:
+            "No active stock reservation is available for this payment attempt.",
+        });
+      }
+
+      /*
+       * Create the NEW WISDOM payment attempt.
+       */
+      const [newAttemptResult] = await conn.query(
+        `INSERT INTO pos_qr_payment_attempts
+          (
+            checkout_token,
+            idempotency_key,
+            request_hash,
+            status,
+            provider,
+            cashier_id,
+            checkout_snapshot,
+            created_at,
+            updated_at,
+            expires_at
+          )
+         VALUES (?, ?, ?, 'reserved', 'paymongo', ?, ?, NOW(), NOW(),
+           DATE_ADD(NOW(), INTERVAL ? MINUTE))`,
+        [
+          newCheckoutToken,
+          newIdempotencyKey,
+          lockedAttempt.request_hash,
+          req.user.id,
+          lockedAttempt.checkout_snapshot,
+          ttlMinutes,
+        ],
+      );
+
+      if (!newAttemptResult.insertId) {
+        await conn.rollback();
+        return res.status(500).json({
+          message: "Unable to create a new payment attempt.",
+        });
+      }
+
+      const newAttemptId = newAttemptResult.insertId;
+
+      /*
+       * Transfer the RESERVED stock from the old payment attempt to
+       * the new one. The stock itself is NOT restored/re-decremented.
+       */
+      const [reservationMoveResult] = await conn.query(
+        `UPDATE pos_qr_stock_reservations
+         SET payment_attempt_id = ?
+         WHERE payment_attempt_id = ?
+           AND status = 'active'`,
+        [newAttemptId, lockedAttempt.id],
+      );
+
+      if (reservationMoveResult.affectedRows !== reservations.length) {
+        await conn.rollback();
+        return res.status(500).json({
+          message: "The payment reservation could not be safely transferred.",
+        });
+      }
+
+      /*
+       * Mark the old payment attempt as replaced.
+       * We keep its old provider_session_id for audit/history.
+       */
+      const [oldAttemptUpdate] = await conn.query(
+        `UPDATE pos_qr_payment_attempts
+         SET status = 'cancelled',
+             failure_code = 'cashier_retry_replaced',
+             failure_message =
+               'Previous unpaid PayMongo payment attempt was replaced by a new cashier retry.'
+         WHERE id = ?
+           AND status = 'awaiting_payment'`,
+        [lockedAttempt.id],
+      );
+
+      if (oldAttemptUpdate.affectedRows !== 1) {
+        await conn.rollback();
+        return res.status(409).json({
+          message:
+            "The previous payment attempt changed while the retry was being prepared.",
+        });
+      }
+
+      await conn.commit();
+
+      req.auditRecord = {
+        id: lockedAttempt.id,
+        old: {
+          status: "awaiting_payment",
+        },
+        new: {
+          status: "cancelled",
+          reason_code: "cashier_retry_replaced",
+          replacement_attempt_id: newAttemptId,
+          provider_session_id: lockedAttempt.provider_session_id,
+        },
+      };
+
+      /*
+       * Now create the NEW PayMongo Checkout Session through the
+       * existing provider lifecycle.
+       */
+      return await claimAndCreateSession(req, res, newAttemptId);
+    } catch (err) {
+      if (conn) {
+        try {
+          await conn.rollback();
+        } catch {}
+      }
+
+      if (err?.code === "ER_DUP_ENTRY") {
+        return res.status(503).json({
+          message:
+            "The payment retry is already being processed. Please try again in a moment.",
+        });
+      }
+
+      console.error("[pos.qrPayments retryAttempt]", err);
+
+      return res.status(500).json({
+        message: "Server error.",
+      });
+    } finally {
+      if (conn) {
+        conn.release();
+      }
+    }
+  } catch (err) {
+    console.error("[pos.qrPayments retryAttempt outer]", err);
+
+    return res.status(500).json({
+      message: "Server error.",
+    });
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════
    PHASE 3D-F1 — CASHIER RESUME / LOCAL-STATE RECONCILIATION
    POST /api/pos/qr-payments/attempts/resume
 

@@ -47,6 +47,13 @@ const posAccess = [
 
 router.post("/attempts", posAccess, posQrPaymentsController.createAttempt);
 
+router.post(
+  "/attempts/:id/retry",
+  posAccess,
+  logAction("retry_pos_qr_payment", "pos_qr_payment_attempts"),
+  posQrPaymentsController.retryAttempt,
+);
+
 /* ═════════════════════════════════════════════════════════════
    PHASE 3D-F1 — CASHIER RESUME / LOCAL-STATE RECONCILIATION
    Read-only and intentionally not gated by requirePosQrEnabled. This

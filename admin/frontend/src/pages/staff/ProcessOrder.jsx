@@ -223,6 +223,7 @@ export default function ProcessOrder() {
   const [qrCreating, setQrCreating] = useState(false);
   const [qrVerifying, setQrVerifying] = useState(false);
   const [qrReconciling, setQrReconciling] = useState(false);
+  const [qrRetrying, setQrRetrying] = useState(false);
   const [qrNotice, setQrNotice] = useState("");
   const [qrNoticeTone, setQrNoticeTone] = useState("info");
   const resumeStartedRef = useRef(false);
@@ -966,6 +967,123 @@ export default function ProcessOrder() {
       return activeAttempt;
     } finally {
       setQrReconciling(false);
+    }
+  };
+
+  const handleRetryOnlinePayment = async () => {
+    const activeAttempt = readStoredQrAttempt();
+    const attemptId = Number(activeAttempt?.attempt_id);
+
+    if (!Number.isSafeInteger(attemptId) || attemptId <= 0) {
+      setQrNoticeTone("error");
+      setQrNotice("No valid online payment attempt is available to retry.");
+      return;
+    }
+
+    if (qrRetrying || qrCreating || qrVerifying || qrReconciling) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "The current unpaid PayMongo payment session will be closed and a new payment session will be created. Continue?",
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setQrRetrying(true);
+    setError("");
+    setQrNoticeTone("info");
+    setQrNotice("Creating a new PayMongo payment session...");
+
+    try {
+      const response = await api.post(
+        `/pos/qr-payments/attempts/${attemptId}/retry`,
+        {},
+      );
+
+      const data = response.data || {};
+
+      /*
+       * If payment completed during the retry race, the server may
+       * finalize the old attempt instead of creating another payment.
+       */
+      if (data.status === "consumed") {
+        const currentCart = readStoredCart();
+        const currentFingerprint = buildCartFingerprint(currentCart);
+
+        const cartMatchesAttempt =
+          Boolean(activeAttempt?.cart_fingerprint) &&
+          activeAttempt.cart_fingerprint === currentFingerprint;
+
+        if (cartMatchesAttempt) {
+          sessionStorage.removeItem("pos_cart");
+          setCart([]);
+        }
+
+        persistQrAttempt(null);
+        checkoutTokenRef.current = "";
+        setQrNotice("");
+
+        setSuccess({
+          ...data,
+          cart_preserved: !cartMatchesAttempt,
+        });
+
+        return;
+      }
+
+      if (!String(data.checkout_url || "").trim()) {
+        throw new Error(
+          data.message || "The new PayMongo Checkout Session was not created.",
+        );
+      }
+
+      const nextAttempt = {
+        ...activeAttempt,
+        attempt_id: data.attempt_id,
+        checkout_token: data.checkout_token,
+        checkout_url: data.checkout_url,
+        state: data.status || "awaiting_payment",
+        created_at: data.created_at || new Date().toISOString(),
+        updated_at: data.updated_at || null,
+        expires_at: data.expires_at || null,
+      };
+
+      persistQrAttempt(nextAttempt);
+      checkoutTokenRef.current = data.checkout_token || "";
+
+      /*
+       * IMPORTANT:
+       * This URL belongs to the NEW Checkout Session.
+       */
+      window.location.replace(data.checkout_url);
+    } catch (err) {
+      const statusCode = err.response?.status;
+      const data = err.response?.data || {};
+
+      console.error("[ProcessOrder retry payment]", data || err);
+
+      if (statusCode === 404 || statusCode === 409) {
+        if (
+          data.status === "failed" ||
+          data.status === "expired" ||
+          data.status === "cancelled"
+        ) {
+          persistQrAttempt(null);
+          checkoutTokenRef.current = "";
+        }
+      }
+
+      setQrNoticeTone("error");
+      setQrNotice(
+        data.message ||
+          err.message ||
+          "Unable to create a new PayMongo payment session.",
+      );
+    } finally {
+      setQrRetrying(false);
     }
   };
 
@@ -1731,12 +1849,14 @@ export default function ProcessOrder() {
                     <button
                       type="button"
                       style={btnPrimary}
-                      onClick={() =>
-                        window.location.replace(qrAttempt.checkout_url)
+                      onClick={handleRetryOnlinePayment}
+                      disabled={
+                        qrCreating || qrVerifying || qrReconciling || qrRetrying
                       }
-                      disabled={qrCreating || qrVerifying || qrReconciling}
                     >
-                      Continue to PayMongo Checkout
+                      {qrRetrying
+                        ? "Creating New Payment..."
+                        : "Retry PayMongo Payment"}
                     </button>
                   )}
 
