@@ -2724,7 +2724,7 @@ export default function CustomRequestDetailPage() {
                           checking the materials and project requirements.
                         </p>
                         <div className="crd-quotation-waiting-action-v2">
-                          <strong>No action needed from you right now.</strong>
+                          <strong>No action needed right now.</strong>
                           <span>
                             We will notify you when your quotation is ready to
                             review.
@@ -3904,7 +3904,34 @@ export default function CustomRequestDetailPage() {
                     </div>
                   </div>
                 </div>
-              ) : null}
+              ) : (
+                <div className="checkout-section wisdom-request-payment-v11">
+                  <div className="checkout-section-header">
+                    <div className="checkout-section-num">03</div>
+                    <h3>Payment</h3>
+                  </div>
+
+                  <div className="checkout-section-body">
+                    <div className="crd-quotation-waiting-v2">
+                      <div className="crd-quotation-waiting-label-v2">
+                        Payment status
+                      </div>
+                      <h4>Payment is not yet available</h4>
+                      <p>
+                        Payment options will become available after your
+                        quotation is approved and the Project Agreement is
+                        accepted.
+                      </p>
+                      <div className="crd-quotation-waiting-action-v2">
+                        <strong>No action needed from you right now.</strong>
+                        <span>
+                          We will notify you when it is time to make a payment.
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* PHASE 5 — Blueprint Rider Final Cash Collection */}
               {(canSelectRemainingPaymentMethod ||
