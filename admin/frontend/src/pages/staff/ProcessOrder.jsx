@@ -3,7 +3,6 @@ import api from "../../services/api";
 import { useNavigate } from "react-router-dom";
 import { Receipt } from "lucide-react";
 import LocationPicker from "../../components/LocationPicker";
-import PosCheckoutQr from "../../components/PosCheckoutQr";
 import "./ProcessOrder.css";
 
 const isValidPHPhone = (value) => {
@@ -484,10 +483,7 @@ export default function ProcessOrder() {
     } catch (err) {
       const responseData = err.response?.data;
 
-      if (
-        responseData?.idempotency_conflict &&
-        responseData?.existing_order
-      ) {
+      if (responseData?.idempotency_conflict && responseData?.existing_order) {
         setSuccess(responseData.existing_order);
         return;
       }
@@ -628,12 +624,20 @@ export default function ProcessOrder() {
       };
 
       persistQrAttempt(nextAttempt);
-      setQrNoticeTone(nextAttempt.checkout_url ? "success" : "info");
-      setQrNotice(
-        nextAttempt.checkout_url
-          ? "Online payment session is ready. Ask the customer to scan the QR code or open PayMongo Checkout."
-          : data.message || "Payment session is still being prepared.",
-      );
+
+      if (nextAttempt.checkout_url) {
+        /*
+         * The cashier no longer displays a QR code.
+         * Once PayMongo creates the Hosted Checkout Session,
+         * immediately continue to PayMongo so the customer can
+         * choose QR Ph, GCash, Maya, Card, or another enabled method.
+         */
+        window.location.replace(nextAttempt.checkout_url);
+        return;
+      }
+
+      setQrNoticeTone("info");
+      setQrNotice(data.message || "Payment session is still being prepared.");
     } catch (err) {
       const statusCode = err.response?.status;
       const data = err.response?.data || {};
@@ -792,16 +796,6 @@ export default function ProcessOrder() {
     } finally {
       setQrVerifying(false);
     }
-  };
-
-  const handleOpenCheckout = () => {
-    if (!qrAttempt?.checkout_url) {
-      setQrNoticeTone("error");
-      setQrNotice("The PayMongo checkout link is not available yet.");
-      return;
-    }
-
-    window.location.assign(qrAttempt.checkout_url);
   };
 
   const reconcileQrAttempt = async (
@@ -1172,7 +1166,9 @@ export default function ProcessOrder() {
                 navigate("/staff/products");
               }}
             >
-              {success.reconciled_cash_retry ? "Continue New Cart" : "New Order"}
+              {success.reconciled_cash_retry
+                ? "Continue New Cart"
+                : "New Order"}
             </button>
           </div>
         </div>
@@ -1617,7 +1613,10 @@ export default function ProcessOrder() {
                         </div>
 
                         <div style={{ gridColumn: "1 / -1" }}>
-                          <label htmlFor="pos-delivery-notes" style={labelStyle}>
+                          <label
+                            htmlFor="pos-delivery-notes"
+                            style={labelStyle}
+                          >
                             Delivery Notes
                           </label>
                           <input
@@ -1689,33 +1688,18 @@ export default function ProcessOrder() {
                   <div className="pos-qr-pending-title">
                     Online Payment Pending
                   </div>
+
                   <p className="pos-qr-pending-copy">
-                    The item stock is reserved for this payment attempt. Ask the
-                    customer to scan the QR code below, or open PayMongo
-                    Checkout as a fallback.
+                    The order is reserved for online payment. Complete the
+                    payment through the secure PayMongo Checkout page.
                   </p>
+
                   <div className="pos-qr-pending-amount">
                     ₱
                     {qrDisplayTotal.toLocaleString("en-PH", {
                       minimumFractionDigits: 2,
                     })}
                   </div>
-                  {qrAttempt.checkout_url && (
-                    <PosCheckoutQr
-                      checkoutUrl={qrAttempt.checkout_url}
-                      expiresAt={qrAttempt.expires_at}
-                      createdAt={qrAttempt.created_at}
-                      pollingDisabled={
-                        qrCreating ||
-                        qrVerifying ||
-                        qrReconciling ||
-                        qrNeedsManualReview
-                      }
-                      onPoll={() =>
-                        verifyOnlineAttempt(qrAttempt, { silent: true })
-                      }
-                    />
-                  )}
 
                   {!qrCartMatchesCurrent && hasServerCheckout && (
                     <div className="pos-qr-notice pos-qr-notice-info">
@@ -1724,6 +1708,7 @@ export default function ProcessOrder() {
                         : "Reserved order details were restored from the server. A different local cart was preserved and was not overwritten."}
                     </div>
                   )}
+
                   {!qrCartMatchesCurrent && !hasServerCheckout && (
                     <div className="pos-qr-notice pos-qr-notice-error">
                       The current cart differs from the cart reserved for this
@@ -1742,16 +1727,20 @@ export default function ProcessOrder() {
                 )}
 
                 <div className="pos-qr-actions">
-                  {qrAttempt.checkout_url ? (
+                  {qrAttempt.checkout_url && (
                     <button
                       type="button"
                       style={btnPrimary}
-                      onClick={handleOpenCheckout}
+                      onClick={() =>
+                        window.location.replace(qrAttempt.checkout_url)
+                      }
                       disabled={qrCreating || qrVerifying || qrReconciling}
                     >
-                      Open PayMongo Checkout
+                      Continue to PayMongo Checkout
                     </button>
-                  ) : (
+                  )}
+
+                  {!qrAttempt.checkout_url && (
                     <button
                       type="button"
                       style={btnPrimary}
@@ -1787,8 +1776,8 @@ export default function ProcessOrder() {
 
                 <p className="pos-qr-lock-note">
                   Order details are locked while this payment attempt is active.
-                  Do not create another payment or change the reserved cart
-                  until this attempt is resolved.
+                  Complete or resolve the PayMongo payment before creating
+                  another payment attempt.
                 </p>
               </div>
             )}
@@ -1828,8 +1817,8 @@ export default function ProcessOrder() {
                     onClick={handleCreateOnlinePayment}
                   >
                     {qrCreating
-                      ? "Preparing Payment..."
-                      : "Create Online Payment"}
+                      ? "Opening PayMongo..."
+                      : "Continue to PayMongo Payment"}
                   </button>
                 ) : (
                   <button
