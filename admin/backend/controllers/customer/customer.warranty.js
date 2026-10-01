@@ -169,7 +169,7 @@ const getEligibleOrders = async (req, res) => {
     console.error("[customer.warranty eligible-orders]", err);
     return res
       .status(500)
-      .json({ message: "Server error.", error: err.message });
+      .json({ message: "Server error." });
   }
 };
 
@@ -207,7 +207,7 @@ const getClaims = async (req, res) => {
     console.error("[customer.warranty GET]", err);
     return res
       .status(500)
-      .json({ message: "Server error.", error: err.message });
+      .json({ message: "Server error." });
   }
 };
 
@@ -463,7 +463,7 @@ const submitClaim = async (req, res) => {
     console.error("[customer.warranty POST]", err);
     return res
       .status(500)
-      .json({ message: "Server error.", error: err.message });
+      .json({ message: "Server error." });
   } finally {
     if (connection) {
       connection.release();
@@ -524,7 +524,7 @@ const cancelClaim = async (req, res) => {
     console.error("[customer.warranty cancel]", err);
     return res
       .status(500)
-      .json({ message: "Server error.", error: err.message });
+      .json({ message: "Server error." });
   }
 };
 
