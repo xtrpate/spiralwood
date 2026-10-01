@@ -348,8 +348,8 @@ async function run() {
     frontend,
     /cashier-sales-mobile-transaction-list[\s\S]*Paid After Payment[\s\S]*Balance After Payment[\s\S]*Processed By/,
   );
-  assert.match(css, /@media \(max-width: 899px\)/);
-  assert.match(css, /@media \(max-width: 767px\)/);
+  assert.match(css, /@media screen and \(max-width: 899px\)/);
+  assert.match(css, /@media screen and \(max-width: 767px\)/);
   assert.match(
     css,
     /\.cashier-sales-chart-grid[\s\S]*grid-template-columns: minmax\(0, 1fr\) !important;/,
@@ -374,7 +374,7 @@ async function run() {
     css,
     /\.cashier-sales-pagination-button[\s\S]*min-height: 44px !important;/,
   );
-  assert.doesNotMatch(css, /@media\s+print/);
+  // Print behavior is covered by the dedicated R3B2B2 contract below.
 
 
   // R3B2B1.2 tablet contract: the responsive card layout extends through
@@ -382,7 +382,7 @@ async function run() {
   // pagination without restoring the wide desktop tables.
   assert.match(
     css,
-    /@media \(min-width: 768px\) and \(max-width: 899px\)/,
+    /@media screen and \(min-width: 768px\) and \(max-width: 899px\)/,
   );
   assert.match(
     css,
@@ -391,11 +391,11 @@ async function run() {
   assert.match(css, /\.cashier-sales-print[\s\S]*grid-column: 1 \/ -1;/);
   assert.match(
     css,
-    /@media \(max-width: 899px\)[\s\S]*\.cashier-sales-desktop-table[\s\S]*display: none !important;/,
+    /@media screen and \(max-width: 899px\)[\s\S]*\.cashier-sales-desktop-table[\s\S]*display: none !important;/,
   );
   assert.match(
     css,
-    /@media \(max-width: 899px\)[\s\S]*\.cashier-sales-mobile-transaction-list,[\s\S]*display: grid;/,
+    /@media screen and \(max-width: 899px\)[\s\S]*\.cashier-sales-mobile-transaction-list,[\s\S]*display: grid;/,
   );
 
   // R3B2B1.1 mobile-card clarity contract: the prominent header amount is
@@ -408,12 +408,75 @@ async function run() {
   );
   assert.match(css, /\.cashier-sales-mobile-summary-label/);
 
-  console.log("✅ POS Sales Reports R3B1/R3B2A/R3B2B1/R3B2B1.1/R3B2B1.2 integrity tests passed.");
+
+  // R3B2B2 print contract: print a dedicated, scoped A4 landscape report
+  // without fetching a second dataset or leaking the POS shell/customer phone.
+  assert.match(frontend, /cashier-sales-print-report/);
+  assert.match(frontend, /SPIRAL WOOD SERVICES/);
+  assert.match(frontend, /CASHIER SALES REPORT/);
+  assert.match(frontend, /data\?\.report_owner\?\.name/);
+  assert.match(frontend, /disabled=\{!data \|\| loading\}/);
+  assert.match(
+    frontend,
+    /Summary figures and payment-method totals cover the complete[\s\S]*current page only\./,
+  );
+  assert.match(
+    frontend,
+    /Current Remaining Balance is the current unpaid balance[\s\S]*not the historical[\s\S]*selected report period\./,
+  );
+  assert.match(frontend, /Top Products by Included Order Value/);
+
+  const printMarkupStart = frontend.indexOf(
+    'className="cashier-sales-print-report"',
+  );
+  const printMarkupEnd = frontend.indexOf(
+    "function FilterField",
+    printMarkupStart,
+  );
+  assert.ok(printMarkupStart >= 0 && printMarkupEnd > printMarkupStart);
+  const printMarkup = frontend.slice(printMarkupStart, printMarkupEnd);
+  assert.doesNotMatch(printMarkup, /customer_phone/);
+  assert.doesNotMatch(printMarkup, /<BarChart/);
+  assert.equal((frontend.match(/api\.get\("\/pos\/reports"/g) || []).length, 1);
+  assert.equal((frontend.match(/window\.print\(\)/g) || []).length, 1);
+
+  assert.match(css, /@page cashier-sales-report/);
+  assert.match(css, /size: A4 landscape;/);
+  assert.match(css, /page: cashier-sales-report;/);
+  assert.match(css, /@media print/);
+  assert.match(css, /body:has\(\.cashier-sales-print-report\)/);
+  assert.match(
+    css,
+    /\.cashier-sales-report-page[\s\S]*> :not\(\.cashier-sales-print-report\)[\s\S]*display: none !important;/,
+  );
+  assert.match(css, /\.pos-sidebar/);
+  assert.match(css, /\.pos-mobile-staff-topbar/);
+  assert.match(css, /\.pos-mobile-bottom-nav/);
+  assert.match(css, /break-inside: avoid;/);
+
+  // R3B2B2.2 pagination polish: keep the transaction heading/scope with the
+  // first printable transaction where space allows, while preserving readable
+  // A4-landscape output and the existing no-split transaction contract.
+  assert.match(
+    css,
+    /@page cashier-sales-report[\s\S]*margin: 8mm;/,
+  );
+  assert.match(
+    css,
+    /\.cashier-sales-print-transaction-scope[\s\S]*break-after: avoid;[\s\S]*page-break-after: avoid;/,
+  );
+  assert.match(
+    css,
+    /\.cashier-sales-print-section h3[\s\S]*page-break-after: avoid;/,
+  );
+  assert.doesNotMatch(css, /@page\s*\{/);
+
+  console.log("✅ POS Sales Reports R3B1/R3B2A/R3B2B1/R3B2B1.1/R3B2B1.2/R3B2B2/R3B2B2.2 integrity tests passed.");
 }
 
 run()
   .catch((error) => {
-    console.error("❌ POS Sales Reports R3B1/R3B2A/R3B2B1/R3B2B1.1/R3B2B1.2 integrity tests failed.");
+    console.error("❌ POS Sales Reports R3B1/R3B2A/R3B2B1/R3B2B1.1/R3B2B1.2/R3B2B2/R3B2B2.2 integrity tests failed.");
     console.error(error);
     process.exitCode = 1;
   })
