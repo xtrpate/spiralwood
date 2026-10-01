@@ -1852,7 +1852,8 @@ export default function CustomizePage() {
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const q = params.get("q") || "";
+    const q = String(params.get("q") || "").slice(0, 100);
+
     setSearch(q);
   }, [location.search]);
 
@@ -1901,7 +1902,14 @@ export default function CustomizePage() {
 
   const handleSearch = (event) => {
     event.preventDefault();
-    const q = search.trim();
+
+    const q = String(search || "").trim();
+
+    if (q.length > 100) {
+      setToastMessage("Search must be 100 characters or less.");
+      setIsHiding(false);
+      return;
+    }
 
     navigate(`/customize${q ? `?q=${encodeURIComponent(q)}` : ""}`, {
       replace: false,
@@ -1943,10 +1951,12 @@ export default function CustomizePage() {
 
     const initialMessage = String(
       draft?.initial_message || draft?.comments || "",
-    ).trim();
+    )
+      .trim()
+      .slice(0, 500);
 
     const referencePhotos = Array.isArray(draft?.reference_photos)
-      ? draft.reference_photos
+      ? draft.reference_photos.slice(0, 5)
       : [];
 
     const normalizedComponents = Array.isArray(draft?.components)
@@ -1986,9 +1996,10 @@ export default function CustomizePage() {
     }
 
     const requestedQuantity = Number(draft?.quantity);
+
     const customQuantity =
-      Number.isSafeInteger(requestedQuantity) && requestedQuantity > 0
-        ? requestedQuantity
+      Number.isSafeInteger(requestedQuantity) && requestedQuantity >= 1
+        ? Math.min(requestedQuantity, 100)
         : 1;
 
     addToCustomCart({
@@ -2217,37 +2228,17 @@ export default function CustomizePage() {
                 flexDirection: "column",
               }}
             >
-              {categoryFilter !== "all" && (
-                <div className="mobile-active-filter-row">
-                  <button
-                    type="button"
-                    className="mobile-active-filter-clear"
-                    onClick={() => setCategoryFilter("all")}
-                  >
-                    Clear all filters
-                  </button>
-                </div>
-              )}
-              <div
-                style={{
-                  display: "flex",
-                  width: "100%",
-                  gap: "10px",
-                  alignItems: "center",
-                }}
-              >
-                <form
-                  className="catalog-search-shell"
-                  onSubmit={handleSearch}
-                  style={{ margin: 0, flex: 1 }}
-                >
+              <div className="catalog-search-row">
+                <form className="catalog-search-shell" onSubmit={handleSearch}>
                   <div className="catalog-search">
-                    <Search size={16} />
+                    <Search size={17} strokeWidth={1.8} aria-hidden="true" />
+
                     <input
                       type="text"
-                      placeholder="Search designs..."
+                      aria-label="Search furniture designs"
+                      placeholder="Search products..."
                       value={search}
-                      maxLength={254}
+                      maxLength={100}
                       onChange={(e) => setSearch(e.target.value)}
                     />
                   </div>
@@ -2255,8 +2246,29 @@ export default function CustomizePage() {
 
                 <button
                   type="button"
+                  className={`catalog-clear-filters ${
+                    categoryFilter === "all" && !search.trim()
+                      ? "catalog-clear-filters--disabled"
+                      : ""
+                  }`}
+                  onClick={() => {
+                    setCategoryFilter("all");
+                    setSearch("");
+
+                    navigate("/customize", {
+                      replace: false,
+                    });
+                  }}
+                  disabled={categoryFilter === "all" && !search.trim()}
+                >
+                  Clear all filters
+                </button>
+
+                <button
+                  type="button"
                   className="mobile-filter-toggle"
                   onClick={() => setMobileFilterOpen(true)}
+                  aria-label="Open filters"
                 >
                   <Filter size={20} />
                 </button>

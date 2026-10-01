@@ -3657,40 +3657,96 @@
   margin-bottom: 24px;
 }
 
+.catalog-search-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
 .catalog-search-shell {
   position: relative;
-  flex: 1;
-  max-width: 590px;
+  flex: 0 1 520px;
+  width: 520px;
+  max-width: 100%;
+  margin: 0;
 }
 
 .catalog-search {
-  flex: 1;
   position: relative;
+  width: 100%;
 }
 
 .catalog-search svg {
   position: absolute;
   left: 14px;
   top: 50%;
+  z-index: 1;
   transform: translateY(-50%);
   color: #555555;
+  pointer-events: none;
 }
 
 .catalog-search input {
+  display: block;
   width: 100%;
-  height: 48px;
-  border: 0;
-  border-bottom: 1px solid #c9c9c6;
+  height: 50px;
+  box-sizing: border-box;
+  border: 1px solid #bfc3c8;
   border-radius: 0;
-  padding: 0 14px 0 42px;
+  padding: 0 16px 0 42px;
   font: inherit;
+  font-size: 15px;
+  color: #222222;
   outline: none;
-  background: #f7f7f5;
+  background: #ffffff;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.catalog-search input::placeholder {
+  color: #777d84;
+  opacity: 1;
+}
+
+.catalog-search input:hover {
+  border-color: #9fa4aa;
 }
 
 .catalog-search input:focus {
   border-color: #111111;
   background: #ffffff;
+  box-shadow: 0 0 0 1px #111111;
+}
+
+.catalog-clear-filters {
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid #111111;
+  border-radius: 0;
+  background: transparent;
+  color: #111111;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+  transition:
+    opacity 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.catalog-clear-filters:hover:not(:disabled) {
+  opacity: 0.65;
+}
+
+.catalog-clear-filters--disabled,
+.catalog-clear-filters:disabled {
+  opacity: 0.4;
+  border-bottom-color: #999999;
+  cursor: not-allowed;
 }
 
 .cust-page .catalog-main .cust-products-grid {
@@ -4684,133 +4740,3 @@
     font-size: 14px;
   }
 }
-
-/* WISDOM CHECKOUT MONOCHROME FINAL V1 START */
-
-/*
-   CheckoutPage.jsx imports cart.css after customizepage.css.
-   cart.css still contains the older brown/navy checkout styles.
-   These scoped overrides make the ready-made checkout consistently
-   use the current monochrome design without affecting CartPage.
-*/
-
-/* Main checkout section number */
-.checkout-page .checkout-section-num {
-  border-color: #111111;
-  background: #111111;
-  color: #ffffff;
-}
-
-/* Checkout form text */
-.checkout-page .checkout-section-header h3,
-.checkout-page .form-field label,
-.checkout-page .checkout-item-name {
-  color: #111111;
-}
-
-/* Checkout fields */
-.checkout-page .form-field input,
-.checkout-page .form-field select,
-.checkout-page .form-field textarea,
-.checkout-page .order-notes {
-  color: #111111;
-}
-
-.checkout-page .form-field input:focus,
-.checkout-page .form-field select:focus,
-.checkout-page .form-field textarea:focus,
-.checkout-page .order-notes:focus {
-  border-color: #111111;
-  box-shadow: 0 0 0 1px #111111 inset;
-}
-
-/* Payment method cards */
-.checkout-page .payment-method-card:hover {
-  border-color: #111111;
-  background: #fafafa;
-}
-
-.checkout-page .payment-method-card.selected {
-  border-color: #111111;
-  background: #f8f8f8;
-}
-
-.checkout-page .payment-method-card.selected .payment-method-check,
-.checkout-page .payment-method-check.selected {
-  border-color: #111111;
-  background: #ffffff;
-}
-
-.checkout-page .payment-method-card.selected .payment-method-check::after,
-.checkout-page .payment-method-check.selected::after {
-  background: #111111;
-}
-
-/* Checkout summary */
-.checkout-page .checkout-summary-header {
-  background: #111111;
-  border-bottom-color: #111111;
-}
-
-.checkout-page .checkout-summary-header h3 {
-  color: #ffffff;
-}
-
-.checkout-page .checkout-summary-item-name {
-  color: #111111;
-}
-
-.checkout-page .checkout-summary-item-price {
-  color: #111111;
-}
-
-/* Checkout item prices */
-.checkout-page .checkout-item-price {
-  color: #111111;
-}
-
-/* Neutral summary text */
-.checkout-page .checkout-summary-item-qty,
-.checkout-page .checkout-item-qty {
-  color: #6b7280;
-}
-
-/* Payment information boxes, if used by this checkout */
-.checkout-page .payment-info-box {
-  background: #fafafa;
-  border-color: #e5e7eb;
-}
-
-.checkout-page .payment-info-box h4 {
-  color: #111111;
-}
-
-.checkout-page .payment-info-row {
-  color: #555555;
-}
-
-.checkout-page .payment-info-row span:last-child {
-  color: #111111;
-}
-
-/* Keep the current monochrome Place Order button */
-.checkout-page .place-order-btn {
-  background: #111111 !important;
-  border-color: #111111 !important;
-  color: #ffffff !important;
-}
-
-.checkout-page .place-order-btn:not(:disabled):hover {
-  background: #000000 !important;
-  border-color: #000000 !important;
-  color: #ffffff !important;
-}
-
-/* Disabled button */
-.checkout-page .place-order-btn:disabled {
-  background: #efefef !important;
-  border-color: #d7d7d7 !important;
-  color: #8a8a8a !important;
-}
-
-/* WISDOM CHECKOUT MONOCHROME FINAL V1 END */

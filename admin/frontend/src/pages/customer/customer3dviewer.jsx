@@ -252,7 +252,6 @@ const getPartAxisLabels = (comp) => {
   };
 };
 
-
 const CUSTOMER_PART_GROUP_ORDER = [
   "Whole Furniture",
   "Table Top",
@@ -341,17 +340,11 @@ const getCustomerPartGroupLabel = (component = {}) => {
   if (text.includes("shelf")) return "Shelves";
   if (text.includes("divider")) return "Dividers";
 
-  if (
-    text.includes("headboard") ||
-    text.includes("head board")
-  ) {
+  if (text.includes("headboard") || text.includes("head board")) {
     return "Headboard";
   }
 
-  if (
-    text.includes("footboard") ||
-    text.includes("foot board")
-  ) {
+  if (text.includes("footboard") || text.includes("foot board")) {
     return "Footboard";
   }
 
@@ -377,18 +370,11 @@ const getCustomerPartGroupLabel = (component = {}) => {
 
   if (text.includes("apron")) return "Apron";
 
-  if (
-    text.includes("rail") &&
-    !text.includes("drawer")
-  ) {
+  if (text.includes("rail") && !text.includes("drawer")) {
     return "Rails";
   }
 
-  if (
-    text.includes("leg") ||
-    text.includes("foot") ||
-    text.includes("feet")
-  ) {
+  if (text.includes("leg") || text.includes("foot") || text.includes("feet")) {
     return "Legs";
   }
 
@@ -426,10 +412,7 @@ const getCustomerPartGroupLabel = (component = {}) => {
     return "Body / Carcass";
   }
 
-  if (
-    text.includes("body") ||
-    text.includes("panel")
-  ) {
+  if (text.includes("body") || text.includes("panel")) {
     return "Body / Panels";
   }
 
@@ -498,7 +481,6 @@ const normalizeViewerComponents = (items = []) =>
         item.depth > 0,
     );
 
-
 // WISDOM CUSTOMER DOOR / DRAWER PREVIEW V1.0.0
 // Customer-facing movement is visual-only. Saved component coordinates never change.
 const CUSTOMER_DOOR_PREVIEW_OPEN_DEGREES = 82;
@@ -523,17 +505,11 @@ const getCustomerPartFunction = (component = {}) => {
     .trim()
     .toLowerCase();
 
-  return ["auto", "normal", "door", "drawer"].includes(value)
-    ? value
-    : "auto";
+  return ["auto", "normal", "door", "drawer"].includes(value) ? value : "auto";
 };
 
 const getCustomerMotionGroupId = (component = {}) =>
-  String(
-    component?.motionGroupId ??
-      component?.motion_group_id ??
-      "",
-  ).trim();
+  String(component?.motionGroupId ?? component?.motion_group_id ?? "").trim();
 
 const getCustomerMotionReferencePartId = (component = {}) =>
   String(
@@ -561,10 +537,7 @@ const isCustomerDoorPreviewComponent = (component = {}) => {
     .trim()
     .toLowerCase();
 
-  return (
-    component?.type === "wr_door" ||
-    /(^|[\s_-])door([\s_-]|$)/.test(text)
-  );
+  return component?.type === "wr_door" || /(^|[\s_-])door([\s_-]|$)/.test(text);
 };
 
 const resolveCustomerDoorHingeSide = (component = {}, allComponents = []) => {
@@ -720,10 +693,7 @@ const resolveCustomerDrawerPreviewKey = (component = {}) => {
   if (!component?.id) return "";
 
   const motionGroupId = getCustomerMotionGroupId(component);
-  if (
-    getCustomerPartFunction(component) === "drawer" &&
-    motionGroupId
-  ) {
+  if (getCustomerPartFunction(component) === "drawer" && motionGroupId) {
     return `motion:${motionGroupId}`;
   }
 
@@ -740,9 +710,7 @@ const resolveCustomerDrawerPreviewKey = (component = {}) => {
     return `drawer-id:${String(explicit).trim()}`;
   }
 
-  const rawCode = String(
-    component?.partCode || component?.technicalId || "",
-  )
+  const rawCode = String(component?.partCode || component?.technicalId || "")
     .trim()
     .toUpperCase();
 
@@ -789,9 +757,7 @@ const isCustomerDrawerPreviewFrontComponent = (component = {}) => {
   const role = String(component?.partRole || "")
     .trim()
     .toLowerCase();
-  const code = String(
-    component?.partCode || component?.technicalId || "",
-  )
+  const code = String(component?.partCode || component?.technicalId || "")
     .trim()
     .toUpperCase();
   const text = getCustomerDrawerPreviewText(component);
@@ -836,9 +802,7 @@ const buildCustomerDoorPreviewSets = (items = []) => {
       key,
       members,
       reference:
-        members.find((item) => item.id === referenceId) ||
-        members[0] ||
-        null,
+        members.find((item) => item.id === referenceId) || members[0] || null,
     };
   });
 };
@@ -863,9 +827,8 @@ const buildCustomerDrawerPreviewSets = (items = []) => {
       );
 
       const referenceId =
-        movableMembers
-          .map(getCustomerMotionReferencePartId)
-          .find(Boolean) || "";
+        movableMembers.map(getCustomerMotionReferencePartId).find(Boolean) ||
+        "";
 
       const reference =
         movableMembers.find((item) => item.id === referenceId) ||
@@ -882,6 +845,8 @@ const buildCustomerDrawerPreviewSets = (items = []) => {
     })
     .filter((set) => set.movableMembers.length > 0 && set.reference);
 };
+
+const MAX_CUSTOM_QUANTITY = 100;
 
 export default function Customer3DViewer({
   initialComponents = [],
@@ -992,7 +957,10 @@ export default function Customer3DViewer({
 
   const [quantity, setQuantity] = useState(() => {
     const parsed = Number(initialQuantity);
-    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 1;
+
+    return Number.isSafeInteger(parsed) && parsed >= 1
+      ? Math.min(parsed, MAX_CUSTOM_QUANTITY)
+      : 1;
   });
   const [comments, setComments] = useState(() => String(initialComments || ""));
   const [standardTruckLimits, setStandardTruckLimits] = useState(null);
@@ -1287,15 +1255,14 @@ export default function Customer3DViewer({
     : null;
 
   const uniformFinishId = useMemo(() => {
-    const ids = (Array.isArray(components) ? components : [])
-      .map((component) =>
-        String(
-          component?.finish_id ||
-            component?.woodFinish ||
-            component?.finish ||
-            "",
-        ).trim(),
-      );
+    const ids = (Array.isArray(components) ? components : []).map((component) =>
+      String(
+        component?.finish_id ||
+          component?.woodFinish ||
+          component?.finish ||
+          "",
+      ).trim(),
+    );
 
     if (!ids.length) return "";
     const unique = [...new Set(ids)];
@@ -1379,7 +1346,7 @@ export default function Customer3DViewer({
 
       const usesOverlayOptions = Boolean(
         mountRef.current?.closest(".cust-modal-customize") ||
-          mountRef.current?.closest(".custom-review-edit-body"),
+        mountRef.current?.closest(".custom-review-edit-body"),
       );
 
       if (!readOnly && usesOverlayOptions && safeWidth > 900) {
@@ -1571,10 +1538,7 @@ export default function Customer3DViewer({
             // movement, smoothly follow the projected point without adding
             // a long, visible lag during faster rotations.
             if (travel > 0.22) {
-              const follow =
-                travel >= 32 ? 0.82 :
-                travel >= 12 ? 0.64 :
-                0.42;
+              const follow = travel >= 32 ? 0.82 : travel >= 12 ? 0.64 : 0.42;
 
               screenState.x += dx * follow;
               screenState.y += dy * follow;
@@ -1587,8 +1551,7 @@ export default function Customer3DViewer({
           const y = Math.round(screenState.y * 4) / 4;
 
           element.style.display = "block";
-          element.style.transform =
-            `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
+          element.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
         };
 
         updateDiv(labelWRef, pW, "width");
@@ -1657,9 +1620,7 @@ export default function Customer3DViewer({
               group.ids.includes(clickedId),
             );
             setSelectedCompIds(
-              semanticGroup?.ids?.length
-                ? semanticGroup.ids
-                : [clickedId],
+              semanticGroup?.ids?.length ? semanticGroup.ids : [clickedId],
             );
           }
         }
@@ -1795,7 +1756,6 @@ export default function Customer3DViewer({
     return true;
   };
 
-
   const clearCustomerDoorPreviews = useCallback(
     ({ updateState = true } = {}) => {
       if (doorMotionAnimationRef.current) {
@@ -1886,10 +1846,7 @@ export default function Customer3DViewer({
 
         const progress = Math.min(
           1,
-          Math.max(
-            0,
-            (now - startedAt) / CUSTOMER_MOTION_PREVIEW_DURATION_MS,
-          ),
+          Math.max(0, (now - startedAt) / CUSTOMER_MOTION_PREVIEW_DURATION_MS),
         );
         const eased = customerMotionEaseOutCubic(progress);
 
@@ -1962,10 +1919,7 @@ export default function Customer3DViewer({
 
         const progress = Math.min(
           1,
-          Math.max(
-            0,
-            (now - startedAt) / CUSTOMER_MOTION_PREVIEW_DURATION_MS,
-          ),
+          Math.max(0, (now - startedAt) / CUSTOMER_MOTION_PREVIEW_DURATION_MS),
         );
         const eased = customerMotionEaseOutCubic(progress);
 
@@ -2026,15 +1980,11 @@ export default function Customer3DViewer({
 
         const progress = Math.min(
           1,
-          Math.max(
-            0,
-            (now - startedAt) / CUSTOMER_MOTION_PREVIEW_DURATION_MS,
-          ),
+          Math.max(0, (now - startedAt) / CUSTOMER_MOTION_PREVIEW_DURATION_MS),
         );
         const eased = customerMotionEaseOutCubic(progress);
 
-        preview.currentAngle =
-          startAngle + (destination - startAngle) * eased;
+        preview.currentAngle = startAngle + (destination - startAngle) * eased;
 
         const localTurn = new THREE.Quaternion().setFromAxisAngle(
           new THREE.Vector3(0, 1, 0),
@@ -2086,10 +2036,7 @@ export default function Customer3DViewer({
 
         const progress = Math.min(
           1,
-          Math.max(
-            0,
-            (now - startedAt) / CUSTOMER_MOTION_PREVIEW_DURATION_MS,
-          ),
+          Math.max(0, (now - startedAt) / CUSTOMER_MOTION_PREVIEW_DURATION_MS),
         );
         const eased = customerMotionEaseOutCubic(progress);
 
@@ -2126,226 +2073,228 @@ export default function Customer3DViewer({
         targetAngle = null,
       } = {},
     ) => {
-    const allSets = buildCustomerDoorPreviewSets(components);
-    const requestedKey =
-      typeof targetKey === "string" ? targetKey.trim() : "";
-    const sets = requestedKey
-      ? allSets.filter((set) => set.key === requestedKey)
-      : allSets;
+      const allSets = buildCustomerDoorPreviewSets(components);
+      const requestedKey =
+        typeof targetKey === "string" ? targetKey.trim() : "";
+      const sets = requestedKey
+        ? allSets.filter((set) => set.key === requestedKey)
+        : allSets;
 
-    if (!sets.length) return;
+      if (!sets.length) return;
 
-    const keepCurrent = Boolean(requestedKey && preserveExisting);
+      const keepCurrent = Boolean(requestedKey && preserveExisting);
 
-    if (!keepCurrent) {
-      clearCustomerDoorPreviews();
-    }
-
-    if (!preserveSelection) {
-      setSelectedCompIds([]);
-    }
-
-    const existingKeys = new Set(
-      (doorMotionPreviewRef.current || []).map((preview) => preview.key),
-    );
-    const setsToCreate = keepCurrent
-      ? sets.filter((set) => !existingKeys.has(set.key))
-      : sets;
-    const created = [];
-
-    setsToCreate.forEach((set) => {
-      const memberEntries = set.members.map((member) => ({
-        member,
-        object: renderedObjectMapRef.current.get(member.id) || null,
-      }));
-
-      if (
-        !memberEntries.length ||
-        memberEntries.some(({ object }) => !object?.parent)
-      ) {
-        return;
-      }
-
-      const parent = memberEntries[0].object.parent;
-      if (
-        !parent ||
-        memberEntries.some(({ object }) => object.parent !== parent)
-      ) {
-        return;
-      }
-
-      const referenceComponent = set.reference || set.members[0];
-      const referenceOriginal =
-        renderedObjectMapRef.current.get(referenceComponent?.id) ||
-        memberEntries[0].object;
-
-      if (!referenceComponent || !referenceOriginal) return;
-
-      const explicitHingeComponent = [
-        referenceComponent,
-        ...set.members,
-      ].find((item) => {
-        const value = String(
-          item?.doorHinge ??
-            item?.door_hinge ??
-            item?.hingeSide ??
-            item?.hinge_side ??
-            "",
-        )
-          .trim()
-          .toLowerCase();
-
-        return value.startsWith("l") || value.startsWith("r");
-      });
-
-      const hingeSide = explicitHingeComponent
-        ? String(
-            explicitHingeComponent?.doorHinge ??
-              explicitHingeComponent?.door_hinge ??
-              explicitHingeComponent?.hingeSide ??
-              explicitHingeComponent?.hinge_side ??
-              "",
-          )
-            .trim()
-            .toLowerCase()
-            .startsWith("r")
-          ? "right"
-          : "left"
-        : resolveCustomerDoorHingeSide(referenceComponent, components);
-
-      const width = Math.max(1, Number(referenceComponent?.width || 1));
-      const localHingeOffset = new THREE.Vector3(
-        hingeSide === "right" ? width / 2 : -width / 2,
-        0,
-        0,
-      );
-
-      const hingePosition = referenceOriginal.position
-        .clone()
-        .add(
-          localHingeOffset
-            .clone()
-            .applyQuaternion(referenceOriginal.quaternion),
-        );
-
-      const pivot = new THREE.Group();
-      pivot.name = `customer-door-preview-${set.key}`;
-      pivot.position.copy(hingePosition);
-      pivot.quaternion.copy(referenceOriginal.quaternion);
-      parent.add(pivot);
-      parent.updateMatrixWorld(true);
-      pivot.updateMatrixWorld(true);
-
-      const originals = [];
-
-      memberEntries.forEach(({ member, object: original }) => {
-        const clone = original.clone(true);
-        clone.name = `customer-door-preview-clone-${member.id}`;
-        clone.traverse((child) => {
-          child.userData = {
-            ...(child.userData || {}),
-            isCustomerMotionPreviewClone: true,
-          };
-        });
-
-        clone.position.copy(original.position);
-        clone.quaternion.copy(original.quaternion);
-        clone.scale.copy(original.scale);
-
-        parent.add(clone);
-        parent.updateMatrixWorld(true);
-        pivot.updateMatrixWorld(true);
-        clone.updateMatrixWorld(true);
-        pivot.attach(clone);
-        pivot.updateMatrixWorld(true);
-
-        originals.push({
-          object: original,
-          visible: original.visible,
-        });
-        original.visible = false;
-      });
-
-      created.push({
-        key: set.key,
-        pivot,
-        originals,
-        basePivotQuaternion: referenceOriginal.quaternion.clone(),
-        direction: hingeSide === "right" ? 1 : -1,
-        currentAngle: 0,
-        animationFrame: 0,
-      });
-    });
-
-    if (!created.length) {
       if (!keepCurrent) {
         clearCustomerDoorPreviews();
       }
-      return;
-    }
 
-    const defaultOpenAngle = THREE.MathUtils.degToRad(
-      CUSTOMER_DOOR_PREVIEW_OPEN_DEGREES,
-    );
-    const requestedAngle = Number(targetAngle);
-    const openAngle =
-      Number.isFinite(requestedAngle) && requestedAngle > 0
-        ? requestedAngle
-        : defaultOpenAngle;
-
-    const applyDoorPreviewAngle = (preview, angle) => {
-      if (!preview?.pivot) return;
-
-      if (preview.animationFrame) {
-        cancelAnimationFrame(preview.animationFrame);
-        preview.animationFrame = 0;
+      if (!preserveSelection) {
+        setSelectedCompIds([]);
       }
 
-      preview.currentAngle = angle;
-
-      const localTurn = new THREE.Quaternion().setFromAxisAngle(
-        new THREE.Vector3(0, 1, 0),
-        preview.direction * preview.currentAngle,
+      const existingKeys = new Set(
+        (doorMotionPreviewRef.current || []).map((preview) => preview.key),
       );
+      const setsToCreate = keepCurrent
+        ? sets.filter((set) => !existingKeys.has(set.key))
+        : sets;
+      const created = [];
 
-      preview.pivot.quaternion
-        .copy(preview.basePivotQuaternion)
-        .multiply(localTurn);
-      preview.pivot.updateMatrixWorld(true);
-    };
+      setsToCreate.forEach((set) => {
+        const memberEntries = set.members.map((member) => ({
+          member,
+          object: renderedObjectMapRef.current.get(member.id) || null,
+        }));
 
-    if (keepCurrent) {
-      doorMotionPreviewRef.current = [
-        ...doorMotionPreviewRef.current,
-        ...created,
-      ];
-      setDoorsPreviewOpen(false);
-      created.forEach((preview) => {
-        if (instant) {
-          applyDoorPreviewAngle(preview, openAngle);
-        } else {
-          animateCustomerDoorPreviewTo(preview, openAngle);
+        if (
+          !memberEntries.length ||
+          memberEntries.some(({ object }) => !object?.parent)
+        ) {
+          return;
         }
-      });
-      return;
-    }
 
-    doorMotionPreviewRef.current = created;
-    setDoorsPreviewOpen(!requestedKey);
+        const parent = memberEntries[0].object.parent;
+        if (
+          !parent ||
+          memberEntries.some(({ object }) => object.parent !== parent)
+        ) {
+          return;
+        }
 
-    if (instant) {
-      created.forEach((preview) => {
-        applyDoorPreviewAngle(preview, openAngle);
+        const referenceComponent = set.reference || set.members[0];
+        const referenceOriginal =
+          renderedObjectMapRef.current.get(referenceComponent?.id) ||
+          memberEntries[0].object;
+
+        if (!referenceComponent || !referenceOriginal) return;
+
+        const explicitHingeComponent = [
+          referenceComponent,
+          ...set.members,
+        ].find((item) => {
+          const value = String(
+            item?.doorHinge ??
+              item?.door_hinge ??
+              item?.hingeSide ??
+              item?.hinge_side ??
+              "",
+          )
+            .trim()
+            .toLowerCase();
+
+          return value.startsWith("l") || value.startsWith("r");
+        });
+
+        const hingeSide = explicitHingeComponent
+          ? String(
+              explicitHingeComponent?.doorHinge ??
+                explicitHingeComponent?.door_hinge ??
+                explicitHingeComponent?.hingeSide ??
+                explicitHingeComponent?.hinge_side ??
+                "",
+            )
+              .trim()
+              .toLowerCase()
+              .startsWith("r")
+            ? "right"
+            : "left"
+          : resolveCustomerDoorHingeSide(referenceComponent, components);
+
+        const width = Math.max(1, Number(referenceComponent?.width || 1));
+        const localHingeOffset = new THREE.Vector3(
+          hingeSide === "right" ? width / 2 : -width / 2,
+          0,
+          0,
+        );
+
+        const hingePosition = referenceOriginal.position
+          .clone()
+          .add(
+            localHingeOffset
+              .clone()
+              .applyQuaternion(referenceOriginal.quaternion),
+          );
+
+        const pivot = new THREE.Group();
+        pivot.name = `customer-door-preview-${set.key}`;
+        pivot.position.copy(hingePosition);
+        pivot.quaternion.copy(referenceOriginal.quaternion);
+        parent.add(pivot);
+        parent.updateMatrixWorld(true);
+        pivot.updateMatrixWorld(true);
+
+        const originals = [];
+
+        memberEntries.forEach(({ member, object: original }) => {
+          const clone = original.clone(true);
+          clone.name = `customer-door-preview-clone-${member.id}`;
+          clone.traverse((child) => {
+            child.userData = {
+              ...(child.userData || {}),
+              isCustomerMotionPreviewClone: true,
+            };
+          });
+
+          clone.position.copy(original.position);
+          clone.quaternion.copy(original.quaternion);
+          clone.scale.copy(original.scale);
+
+          parent.add(clone);
+          parent.updateMatrixWorld(true);
+          pivot.updateMatrixWorld(true);
+          clone.updateMatrixWorld(true);
+          pivot.attach(clone);
+          pivot.updateMatrixWorld(true);
+
+          originals.push({
+            object: original,
+            visible: original.visible,
+          });
+          original.visible = false;
+        });
+
+        created.push({
+          key: set.key,
+          pivot,
+          originals,
+          basePivotQuaternion: referenceOriginal.quaternion.clone(),
+          direction: hingeSide === "right" ? 1 : -1,
+          currentAngle: 0,
+          animationFrame: 0,
+        });
       });
-    } else {
-      animateCustomerDoorPreviewsTo(openAngle);
-    }
-  }, [
-    components,
-    clearCustomerDoorPreviews,
-    animateCustomerDoorPreviewsTo,
-    animateCustomerDoorPreviewTo,
-  ]);
+
+      if (!created.length) {
+        if (!keepCurrent) {
+          clearCustomerDoorPreviews();
+        }
+        return;
+      }
+
+      const defaultOpenAngle = THREE.MathUtils.degToRad(
+        CUSTOMER_DOOR_PREVIEW_OPEN_DEGREES,
+      );
+      const requestedAngle = Number(targetAngle);
+      const openAngle =
+        Number.isFinite(requestedAngle) && requestedAngle > 0
+          ? requestedAngle
+          : defaultOpenAngle;
+
+      const applyDoorPreviewAngle = (preview, angle) => {
+        if (!preview?.pivot) return;
+
+        if (preview.animationFrame) {
+          cancelAnimationFrame(preview.animationFrame);
+          preview.animationFrame = 0;
+        }
+
+        preview.currentAngle = angle;
+
+        const localTurn = new THREE.Quaternion().setFromAxisAngle(
+          new THREE.Vector3(0, 1, 0),
+          preview.direction * preview.currentAngle,
+        );
+
+        preview.pivot.quaternion
+          .copy(preview.basePivotQuaternion)
+          .multiply(localTurn);
+        preview.pivot.updateMatrixWorld(true);
+      };
+
+      if (keepCurrent) {
+        doorMotionPreviewRef.current = [
+          ...doorMotionPreviewRef.current,
+          ...created,
+        ];
+        setDoorsPreviewOpen(false);
+        created.forEach((preview) => {
+          if (instant) {
+            applyDoorPreviewAngle(preview, openAngle);
+          } else {
+            animateCustomerDoorPreviewTo(preview, openAngle);
+          }
+        });
+        return;
+      }
+
+      doorMotionPreviewRef.current = created;
+      setDoorsPreviewOpen(!requestedKey);
+
+      if (instant) {
+        created.forEach((preview) => {
+          applyDoorPreviewAngle(preview, openAngle);
+        });
+      } else {
+        animateCustomerDoorPreviewsTo(openAngle);
+      }
+    },
+    [
+      components,
+      clearCustomerDoorPreviews,
+      animateCustomerDoorPreviewsTo,
+      animateCustomerDoorPreviewTo,
+    ],
+  );
 
   const closeAllCustomerDoors = useCallback(() => {
     if (!doorMotionPreviewRef.current.length) {
@@ -2398,203 +2347,202 @@ export default function Customer3DViewer({
         targetDistance = null,
       } = {},
     ) => {
-    const allSets = buildCustomerDrawerPreviewSets(components);
-    const requestedKey =
-      typeof targetKey === "string" ? targetKey.trim() : "";
-    const sets = requestedKey
-      ? allSets.filter((set) => set.key === requestedKey)
-      : allSets;
+      const allSets = buildCustomerDrawerPreviewSets(components);
+      const requestedKey =
+        typeof targetKey === "string" ? targetKey.trim() : "";
+      const sets = requestedKey
+        ? allSets.filter((set) => set.key === requestedKey)
+        : allSets;
 
-    if (!sets.length) return;
+      if (!sets.length) return;
 
-    const keepCurrent = Boolean(requestedKey && preserveExisting);
+      const keepCurrent = Boolean(requestedKey && preserveExisting);
 
-    if (!keepCurrent) {
-      clearCustomerDrawerPreviews();
-    }
-
-    if (!preserveSelection) {
-      setSelectedCompIds([]);
-    }
-
-    const existingKeys = new Set(
-      (drawerMotionPreviewRef.current || []).map((preview) => preview.key),
-    );
-    const setsToCreate = keepCurrent
-      ? sets.filter((set) => !existingKeys.has(set.key))
-      : sets;
-    const created = [];
-
-    setsToCreate.forEach((set) => {
-      const memberEntries = set.movableMembers.map((member) => ({
-        member,
-        object: renderedObjectMapRef.current.get(member.id) || null,
-      }));
-
-      if (
-        !memberEntries.length ||
-        memberEntries.some(({ object }) => !object?.parent)
-      ) {
-        return;
-      }
-
-      const parent = memberEntries[0].object.parent;
-      if (
-        !parent ||
-        memberEntries.some(({ object }) => object.parent !== parent)
-      ) {
-        return;
-      }
-
-      const referenceComponent = set.reference || set.movableMembers[0];
-      const referenceOriginal =
-        renderedObjectMapRef.current.get(referenceComponent?.id) ||
-        memberEntries[0].object;
-
-      if (!referenceComponent || !referenceOriginal) return;
-
-      const direction = new THREE.Vector3(0, 0, 1)
-        .applyQuaternion(referenceOriginal.quaternion)
-        .normalize();
-
-      if (direction.lengthSq() < 0.5) return;
-
-      const depthCandidates = set.movableMembers
-        .filter(
-          (item) =>
-            !isCustomerDrawerPreviewFrontComponent(item) &&
-            !String(item?.partRole || "")
-              .toLowerCase()
-              .includes("handle"),
-        )
-        .map((item) => Number(item?.depth || 0))
-        .filter((value) => Number.isFinite(value) && value > 0);
-
-      const drawerDepth = Math.max(
-        1,
-        ...(depthCandidates.length
-          ? depthCandidates
-          : [Number(referenceComponent.depth) || 1]),
-      );
-
-      const extensionDistance = Math.min(
-        CUSTOMER_DRAWER_PREVIEW_MAX_EXTENSION_MM,
-        Math.max(
-          CUSTOMER_DRAWER_PREVIEW_MIN_EXTENSION_MM,
-          drawerDepth * CUSTOMER_DRAWER_PREVIEW_EXTENSION_RATIO,
-        ),
-      );
-
-      const group = new THREE.Group();
-      group.name = `customer-drawer-preview-${set.key}`;
-      parent.add(group);
-      parent.updateMatrixWorld(true);
-      group.updateMatrixWorld(true);
-
-      const originals = [];
-
-      memberEntries.forEach(({ member, object: original }) => {
-        const clone = original.clone(true);
-        clone.name = `customer-drawer-preview-clone-${member.id}`;
-        clone.traverse((child) => {
-          child.userData = {
-            ...(child.userData || {}),
-            isCustomerMotionPreviewClone: true,
-          };
-        });
-
-        clone.position.copy(original.position);
-        clone.quaternion.copy(original.quaternion);
-        clone.scale.copy(original.scale);
-
-        parent.add(clone);
-        parent.updateMatrixWorld(true);
-        group.updateMatrixWorld(true);
-        clone.updateMatrixWorld(true);
-        group.attach(clone);
-        group.updateMatrixWorld(true);
-
-        originals.push({
-          object: original,
-          visible: original.visible,
-        });
-        original.visible = false;
-      });
-
-      created.push({
-        key: set.key,
-        group,
-        originals,
-        basePosition: group.position.clone(),
-        direction,
-        currentDistance: 0,
-        extensionDistance,
-        animationFrame: 0,
-      });
-    });
-
-    if (!created.length) {
       if (!keepCurrent) {
         clearCustomerDrawerPreviews();
       }
-      return;
-    }
 
-    const applyDrawerPreviewDistance = (preview, distance) => {
-      if (!preview?.group) return;
-
-      if (preview.animationFrame) {
-        cancelAnimationFrame(preview.animationFrame);
-        preview.animationFrame = 0;
+      if (!preserveSelection) {
+        setSelectedCompIds([]);
       }
 
-      const requestedDistance = Number(distance);
-      const safeDistance = Number.isFinite(requestedDistance)
-        ? Math.max(
-            0,
-            Math.min(preview.extensionDistance, requestedDistance),
-          )
-        : preview.extensionDistance;
+      const existingKeys = new Set(
+        (drawerMotionPreviewRef.current || []).map((preview) => preview.key),
+      );
+      const setsToCreate = keepCurrent
+        ? sets.filter((set) => !existingKeys.has(set.key))
+        : sets;
+      const created = [];
 
-      preview.currentDistance = safeDistance;
-      preview.group.position
-        .copy(preview.basePosition)
-        .addScaledVector(preview.direction, preview.currentDistance);
-      preview.group.updateMatrixWorld(true);
-    };
+      setsToCreate.forEach((set) => {
+        const memberEntries = set.movableMembers.map((member) => ({
+          member,
+          object: renderedObjectMapRef.current.get(member.id) || null,
+        }));
 
-    if (keepCurrent) {
-      drawerMotionPreviewRef.current = [
-        ...drawerMotionPreviewRef.current,
-        ...created,
-      ];
-      setDrawersPreviewOpen(false);
-      created.forEach((preview) => {
-        if (instant) {
-          applyDrawerPreviewDistance(preview, targetDistance);
-        } else {
-          animateCustomerDrawerPreviewTo(preview, 1);
+        if (
+          !memberEntries.length ||
+          memberEntries.some(({ object }) => !object?.parent)
+        ) {
+          return;
         }
-      });
-      return;
-    }
 
-    drawerMotionPreviewRef.current = created;
-    setDrawersPreviewOpen(!requestedKey);
+        const parent = memberEntries[0].object.parent;
+        if (
+          !parent ||
+          memberEntries.some(({ object }) => object.parent !== parent)
+        ) {
+          return;
+        }
 
-    if (instant) {
-      created.forEach((preview) => {
-        applyDrawerPreviewDistance(preview, targetDistance);
+        const referenceComponent = set.reference || set.movableMembers[0];
+        const referenceOriginal =
+          renderedObjectMapRef.current.get(referenceComponent?.id) ||
+          memberEntries[0].object;
+
+        if (!referenceComponent || !referenceOriginal) return;
+
+        const direction = new THREE.Vector3(0, 0, 1)
+          .applyQuaternion(referenceOriginal.quaternion)
+          .normalize();
+
+        if (direction.lengthSq() < 0.5) return;
+
+        const depthCandidates = set.movableMembers
+          .filter(
+            (item) =>
+              !isCustomerDrawerPreviewFrontComponent(item) &&
+              !String(item?.partRole || "")
+                .toLowerCase()
+                .includes("handle"),
+          )
+          .map((item) => Number(item?.depth || 0))
+          .filter((value) => Number.isFinite(value) && value > 0);
+
+        const drawerDepth = Math.max(
+          1,
+          ...(depthCandidates.length
+            ? depthCandidates
+            : [Number(referenceComponent.depth) || 1]),
+        );
+
+        const extensionDistance = Math.min(
+          CUSTOMER_DRAWER_PREVIEW_MAX_EXTENSION_MM,
+          Math.max(
+            CUSTOMER_DRAWER_PREVIEW_MIN_EXTENSION_MM,
+            drawerDepth * CUSTOMER_DRAWER_PREVIEW_EXTENSION_RATIO,
+          ),
+        );
+
+        const group = new THREE.Group();
+        group.name = `customer-drawer-preview-${set.key}`;
+        parent.add(group);
+        parent.updateMatrixWorld(true);
+        group.updateMatrixWorld(true);
+
+        const originals = [];
+
+        memberEntries.forEach(({ member, object: original }) => {
+          const clone = original.clone(true);
+          clone.name = `customer-drawer-preview-clone-${member.id}`;
+          clone.traverse((child) => {
+            child.userData = {
+              ...(child.userData || {}),
+              isCustomerMotionPreviewClone: true,
+            };
+          });
+
+          clone.position.copy(original.position);
+          clone.quaternion.copy(original.quaternion);
+          clone.scale.copy(original.scale);
+
+          parent.add(clone);
+          parent.updateMatrixWorld(true);
+          group.updateMatrixWorld(true);
+          clone.updateMatrixWorld(true);
+          group.attach(clone);
+          group.updateMatrixWorld(true);
+
+          originals.push({
+            object: original,
+            visible: original.visible,
+          });
+          original.visible = false;
+        });
+
+        created.push({
+          key: set.key,
+          group,
+          originals,
+          basePosition: group.position.clone(),
+          direction,
+          currentDistance: 0,
+          extensionDistance,
+          animationFrame: 0,
+        });
       });
-    } else {
-      animateCustomerDrawerPreviewsTo(1);
-    }
-  }, [
-    components,
-    clearCustomerDrawerPreviews,
-    animateCustomerDrawerPreviewsTo,
-    animateCustomerDrawerPreviewTo,
-  ]);
+
+      if (!created.length) {
+        if (!keepCurrent) {
+          clearCustomerDrawerPreviews();
+        }
+        return;
+      }
+
+      const applyDrawerPreviewDistance = (preview, distance) => {
+        if (!preview?.group) return;
+
+        if (preview.animationFrame) {
+          cancelAnimationFrame(preview.animationFrame);
+          preview.animationFrame = 0;
+        }
+
+        const requestedDistance = Number(distance);
+        const safeDistance = Number.isFinite(requestedDistance)
+          ? Math.max(0, Math.min(preview.extensionDistance, requestedDistance))
+          : preview.extensionDistance;
+
+        preview.currentDistance = safeDistance;
+        preview.group.position
+          .copy(preview.basePosition)
+          .addScaledVector(preview.direction, preview.currentDistance);
+        preview.group.updateMatrixWorld(true);
+      };
+
+      if (keepCurrent) {
+        drawerMotionPreviewRef.current = [
+          ...drawerMotionPreviewRef.current,
+          ...created,
+        ];
+        setDrawersPreviewOpen(false);
+        created.forEach((preview) => {
+          if (instant) {
+            applyDrawerPreviewDistance(preview, targetDistance);
+          } else {
+            animateCustomerDrawerPreviewTo(preview, 1);
+          }
+        });
+        return;
+      }
+
+      drawerMotionPreviewRef.current = created;
+      setDrawersPreviewOpen(!requestedKey);
+
+      if (instant) {
+        created.forEach((preview) => {
+          applyDrawerPreviewDistance(preview, targetDistance);
+        });
+      } else {
+        animateCustomerDrawerPreviewsTo(1);
+      }
+    },
+    [
+      components,
+      clearCustomerDrawerPreviews,
+      animateCustomerDrawerPreviewsTo,
+      animateCustomerDrawerPreviewTo,
+    ],
+  );
 
   const closeAllCustomerDrawers = useCallback(() => {
     if (!drawerMotionPreviewRef.current.length) {
@@ -2659,11 +2607,7 @@ export default function Customer3DViewer({
 
       return true;
     },
-    [
-      components,
-      openAllCustomerDoors,
-      closeCustomerDoorPreviewByKey,
-    ],
+    [components, openAllCustomerDoors, closeCustomerDoorPreviewByKey],
   );
 
   const toggleCustomerDrawerFromComponentId = useCallback(
@@ -2691,11 +2635,7 @@ export default function Customer3DViewer({
 
       return true;
     },
-    [
-      components,
-      openAllCustomerDrawers,
-      closeCustomerDrawerPreviewByKey,
-    ],
+    [components, openAllCustomerDrawers, closeCustomerDrawerPreviewByKey],
   );
 
   const toggleCustomerMotionFromComponentId = useCallback(
@@ -2704,10 +2644,7 @@ export default function Customer3DViewer({
       if (toggleCustomerDrawerFromComponentId(componentId)) return true;
       return false;
     },
-    [
-      toggleCustomerDoorFromComponentId,
-      toggleCustomerDrawerFromComponentId,
-    ],
+    [toggleCustomerDoorFromComponentId, toggleCustomerDrawerFromComponentId],
   );
 
   // Normal customer preview mode: click a movable door/drawer directly.
@@ -2787,11 +2724,7 @@ export default function Customer3DViewer({
       onMotionPointerDown,
       true,
     );
-    renderer.domElement.addEventListener(
-      "pointerup",
-      onMotionPointerUp,
-      true,
-    );
+    renderer.domElement.addEventListener("pointerup", onMotionPointerUp, true);
 
     return () => {
       renderer.domElement.removeEventListener(
@@ -2924,7 +2857,6 @@ export default function Customer3DViewer({
         rootGroup.add(obj);
         renderedObjectMapRef.current.set(comp.id, obj);
         boundsBox.expandByObject(obj);
-
       } catch (error) {
         console.error("Customer3DViewer render failed:", comp, error);
       }
@@ -3107,11 +3039,7 @@ export default function Customer3DViewer({
     selectedCompIds.forEach((id) => {
       let target = null;
       rootGroupRef.current.traverse((child) => {
-        if (
-          child.userData?.id === id &&
-          child.visible !== false &&
-          !target
-        ) {
+        if (child.userData?.id === id && child.visible !== false && !target) {
           target = child;
         }
       });
@@ -3162,8 +3090,7 @@ export default function Customer3DViewer({
     const legDepth = Math.max(28, Math.round(torsoDepth * 0.8));
     const legGap = Math.max(8, Math.round(shoulderWidth * 0.15));
 
-    const footDepth =
-      legDepth + Math.max(9, Math.round(30 * referenceScale));
+    const footDepth = legDepth + Math.max(9, Math.round(30 * referenceScale));
 
     // Single, uniform smooth material for the whole body
     const bodyMat = new THREE.MeshStandardMaterial({
@@ -3323,7 +3250,6 @@ export default function Customer3DViewer({
     setActiveView(viewMode);
   };
 
-
   const resetCameraView = useCallback(() => {
     changeCameraView("3D");
     showCustomizeFeedback("Camera reset.");
@@ -3339,7 +3265,10 @@ export default function Customer3DViewer({
         await viewerRootRef.current.requestFullscreen?.();
       }
     } catch (error) {
-      console.error("Unable to toggle customer configurator fullscreen:", error);
+      console.error(
+        "Unable to toggle customer configurator fullscreen:",
+        error,
+      );
       showCustomizeFeedback("Fullscreen is unavailable in this browser.");
     }
   }, [showCustomizeFeedback]);
@@ -3362,10 +3291,7 @@ export default function Customer3DViewer({
     document.addEventListener("fullscreenchange", handleFullscreenChange);
 
     return () => {
-      document.removeEventListener(
-        "fullscreenchange",
-        handleFullscreenChange,
-      );
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
     };
   }, []);
 
@@ -3428,9 +3354,7 @@ export default function Customer3DViewer({
     }
   }, [showCustomizeFeedback]);
 
-  const finishCatalog = Array.isArray(WOOD_FINISHES)
-    ? WOOD_FINISHES
-    : [];
+  const finishCatalog = Array.isArray(WOOD_FINISHES) ? WOOD_FINISHES : [];
 
   const getFinishPreviewChoices = (activeFinishId = "", limit = 3) => {
     const safeLimit = Math.max(1, Number(limit) || 3);
@@ -3619,13 +3543,26 @@ export default function Customer3DViewer({
 
   const handleApply = () => {
     if (typeof onApply !== "function") return;
+
+    const parsedQuantity = Number(quantity);
+
+    const safeQuantity =
+      Number.isSafeInteger(parsedQuantity) && parsedQuantity >= 1
+        ? Math.min(parsedQuantity, MAX_CUSTOM_QUANTITY)
+        : 1;
+
+    const safeComments = String(comments || "")
+      .trim()
+      .slice(0, 500);
+
     setCustomizeProgressStep(6);
+
     /* WISDOM HOMEPAGE ACTUAL 3D TEMPLATE V1.2.2
-       Parent Customize page already displays the detailed bottom-right
-       custom-cart confirmation. Remove only this duplicate top black effect. */
+     Parent Customize page already displays the detailed bottom-right
+     custom-cart confirmation. Remove only this duplicate top black effect. */
     onApply({
-      quantity: Math.max(1, Number(quantity || 1)),
-      comments: String(comments || "").trim(),
+      quantity: safeQuantity,
+      comments: safeComments,
       bounds: {
         width: overallBounds.width_mm,
         height: overallBounds.height_mm,
@@ -3734,9 +3671,7 @@ export default function Customer3DViewer({
           (!readOnly
             ? "customer-3d-viewer-shell-customize wisdom-roomle-configurator "
             : "") +
-          (!readOnly && sidebarCollapsed
-            ? "wisdom-sidebar-collapsed"
-            : "")
+          (!readOnly && sidebarCollapsed ? "wisdom-sidebar-collapsed" : "")
         }
         style={{
           ...styles.viewerShell,
@@ -3792,8 +3727,7 @@ export default function Customer3DViewer({
                     )}
                   </div>
 
-                  {hasCustomerPreviewDoors ||
-                  hasCustomerPreviewDrawers ? (
+                  {hasCustomerPreviewDoors || hasCustomerPreviewDrawers ? (
                     <div
                       style={{
                         ...styles.compactGroup,
@@ -3832,9 +3766,7 @@ export default function Customer3DViewer({
                           }
                           style={{
                             ...styles.toolBtn,
-                            ...(drawersPreviewOpen
-                              ? styles.unitBtnActive
-                              : {}),
+                            ...(drawersPreviewOpen ? styles.unitBtnActive : {}),
                           }}
                         >
                           {drawersPreviewOpen
@@ -3991,7 +3923,6 @@ export default function Customer3DViewer({
                 className="wisdom-roomle-stage"
                 style={styles.customizeCanvasStage}
               >
-
                 <div
                   className="wisdom-roomle-toolbar"
                   aria-label="3D viewer tools"
@@ -4059,18 +3990,10 @@ export default function Customer3DViewer({
                         (showMeasurements ? " is-active" : "")
                       }
                       data-tooltip={
-                        showMeasurements
-                          ? "Hide size"
-                          : "Show size"
+                        showMeasurements ? "Hide size" : "Show size"
                       }
-                      onClick={() =>
-                        setShowMeasurements((visible) => !visible)
-                      }
-                      aria-label={
-                        showMeasurements
-                          ? "Hide size"
-                          : "Show size"
-                      }
+                      onClick={() => setShowMeasurements((visible) => !visible)}
+                      aria-label={showMeasurements ? "Hide size" : "Show size"}
                       aria-pressed={showMeasurements}
                     >
                       <Ruler size={18} strokeWidth={1.65} />
@@ -4189,15 +4112,11 @@ export default function Customer3DViewer({
                         (isViewerFullscreen ? " is-active" : "")
                       }
                       data-tooltip={
-                        isViewerFullscreen
-                          ? "Exit fullscreen"
-                          : "Fullscreen"
+                        isViewerFullscreen ? "Exit fullscreen" : "Fullscreen"
                       }
                       onClick={toggleViewerFullscreen}
                       aria-label={
-                        isViewerFullscreen
-                          ? "Exit fullscreen"
-                          : "Fullscreen"
+                        isViewerFullscreen ? "Exit fullscreen" : "Fullscreen"
                       }
                     >
                       <Maximize2 size={18} strokeWidth={1.65} />
@@ -4236,9 +4155,7 @@ export default function Customer3DViewer({
                   data-tooltip={
                     sidebarCollapsed ? "Show options" : "Hide options"
                   }
-                  onClick={() =>
-                    setSidebarCollapsed((collapsed) => !collapsed)
-                  }
+                  onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
                   aria-label={
                     sidebarCollapsed ? "Show options" : "Hide options"
                   }
@@ -4417,8 +4334,6 @@ export default function Customer3DViewer({
               className="wisdom-roomle-sidebar-scroll"
               style={styles.sidebarScroll}
             >
-
-
               {partListVisible ? (
                 <>
                   <section className="wisdom-config-section wisdom-config-whole">
@@ -4478,7 +4393,9 @@ export default function Customer3DViewer({
                                 <span className="wisdom-finish-check">✓</span>
                               ) : null}
                             </span>
-                            <span className="wisdom-finish-label">Original</span>
+                            <span className="wisdom-finish-label">
+                              Original
+                            </span>
                           </button>
 
                           {finishesToRender.map((finish) => (
@@ -4632,7 +4549,9 @@ export default function Customer3DViewer({
                                 <span className="wisdom-finish-check">✓</span>
                               ) : null}
                             </span>
-                            <span className="wisdom-finish-label">Original</span>
+                            <span className="wisdom-finish-label">
+                              Original
+                            </span>
                           </button>
 
                           {finishesToRender.map((finish) => (
@@ -4647,10 +4566,7 @@ export default function Customer3DViewer({
                               }
                               onClick={() => {
                                 setSelectedCompIds(group.ids || []);
-                                handleFinishChange(
-                                  finish.id,
-                                  group.ids || [],
-                                );
+                                handleFinishChange(finish.id, group.ids || []);
                               }}
                             >
                               <span
@@ -4803,8 +4719,7 @@ export default function Customer3DViewer({
                 )}
               </section>
 
-              {selectedGroup.length > 0 &&
-              sampleSelectedPart ? (
+              {selectedGroup.length > 0 && sampleSelectedPart ? (
                 <section
                   style={{
                     ...styles.sidebarSection,
@@ -4827,7 +4742,10 @@ export default function Customer3DViewer({
                     </button>
                   </div>
 
-                  <div className="wisdom-size-grid" style={styles.dimensionGrid}>
+                  <div
+                    className="wisdom-size-grid"
+                    style={styles.dimensionGrid}
+                  >
                     <div style={styles.inputGroup}>
                       <span style={styles.dimLabel}>
                         {getPartAxisLabels(sampleSelectedPart).width}
@@ -4916,11 +4834,16 @@ export default function Customer3DViewer({
                   }}
                 >
                   <div style={styles.sectionRow}>
-                    <label style={styles.label}>Furniture Size ({unit === "inches" ? "in" : unit})</label>
+                    <label style={styles.label}>
+                      Furniture Size ({unit === "inches" ? "in" : unit})
+                    </label>
                     <span style={styles.pill}>Keeps proportions</span>
                   </div>
 
-                  <div className="wisdom-size-grid" style={styles.dimensionGrid}>
+                  <div
+                    className="wisdom-size-grid"
+                    style={styles.dimensionGrid}
+                  >
                     <div style={styles.inputGroup}>
                       <span style={styles.dimLabel}>Width</span>
                       <input
@@ -5103,7 +5026,6 @@ export default function Customer3DViewer({
                     ) : null}
                   </div>
                 </div>
-
               </section>
 
               <section
@@ -5128,18 +5050,14 @@ export default function Customer3DViewer({
 
                 {showPerson ? (
                   <div style={styles.inputGroup}>
-                    <span style={styles.dimLabel}>Height ({unit === "inches" ? "in" : unit})</span>
+                    <span style={styles.dimLabel}>
+                      Height ({unit === "inches" ? "in" : unit})
+                    </span>
                     <input
                       type="number"
                       step="0.1"
-                      min={convertMmToUnit(
-                        HUMAN_REFERENCE_MIN_HEIGHT_MM,
-                        unit,
-                      )}
-                      max={convertMmToUnit(
-                        HUMAN_REFERENCE_MAX_HEIGHT_MM,
-                        unit,
-                      )}
+                      min={convertMmToUnit(HUMAN_REFERENCE_MIN_HEIGHT_MM, unit)}
+                      max={convertMmToUnit(HUMAN_REFERENCE_MAX_HEIGHT_MM, unit)}
                       value={convertMmToUnit(personHeightMm, unit)}
                       onChange={(e) =>
                         setPersonHeightMm(convertUnitToMm(e.target.value, unit))
@@ -5163,8 +5081,7 @@ export default function Customer3DViewer({
             {!readOnly ? (
               <div
                 className={
-                  "wisdom-order-footer" +
-                  (requestDetailsOpen ? " is-open" : "")
+                  "wisdom-order-footer" + (requestDetailsOpen ? " is-open" : "")
                 }
                 style={{
                   ...styles.sidebarFooter,
@@ -5174,7 +5091,6 @@ export default function Customer3DViewer({
                     : {}),
                 }}
               >
-
                 <OversizedDeliveryWarning
                   assessment={deliveryAssessment}
                   compact
@@ -5183,9 +5099,7 @@ export default function Customer3DViewer({
                 <button
                   type="button"
                   className="wisdom-request-details-toggle"
-                  onClick={() =>
-                    setRequestDetailsOpen((open) => !open)
-                  }
+                  onClick={() => setRequestDetailsOpen((open) => !open)}
                   aria-expanded={requestDetailsOpen}
                 >
                   <span style={styles.requestDetailsToggleTitle}>
@@ -5232,12 +5146,20 @@ export default function Customer3DViewer({
 
                     <button
                       type="button"
-                      disabled={!editable.quantity}
+                      disabled={
+                        !editable.quantity || quantity >= MAX_CUSTOM_QUANTITY
+                      }
                       onClick={() => {
+                        if (quantity >= MAX_CUSTOM_QUANTITY) return;
+
                         setCustomizeProgressStep((current) =>
                           Math.max(current, 5),
                         );
-                        setQuantity((prev) => Math.max(1, prev + 1));
+
+                        setQuantity((prev) =>
+                          Math.min(MAX_CUSTOM_QUANTITY, Math.max(1, prev + 1)),
+                        );
+
                         showCustomizeFeedback("Quantity updated.");
                       }}
                       style={styles.qtyBtn}
@@ -5319,21 +5241,13 @@ export default function Customer3DViewer({
                       );
                     }}
                   >
-                    <Upload
-                      size={19}
-                      strokeWidth={1.7}
-                      aria-hidden="true"
-                    />
+                    <Upload size={19} strokeWidth={1.7} aria-hidden="true" />
 
-                    <span style={styles.uploadDropTitle}>
-                      Drag photos here
-                    </span>
+                    <span style={styles.uploadDropTitle}>Drag photos here</span>
 
                     <span style={styles.uploadDropOr}>or</span>
 
-                    <span style={styles.uploadBrowseText}>
-                      Browse files
-                    </span>
+                    <span style={styles.uploadBrowseText}>Browse files</span>
 
                     <input
                       type="file"
