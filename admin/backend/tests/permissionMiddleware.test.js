@@ -1,10 +1,31 @@
 const assert = require("node:assert/strict");
 
+const dbPath = require.resolve("../config/db");
+const permissionPath = require.resolve("../middleware/permission");
+
+const originalDbCache = require.cache[dbPath];
+const originalPermissionCache = require.cache[permissionPath];
+
+require.cache[dbPath] = {
+  id: dbPath,
+  filename: dbPath,
+  loaded: true,
+  exports: {
+    query: async () => {
+      throw new Error("Unexpected real DB query in permission middleware unit test.");
+    },
+    getConnection: async () => {
+      throw new Error("Unexpected real DB connection in permission middleware unit test.");
+    },
+  },
+};
+delete require.cache[permissionPath];
+
 const {
   buildEffectivePermissionSet,
   hasPermission,
   createRequirePermissionMiddleware,
-} = require("../middleware/permission");
+} = require(permissionPath);
 
 async function runTests() {
   // ============================================================
@@ -195,8 +216,22 @@ async function runTests() {
   console.log("✅ Permission middleware tests passed.");
 }
 
-runTests().catch((error) => {
-  console.error("❌ Permission middleware tests failed.");
-  console.error(error);
-  process.exitCode = 1;
-});
+runTests()
+  .catch((error) => {
+    console.error("❌ Permission middleware tests failed.");
+    console.error(error);
+    process.exitCode = 1;
+  })
+  .finally(() => {
+    if (originalPermissionCache) {
+      require.cache[permissionPath] = originalPermissionCache;
+    } else {
+      delete require.cache[permissionPath];
+    }
+
+    if (originalDbCache) {
+      require.cache[dbPath] = originalDbCache;
+    } else {
+      delete require.cache[dbPath];
+    }
+  });

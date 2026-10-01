@@ -268,6 +268,8 @@ const submitClaim = async (req, res) => {
   const combinedUrls = [photoUrl, proofUrl].join(",");
   let connection = null;
   let transactionOpen = false;
+  let commitAttempted = false;
+  let commitConfirmed = false;
 
   const rollbackWithResponse = async (status, message) => {
     if (connection && transactionOpen) {
@@ -386,7 +388,10 @@ const submitClaim = async (req, res) => {
       ],
     );
 
+    commitAttempted = true;
     await connection.commit();
+    commitConfirmed = true;
+    req.warrantySubmissionRetainUploads = true;
     transactionOpen = false;
     connection.release();
     connection = null;
@@ -441,6 +446,21 @@ const submitClaim = async (req, res) => {
       claim_id: result.insertId,
     });
   } catch (err) {
+    const lockConflict = isWarrantySubmissionLockConflict(err);
+    const commitOutcomeUncertain =
+      commitAttempted && !commitConfirmed && !lockConflict;
+
+    if (commitConfirmed || commitOutcomeUncertain) {
+      req.warrantySubmissionRetainUploads = true;
+    }
+
+    if (commitOutcomeUncertain) {
+      console.error(
+        "[customer.warranty commit outcome uncertain]",
+        "Retaining uploaded evidence because the warranty claim may already be committed.",
+      );
+    }
+
     if (connection && transactionOpen) {
       try {
         await connection.rollback();
@@ -453,7 +473,7 @@ const submitClaim = async (req, res) => {
       transactionOpen = false;
     }
 
-    if (isWarrantySubmissionLockConflict(err)) {
+    if (lockConflict) {
       return res.status(409).json({
         message:
           "Another warranty submission is being processed for this item. Refresh and try again.",

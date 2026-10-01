@@ -54,27 +54,100 @@ const adminManagerStaff = [
 ];
 const adminStaff = [authenticate, authorize("admin", "staff")];
 
-const { v2: cloudinary } = require("cloudinary");
-const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const WARRANTY_FULFILLMENT_EXTENSIONS = new Set([
+  ".jpg",
+  ".jpeg",
+  ".jfif",
+  ".png",
+  ".webp",
+  ".pdf",
+]);
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+const WARRANTY_FULFILLMENT_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "application/pdf",
+]);
 
-const replacementStorage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: "wisdom_uploads/warranty-replacements",
-    allowed_formats: ["jpg", "jpeg", "png", "webp", "pdf"],
+const warrantyFulfillmentUploadRaw = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || "").toLowerCase();
+    const mime = String(file.mimetype || "")
+      .trim()
+      .toLowerCase();
+    const extensionMatchesMime =
+      ([".jpg", ".jpeg", ".jfif"].includes(ext) && mime === "image/jpeg") ||
+      (ext === ".png" && mime === "image/png") ||
+      (ext === ".webp" && mime === "image/webp") ||
+      (ext === ".pdf" && mime === "application/pdf");
+
+    if (
+      WARRANTY_FULFILLMENT_EXTENSIONS.has(ext) &&
+      WARRANTY_FULFILLMENT_MIME_TYPES.has(mime) &&
+      extensionMatchesMime
+    ) {
+      cb(null, true);
+      return;
+    }
+
+    const error = new Error(
+      "Fulfillment proof must be a JPG, JPEG, JFIF, PNG, WEBP, or PDF file.",
+    );
+    error.status = 400;
+    cb(error);
   },
 });
 
-const replacementUpload = multer({
-  storage: replacementStorage,
-  limits: { fileSize: 10 * 1024 * 1024 },
-}).single("replacement_receipt");
+const warrantyFulfillmentUpload = (req, res, next) => {
+  warrantyFulfillmentUploadRaw.single("replacement_receipt")(
+    req,
+    res,
+    (err) => {
+      if (err) {
+        if (err instanceof multer.MulterError) {
+          if (err.code === "LIMIT_FILE_SIZE") {
+            return res.status(400).json({
+              message: "Fulfillment proof must be 10 MB or smaller.",
+            });
+          }
+          if (err.code === "LIMIT_FILE_COUNT" || err.code === "LIMIT_UNEXPECTED_FILE") {
+            return res.status(400).json({
+              message: "Upload exactly one fulfillment proof.",
+            });
+          }
+        }
+        if (Number(err.status) === 400) {
+          return res.status(400).json({ message: err.message });
+        }
+        return next(err);
+      }
+
+      const file = req.file;
+      if (!file) return next();
+
+      const ext = path.extname(file.originalname || "").toLowerCase();
+      const mime = String(file.mimetype || "")
+        .trim()
+        .toLowerCase();
+      const extensionMatchesMime =
+        ([".jpg", ".jpeg", ".jfif"].includes(ext) && mime === "image/jpeg") ||
+        (ext === ".png" && mime === "image/png") ||
+        (ext === ".webp" && mime === "image/webp") ||
+        (ext === ".pdf" && mime === "application/pdf");
+
+      if (!extensionMatchesMime || !verifyBufferSignature(file.buffer, ext)) {
+        return res.status(400).json({
+          message: "Fulfillment proof does not match its real file type.",
+        });
+      }
+
+      next();
+    },
+  );
+};
 
 const CUSTOM_DISCUSSION_EXTENSIONS = new Set([
   ".jpg",
@@ -731,7 +804,7 @@ router.get(
 router.get(
   "/warranty/:id/resolution-options",
   adminStaff,
-  requirePermission("warranty.view"),
+  requirePermission("warranty.manage"),
   warrantyController.getResolutionOptions,
 );
 
@@ -747,7 +820,7 @@ router.patch(
   "/warranty/:id/fulfill",
   adminStaff,
   requirePermission("warranty.manage"),
-  replacementUpload,
+  warrantyFulfillmentUpload,
   logAction("fulfill_warranty_claim", "warranties"),
   warrantyController.fulfillClaim,
 );

@@ -2,26 +2,13 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { v2: cloudinary } = require("cloudinary");
+const { getUploadsRoot } = require("./uploadRoot");
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
-
-const backendRoot = path.join(__dirname, "..");
-
-const getUploadsRoot = () => {
-  const configured = String(process.env.UPLOAD_DIR || "").trim();
-
-  if (!configured) {
-    return path.join(backendRoot, "uploads");
-  }
-
-  return path.isAbsolute(configured)
-    ? configured
-    : path.join(backendRoot, configured);
-};
 
 const isCloudinaryConfigured = () =>
   Boolean(

@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
 import "./WarrantyPage.css";
 import WarrantyResolutionModal from "./WarrantyResolutionModal";
+import useAuthStore from "../../store/authStore";
 import {
   formatPHDate,
   formatPHDateTime,
@@ -43,6 +44,29 @@ const STATUS_META = {
   },
 };
 
+const CLAIM_TYPE_META = {
+  standard: {
+    label: "Standard",
+    searchTerms: "standard",
+  },
+  custom: {
+    label: "Custom",
+    searchTerms: "custom blueprint",
+  },
+  legacy_unlinked: {
+    label: "Unknown",
+    searchTerms: "unknown",
+  },
+};
+
+const getClaimTypeKey = (value) => {
+  const key = String(value || "").trim().toLowerCase();
+  return CLAIM_TYPE_META[key] ? key : "legacy_unlinked";
+};
+
+const getClaimTypeLabel = (value) =>
+  CLAIM_TYPE_META[getClaimTypeKey(value)].label;
+
 const formatDateTime = (value) => formatPHDateTime(value);
 
 const formatDate = (value) => formatPHDate(value);
@@ -62,17 +86,42 @@ const getStatusCount = (rows, status) =>
   rows.filter((row) => String(row.status || "").toLowerCase() === status)
     .length;
 
+const parseFocusClaimId = (value) => {
+  const raw = String(value ?? "").trim();
+  if (!/^\d+$/.test(raw)) return null;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
 export default function WarrantyPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { user, hasPermission } = useAuthStore();
+
+  const canManageWarranty = hasPermission("warranty.manage");
+  const canViewOrders = hasPermission("orders.view");
+
+  const getOrderPath = (orderId) =>
+    String(user?.role || "").trim().toLowerCase() === "staff"
+      ? `/staff/admin/orders/${orderId}`
+      : `/admin/orders/${orderId}`;
+
+  const openOrder = (row) => {
+    if (!canViewOrders || !row?.order_id) return;
+    navigate(getOrderPath(row.order_id));
+  };
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [claimsLoadedSuccessfully, setClaimsLoadedSuccessfully] =
+    useState(false);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [claimTypeFilter, setClaimTypeFilter] = useState("");
 
   const [selectedRow, setSelectedRow] = useState(null);
   const [fulfillTarget, setFulfillTarget] = useState(null);
@@ -81,9 +130,11 @@ export default function WarrantyPage() {
 
   const loadClaims = async () => {
     setLoading(true);
+    setClaimsLoadedSuccessfully(false);
     try {
       const { data } = await api.get("/warranty");
       setRows(Array.isArray(data) ? data : []);
+      setClaimsLoadedSuccessfully(true);
     } catch (err) {
       toast.error(
         err?.response?.data?.message || "Failed to load warranty claims.",
@@ -97,6 +148,47 @@ export default function WarrantyPage() {
     loadClaims();
   }, []);
 
+  useEffect(() => {
+    const rawFocusId = searchParams.get("focus_claim_id");
+    if (!rawFocusId || loading || !claimsLoadedSuccessfully) return;
+
+    const clearFocusParam = () => {
+      const next = new URLSearchParams(searchParams);
+      next.delete("focus_claim_id");
+      setSearchParams(next, { replace: true });
+    };
+
+    const focusClaimId = parseFocusClaimId(rawFocusId);
+    if (!focusClaimId) {
+      toast.error("Invalid warranty claim link.");
+      clearFocusParam();
+      return;
+    }
+
+    const matchedRow = rows.find((row) => Number(row?.id) === focusClaimId);
+    if (!matchedRow) {
+      toast.error(
+        "That warranty claim could not be found. It may no longer be available.",
+      );
+      clearFocusParam();
+      return;
+    }
+
+    setSearch("");
+    setStatusFilter("");
+    setClaimTypeFilter("");
+    setDecisionModal(null);
+    setFulfillTarget(null);
+    setSelectedRow(matchedRow);
+    clearFocusParam();
+  }, [
+    claimsLoadedSuccessfully,
+    loading,
+    rows,
+    searchParams,
+    setSearchParams,
+  ]);
+
   const filteredRows = useMemo(() => {
     const term = search.trim().toLowerCase();
 
@@ -104,6 +196,10 @@ export default function WarrantyPage() {
       const matchesStatus =
         !statusFilter ||
         String(row.status || "").toLowerCase() === statusFilter;
+
+      const claimTypeKey = getClaimTypeKey(row.claim_type);
+      const matchesClaimType =
+        !claimTypeFilter || claimTypeKey === claimTypeFilter;
 
       const haystack = [
         row.id,
@@ -116,6 +212,9 @@ export default function WarrantyPage() {
         row.description,
         row.admin_note,
         row.status,
+        claimTypeKey,
+        getClaimTypeLabel(claimTypeKey),
+        CLAIM_TYPE_META[claimTypeKey].searchTerms,
       ]
         .filter(Boolean)
         .join(" ")
@@ -123,7 +222,7 @@ export default function WarrantyPage() {
 
       const matchesSearch = !term || haystack.includes(term);
 
-      return matchesStatus && matchesSearch;
+      return matchesStatus && matchesClaimType && matchesSearch;
     });
 
     return filtered.sort((a, b) => {
@@ -134,7 +233,7 @@ export default function WarrantyPage() {
 
       return Number(b.id || 0) - Number(a.id || 0);
     });
-  }, [rows, search, statusFilter]);
+  }, [rows, search, statusFilter, claimTypeFilter]);
 
   const stats = useMemo(
     () => [
@@ -147,6 +246,10 @@ export default function WarrantyPage() {
   );
 
   const handleDecision = async ({ id, decision, admin_note }) => {
+    if (!canManageWarranty) {
+      toast.error("You do not have permission to manage warranty claims.");
+      return;
+    }
     if (decisionBusy) return;
 
     setDecisionBusy(true);
@@ -185,6 +288,11 @@ export default function WarrantyPage() {
   };
 
   const handleFulfill = async ({ id, file, resolution_type, resolution_notes, replacement_source, return_disposition, materials }) => {
+    if (!canManageWarranty) {
+      toast.error("You do not have permission to fulfill warranty claims.");
+      return;
+    }
+
     const formData = new FormData();
     formData.append("replacement_receipt", file);
     formData.append("resolution_type", resolution_type);
@@ -203,7 +311,9 @@ export default function WarrantyPage() {
     await loadClaims();
   };
 
-  const activeFilterCount = [search, statusFilter].filter(Boolean).length;
+  const activeFilterCount = [search, statusFilter, claimTypeFilter].filter(
+    Boolean,
+  ).length;
 
   return (
     <div style={pageShell} className="warranty-admin-v2">
@@ -260,12 +370,26 @@ export default function WarrantyPage() {
             </select>
           </label>
 
+          <label className="warranty-filter-field warranty-filter-type">
+            <span className="warranty-filter-label">Product Type</span>
+            <select
+              value={claimTypeFilter}
+              onChange={(e) => setClaimTypeFilter(e.target.value)}
+              style={selectInput}
+            >
+              <option value="">All Types</option>
+              <option value="standard">Standard</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+
           {activeFilterCount > 0 && (
             <button
               type="button"
               onClick={() => {
                 setSearch("");
                 setStatusFilter("");
+                setClaimTypeFilter("");
               }}
               style={ghostButton}
               className="warranty-filter-reset"
@@ -294,24 +418,25 @@ export default function WarrantyPage() {
           <table style={table} className="warranty-table">
             <thead>
               <tr style={theadRow}>
-                <th style={{ ...th, width: "32%" }}>Claim</th>
-                <th style={{ ...th, width: "20%" }}>Customer</th>
-                <th style={{ ...th, width: "18%" }}>Submitted</th>
-                <th style={{ ...th, width: "12%" }}>Status</th>
-                <th style={{ ...th, width: "18%" }}>Actions</th>
+                <th style={{ ...th, width: "28%" }}>Claim</th>
+                <th style={{ ...th, width: "18%" }}>Customer</th>
+                <th style={{ ...th, width: "15%" }}>Type</th>
+                <th style={{ ...th, width: "17%" }}>Submitted</th>
+                <th style={{ ...th, width: "10%" }}>Status</th>
+                <th style={{ ...th, width: "12%" }}>Actions</th>
               </tr>
             </thead>
 
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={5} style={emptyCell}>
+                  <td colSpan={6} style={emptyCell}>
                     Loading warranty claims...
                   </td>
                 </tr>
               ) : filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={emptyCell}>
+                  <td colSpan={6} style={emptyCell}>
                     No warranty claims found.
                   </td>
                 </tr>
@@ -332,14 +457,18 @@ export default function WarrantyPage() {
                         <div style={claimTitle}>
                           {row.product_name || "Unnamed Product"}
                         </div>
-                        <button
-                          onClick={() =>
-                            navigate(`/admin/orders/${row.order_id}`)
-                          }
-                          style={orderLink}
-                        >
-                          {row.order_number || `Order #${row.order_id}`}
-                        </button>
+                        {canViewOrders ? (
+                          <button
+                            onClick={() => openOrder(row)}
+                            style={orderLink}
+                          >
+                            {row.order_number || `Order #${row.order_id}`}
+                          </button>
+                        ) : (
+                          <div className="warranty-order-reference">
+                            {row.order_number || `Order #${row.order_id}`}
+                          </div>
+                        )}
                         <div
                           style={issuePreviewStyle}
                           className="warranty-issue-preview"
@@ -370,6 +499,12 @@ export default function WarrantyPage() {
                         <div style={miniMeta}>
                           Warranty until {formatDate(row.warranty_expiry)}
                         </div>
+                      </td>
+
+                      <td style={td}>
+                        <span className="warranty-type-label">
+                          {getClaimTypeLabel(row.claim_type)}
+                        </span>
                       </td>
 
                       <td style={td}>
@@ -411,14 +546,14 @@ export default function WarrantyPage() {
                             Review
                           </button>
 
-                          <button
-                            onClick={() =>
-                              navigate(`/admin/orders/${row.order_id}`)
-                            }
-                            style={plainActionBtn}
-                          >
-                            View Order
-                          </button>
+                          {canViewOrders && (
+                            <button
+                              onClick={() => openOrder(row)}
+                              style={plainActionBtn}
+                            >
+                              View Order
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -434,18 +569,26 @@ export default function WarrantyPage() {
         <ReviewModal
           row={selectedRow}
           onClose={() => setSelectedRow(null)}
-          onApprove={() =>
-            setDecisionModal({ row: selectedRow, decision: "approved" })
-          }
-          onReject={() =>
-            setDecisionModal({ row: selectedRow, decision: "rejected" })
-          }
-          onFulfill={() => setFulfillTarget(selectedRow)}
-          onViewOrder={() => navigate(`/admin/orders/${selectedRow.order_id}`)}
+          canManage={canManageWarranty}
+          canViewOrder={canViewOrders}
+          onApprove={() => {
+            if (canManageWarranty) {
+              setDecisionModal({ row: selectedRow, decision: "approved" });
+            }
+          }}
+          onReject={() => {
+            if (canManageWarranty) {
+              setDecisionModal({ row: selectedRow, decision: "rejected" });
+            }
+          }}
+          onFulfill={() => {
+            if (canManageWarranty) setFulfillTarget(selectedRow);
+          }}
+          onViewOrder={() => openOrder(selectedRow)}
         />
       )}
 
-      {decisionModal && (
+      {canManageWarranty && decisionModal && (
         <DecisionModal
           row={decisionModal.row}
           decision={decisionModal.decision}
@@ -455,7 +598,7 @@ export default function WarrantyPage() {
         />
       )}
 
-      {fulfillTarget && (
+      {canManageWarranty && fulfillTarget && (
         <FulfillModal
           row={fulfillTarget}
           onClose={() => setFulfillTarget(null)}
@@ -468,6 +611,8 @@ export default function WarrantyPage() {
 
 function ReviewModal({
   row,
+  canManage,
+  canViewOrder,
   onClose,
   onApprove,
   onReject,
@@ -558,6 +703,13 @@ function ReviewModal({
               </div>
 
               <div style={summaryItem}>
+                <span style={summaryLabel}>Product Type</span>
+                <span style={summaryValue}>
+                  {getClaimTypeLabel(row.claim_type)}
+                </span>
+              </div>
+
+              <div style={summaryItem}>
                 <span style={summaryLabel}>Submitted</span>
                 <span style={summaryValue}>
                   {formatDateTime(row.created_at)}
@@ -602,52 +754,58 @@ function ReviewModal({
                 </div>
               )}
 
-              <div style={summaryDivider} />
+              {(canViewOrder || canManage) && (
+                <>
+                  <div style={summaryDivider} />
 
-              {/* WISDOM WARRANTY ORDER LINK + THREE ACTION BUTTONS V2.1.3.1 */}
-              <div
-                className={`warranty-review-actions warranty-review-actions-${statusKey}`}
-              >
-                <button
-                  onClick={onViewOrder}
-                  style={fullWidthGhost}
-                  className="warranty-claim-action warranty-view-order-btn"
-                >
-                  View Order
-                </button>
-
-                {statusKey === "pending" && (
+                  {/* WISDOM WARRANTY ORDER LINK + THREE ACTION BUTTONS V2.1.3.1 */}
                   <div
-                    style={decisionStack}
-                    className="warranty-decision-stack"
+                    className={`warranty-review-actions warranty-review-actions-${statusKey}`}
                   >
-                    <button
-                      onClick={onApprove}
-                      style={approveBtn}
-                      className="warranty-claim-action warranty-approve-btn"
-                    >
-                      Approve Claim
-                    </button>
-                    <button
-                      onClick={onReject}
-                      style={rejectBtn}
-                      className="warranty-claim-action warranty-reject-btn"
-                    >
-                      Reject Claim
-                    </button>
-                  </div>
-                )}
+                    {canViewOrder && (
+                      <button
+                        onClick={onViewOrder}
+                        style={fullWidthGhost}
+                        className="warranty-claim-action warranty-view-order-btn"
+                      >
+                        View Order
+                      </button>
+                    )}
 
-                {statusKey === "approved" && (
-                  <button
-                    onClick={onFulfill}
-                    style={fulfillBtn}
-                    className="warranty-claim-action warranty-fulfill-btn"
-                  >
-                    Mark as Fulfilled
-                  </button>
-                )}
-              </div>
+                    {canManage && statusKey === "pending" && (
+                      <div
+                        style={decisionStack}
+                        className="warranty-decision-stack"
+                      >
+                        <button
+                          onClick={onApprove}
+                          style={approveBtn}
+                          className="warranty-claim-action warranty-approve-btn"
+                        >
+                          Approve Claim
+                        </button>
+                        <button
+                          onClick={onReject}
+                          style={rejectBtn}
+                          className="warranty-claim-action warranty-reject-btn"
+                        >
+                          Reject Claim
+                        </button>
+                      </div>
+                    )}
+
+                    {canManage && statusKey === "approved" && (
+                      <button
+                        onClick={onFulfill}
+                        style={fulfillBtn}
+                        className="warranty-claim-action warranty-fulfill-btn"
+                      >
+                        Mark as Fulfilled
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

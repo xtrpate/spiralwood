@@ -6,12 +6,54 @@ const RESOLUTION_TYPES = new Set(["repair", "part_replacement", "full_product_re
 const REPLACEMENT_SOURCES = new Set(["warehouse", "display"]);
 const RETURN_DISPOSITIONS = new Set(["not_returned", "for_inspection", "damaged_unusable", "usable_returned"]);
 const DECIMAL_QUANTITY_UNITS = new Set(["meter", "kg", "liter", "gallon"]);
+const MAX_WARRANTY_RESOLUTION_NOTES_LENGTH = 4000;
+const QUANTITY_EPSILON = 1e-9;
 
 const fail = (message, status = 400, details = null) => {
   const error = new Error(message);
   error.status = status;
   if (details) error.details = details;
   throw error;
+};
+
+const parsePositiveMaterialId = (raw) => {
+  let id = null;
+  if (typeof raw === "number") {
+    id = raw;
+  } else if (typeof raw === "string" && /^\d+$/.test(raw.trim())) {
+    id = Number(raw.trim());
+  }
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+};
+
+const parsePositiveMaterialQuantity = (raw) => {
+  if (typeof raw === "number") {
+    if (!Number.isFinite(raw) || raw <= 0) {
+      fail("Material quantity must be greater than 0.");
+    }
+    const normalized = Math.round(raw * 100) / 100;
+    if (Math.abs(raw - normalized) > QUANTITY_EPSILON) {
+      fail("Material quantity can have up to 2 decimal places.");
+    }
+    if (normalized <= 0) {
+      fail("Material quantity must be at least 0.01.");
+    }
+    return normalized;
+  }
+
+  if (typeof raw === "string") {
+    const text = raw.trim();
+    if (!/^\d+(?:\.\d{1,2})?$/.test(text)) {
+      fail("Material quantity must be a positive number with up to 2 decimal places.");
+    }
+    const quantity = Number(text);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      fail("Material quantity must be greater than 0.");
+    }
+    return quantity;
+  }
+
+  fail("Material quantity must be a number.");
 };
 
 const normalizeMaterialUsage = (raw) => {
@@ -25,14 +67,44 @@ const normalizeMaterialUsage = (raw) => {
 
   const seen = new Set();
   return value.map((entry) => {
-    const materialId = Number(entry?.material_id);
-    const quantity = Number(entry?.quantity);
-    if (!Number.isInteger(materialId) || materialId <= 0) fail("One selected raw material is invalid.");
-    if (!Number.isFinite(quantity) || quantity <= 0) fail("Material quantity must be greater than 0.");
+    const materialId = parsePositiveMaterialId(entry?.material_id);
+    const quantity = parsePositiveMaterialQuantity(entry?.quantity);
+    if (!materialId) fail("One selected raw material is invalid.");
     if (seen.has(materialId)) fail("The same raw material cannot appear twice.");
     seen.add(materialId);
-    return { material_id: materialId, quantity: Math.round(quantity * 100) / 100 };
+    return { material_id: materialId, quantity };
   });
+};
+
+const normalizeResolutionNotes = (raw) => {
+  if (raw === undefined || raw === null || raw === "") return null;
+  if (typeof raw !== "string") fail("Resolution notes must be text.");
+  const notes = raw.trim();
+  if (!notes) return null;
+  if (notes.length > MAX_WARRANTY_RESOLUTION_NOTES_LENGTH) {
+    fail(
+      `Resolution notes must not exceed ${MAX_WARRANTY_RESOLUTION_NOTES_LENGTH} characters.`,
+    );
+  }
+  return notes;
+};
+
+const getValidatedClaimQuantity = (claim) => {
+  const claimQty = Number(claim?.claim_quantity);
+  const orderedQty = Number(claim?.ordered_quantity);
+  if (
+    !Number.isSafeInteger(claimQty) ||
+    claimQty <= 0 ||
+    !Number.isSafeInteger(orderedQty) ||
+    orderedQty <= 0 ||
+    claimQty > orderedQty
+  ) {
+    fail(
+      "Claim quantity is invalid for the linked order item. Review the claim before fulfillment.",
+      409,
+    );
+  }
+  return { claimQty, orderedQty };
 };
 
 const computeRawStatus = (quantity, reorderPoint, safetyStock) => {
@@ -111,6 +183,7 @@ exports.getResolutionOptions = async (claimId) => {
     fail("This legacy claim is not linked to an exact order item and cannot be fulfilled safely.", 409);
   }
 
+  const { claimQty, orderedQty } = getValidatedClaimQuantity(claim);
   const readyMade = isReadyMadeClaim(claim);
   const totalStock = Number(claim.product_total_stock || 0);
   const displayStock = Number(claim.display_stock || 0);
@@ -123,8 +196,8 @@ exports.getResolutionOptions = async (claimId) => {
       order_item_id: Number(claim.order_item_id),
       order_number: claim.order_number,
       product_name: claim.order_item_name || claim.product_name,
-      claim_quantity: Number(claim.claim_quantity || 1),
-      ordered_quantity: Number(claim.ordered_quantity || 0),
+      claim_quantity: claimQty,
+      ordered_quantity: orderedQty,
       inventory_kind: readyMade ? "ready_made" : "custom",
       product_id: claim.product_id ? Number(claim.product_id) : null,
     },
@@ -239,7 +312,7 @@ const applyReadyMadeReplacement = async (conn, { claim, source, disposition, act
     fail("The exact ready-made replacement product is unavailable or archived.", 409);
   }
 
-  const qty = Number(claim.claim_quantity || 1);
+  const { claimQty: qty } = getValidatedClaimQuantity(claim);
   const totalBefore = Number(stock.total_stock || 0);
   const displayBefore = Number(stock.display_stock || 0);
   const warehouseBefore = totalBefore - displayBefore;
@@ -319,15 +392,34 @@ exports.fulfillClaimWithInventory = async ({
   if (!Number.isInteger(userId) || userId <= 0) fail("Valid admin user is required.", 401);
   const resolution = String(resolutionType || "").trim().toLowerCase();
   if (!RESOLUTION_TYPES.has(resolution)) fail("Choose a valid warranty resolution.");
-  const notes = String(resolutionNotes || "").trim().slice(0, 4000) || null;
+  const notes = normalizeResolutionNotes(resolutionNotes);
   const source = String(replacementSource || "").trim().toLowerCase() || null;
-  const disposition = String(returnDisposition || "").trim().toLowerCase() || "not_returned";
+
+  let disposition = "not_returned";
+  if (
+    returnDisposition !== undefined &&
+    returnDisposition !== null &&
+    returnDisposition !== ""
+  ) {
+    if (typeof returnDisposition !== "string") {
+      fail("Choose a valid returned-item disposition.");
+    }
+    disposition = returnDisposition.trim().toLowerCase();
+    if (!RETURN_DISPOSITIONS.has(disposition)) {
+      fail("Choose a valid returned-item disposition.");
+    }
+  }
+
   const usages = normalizeMaterialUsage(materials);
 
   const conn = await pool.getConnection();
   let claim;
+  let transactionStarted = false;
+  let commitAttempted = false;
+  let committed = false;
   try {
     await conn.beginTransaction();
+    transactionStarted = true;
     claim = await getClaimBase(conn, id, true);
     if (!claim) fail("Warranty claim not found.", 404);
     if (String(claim.status || "").toLowerCase() !== "approved") {
@@ -337,11 +429,7 @@ exports.fulfillClaimWithInventory = async ({
       fail("This legacy claim is not linked to an exact order item and cannot be fulfilled safely.", 409);
     }
 
-    const claimQty = Number(claim.claim_quantity || 1);
-    const orderedQty = Number(claim.ordered_quantity || 0);
-    if (!Number.isInteger(claimQty) || claimQty <= 0 || claimQty > orderedQty) {
-      fail("Claim quantity is invalid for the linked order item. Review the claim before fulfillment.", 409);
-    }
+    const { claimQty } = getValidatedClaimQuantity(claim);
 
     const finalReceipt = String(receiptPath || claim.replacement_receipt || "").trim();
     if (!finalReceipt) fail("Replacement receipt or fulfillment proof is required.");
@@ -390,7 +478,10 @@ exports.fulfillClaimWithInventory = async ({
     );
     if (update.affectedRows !== 1) fail("Warranty status changed while fulfilling. Refresh and try again.", 409);
 
+    commitAttempted = true;
     await conn.commit();
+    committed = true;
+    transactionStarted = false;
     return {
       claim: {
         id: Number(claim.id), customer_id: Number(claim.customer_id), order_id: Number(claim.order_id),
@@ -405,7 +496,24 @@ exports.fulfillClaimWithInventory = async ({
       material_lines: usages.length,
     };
   } catch (error) {
-    try { await conn.rollback(); } catch {}
+    if (error && typeof error === "object") {
+      error.warrantyFulfillmentCommitted = committed;
+      error.warrantyFulfillmentCommitOutcomeUncertain =
+        commitAttempted && !committed;
+    }
+
+    if (transactionStarted && !committed) {
+      try {
+        await conn.rollback();
+        transactionStarted = false;
+      } catch (rollbackError) {
+        console.error(
+          "[warrantyInventoryService] rollback failed:",
+          rollbackError?.message || rollbackError,
+        );
+      }
+    }
+
     throw error;
   } finally {
     conn.release();
