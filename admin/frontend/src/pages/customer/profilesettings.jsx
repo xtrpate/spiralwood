@@ -448,8 +448,8 @@ export default function ProfileSettings() {
       return;
     }
 
-    const combinedName = `${trimmedLast}, ${trimmedFirst}`;
-    const displayName = `${trimmedFirst} ${trimmedLast}`;
+    const combinedName = `${trimmedFirst} ${trimmedLast}`.trim();
+    const displayName = combinedName;
 
     setNameLoading(true);
     setNameMsg({ type: "", text: "" });
