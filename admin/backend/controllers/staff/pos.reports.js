@@ -1,108 +1,169 @@
 // controllers/staff/pos.reports.js
 // Cashier reporting is collection-based: verified payments are sales.
 const db = require("../../config/db");
+const {
+  getPhilippineBusinessPeriods,
+  getPhilippineDateBoundsUtc,
+  getPhilippineDateKey,
+} = require("../../utils/philippineTime");
 
 const normalize = (value) => String(value || "").trim().toLowerCase();
 const VALID_PERIODS = new Set(["daily", "weekly", "monthly", "yearly"]);
+const DEFAULT_TRANSACTION_LIMIT = 200;
+const MAX_TRANSACTION_LIMIT = 200;
+
+const badRequest = (message) => {
+  const error = new Error(message);
+  error.statusCode = 400;
+  return error;
+};
+
+const parsePositiveInteger = (rawValue, { name, fallback, max }) => {
+  if (rawValue === undefined || rawValue === null || rawValue === "") {
+    return fallback;
+  }
+
+  const text = String(rawValue).trim();
+  if (!/^\d+$/.test(text)) {
+    throw badRequest(`Invalid ${name}. Use a positive integer.`);
+  }
+
+  const value = Number(text);
+  if (!Number.isSafeInteger(value) || value <= 0 || (max && value > max)) {
+    throw badRequest(
+      max
+        ? `Invalid ${name}. Use a positive integer up to ${max}.`
+        : `Invalid ${name}. Use a positive integer.`,
+    );
+  }
+
+  return value;
+};
+
+const validatePeriod = (rawPeriod) => {
+  const period = normalize(rawPeriod || "daily");
+  if (!VALID_PERIODS.has(period)) {
+    throw badRequest("Invalid report period.");
+  }
+  return period;
+};
+
+const validateDateKey = (rawValue, name) => {
+  const value = String(rawValue || "").trim();
+  if (!value) return "";
+
+  try {
+    getPhilippineDateBoundsUtc(value);
+    return value;
+  } catch (_error) {
+    throw badRequest(`Invalid ${name} date. Use YYYY-MM-DD.`);
+  }
+};
 
 const buildSourceFilter = (rawSource, alias = "o") => {
   const source = normalize(rawSource || "all");
-  if (!source || source === "all") return { sql: "1=1", params: [] };
-  if (source === "online") return { sql: `${alias}.type = 'online'`, params: [] };
-  if (source === "walk_in" || source === "walkin") {
-    return { sql: `${alias}.type = 'walkin'`, params: [] };
+  if (!source || source === "all") {
+    return { value: "all", sql: "1=1", params: [] };
   }
-  const error = new Error("Invalid order source filter.");
-  error.statusCode = 400;
-  throw error;
+  if (source === "online") {
+    return { value: "online", sql: `${alias}.type = 'online'`, params: [] };
+  }
+  if (source === "walk_in" || source === "walkin") {
+    return { value: "walk_in", sql: `${alias}.type = 'walkin'`, params: [] };
+  }
+  throw badRequest("Invalid order source filter.");
 };
-
-const REPORT_SOURCE_OFFSET = "+00:00";
-const REPORT_LOCAL_OFFSET = "+08:00";
-
-const toReportLocalTime = (expression) =>
-  `CONVERT_TZ(${expression}, '${REPORT_SOURCE_OFFSET}', '${REPORT_LOCAL_OFFSET}')`;
-
-const reportLocalNowSql = () =>
-  `CONVERT_TZ(UTC_TIMESTAMP(), '${REPORT_SOURCE_OFFSET}', '${REPORT_LOCAL_OFFSET}')`;
 
 const buildPaymentFilter = (rawPayment, alias = "pt") => {
   const payment = normalize(rawPayment || "all");
   if (!payment || payment === "all") {
-    return { sql: "1=1", params: [] };
+    return { value: "all", sql: "1=1", params: [] };
   }
 
   if (payment === "cash") {
     return {
-      sql: `LOWER(${alias}.payment_method) IN ('cash', 'cod', 'cop')`,
+      value: "cash",
+      sql: `${alias}.payment_method IN ('cash', 'cod', 'cop')`,
       params: [],
     };
   }
 
   if (payment === "online") {
     return {
-      sql: `LOWER(${alias}.payment_method) IN ('paymongo', 'gcash', 'bank_transfer')`,
+      value: "online",
+      sql: `${alias}.payment_method IN ('paymongo', 'gcash', 'bank_transfer')`,
       params: [],
     };
   }
 
-  const error = new Error("Invalid payment type filter.");
-  error.statusCode = 400;
-  throw error;
+  throw badRequest("Invalid payment type filter.");
+};
+
+const getDefaultPeriodBounds = (period) => {
+  const businessPeriods = getPhilippineBusinessPeriods();
+
+  if (period === "weekly") {
+    return {
+      startUtc: businessPeriods.weekStart,
+      endUtc: businessPeriods.nextWeekStart,
+    };
+  }
+
+  if (period === "monthly") {
+    return {
+      startUtc: businessPeriods.monthStart,
+      endUtc: businessPeriods.nextMonthStart,
+    };
+  }
+
+  if (period === "yearly") {
+    const year = Number(getPhilippineDateKey().slice(0, 4));
+    return {
+      startUtc: getPhilippineDateBoundsUtc(`${year}-01-01`).startUtc,
+      endUtc: getPhilippineDateBoundsUtc(`${year + 1}-01-01`).startUtc,
+    };
+  }
+
+  return {
+    startUtc: businessPeriods.todayStart,
+    endUtc: businessPeriods.tomorrowStart,
+  };
 };
 
 const buildDateFilter = ({ period, from, to }, expression) => {
-  const start = String(from || "").trim();
-  const end = String(to || "").trim();
-  const localExpression = toReportLocalTime(expression);
-  const localNow = reportLocalNowSql();
-
-  if (start || end) {
+  if (from || to) {
     const clauses = [];
     const params = [];
-    if (start) {
-      clauses.push(`DATE(${localExpression}) >= ?`);
-      params.push(start);
+
+    if (from) {
+      clauses.push(`${expression} >= ?`);
+      params.push(getPhilippineDateBoundsUtc(from).startUtc);
     }
-    if (end) {
-      clauses.push(`DATE(${localExpression}) <= ?`);
-      params.push(end);
+
+    if (to) {
+      clauses.push(`${expression} < ?`);
+      params.push(getPhilippineDateBoundsUtc(to).nextStartUtc);
     }
+
     return { sql: clauses.join(" AND "), params };
   }
 
-  const normalizedPeriod = VALID_PERIODS.has(normalize(period))
-    ? normalize(period)
-    : "daily";
-
-  if (normalizedPeriod === "weekly") {
-    return {
-      sql: `YEARWEEK(${localExpression}, 1) = YEARWEEK(${localNow}, 1)`,
-      params: [],
-    };
-  }
-  if (normalizedPeriod === "monthly") {
-    return {
-      sql: `YEAR(${localExpression}) = YEAR(${localNow}) AND MONTH(${localExpression}) = MONTH(${localNow})`,
-      params: [],
-    };
-  }
-  if (normalizedPeriod === "yearly") {
-    return {
-      sql: `YEAR(${localExpression}) = YEAR(${localNow})`,
-      params: [],
-    };
-  }
+  const { startUtc, endUtc } = getDefaultPeriodBounds(period);
   return {
-    sql: `DATE(${localExpression}) = DATE(${localNow})`,
-    params: [],
+    sql: `${expression} >= ? AND ${expression} < ?`,
+    params: [startUtc, endUtc],
   };
 };
+
+const REPORT_SOURCE_OFFSET = "+00:00";
+const REPORT_LOCAL_OFFSET = "+08:00";
+const toReportLocalTime = (expression) =>
+  `CONVERT_TZ(${expression}, '${REPORT_SOURCE_OFFSET}', '${REPORT_LOCAL_OFFSET}')`;
 
 const buildPeriodExpression = (period, expression) => {
   const localExpression = toReportLocalTime(expression);
 
-  switch (normalize(period)) {
+  switch (period) {
     case "weekly":
       return `DATE_SUB(DATE(${localExpression}), INTERVAL WEEKDAY(${localExpression}) DAY)`;
     case "monthly":
@@ -119,29 +180,54 @@ const lifetimeCollectedSql = `COALESCE((
   SELECT SUM(pt_life.amount)
   FROM payment_transactions pt_life
   WHERE pt_life.order_id = o.id
-    AND LOWER(pt_life.status) = 'verified'
+    AND pt_life.status = 'verified'
 ), 0)`;
 
-const estimatedProfitSql = `COALESCE((
-  SELECT SUM(
-    COALESCE(
-      oi.profit_margin,
-      COALESCE(oi.unit_price, 0) - COALESCE(oi.production_cost, 0),
-      0
-    ) * COALESCE(oi.quantity, 0)
+const historicalCollectedAfterSql = `COALESCE(
+  receipt.total_paid_after,
+  (
+    SELECT COALESCE(SUM(pt_hist.amount), 0)
+    FROM payment_transactions pt_hist
+    WHERE pt_hist.order_id = pt.order_id
+      AND pt_hist.status = 'verified'
+      AND (
+        COALESCE(pt_hist.verified_at, pt_hist.created_at) < COALESCE(pt.verified_at, pt.created_at)
+        OR (
+          COALESCE(pt_hist.verified_at, pt_hist.created_at) = COALESCE(pt.verified_at, pt.created_at)
+          AND pt_hist.id <= pt.id
+        )
+      )
   )
-  FROM order_items oi
-  WHERE oi.order_id = o.id
-), 0)`;
+)`;
 
 exports.getReports = async (req, res) => {
   try {
-    const { period = "daily" } = req.query;
+    const period = validatePeriod(req.query.period);
+    const from = validateDateKey(req.query.from, "from");
+    const to = validateDateKey(req.query.to, "to");
+
+    if (from && to && from > to) {
+      throw badRequest("Start date cannot be after end date.");
+    }
+
+    const page = parsePositiveInteger(req.query.page, {
+      name: "page",
+      fallback: 1,
+    });
+    const limit = parsePositiveInteger(req.query.limit, {
+      name: "limit",
+      fallback: DEFAULT_TRANSACTION_LIMIT,
+      max: MAX_TRANSACTION_LIMIT,
+    });
+    const offset = (page - 1) * limit;
+
     const source = buildSourceFilter(req.query.source, "o");
     const payment = buildPaymentFilter(req.query.payment, "pt");
-    const orderDate = buildDateFilter(req.query, "o.created_at");
     const paymentDateExpression = "COALESCE(pt.verified_at, pt.created_at)";
-    const paymentDate = buildDateFilter(req.query, paymentDateExpression);
+    const paymentDate = buildDateFilter(
+      { period, from, to },
+      paymentDateExpression,
+    );
 
     const isCashierScope = req.user?.role === "staff";
     const cashierId = Number(req.user?.id);
@@ -156,8 +242,11 @@ exports.getReports = async (req, res) => {
     const ownerSql = isCashierScope ? "pt.verified_by = ?" : "1=1";
     const ownerParams = isCashierScope ? [cashierId] : [];
 
+    // Preserve the current cancellation semantics for R3B1. A separate
+    // accounting/refund decision is required before cancelled collections
+    // can safely be included in historical sales reporting.
     const paymentWhereSql = [
-      "LOWER(pt.status) = 'verified'",
+      "pt.status = 'verified'",
       "o.status <> 'cancelled'",
       source.sql,
       payment.sql,
@@ -171,66 +260,52 @@ exports.getReports = async (req, res) => {
       ...ownerParams,
     ];
 
-    // Cashier order-level figures must come only from orders connected to a
-    // verified payment the logged-in cashier actually processed in this report
-    // period. Admin keeps the existing order-created-period behavior unless a
-    // payment category is selected.
+    // Order-level metrics use the same verified-payment population as the
+    // collection metrics. This prevents Admin reports from mixing order-created
+    // dates with payment dates in one report.
     const scopedPayment = buildPaymentFilter(req.query.payment, "pt_scope");
+    const scopedPaymentDateExpression =
+      "COALESCE(pt_scope.verified_at, pt_scope.created_at)";
     const scopedPaymentDate = buildDateFilter(
-      req.query,
-      "COALESCE(pt_scope.verified_at, pt_scope.created_at)",
+      { period, from, to },
+      scopedPaymentDateExpression,
     );
-    const usePaymentScopedOrders =
-      isCashierScope ||
-      !["", "all"].includes(normalize(req.query.payment || "all"));
+    const scopedOwnerSql = isCashierScope
+      ? "pt_scope.verified_by = ?"
+      : "1=1";
 
-    const orderWhereParts = [
+    const orderWhereSql = [
       "o.status <> 'cancelled'",
       "COALESCE(o.total, 0) > 0",
       source.sql,
-    ];
-    const orderParams = [...source.params];
-
-    if (usePaymentScopedOrders) {
-      const scopedOwnerSql = isCashierScope
-        ? "pt_scope.verified_by = ?"
-        : "1=1";
-
-      orderWhereParts.push(`EXISTS (
+      `EXISTS (
         SELECT 1
         FROM payment_transactions pt_scope
         WHERE pt_scope.order_id = o.id
-          AND LOWER(pt_scope.status) = 'verified'
+          AND pt_scope.status = 'verified'
           AND ${scopedPayment.sql}
           AND ${scopedPaymentDate.sql}
           AND ${scopedOwnerSql}
-      )`);
-
-      orderParams.push(
-        ...scopedPayment.params,
-        ...scopedPaymentDate.params,
-        ...(isCashierScope ? [cashierId] : []),
-      );
-    } else {
-      orderWhereParts.push(orderDate.sql);
-      orderParams.push(...orderDate.params);
-    }
-
-    const orderWhereSql = orderWhereParts.join(" AND ");
+      )`,
+    ].join(" AND ");
+    const orderParams = [
+      ...source.params,
+      ...scopedPayment.params,
+      ...scopedPaymentDate.params,
+      ...(isCashierScope ? [cashierId] : []),
+    ];
 
     const [[orderTotals]] = await db.query(
       `SELECT
          COUNT(*) AS total_orders,
          COALESCE(SUM(order_rows.total_amount), 0) AS gross_order_value,
          COALESCE(SUM(order_rows.discount), 0) AS total_discount,
-         COALESCE(SUM(order_rows.estimated_profit), 0) AS estimated_profit,
          COALESCE(SUM(order_rows.outstanding_balance), 0) AS outstanding_balance
        FROM (
          SELECT
            o.id,
            COALESCE(o.total, 0) AS total_amount,
            COALESCE(o.discount, 0) AS discount,
-           ${estimatedProfitSql} AS estimated_profit,
            GREATEST(COALESCE(o.total, 0) - ${lifetimeCollectedSql}, 0) AS outstanding_balance
          FROM orders o
          WHERE ${orderWhereSql}
@@ -248,7 +323,10 @@ exports.getReports = async (req, res) => {
       paymentParams,
     );
 
-    const periodExpression = buildPeriodExpression(period, paymentDateExpression);
+    const periodExpression = buildPeriodExpression(
+      period,
+      paymentDateExpression,
+    );
     const [summaryRows] = await db.query(
       `SELECT
          ${periodExpression} AS period_label,
@@ -264,33 +342,27 @@ exports.getReports = async (req, res) => {
 
     const [paymentRows] = await db.query(
       `SELECT
-         LOWER(pt.payment_method) AS payment_method,
+         pt.payment_method AS payment_method,
          COUNT(*) AS count,
          COALESCE(SUM(pt.amount), 0) AS total_amount
        FROM payment_transactions pt
        INNER JOIN orders o ON o.id = pt.order_id
        WHERE ${paymentWhereSql}
-       GROUP BY LOWER(pt.payment_method)
+       GROUP BY pt.payment_method
        ORDER BY total_amount DESC, count DESC`,
       paymentParams,
     );
 
-    // Product values stay order values. For cashier users, the included orders
-    // are already restricted to orders with payments processed by that cashier.
+    // Product rows are merchandise/item values from orders connected to the
+    // same filtered verified-payment population. Profit data is intentionally
+    // not returned by this POS/Cashier report endpoint.
     const [productRows] = await db.query(
       `SELECT
          oi.product_name,
          SUM(COALESCE(oi.quantity, 0)) AS qty,
          COALESCE(SUM(
            COALESCE(oi.subtotal, COALESCE(oi.unit_price, 0) * COALESCE(oi.quantity, 0))
-         ), 0) AS gross_order_value,
-         COALESCE(SUM(
-           COALESCE(
-             oi.profit_margin,
-             COALESCE(oi.unit_price, 0) - COALESCE(oi.production_cost, 0),
-             0
-           ) * COALESCE(oi.quantity, 0)
-         ), 0) AS estimated_profit
+         ), 0) AS gross_order_value
        FROM order_items oi
        INNER JOIN orders o ON o.id = oi.order_id
        WHERE ${orderWhereSql}
@@ -299,6 +371,17 @@ exports.getReports = async (req, res) => {
        LIMIT 20`,
       orderParams,
     );
+
+    const [[transactionCountRow]] = await db.query(
+      `SELECT COUNT(*) AS total
+       FROM payment_transactions pt
+       INNER JOIN orders o ON o.id = pt.order_id
+       WHERE ${paymentWhereSql}`,
+      paymentParams,
+    );
+
+    const transactionTotal = Number(transactionCountRow?.total || 0);
+    const totalPages = Math.max(1, Math.ceil(transactionTotal / limit));
 
     const [transactionRows] = await db.query(
       `SELECT
@@ -312,38 +395,42 @@ exports.getReports = async (req, res) => {
          o.order_type,
          o.type,
          o.status AS order_status,
-         o.payment_status,
          COALESCE(o.total, 0) AS order_total,
-         ${lifetimeCollectedSql} AS lifetime_collected,
-         GREATEST(COALESCE(o.total, 0) - ${lifetimeCollectedSql}, 0) AS remaining_balance,
+         ${historicalCollectedAfterSql} AS lifetime_collected,
+         ${historicalCollectedAfterSql} AS total_paid_after,
+         COALESCE(
+           receipt.remaining_balance_after,
+           GREATEST(COALESCE(o.total, 0) - ${historicalCollectedAfterSql}, 0)
+         ) AS remaining_balance,
+         CASE
+           WHEN receipt.payment_label IN ('full_payment', 'balance_payment') THEN 'paid'
+           WHEN receipt.payment_label IN ('down_payment', 'partial_payment') THEN 'partial'
+           WHEN COALESCE(o.total, 0) > 0
+             AND ${historicalCollectedAfterSql} >= COALESCE(o.total, 0) THEN 'paid'
+           WHEN ${historicalCollectedAfterSql} > 0 THEN 'partial'
+           ELSE 'unpaid'
+         END AS payment_status,
          COALESCE(customer.name, o.walkin_customer_name, 'Walk-in Customer') AS customer_name,
          COALESCE(customer.phone, o.walkin_customer_phone, 'No phone') AS customer_phone,
          CASE
-           WHEN LOWER(pt.payment_method) = 'paymongo' THEN 'PayMongo / Online Payment'
+           WHEN pt.payment_method = 'paymongo' THEN 'PayMongo / Online Payment'
            WHEN verifier.name IS NOT NULL THEN verifier.name
            ELSE 'System'
          END AS processed_by,
-         receipt.receipt_id,
+         receipt.id AS receipt_id,
          receipt.receipt_number,
-         receipt.payment_label
+         receipt.payment_label,
+         receipt.previous_paid_amount,
+         receipt.amount_paid AS receipt_amount_paid
        FROM payment_transactions pt
        INNER JOIN orders o ON o.id = pt.order_id
        LEFT JOIN users customer ON customer.id = o.customer_id
        LEFT JOIN users verifier ON verifier.id = pt.verified_by
-       LEFT JOIN (
-         SELECT
-           payment_transaction_id,
-           MAX(id) AS receipt_id,
-           MAX(receipt_number) AS receipt_number,
-           MAX(payment_label) AS payment_label
-         FROM receipts
-         WHERE payment_transaction_id IS NOT NULL
-         GROUP BY payment_transaction_id
-       ) receipt ON receipt.payment_transaction_id = pt.id
+       LEFT JOIN receipts receipt ON receipt.payment_transaction_id = pt.id
        WHERE ${paymentWhereSql}
        ORDER BY COALESCE(pt.verified_at, pt.created_at) DESC, pt.id DESC
-       LIMIT 200`,
-      paymentParams,
+       LIMIT ? OFFSET ?`,
+      [...paymentParams, limit, offset],
     );
 
     const totals = {
@@ -353,7 +440,6 @@ exports.getReports = async (req, res) => {
       grand_total: Number(collectionTotals?.actual_collected || 0),
       outstanding_balance: Number(orderTotals?.outstanding_balance || 0),
       total_discount: Number(orderTotals?.total_discount || 0),
-      estimated_profit: Number(orderTotals?.estimated_profit || 0),
       collection_count: Number(collectionTotals?.collection_count || 0),
     };
 
@@ -365,11 +451,27 @@ exports.getReports = async (req, res) => {
             name: String(req.user?.name || "Current cashier"),
           }
         : null,
+      filters_applied: {
+        source: source.value,
+        payment: payment.value,
+        period,
+        from: from || null,
+        to: to || null,
+      },
+      generated_at: new Date().toISOString(),
       totals,
       summary: summaryRows,
       payment_breakdown: paymentRows,
       top_products: productRows,
       transactions: transactionRows,
+      pagination: {
+        page,
+        limit,
+        total: transactionTotal,
+        total_pages: totalPages,
+        has_previous: page > 1,
+        has_next: page < totalPages,
+      },
     });
   } catch (err) {
     const statusCode = Number(err.statusCode) || 500;

@@ -18,6 +18,18 @@ const {
   getPhilippineDateTimeMinuteKey,
 } = require("../../utils/philippineTime");
 
+const POS_HISTORY_LOCAL_OFFSET_MINUTES = 8 * 60;
+const toPosHistoryUtcBoundary = (dateOnly, dayOffset = 0) => {
+  const [year, month, day] = String(dateOnly).split("-").map(Number);
+  const localMidnightAsUtcMs = Date.UTC(year, month - 1, day + dayOffset);
+  const utcMs =
+    localMidnightAsUtcMs - POS_HISTORY_LOCAL_OFFSET_MINUTES * 60 * 1000;
+  const utc = new Date(utcMs);
+  const pad2 = (value) => String(value).padStart(2, "0");
+
+  return `${utc.getUTCFullYear()}-${pad2(utc.getUTCMonth() + 1)}-${pad2(utc.getUTCDate())} ${pad2(utc.getUTCHours())}:${pad2(utc.getUTCMinutes())}:${pad2(utc.getUTCSeconds())}`;
+};
+
 const MAX_POS_CART_LINES = 100;
 const MAX_POS_ITEM_QUANTITY = 1000;
 const MAX_DECIMAL_10_2_CENTS = 9999999999;
@@ -940,13 +952,13 @@ exports.getOrders = async (req, res) => {
     }
 
     if (fromDate) {
-      where += " AND DATE(o.created_at) >= ?";
-      params.push(fromDate);
+      where += " AND o.created_at >= ?";
+      params.push(toPosHistoryUtcBoundary(fromDate));
     }
 
     if (toDate) {
-      where += " AND DATE(o.created_at) <= ?";
-      params.push(toDate);
+      where += " AND o.created_at < ?";
+      params.push(toPosHistoryUtcBoundary(toDate, 1));
     }
 
     const term = String(search || "").trim();
