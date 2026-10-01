@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
 import "./WarrantyPage.css";
@@ -86,11 +86,19 @@ const getStatusCount = (rows, status) =>
   rows.filter((row) => String(row.status || "").toLowerCase() === status)
     .length;
 
+const parseFocusClaimId = (value) => {
+  const raw = String(value ?? "").trim();
+  if (!/^\d+$/.test(raw)) return null;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
 export default function WarrantyPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, hasPermission } = useAuthStore();
 
   const canManageWarranty = hasPermission("warranty.manage");
@@ -108,6 +116,8 @@ export default function WarrantyPage() {
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [claimsLoadedSuccessfully, setClaimsLoadedSuccessfully] =
+    useState(false);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -120,9 +130,11 @@ export default function WarrantyPage() {
 
   const loadClaims = async () => {
     setLoading(true);
+    setClaimsLoadedSuccessfully(false);
     try {
       const { data } = await api.get("/warranty");
       setRows(Array.isArray(data) ? data : []);
+      setClaimsLoadedSuccessfully(true);
     } catch (err) {
       toast.error(
         err?.response?.data?.message || "Failed to load warranty claims.",
@@ -135,6 +147,47 @@ export default function WarrantyPage() {
   useEffect(() => {
     loadClaims();
   }, []);
+
+  useEffect(() => {
+    const rawFocusId = searchParams.get("focus_claim_id");
+    if (!rawFocusId || loading || !claimsLoadedSuccessfully) return;
+
+    const clearFocusParam = () => {
+      const next = new URLSearchParams(searchParams);
+      next.delete("focus_claim_id");
+      setSearchParams(next, { replace: true });
+    };
+
+    const focusClaimId = parseFocusClaimId(rawFocusId);
+    if (!focusClaimId) {
+      toast.error("Invalid warranty claim link.");
+      clearFocusParam();
+      return;
+    }
+
+    const matchedRow = rows.find((row) => Number(row?.id) === focusClaimId);
+    if (!matchedRow) {
+      toast.error(
+        "That warranty claim could not be found. It may no longer be available.",
+      );
+      clearFocusParam();
+      return;
+    }
+
+    setSearch("");
+    setStatusFilter("");
+    setClaimTypeFilter("");
+    setDecisionModal(null);
+    setFulfillTarget(null);
+    setSelectedRow(matchedRow);
+    clearFocusParam();
+  }, [
+    claimsLoadedSuccessfully,
+    loading,
+    rows,
+    searchParams,
+    setSearchParams,
+  ]);
 
   const filteredRows = useMemo(() => {
     const term = search.trim().toLowerCase();

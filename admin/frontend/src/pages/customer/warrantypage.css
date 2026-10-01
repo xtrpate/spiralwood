@@ -703,9 +703,45 @@
 }
 
 /* CLAIM CARD */
+.warranty-page.warranty-page-resolving-focus .warranty-shell {
+  visibility: hidden;
+}
+
+.warranty-focus-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #ffffff;
+  color: #111111;
+  text-align: center;
+}
+
+.warranty-focus-spinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #111111;
+  border-radius: 50%;
+  animation: warranty-focus-spin 0.75s linear infinite;
+}
+
+@keyframes warranty-focus-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .wclaim-card {
   background: #ffffff;
   border: 1px solid #dcdfe4;
+}
+
+.wclaim-card.wclaim-notification-focus {
+  outline: 2px solid #111111;
+  outline-offset: 2px;
 }
 
 .wclaim-top {

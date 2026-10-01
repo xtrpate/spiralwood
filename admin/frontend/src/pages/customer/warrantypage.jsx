@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import toast from "react-hot-toast";
 import api, { buildAssetUrl } from "../../services/api";
 import {
   ShieldCheck,
@@ -55,6 +57,13 @@ const formatDate = (str) => {
   });
 };
 
+const parseFocusClaimId = (value) => {
+  const raw = String(value ?? "").trim();
+  if (!/^\d+$/.test(raw)) return null;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
 const FileUpload = ({ label, hint, name, file, onChange, onClear, accept, typeHint }) => (
   <div className="w-upload-box">
     <div className="w-upload-label">{label}</div>
@@ -105,6 +114,8 @@ const SummaryStat = ({ label, value }) => (
 
 export default function WarrantyPage() {
   const [orders, setOrders] = useState([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialFocusClaimParam = searchParams.get("focus_claim_id");
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -123,7 +134,12 @@ export default function WarrantyPage() {
   const [submitted, setSubmitted] = useState(false);
   const [formError, setFormError] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const [warrantyCenterTab, setWarrantyCenterTab] = useState("file");
+  const [warrantyCenterTab, setWarrantyCenterTab] = useState(() =>
+    initialFocusClaimParam ? "claims" : "file",
+  );
+  const [claimFocusResolving, setClaimFocusResolving] = useState(() =>
+    Boolean(initialFocusClaimParam),
+  );
 
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackStatus, setFeedbackStatus] = useState("loading");
@@ -131,6 +147,9 @@ export default function WarrantyPage() {
 
   const [claims, setClaims] = useState([]);
   const [loadingClaims, setLoadingClaims] = useState(true);
+  const [claimsLoadedSuccessfully, setClaimsLoadedSuccessfully] =
+    useState(false);
+  const [focusedClaimId, setFocusedClaimId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelBusy, setCancelBusy] = useState(false);
@@ -156,15 +175,99 @@ export default function WarrantyPage() {
 
   const fetchClaims = async () => {
     setLoadingClaims(true);
+    setClaimsLoadedSuccessfully(false);
     try {
       const res = await api.get("/customer/warranty");
       setClaims(Array.isArray(res.data) ? res.data : []);
+      setClaimsLoadedSuccessfully(true);
     } catch {
       setClaims([]);
     } finally {
       setLoadingClaims(false);
     }
   };
+
+  useEffect(() => {
+    const rawFocusId = searchParams.get("focus_claim_id");
+    if (
+      !rawFocusId ||
+      loading ||
+      loadingClaims ||
+      !claimsLoadedSuccessfully
+    ) {
+      return;
+    }
+
+    const clearFocusParam = () => {
+      const next = new URLSearchParams(searchParams);
+      next.delete("focus_claim_id");
+      setSearchParams(next, { replace: true });
+    };
+
+    const focusClaimId = parseFocusClaimId(rawFocusId);
+    if (!focusClaimId) {
+      toast.error("Invalid warranty claim link.");
+      clearFocusParam();
+      setClaimFocusResolving(false);
+      return;
+    }
+
+    const matchedClaim = claims.find(
+      (claim) => Number(claim?.id) === focusClaimId,
+    );
+    if (!matchedClaim) {
+      toast.error(
+        "That warranty claim could not be found. It may no longer be available.",
+      );
+      clearFocusParam();
+      setClaimFocusResolving(false);
+      return;
+    }
+
+    setWarrantyCenterTab("claims");
+    setFocusedClaimId(focusClaimId);
+    clearFocusParam();
+  }, [
+    claims,
+    claimsLoadedSuccessfully,
+    loading,
+    loadingClaims,
+    searchParams,
+    setSearchParams,
+  ]);
+
+  useLayoutEffect(() => {
+    if (
+      !focusedClaimId ||
+      loading ||
+      loadingClaims ||
+      warrantyCenterTab !== "claims"
+    ) {
+      return undefined;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.getElementById(
+        `warranty-claim-${focusedClaimId}`,
+      );
+
+      if (target) {
+        target.scrollIntoView({ behavior: "auto", block: "center" });
+      }
+
+      setClaimFocusResolving(false);
+    });
+
+    const highlightTimer = window.setTimeout(
+      () => setFocusedClaimId(null),
+      4000,
+    );
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(highlightTimer);
+    };
+  }, [focusedClaimId, loading, loadingClaims, warrantyCenterTab]);
 
   const visibleOrders = orders;
 
@@ -338,7 +441,24 @@ export default function WarrantyPage() {
   };
 
   return (
-    <div className="warranty-page">
+    <div
+      className={`warranty-page${
+        claimFocusResolving ? " warranty-page-resolving-focus" : ""
+      }`}
+    >
+      {claimFocusResolving && (
+        <div
+          className="warranty-focus-loading"
+          role="status"
+          aria-label="Loading warranty claim"
+        >
+          <span
+            className="warranty-focus-spinner"
+            aria-hidden="true"
+          />
+        </div>
+      )}
+
       <div className="warranty-shell">
         {/* 👉 STATIC HEADER - ALWAYS VISIBLE */}
         <section className="warranty-page-head">
@@ -960,13 +1080,20 @@ export default function WarrantyPage() {
                     </div>
                   ) : (
                     <div className="wclaims-list">
-                      {claims.map((claim) => (
-                        <ClaimCard
-                          key={claim.id}
-                          claim={claim}
-                          onCancel={openCancelModal}
-                        />
-                      ))}
+                      {claims.map((claim) => {
+                        const isFocused =
+                          Number(claim?.id) === Number(focusedClaimId);
+
+                        return (
+                          <ClaimCard
+                            key={claim.id}
+                            claim={claim}
+                            onCancel={openCancelModal}
+                            forceOpen={isFocused}
+                            focused={isFocused}
+                          />
+                        );
+                      })}
                     </div>
                   )}
                 </aside>
@@ -1054,15 +1181,24 @@ export default function WarrantyPage() {
   );
 }
 
-function ClaimCard({ claim, onCancel }) {
+function ClaimCard({ claim, onCancel, forceOpen = false, focused = false }) {
   const [open, setOpen] = useState(false);
   const normalizedStatus = String(claim.status || "").toLowerCase();
+
+  useEffect(() => {
+    if (forceOpen) setOpen(true);
+  }, [forceOpen]);
   const isRejected = normalizedStatus === "rejected";
   const isPending = normalizedStatus === "pending";
   const isCancelled = normalizedStatus === "cancelled";
 
   return (
-    <div className={`wclaim-card ${open ? "open" : ""}`}>
+    <div
+      id={`warranty-claim-${claim.id}`}
+      className={`wclaim-card ${open ? "open" : ""} ${
+        focused ? "wclaim-notification-focus" : ""
+      }`}
+    >
       <button
         type="button"
         className="wclaim-top"
