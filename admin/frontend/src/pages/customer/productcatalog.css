@@ -1712,6 +1712,7 @@
     row-gap: 18px;
     padding: 0 0 26px;
     border-bottom: 1px solid #e6e6e3;
+    position: static !important;
   }
 
   .catalog-sidebar > .sidebar-title {
@@ -1726,7 +1727,7 @@
   }
 
   .catalog-sidebar > .clear-filters {
-    grid-column: 1 / -1;
+    display: none !important;
   }
 
   .filter-options {
