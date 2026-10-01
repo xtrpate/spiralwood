@@ -71,6 +71,12 @@ export default function ReceiptPage() {
   const remainingBalance = Number(paymentSummary?.remaining_balance ?? 0);
   const paymentStatusLabel =
     paymentSummary?.status || "Payment status unavailable";
+  const financialSummary = receipt.financial_summary || null;
+  const formatMoney = (value) =>
+    Number(value || 0).toLocaleString("en-PH", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
 
   // Optional business/footer fields are shown ONLY when actually configured
   // in website_settings -- never fabricated. warranty_period_days is a real
@@ -294,6 +300,46 @@ export default function ReceiptPage() {
           {/* Totals */}
           <div className="staff-receipt-section-title-v190">PAYMENT SUMMARY</div>
           <div className="receipt-totals staff-receipt-summary-v190">
+            {financialSummary && (
+              <>
+                <div className="total-row">
+                  <span>Merchandise Subtotal</span>
+                  <span>{"\u20B1"}{formatMoney(financialSummary.subtotal)}</span>
+                </div>
+                {Number(financialSummary.delivery_fee) > 0 && (
+                  <div className="total-row">
+                    <span>Delivery Fee</span>
+                    <span>
+                      {"\u20B1"}{formatMoney(financialSummary.delivery_fee)}
+                    </span>
+                  </div>
+                )}
+                <div className="total-row">
+                  <span>Discount</span>
+                  <span>
+                    {Number(financialSummary.discount) > 0 ? "-" : ""}
+                    {"\u20B1"}{formatMoney(financialSummary.discount)}
+                  </span>
+                </div>
+                <div className="total-row">
+                  <span>VATable Sales</span>
+                  <span>{"\u20B1"}{formatMoney(financialSummary.vatable_sales)}</span>
+                </div>
+                <div className="total-row">
+                  <span>VAT-Exempt Sales</span>
+                  <span>{"\u20B1"}{formatMoney(financialSummary.vat_exempt_sales)}</span>
+                </div>
+                <div className="total-row">
+                  <span>Zero-Rated Sales</span>
+                  <span>{"\u20B1"}{formatMoney(financialSummary.zero_rated_sales)}</span>
+                </div>
+                <div className="total-row">
+                  <span>VAT (12%)</span>
+                  <span>{"\u20B1"}{formatMoney(financialSummary.tax)}</span>
+                </div>
+              </>
+            )}
+
             <div className="total-row grand staff-total-v190">
               <span>ORDER TOTAL</span>
               <span>

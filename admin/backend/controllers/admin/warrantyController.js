@@ -7,6 +7,7 @@ const {
 } = require("../../utils/philippineTime");
 const { signUploadPath } = require("../../utils/signedUrl");
 const { createNotificationSafe } = require("../../utils/notificationHelper");
+const { parseStrictPositiveInt } = require("../../utils/validators");
 const {
   getResolutionOptions,
   fulfillClaimWithInventory,
@@ -19,6 +20,8 @@ const splitStoredProofs = (value) => {
     .filter(Boolean);
   return { photo_url: parts[0] || null, proof_url: parts[1] || null };
 };
+
+const MAX_WARRANTY_ADMIN_NOTE_LENGTH = 1000;
 
 const OPERATIONS_WARRANTY_DATE_FILTERS = new Set([
   "all",
@@ -388,20 +391,46 @@ exports.getClaims = async (req, res) => {
 };
 
 exports.decideClaim = async (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  const decision = String(req.body?.decision || "")
-    .trim()
-    .toLowerCase();
-  const adminNote = String(req.body?.admin_note || "").trim();
-  if (!id)
+  const id = parseStrictPositiveInt(req.params.id);
+  if (!id) {
     return res
       .status(400)
       .json({ message: "Valid warranty claim ID is required." });
+  }
+
+  if (typeof req.body?.decision !== "string") {
+    return res.status(400).json({
+      message: "Decision must be either approved or rejected.",
+    });
+  }
+
+  const decision = req.body.decision.trim().toLowerCase();
+  const rawAdminNote = req.body?.admin_note;
+
+  if (
+    rawAdminNote !== undefined &&
+    rawAdminNote !== null &&
+    typeof rawAdminNote !== "string"
+  ) {
+    return res.status(400).json({
+      message: "Admin note must be text.",
+    });
+  }
+
+  const adminNote = String(rawAdminNote || "").trim();
+
   if (!["approved", "rejected"].includes(decision)) {
     return res
       .status(400)
       .json({ message: "Decision must be either approved or rejected." });
   }
+
+  if (adminNote.length > MAX_WARRANTY_ADMIN_NOTE_LENGTH) {
+    return res.status(400).json({
+      message: `Admin note must be ${MAX_WARRANTY_ADMIN_NOTE_LENGTH} characters or fewer.`,
+    });
+  }
+
   if (decision === "rejected" && !adminNote) {
     return res
       .status(400)
@@ -415,29 +444,48 @@ exports.decideClaim = async (req, res) => {
        WHERE w.id = ? LIMIT 1`,
       [id],
     );
-    if (!claim)
+
+    if (!claim) {
       return res.status(404).json({ message: "Warranty claim not found." });
-    const currentStatus = String(claim.status || "").toLowerCase();
-    if (currentStatus === "fulfilled") {
-      return res
-        .status(400)
-        .json({
-          message:
-            "This warranty claim is already fulfilled and can no longer be changed.",
-        });
-    }
-    if (currentStatus !== "pending") {
-      return res
-        .status(400)
-        .json({
-          message: "Only pending warranty claims can be approved or rejected.",
-        });
     }
 
-    await db.query(
-      `UPDATE warranties SET status = ?, admin_note = ?, updated_at = NOW() WHERE id = ?`,
+    const currentStatus = String(claim.status || "")
+      .trim()
+      .toLowerCase();
+
+    if (currentStatus !== "pending") {
+      return res.status(409).json({
+        message:
+          "This warranty claim was already updated. Refresh and review the latest status.",
+        current_status: currentStatus || null,
+      });
+    }
+
+    const [decisionUpdate] = await db.query(
+      `UPDATE warranties
+       SET status = ?, admin_note = ?, updated_at = NOW()
+       WHERE id = ?
+         AND status = 'pending'`,
       [decision, adminNote || null, id],
     );
+
+    if (Number(decisionUpdate?.affectedRows || 0) !== 1) {
+      const [[latestClaim]] = await db.query(
+        `SELECT status
+         FROM warranties
+         WHERE id = ?
+         LIMIT 1`,
+        [id],
+      );
+
+      return res.status(409).json({
+        message:
+          "This warranty claim was already updated. Refresh and review the latest status.",
+        current_status: latestClaim
+          ? String(latestClaim.status || "").trim().toLowerCase() || null
+          : null,
+      });
+    }
 
     if (claim.customer_id) {
       const orderLabel = claim.order_number || `#${claim.order_id}`;
@@ -460,9 +508,10 @@ exports.decideClaim = async (req, res) => {
 
     req.auditRecord = {
       id,
-      old: { status: currentStatus },
+      old: { status: "pending" },
       new: { status: decision, has_admin_note: Boolean(adminNote) },
     };
+
     return res.json({
       message:
         decision === "approved"

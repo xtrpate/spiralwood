@@ -115,6 +115,15 @@ api.interceptors.response.use(
         sessionStorage.removeItem("pos_token");
         sessionStorage.removeItem("pos_user");
 
+        // End Cash-owned browser state with the expired authenticated
+        // session. Do not delete the teammate-owned QR attempt. If one is
+        // present, preserve its cart so its server-backed recovery flow is
+        // not changed by this Cash-only patch.
+        sessionStorage.removeItem("pos_cash_checkout");
+        if (!sessionStorage.getItem("pos_qr_attempt")) {
+          sessionStorage.removeItem("pos_cart");
+        }
+
         if (window.location.pathname !== "/login") {
           window.location.href = "/login";
         }

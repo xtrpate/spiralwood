@@ -194,6 +194,7 @@ async function run() {
   assert.equal(res.body.payment_summary.has_payment_progress, false);
   assert.equal(res.body.payment_method, 'cash');
   assert.equal(res.body.items.length, 1);
+  assert.equal(res.body.financial_summary, null);
 
   const ownedReceiptCall = calls.find((entry) => entry.sql.includes('FROM receipts r'));
   assert.ok(ownedReceiptCall);
@@ -355,6 +356,94 @@ async function run() {
     assert.equal(res.statusCode, 500);
     assert.match(res.body.message, /inconsistent/i);
   }
+
+  // New cashier-cash receipts carry an immutable, validated VAT-inclusive
+  // financial snapshot. Historical array snapshots above remain VAT-neutral.
+  reset('cash_vat_v2', {
+    items_snapshot: JSON.stringify({
+      snapshot_version: 2,
+      items: [
+        {
+          product_id: 7,
+          product_name: 'Test Chair',
+          unit_price: '10000.00',
+          quantity: 1,
+          subtotal: '10000.00',
+        },
+      ],
+      financial_summary: {
+        pricing_mode: 'vat_inclusive',
+        vat_rate: 12,
+        subtotal: '10000.00',
+        discount: '1000.00',
+        delivery_fee: '500.00',
+        vatable_sales: '8482.14',
+        vat_exempt_sales: '0.00',
+        zero_rated_sales: '0.00',
+        tax: '1017.86',
+        total: '9500.00',
+      },
+    }),
+    total_amount: '9500.00',
+    subtotal: '999999.00',
+    tax: '0.00',
+    discount: '0.00',
+    delivery_fee: '0.00',
+    total: '999999.00',
+  });
+  res = makeRes();
+  await controller.getReceiptById(
+    { user: cashier, params: { id: '88' } },
+    res,
+  );
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body.financial_summary, {
+    pricing_mode: 'vat_inclusive',
+    vat_rate: 12,
+    subtotal: 10000,
+    discount: 1000,
+    delivery_fee: 500,
+    vatable_sales: 8482.14,
+    vat_exempt_sales: 0,
+    zero_rated_sales: 0,
+    tax: 1017.86,
+    total: 9500,
+  });
+
+  // A tampered VAT snapshot fails closed instead of being recomputed in the UI.
+  reset('cash_vat_bad_math', {
+    items_snapshot: JSON.stringify({
+      snapshot_version: 2,
+      items: [
+        {
+          product_id: 7,
+          product_name: 'Test Chair',
+          unit_price: '10000.00',
+          quantity: 1,
+        },
+      ],
+      financial_summary: {
+        pricing_mode: 'vat_inclusive',
+        vat_rate: 12,
+        subtotal: '10000.00',
+        discount: '1000.00',
+        delivery_fee: '500.00',
+        vatable_sales: '8482.14',
+        vat_exempt_sales: '0.00',
+        zero_rated_sales: '0.00',
+        tax: '1000.00',
+        total: '9500.00',
+      },
+    }),
+    total_amount: '9500.00',
+  });
+  res = makeRes();
+  await controller.getReceiptById(
+    { user: cashier, params: { id: '88' } },
+    res,
+  );
+  assert.equal(res.statusCode, 500);
+  assert.match(res.body.message, /inconsistent/i);
 
   // Printed identity comes from the immutable receipt, not the mutable order row.
   reset('snapshot_identity', {
@@ -609,8 +698,17 @@ async function run() {
   assert.match(receiptPageSource, /receipt\.customer_display/);
   assert.match(receiptPageSource, /receipt\.processor_display/);
   assert.equal(receiptPageSource.includes('receipt.walkin_customer_name'), false);
-  assert.equal(receiptPageSource.includes('VATable Sales'), false);
-  assert.equal(receiptPageSource.includes('VAT (12%)'), false);
+  assert.match(receiptPageSource, /receipt\.financial_summary/);
+  assert.match(receiptPageSource, /VATable Sales/);
+  assert.match(receiptPageSource, /VAT-Exempt Sales/);
+  assert.match(receiptPageSource, /Zero-Rated Sales/);
+  assert.match(receiptPageSource, /VAT \(12%\)/);
+  assert.match(
+    receiptPageSource,
+    /Number\(financialSummary\.delivery_fee\) > 0/,
+  );
+  assert.match(receiptPageSource, /\\u20B1/);
+  assert.equal(receiptPageSource.includes('Ã¢â€šÂ±'), false);
   assert.equal(receiptPageSource.includes('getVatInclusiveBreakdown'), false);
   assert.match(receiptPageSource, /hasBackendChange[\s\S]*backendChange/);
 

@@ -51,7 +51,7 @@ function getDefaultRouteForUser(user) {
     }
 
     if (user.staff_type === "cashier") {
-      return "/staff/order";
+      return "/staff/products";
     }
 
     return "/staff/dashboard";
