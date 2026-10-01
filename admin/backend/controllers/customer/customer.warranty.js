@@ -4,12 +4,50 @@ const db = require("../../config/db");
 const { signUploadPath } = require("../../utils/signedUrl");
 const { createNotificationSafe } = require("../../utils/notificationHelper");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
+const { getPhilippineDateKey } = require("../../utils/philippineTime");
 
 const WARRANTY_PERIOD_KEY = "warranty_period_days";
 const WARRANTY_POLICY_VERSION_KEY = "warranty_policy_version";
 const WARRANTY_POLICY_VERSION = "2";
 const DEFAULT_WARRANTY_PERIOD_DAYS = 365;
 const MAX_WARRANTY_DESCRIPTION_LENGTH = 1000;
+
+/*
+ * Warranty starts at the real customer handoff:
+ * - pickup: orders.picked_up_at
+ * - delivery: latest successful deliveries.delivered_date
+ * - legacy fallback only: order updated_at / created_at
+ *
+ * Event timestamps are stored in UTC. Convert the handoff instant to the
+ * Philippine calendar date before adding the policy duration.
+ */
+const LATEST_SUCCESSFUL_DELIVERY_SQL = `
+  (SELECT MAX(d.delivered_date)
+   FROM deliveries d
+   WHERE d.order_id = o.id
+     AND d.delivered_date IS NOT NULL
+     AND d.status IN ('delivered', 'completed'))
+`;
+
+const WARRANTY_HANDOFF_UTC_SQL = `
+  CASE
+    WHEN LOWER(COALESCE(o.fulfillment_method, '')) = 'pickup'
+      THEN COALESCE(o.picked_up_at, o.updated_at, o.created_at)
+    ELSE COALESCE(
+      ${LATEST_SUCCESSFUL_DELIVERY_SQL},
+      o.updated_at,
+      o.created_at
+    )
+  END
+`;
+
+const WARRANTY_HANDOFF_PH_DATE_SQL = `
+  DATE(DATE_ADD((${WARRANTY_HANDOFF_UTC_SQL}), INTERVAL 8 HOUR))
+`;
+
+const WARRANTY_EXPIRY_DATE_SQL = `
+  DATE_ADD((${WARRANTY_HANDOFF_PH_DATE_SQL}), INTERVAL ? DAY)
+`;
 
 const getWarrantyPeriodDays = async () => {
   const [rows] = await db.query(
@@ -52,6 +90,7 @@ const splitStoredProofs = (value) => {
 const getEligibleOrders = async (req, res) => {
   try {
     const warrantyPeriodDays = await getWarrantyPeriodDays();
+    const todayKey = getPhilippineDateKey();
     const [rows] = await db.query(
       `SELECT
          o.id,
@@ -62,8 +101,9 @@ const getEligibleOrders = async (req, res) => {
          o.total,
          o.delivery_address,
          o.order_type,
-         d.delivered_date,
-         DATE_ADD(COALESCE(d.delivered_date, o.updated_at, o.created_at), INTERVAL ? DAY) AS warranty_expiry,
+         ${LATEST_SUCCESSFUL_DELIVERY_SQL} AS delivered_date,
+         ${WARRANTY_HANDOFF_UTC_SQL} AS warranty_handoff_at,
+         DATE_FORMAT((${WARRANTY_EXPIRY_DATE_SQL}), '%Y-%m-%d') AS warranty_expiry,
          oi.id AS order_item_id,
          oi.product_id,
          oi.product_name,
@@ -72,11 +112,10 @@ const getEligibleOrders = async (req, res) => {
        FROM orders o
        INNER JOIN order_items oi ON oi.order_id = o.id
        LEFT JOIN products p ON p.id = oi.product_id
-       LEFT JOIN deliveries d ON d.order_id = o.id
        WHERE o.customer_id = ?
          AND o.status = 'completed'
          AND o.payment_status = 'paid'
-         AND DATE_ADD(COALESCE(d.delivered_date, o.updated_at, o.created_at), INTERVAL ? DAY) >= CURDATE()
+         AND (${WARRANTY_EXPIRY_DATE_SQL}) >= ?
          AND NOT EXISTS (
            SELECT 1
            FROM warranties w
@@ -85,8 +124,8 @@ const getEligibleOrders = async (req, res) => {
              AND w.status <> 'cancelled'
              AND (w.order_item_id = oi.id OR w.order_item_id IS NULL)
          )
-       ORDER BY COALESCE(d.delivered_date, o.created_at) DESC, oi.id ASC`,
-      [warrantyPeriodDays, req.user.id, warrantyPeriodDays],
+       ORDER BY warranty_handoff_at DESC, oi.id ASC`,
+      [warrantyPeriodDays, req.user.id, warrantyPeriodDays, todayKey],
     );
 
     const grouped = [];
@@ -214,17 +253,25 @@ const submitClaim = async (req, res) => {
 
   try {
     const warrantyPeriodDays = await getWarrantyPeriodDays();
+    const todayKey = getPhilippineDateKey();
     const [[item]] = await db.query(
       `SELECT
          o.id AS order_id, o.order_number, o.customer_id, o.status, o.payment_status,
-         DATE_ADD(COALESCE(d.delivered_date, o.updated_at, o.created_at), INTERVAL ? DAY) AS warranty_expiry,
+         DATE_FORMAT((${WARRANTY_EXPIRY_DATE_SQL}), '%Y-%m-%d') AS warranty_expiry,
+         ((${WARRANTY_EXPIRY_DATE_SQL}) >= ?) AS warranty_is_active,
          oi.id AS order_item_id, oi.product_id, oi.product_name, oi.quantity AS ordered_quantity
        FROM orders o
        INNER JOIN order_items oi ON oi.order_id = o.id
-       LEFT JOIN deliveries d ON d.order_id = o.id
        WHERE o.customer_id = ? AND o.id = ? AND oi.id = ?
        LIMIT 1`,
-      [warrantyPeriodDays, req.user.id, orderId, orderItemId],
+      [
+        warrantyPeriodDays,
+        warrantyPeriodDays,
+        todayKey,
+        req.user.id,
+        orderId,
+        orderItemId,
+      ],
     );
 
     if (!item) {
@@ -243,8 +290,7 @@ const submitClaim = async (req, res) => {
       });
     }
 
-    const expiry = item.warranty_expiry ? new Date(item.warranty_expiry) : null;
-    if (!expiry || Number.isNaN(expiry.getTime()) || expiry < new Date()) {
+    if (!item.warranty_expiry || Number(item.warranty_is_active) !== 1) {
       return res.status(400).json({
         message: "This order is no longer within the warranty period.",
       });
