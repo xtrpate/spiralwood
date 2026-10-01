@@ -36,7 +36,7 @@
   outline-offset: 2px;
 }
 
-@media (max-width: 899px) {
+@media screen and (max-width: 899px) {
   .cashier-sales-chart-grid {
     grid-template-columns: minmax(0, 1fr) !important;
   }
@@ -48,7 +48,7 @@
   }
 }
 
-@media (max-width: 899px) {
+@media screen and (max-width: 899px) {
   .cashier-sales-report-page {
     width: 100%;
     min-width: 0;
@@ -344,7 +344,7 @@
   }
 }
 
-@media (min-width: 768px) and (max-width: 899px) {
+@media screen and (min-width: 768px) and (max-width: 899px) {
   .cashier-sales-filter-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
@@ -384,13 +384,13 @@
   }
 }
 
-@media (max-width: 767px) {
+@media screen and (max-width: 767px) {
   .cashier-sales-filter-grid {
     grid-template-columns: minmax(0, 1fr) !important;
   }
 }
 
-@media (max-width: 359px) {
+@media screen and (max-width: 359px) {
   .cashier-sales-metric-grid,
   .cashier-sales-mobile-details,
   .cashier-sales-mobile-product-meta {
@@ -411,5 +411,324 @@
     max-width: none;
     align-items: flex-start;
     text-align: left;
+  }
+}
+/* WISDOM R3B2B2 - dedicated Cashier Sales Report print layout. */
+.cashier-sales-print-report {
+  display: none;
+}
+
+.cashier-sales-action:disabled {
+  cursor: not-allowed !important;
+  opacity: 0.48;
+}
+
+@page cashier-sales-report {
+  size: A4 landscape;
+  margin: 8mm;
+}
+
+@media print {
+  body:has(.cashier-sales-print-report),
+  body:has(.cashier-sales-print-report) .pos-root.pos-staff-workspace,
+  body:has(.cashier-sales-print-report) .pos-main,
+  body:has(.cashier-sales-print-report) .cashier-sales-report-page {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    min-height: auto !important;
+    background: #ffffff !important;
+  }
+
+  body:has(.cashier-sales-print-report) {
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body:has(.cashier-sales-print-report) .pos-root.pos-staff-workspace {
+    display: block !important;
+  }
+
+  body:has(.cashier-sales-print-report) .pos-sidebar,
+  body:has(.cashier-sales-print-report) .pos-mobile-staff-topbar,
+  body:has(.cashier-sales-print-report) .pos-mobile-bottom-nav,
+  body:has(.cashier-sales-print-report) .pos-mobile-account-layer {
+    display: none !important;
+  }
+
+  body:has(.cashier-sales-print-report)
+    .cashier-sales-report-page
+    > :not(.cashier-sales-print-report) {
+    display: none !important;
+  }
+
+  body:has(.cashier-sales-print-report) .cashier-sales-print-report {
+    display: block !important;
+    position: static !important;
+    page: cashier-sales-report;
+    width: 100% !important;
+    color: #18181b;
+    background: #ffffff;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 9pt;
+    line-height: 1.35;
+  }
+
+  .cashier-sales-print-report,
+  .cashier-sales-print-report * {
+    box-sizing: border-box;
+  }
+
+  .cashier-sales-print-header {
+    margin-bottom: 5mm;
+  }
+
+  .cashier-sales-print-header h1 {
+    margin: 0;
+    font-size: 17pt;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-align: center;
+  }
+
+  .cashier-sales-print-header h2 {
+    margin: 1.5mm 0 3.5mm;
+    font-size: 11pt;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-align: center;
+  }
+
+  .cashier-sales-print-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 2mm 5mm;
+    padding: 2mm 0;
+    border-top: 1px solid #a1a1aa;
+    border-bottom: 1px solid #a1a1aa;
+  }
+
+  .cashier-sales-print-meta-grid div,
+  .cashier-sales-print-summary-grid div,
+  .cashier-sales-print-field {
+    min-width: 0;
+  }
+
+  .cashier-sales-print-meta-grid span,
+  .cashier-sales-print-summary-grid span,
+  .cashier-sales-print-field span {
+    display: block;
+    margin-bottom: 1mm;
+    color: #71717a;
+    font-size: 7.5pt;
+    font-weight: 700;
+    letter-spacing: 0.045em;
+    text-transform: uppercase;
+  }
+
+  .cashier-sales-print-meta-grid strong,
+  .cashier-sales-print-summary-grid strong,
+  .cashier-sales-print-field strong {
+    color: #18181b;
+    font-size: 9pt;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .cashier-sales-print-scope-note,
+  .cashier-sales-print-footnote,
+  .cashier-sales-print-section-note,
+  .cashier-sales-print-transaction-scope span {
+    color: #52525b;
+    font-size: 8pt;
+    line-height: 1.45;
+  }
+
+  .cashier-sales-print-scope-note {
+    margin: 2mm 0 0;
+  }
+
+  .cashier-sales-print-section {
+    margin: 0 0 4mm;
+  }
+
+  .cashier-sales-print-section h3 {
+    margin: 0 0 2mm;
+    padding-bottom: 1mm;
+    border-bottom: 1px solid #18181b;
+    font-size: 10pt;
+    font-weight: 700;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  .cashier-sales-print-summary-section,
+  .cashier-sales-print-method-section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .cashier-sales-print-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    border: 1px solid #d4d4d8;
+  }
+
+  .cashier-sales-print-summary-grid div {
+    padding: 2mm;
+    border-right: 1px solid #e4e4e7;
+  }
+
+  .cashier-sales-print-summary-grid div:last-child {
+    border-right: 0;
+  }
+
+  .cashier-sales-print-summary-grid strong {
+    font-size: 11pt;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cashier-sales-print-footnote {
+    margin: 1.5mm 0 0;
+  }
+
+  .cashier-sales-print-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+
+  .cashier-sales-print-table thead {
+    display: table-header-group;
+  }
+
+  .cashier-sales-print-table th,
+  .cashier-sales-print-table td {
+    padding: 1.6mm 2.2mm;
+    border: 1px solid #d4d4d8;
+    text-align: left;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .cashier-sales-print-table th {
+    background: #f4f4f5;
+    color: #3f3f46;
+    font-size: 7.5pt;
+    font-weight: 700;
+    letter-spacing: 0.025em;
+  }
+
+  .cashier-sales-print-table td {
+    color: #27272a;
+    font-size: 8.5pt;
+  }
+
+  .cashier-sales-print-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .cashier-sales-print-table td:nth-last-child(-n + 2),
+  .cashier-sales-print-summary-grid strong,
+  .cashier-sales-print-amount-field strong,
+  .cashier-sales-print-financial-grid strong {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cashier-sales-print-transaction-scope {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8mm;
+    margin-bottom: 2mm;
+    padding: 2mm 3mm;
+    border: 1px solid #d4d4d8;
+    background: #fafafa;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  .cashier-sales-print-transaction-scope strong {
+    flex: 0 0 auto;
+    font-size: 8.5pt;
+  }
+
+  .cashier-sales-print-transaction-scope span {
+    max-width: 150mm;
+    text-align: right;
+  }
+
+  .cashier-sales-print-transaction-list {
+    display: grid;
+    gap: 2mm;
+  }
+
+  .cashier-sales-print-transaction {
+    border: 1px solid #d4d4d8;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .cashier-sales-print-transaction-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    border-top: 1px solid #e4e4e7;
+  }
+
+  .cashier-sales-print-transaction-primary {
+    border-top: 0;
+  }
+
+  .cashier-sales-print-field {
+    padding: 1.7mm 2.2mm;
+    border-right: 1px solid #e4e4e7;
+  }
+
+  .cashier-sales-print-field:last-child {
+    border-right: 0;
+  }
+
+  .cashier-sales-print-financial-grid {
+    background: #fafafa;
+  }
+
+  .cashier-sales-print-empty {
+    padding: 4mm;
+    border: 1px solid #d4d4d8;
+    color: #71717a;
+    text-align: center;
+  }
+
+  .cashier-sales-print-section-note {
+    margin: -0.5mm 0 2mm;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  .cashier-sales-print-products-table th:nth-child(1) {
+    width: 62%;
+  }
+
+  .cashier-sales-print-products-table th:nth-child(2) {
+    width: 14%;
+  }
+
+  .cashier-sales-print-products-table th:nth-child(3) {
+    width: 24%;
+  }
+
+  .cashier-sales-print-footer {
+    margin-top: 4mm;
+    padding-top: 1.5mm;
+    border-top: 1px solid #d4d4d8;
+    color: #71717a;
+    font-size: 7.5pt;
+    text-align: center;
   }
 }

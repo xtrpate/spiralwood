@@ -430,6 +430,12 @@ export default function SalesReports() {
             className="cashier-sales-action cashier-sales-print"
             style={buttonGhost}
             onClick={() => window.print()}
+            disabled={!data || loading}
+            title={
+              loading
+                ? "Wait for the current report update to finish before printing."
+                : undefined
+            }
           >
             <Printer size={15} /> Print Current View
           </button>
@@ -880,6 +886,264 @@ export default function SalesReports() {
           </section>
         </>
       ) : null}
+
+      {data ? (
+        <div className="cashier-sales-print-report" aria-hidden="true">
+          <header className="cashier-sales-print-header">
+            <h1>SPIRAL WOOD SERVICES</h1>
+            <h2>{isCashierReport ? "CASHIER SALES REPORT" : "SALES REPORT"}</h2>
+
+            <div className="cashier-sales-print-meta-grid">
+              {isCashierReport ? (
+                <div>
+                  <span>Cashier</span>
+                  <strong>
+                    {data?.report_owner?.name || "Current cashier"}
+                  </strong>
+                </div>
+              ) : (
+                <div>
+                  <span>Scope</span>
+                  <strong>Authorized report scope</strong>
+                </div>
+              )}
+              <div>
+                <span>Order Source</span>
+                <strong>{sourceFilterLabel(displayFilters.source)}</strong>
+              </div>
+              <div>
+                <span>Payment Type</span>
+                <strong>{paymentFilterLabel(displayFilters.payment)}</strong>
+              </div>
+              <div>
+                <span>Report Range</span>
+                <strong>{reportRangeLabel(displayFilters)}</strong>
+              </div>
+              <div>
+                <span>Grouping</span>
+                <strong>{humanize(displayFilters.period)}</strong>
+              </div>
+              <div>
+                <span>Generated</span>
+                <strong>{formatDateTime(data.generated_at)}</strong>
+              </div>
+            </div>
+
+            <p className="cashier-sales-print-scope-note">
+              {isCashierReport
+                ? "Only verified payments processed under this cashier account are included. Blueprint down payments and remaining balances remain separate payment transactions."
+                : "Only verified payments in the applied report scope are included. Blueprint down payments and remaining balances remain separate payment transactions."}
+            </p>
+          </header>
+
+          <section className="cashier-sales-print-section cashier-sales-print-summary-section">
+            <h3>1. Report Summary</h3>
+            <div className="cashier-sales-print-summary-grid">
+              <div>
+                <span>Order Value</span>
+                <strong>{money(totals.gross_order_value)}</strong>
+              </div>
+              <div>
+                <span>Collected Payments</span>
+                <strong>{money(totals.actual_collected)}</strong>
+              </div>
+              <div>
+                <span>Current Remaining Balance</span>
+                <strong>{money(totals.outstanding_balance)}</strong>
+              </div>
+              <div>
+                <span>Orders Included</span>
+                <strong>{totals.total_orders || 0}</strong>
+              </div>
+              <div>
+                <span>Verified Payments</span>
+                <strong>{totals.collection_count || 0}</strong>
+              </div>
+            </div>
+            <p className="cashier-sales-print-footnote">
+              Current Remaining Balance is the current unpaid balance of included
+              orders when this report was generated. It is not the historical
+              balance at the end of the selected report period.
+            </p>
+          </section>
+
+          <section className="cashier-sales-print-section cashier-sales-print-method-section">
+            <h3>2. Payment Methods</h3>
+            <table className="cashier-sales-print-table">
+              <thead>
+                <tr>
+                  <th>Payment Method</th>
+                  <th>Verified Payments</th>
+                  <th>Collected Amount</th>
+                  <th>Share of Collections</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paymentBreakdown.length === 0 ? (
+                  <tr>
+                    <td colSpan={4}>No verified payment data.</td>
+                  </tr>
+                ) : (
+                  paymentBreakdown.map((row) => {
+                    const amount = Number(row.total_amount || 0);
+                    const share =
+                      paymentMethodTotal > 0
+                        ? (amount / paymentMethodTotal) * 100
+                        : 0;
+
+                    return (
+                      <tr key={"print-method-" + row.payment_method}>
+                        <td>{paymentMethodLabel(row.payment_method)}</td>
+                        <td>{row.count || 0}</td>
+                        <td>{money(row.total_amount)}</td>
+                        <td>{share.toFixed(1)}%</td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </section>
+
+          <section className="cashier-sales-print-section cashier-sales-print-transactions-section">
+            <h3>3. Payment Transactions</h3>
+            <div className="cashier-sales-print-transaction-scope">
+              <strong>
+                Showing {pageStart}-{pageEnd} of {totalTransactions} transactions
+                {" - Page "}
+                {currentPage} of {totalPages}
+              </strong>
+              <span>
+                Summary figures and payment-method totals cover the complete
+                applied report scope. Transaction details below contain the
+                current page only.
+              </span>
+            </div>
+
+            {transactions.length === 0 ? (
+              <div className="cashier-sales-print-empty">
+                No verified payment transactions for this period.
+              </div>
+            ) : (
+              <div className="cashier-sales-print-transaction-list">
+                {transactions.map((row) => (
+                  <article
+                    key={"print-" + row.payment_transaction_id}
+                    className="cashier-sales-print-transaction"
+                  >
+                    <div className="cashier-sales-print-transaction-grid cashier-sales-print-transaction-primary">
+                      <div className="cashier-sales-print-field">
+                        <span>Date</span>
+                        <strong>{formatDateTime(row.payment_date)}</strong>
+                      </div>
+                      <div className="cashier-sales-print-field">
+                        <span>Receipt</span>
+                        <strong>{row.receipt_number || "—"}</strong>
+                      </div>
+                      <div className="cashier-sales-print-field">
+                        <span>Order</span>
+                        <strong>{row.order_number || "#" + row.order_id}</strong>
+                      </div>
+                      <div className="cashier-sales-print-field">
+                        <span>Customer</span>
+                        <strong>{row.customer_name || "—"}</strong>
+                      </div>
+                    </div>
+
+                    <div className="cashier-sales-print-transaction-grid">
+                      <div className="cashier-sales-print-field">
+                        <span>Order Type</span>
+                        <strong>{orderTypeLabel(row)}</strong>
+                      </div>
+                      <div className="cashier-sales-print-field">
+                        <span>Payment Method</span>
+                        <strong>{paymentMethodLabel(row.payment_method)}</strong>
+                      </div>
+                      <div className="cashier-sales-print-field">
+                        <span>Processed By</span>
+                        <strong>{processedByLabel(row.processed_by)}</strong>
+                      </div>
+                      <div className="cashier-sales-print-field cashier-sales-print-amount-field">
+                        <span>Amount Paid</span>
+                        <strong>{money(row.amount)}</strong>
+                      </div>
+                    </div>
+
+                    <div className="cashier-sales-print-transaction-grid cashier-sales-print-financial-grid">
+                      <div className="cashier-sales-print-field">
+                        <span>Order Total</span>
+                        <strong>{money(row.order_total)}</strong>
+                      </div>
+                      <div className="cashier-sales-print-field">
+                        <span>Paid After Payment</span>
+                        <strong>
+                          {money(row.total_paid_after ?? row.lifetime_collected)}
+                        </strong>
+                      </div>
+                      <div className="cashier-sales-print-field">
+                        <span>Balance After Payment</span>
+                        <strong>{money(row.remaining_balance)}</strong>
+                      </div>
+                      <div className="cashier-sales-print-field">
+                        <span>Status After Payment</span>
+                        <strong>{humanize(row.payment_status)}</strong>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="cashier-sales-print-section cashier-sales-print-products-section">
+            <h3>4. Top Products by Included Order Value</h3>
+            <p className="cashier-sales-print-section-note">
+              Top 20 item values from orders tied to the selected verified-payment
+              scope. Custom furniture may be priced as one complete project
+              instead of per item.
+            </p>
+            <table className="cashier-sales-print-table cashier-sales-print-products-table">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Units</th>
+                  <th>Included Order Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {products.length === 0 ? (
+                  <tr>
+                    <td colSpan={3}>No product sales data for this period.</td>
+                  </tr>
+                ) : (
+                  products.map((row, index) => {
+                    const hasOrderValue =
+                      Math.abs(Number(row.gross_order_value || 0)) > 0.009;
+
+                    return (
+                      <tr key={"print-product-" + row.product_name + "-" + index}>
+                        <td>{row.product_name || "—"}</td>
+                        <td>{Number(row.qty || 0).toLocaleString("en-PH")}</td>
+                        <td>
+                          {hasOrderValue
+                            ? money(row.gross_order_value)
+                            : "Not separately priced"}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </section>
+
+          <footer className="cashier-sales-print-footer">
+            Internal report - Spiral Wood Services - Printed from the current
+            report view
+          </footer>
+        </div>
+      ) : null}
+
     </div>
   );
 }
