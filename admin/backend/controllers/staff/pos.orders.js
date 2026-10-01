@@ -8,6 +8,10 @@ const {
   centsToAmount,
   MAX_DECIMAL_12_2_CENTS,
 } = require("../../utils/paymentAmounts");
+const {
+  READY_MADE_VAT_RATE,
+  computeReadyMadeVatInclusiveBreakdown,
+} = require("../../utils/readyMadeVat");
 const { emitOrderCreated } = require("../../utils/orderStatusSocket");
 const {
   normalizePhilippinePhone,
@@ -644,11 +648,27 @@ exports.createOrder = async (req, res) => {
       return res.status(400).json({ message: "Discount cannot exceed the subtotal." });
     }
 
-    const totalCents = subtotalCents - discountCents + deliveryFeeCents;
-    if (!Number.isSafeInteger(totalCents) || totalCents < 0 || totalCents > MAX_DECIMAL_12_2_CENTS) {
+    const vatBreakdown = computeReadyMadeVatInclusiveBreakdown({
+      subtotalCents,
+      discountCents,
+      deliveryFeeCents,
+    });
+    if (!vatBreakdown) {
       await conn.rollback();
       transactionStarted = false;
       return res.status(400).json({ message: "Invalid order total." });
+    }
+
+    const { totalCents, taxCents, vatableSalesCents } = vatBreakdown;
+    if (
+      totalCents > MAX_DECIMAL_12_2_CENTS ||
+      taxCents > MAX_DECIMAL_10_2_CENTS
+    ) {
+      await conn.rollback();
+      transactionStarted = false;
+      return res.status(400).json({
+        message: "Order total or VAT amount exceeds the allowed amount.",
+      });
     }
 
     if (expectedTotalCents !== totalCents) {
@@ -675,6 +695,8 @@ exports.createOrder = async (req, res) => {
     const subtotalAmount = centsToDecimalString(subtotalCents);
     const discountAmount = centsToDecimalString(discountCents);
     const deliveryFeeAmount = centsToDecimalString(deliveryFeeCents);
+    const vatableSalesAmount = centsToDecimalString(vatableSalesCents);
+    const taxAmount = centsToDecimalString(taxCents);
     const totalAmount = centsToDecimalString(totalCents);
     const cashReceivedAmount = centsToDecimalString(cashReceivedCents);
     const changeCents = cashReceivedCents - totalCents;
@@ -686,7 +708,7 @@ exports.createOrder = async (req, res) => {
         status, payment_method, payment_status, subtotal, tax, discount, delivery_fee, total,
         notes, delivery_address, delivery_lat, delivery_lng, requested_delivery_date,
         delivery_request_notes, checkout_idempotency_key)
-       VALUES (?, ?, ?, 'walkin', 'standard', ?, 'cash', ?, ?, '0.00', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, 'walkin', 'standard', ?, 'cash', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         orderNumber,
         customerName,
@@ -694,6 +716,7 @@ exports.createOrder = async (req, res) => {
         initialOrderStatus,
         initialPaymentStatus,
         subtotalAmount,
+        taxAmount,
         discountAmount,
         deliveryFeeAmount,
         totalAmount,
@@ -788,7 +811,22 @@ exports.createOrder = async (req, res) => {
       totalAmount,
       cashReceived: cashReceivedAmount,
       changeAmount,
-      itemsSnapshot: JSON.stringify(canonicalItems),
+      itemsSnapshot: JSON.stringify({
+        snapshot_version: 2,
+        items: canonicalItems,
+        financial_summary: {
+          pricing_mode: "vat_inclusive",
+          vat_rate: READY_MADE_VAT_RATE,
+          subtotal: subtotalAmount,
+          discount: discountAmount,
+          delivery_fee: deliveryFeeAmount,
+          vatable_sales: vatableSalesAmount,
+          vat_exempt_sales: "0.00",
+          zero_rated_sales: "0.00",
+          tax: taxAmount,
+          total: totalAmount,
+        },
+      }),
     });
 
     await conn.commit();

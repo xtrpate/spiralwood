@@ -5,6 +5,10 @@ const {
   parseDecimalToCentsStrict,
   centsToAmount,
 } = require("../../utils/paymentAmounts");
+const {
+  READY_MADE_VAT_RATE,
+  computeReadyMadeVatInclusiveBreakdown,
+} = require("../../utils/readyMadeVat");
 
 // Business/site settings now live in website_content (content_type='setting'),
 // replacing the removed website_settings table. These are the safe fallbacks
@@ -74,14 +78,109 @@ const validatePosReceiptItem = (item) => {
   return true;
 };
 
-const parsePosReceiptItems = (receipt) => {
+const normalizePosFinancialSummary = (summary, receiptTotalAmount) => {
+  if (!summary || typeof summary !== "object" || Array.isArray(summary)) {
+    return null;
+  }
+  if (
+    summary.pricing_mode !== "vat_inclusive" ||
+    Number(summary.vat_rate) !== READY_MADE_VAT_RATE
+  ) {
+    return null;
+  }
+
+  const subtotalCents = parseDecimalToCentsStrict(summary.subtotal);
+  const discountCents = parseDecimalToCentsStrict(summary.discount);
+  const deliveryFeeCents = parseDecimalToCentsStrict(summary.delivery_fee);
+  const vatableSalesCents = parseDecimalToCentsStrict(summary.vatable_sales);
+  const vatExemptSalesCents = parseDecimalToCentsStrict(
+    summary.vat_exempt_sales,
+  );
+  const zeroRatedSalesCents = parseDecimalToCentsStrict(
+    summary.zero_rated_sales,
+  );
+  const taxCents = parseDecimalToCentsStrict(summary.tax);
+  const totalCents = parseDecimalToCentsStrict(summary.total);
+  const receiptTotalCents = parseDecimalToCentsStrict(receiptTotalAmount);
+
+  if (
+    subtotalCents === null ||
+    discountCents === null ||
+    deliveryFeeCents === null ||
+    vatableSalesCents === null ||
+    vatExemptSalesCents === null ||
+    zeroRatedSalesCents === null ||
+    taxCents === null ||
+    totalCents === null ||
+    receiptTotalCents === null ||
+    vatExemptSalesCents !== 0 ||
+    zeroRatedSalesCents !== 0 ||
+    totalCents !== receiptTotalCents
+  ) {
+    return null;
+  }
+
+  const expected = computeReadyMadeVatInclusiveBreakdown({
+    subtotalCents,
+    discountCents,
+    deliveryFeeCents,
+  });
+  if (
+    !expected ||
+    expected.totalCents !== totalCents ||
+    expected.taxCents !== taxCents ||
+    expected.vatableSalesCents !== vatableSalesCents
+  ) {
+    return null;
+  }
+
+  return {
+    pricing_mode: "vat_inclusive",
+    vat_rate: READY_MADE_VAT_RATE,
+    subtotal: centsToAmount(subtotalCents),
+    discount: centsToAmount(discountCents),
+    delivery_fee: centsToAmount(deliveryFeeCents),
+    vatable_sales: centsToAmount(vatableSalesCents),
+    vat_exempt_sales: 0,
+    zero_rated_sales: 0,
+    tax: centsToAmount(taxCents),
+    total: centsToAmount(totalCents),
+  };
+};
+
+const parsePosReceiptSnapshot = (receipt) => {
   try {
     const parsed = JSON.parse(receipt.items_snapshot);
-    return Array.isArray(parsed) &&
-      parsed.length > 0 &&
-      parsed.every(validatePosReceiptItem)
-      ? parsed
-      : null;
+
+    // Historical POS / standard-online receipts used a plain item array.
+    // Keep them readable exactly as recorded and do not invent VAT for them.
+    if (Array.isArray(parsed)) {
+      return parsed.length > 0 && parsed.every(validatePosReceiptItem)
+        ? { items: parsed, financial_summary: null }
+        : null;
+    }
+
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      parsed.snapshot_version !== 2 ||
+      !Array.isArray(parsed.items) ||
+      parsed.items.length === 0 ||
+      !parsed.items.every(validatePosReceiptItem)
+    ) {
+      return null;
+    }
+
+    const financialSummary = normalizePosFinancialSummary(
+      parsed.financial_summary,
+      receipt.total_amount,
+    );
+    if (!financialSummary) return null;
+
+    return {
+      items: parsed.items,
+      financial_summary: financialSummary,
+    };
   } catch {
     return null;
   }
@@ -342,10 +441,10 @@ const buildPosReceiptPaymentSummary = (receipt) => {
 };
 
 const preparePosReceiptForResponse = (rawReceipt) => {
-  const items = parsePosReceiptItems(rawReceipt);
+  const snapshot = parsePosReceiptSnapshot(rawReceipt);
   const paymentSummary = buildPosReceiptPaymentSummary(rawReceipt);
 
-  if (!items || !paymentSummary) return null;
+  if (!snapshot || !paymentSummary) return null;
 
   const snapshotPaymentMethod = String(
     rawReceipt.payment_method_snapshot || "",
@@ -372,7 +471,8 @@ const preparePosReceiptForResponse = (rawReceipt) => {
 
   return {
     ...rawReceipt,
-    items,
+    items: snapshot.items,
+    financial_summary: snapshot.financial_summary,
     payment_method: paymentMethod,
     customer_display: customerDisplay,
     processor_display: processorDisplay,

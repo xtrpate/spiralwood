@@ -451,7 +451,7 @@ async function run() {
   );
   assert.ok(futureDeliveryInsert);
   assert.equal(
-    futureDeliveryInsert.params[13],
+    futureDeliveryInsert.params[14],
     `${baseDelivery.requested_date.replace("T", " ")}:00`,
   );
 
@@ -539,6 +539,16 @@ async function run() {
   const itemInsert = calls.find((call) => call.sql?.includes("INSERT INTO order_items"));
   assert.ok(itemInsert);
   assert.deepEqual(itemInsert.params, [900, 7, "Canonical Chair", 2, "4300.00", "2000.00"]);
+  const orderInsert = calls.find((call) => call.sql?.includes("INSERT INTO orders"));
+  assert.ok(orderInsert);
+  const orderPlaceholderCount = (orderInsert.sql.match(/\?/g) || []).length;
+  assert.equal(orderPlaceholderCount, 17);
+  assert.equal(orderInsert.params.length, 17);
+  assert.equal(orderPlaceholderCount, orderInsert.params.length);
+  assert.equal(orderInsert.params[5], "8600.00");
+  assert.equal(orderInsert.params[6], "921.43");
+  assert.equal(orderInsert.params[9], "8600.00");
+
   const paymentInsert = calls.find((call) => call.sql?.includes("INSERT INTO payment_transactions"));
   assert.ok(paymentInsert);
   assert.equal(paymentInsert.params[1], "8600.00");
@@ -547,9 +557,22 @@ async function run() {
   assert.equal(receiptArgs.cashReceived, "9000.00");
   assert.equal(receiptArgs.changeAmount, "400.00");
   const snapshot = JSON.parse(receiptArgs.itemsSnapshot);
-  assert.equal(snapshot[0].product_name, "Canonical Chair");
-  assert.equal(snapshot[0].unit_price, "4300.00");
-  assert.equal(snapshot[0].production_cost, "2000.00");
+  assert.equal(snapshot.snapshot_version, 2);
+  assert.equal(snapshot.items[0].product_name, "Canonical Chair");
+  assert.equal(snapshot.items[0].unit_price, "4300.00");
+  assert.equal(snapshot.items[0].production_cost, "2000.00");
+  assert.deepEqual(snapshot.financial_summary, {
+    pricing_mode: "vat_inclusive",
+    vat_rate: 12,
+    subtotal: "8600.00",
+    discount: "0.00",
+    delivery_fee: "0.00",
+    vatable_sales: "7678.57",
+    vat_exempt_sales: "0.00",
+    zero_rated_sales: "0.00",
+    tax: "921.43",
+    total: "8600.00",
+  });
 
   // Guarded decrement races roll the whole transaction back before payment/receipt.
   for (const nextMode of ["display_race", "total_race"]) {
