@@ -124,14 +124,45 @@ const TRACKING_STEPS = [
 ];
 
 function getTrackingSteps(order) {
-  const isBlueprintOrder =
-    String(order?.order_type || "")
-      .trim()
-      .toLowerCase() === "blueprint";
+  const orderType = String(order?.order_type || "")
+    .trim()
+    .toLowerCase();
 
-  return isBlueprintOrder
-    ? TRACKING_STEPS
-    : TRACKING_STEPS.filter((step) => step.key !== "production");
+  const paymentMethod = String(order?.payment_method || "")
+    .trim()
+    .toLowerCase();
+
+  const isBlueprintOrder = orderType === "blueprint";
+  const isReadyMadeOrder = orderType === "standard";
+  const isPickupOrder = paymentMethod === "cop";
+
+  // Custom / Blueprint orders keep the complete production + contract flow.
+  if (isBlueprintOrder) {
+    return TRACKING_STEPS;
+  }
+
+  // Ready-made pickup:
+  // Order received → Confirmed → Completed
+  if (isReadyMadeOrder && isPickupOrder) {
+    return TRACKING_STEPS.filter((step) =>
+      ["pending", "confirmed", "completed"].includes(step.key),
+    );
+  }
+
+  // Ready-made delivery:
+  // Order received → Confirmed → Out for delivery → Delivered → Completed
+  if (isReadyMadeOrder) {
+    return TRACKING_STEPS.filter((step) =>
+      ["pending", "confirmed", "shipping", "delivered", "completed"].includes(
+        step.key,
+      ),
+    );
+  }
+
+  // Safe fallback for any other non-blueprint order type.
+  return TRACKING_STEPS.filter((step) =>
+    ["pending", "confirmed", "completed"].includes(step.key),
+  );
 }
 
 function fmt(n) {
