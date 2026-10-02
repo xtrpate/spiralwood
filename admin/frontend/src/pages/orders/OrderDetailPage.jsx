@@ -772,7 +772,11 @@ export default function OrderDetailPage() {
 
     setUpdatingStatus(true);
     try {
-      await api.patch(`/orders/${id}/status`, { status: nextStatus });
+      await api.patch(
+        `/orders/${id}/status`,
+        { status: nextStatus },
+        { suppressGlobalErrorToast: true },
+      );
       toast.success(`Status updated to "${titleCase(nextStatus)}".`);
       setStatusModal(false);
       setStatusModalMode("general");
@@ -1648,7 +1652,7 @@ export default function OrderDetailPage() {
       : hasBlueprintTasks
         ? `${completedBlueprintTasks.length}/${blueprintTasks.length}`
         : normalizedOrderStatus === "contract_released"
-          ? "Ready"
+          ? "Ready to assign"
           : "Waiting";
   const summaryCards = [
     {
