@@ -377,72 +377,269 @@ const getOperationsWarrantyReport = async (req, res) => {
   }
 };
 
+const ADMIN_WARRANTY_PAGE_SIZE = 20;
+const ADMIN_WARRANTY_MAX_PAGE_SIZE = 100;
+const ADMIN_WARRANTY_STATUS_FILTERS = new Set([
+  "pending",
+  "approved",
+  "fulfilled",
+  "rejected",
+  "cancelled",
+]);
+const ADMIN_WARRANTY_TYPE_FILTERS = new Set(["standard", "custom"]);
+
+const ADMIN_WARRANTY_JOINS_SQL = `
+  LEFT JOIN orders o ON o.id = w.order_id
+  LEFT JOIN order_items oi
+    ON oi.id = w.order_item_id
+   AND oi.order_id = w.order_id
+  LEFT JOIN products p ON p.id = oi.product_id
+  LEFT JOIN users c ON c.id = w.customer_id
+  LEFT JOIN users fulfiller ON fulfiller.id = w.fulfilled_by`;
+
+const ADMIN_WARRANTY_CLAIM_TYPE_SQL = `
+  CASE
+    WHEN LOWER(COALESCE(o.order_type, '')) = 'standard'
+      AND p.id IS NOT NULL
+      AND LOWER(COALESCE(p.type, '')) = 'standard'
+      THEN 'standard'
+    WHEN LOWER(COALESCE(o.order_type, '')) = 'blueprint'
+      OR LOWER(COALESCE(p.type, '')) = 'blueprint'
+      OR oi.customization_json IS NOT NULL
+      THEN 'custom'
+    ELSE 'legacy_unlinked'
+  END`;
+
+const ADMIN_WARRANTY_CLAIM_TYPE_SEARCH_SQL = `
+  CASE
+    WHEN (${ADMIN_WARRANTY_CLAIM_TYPE_SQL}) = 'standard'
+      THEN 'standard'
+    WHEN (${ADMIN_WARRANTY_CLAIM_TYPE_SQL}) = 'custom'
+      THEN 'custom blueprint'
+    ELSE 'unknown'
+  END`;
+
+const escapeWarrantyLikeTerm = (value) =>
+  String(value || "")
+    .replace(/!/g, "!!")
+    .replace(/%/g, "!%")
+    .replace(/_/g, "!_");
+
+const mapAdminWarrantyClaim = (row) => {
+  const { photo_url, proof_url } = splitStoredProofs(row.proof_url);
+  const claimType = classifyWarrantyClaimType(row);
+  const {
+    order_type,
+    linked_order_item_id,
+    product_id,
+    has_customization,
+    catalog_product_id,
+    catalog_product_type,
+    ...publicRow
+  } = row;
+
+  return {
+    ...publicRow,
+    claim_type: claimType,
+    claim_quantity: Number(row.claim_quantity || 1),
+    ordered_quantity: Number(row.ordered_quantity || 0),
+    description: row.reason,
+    photo_url: signUploadPath(photo_url),
+    proof_url: signUploadPath(proof_url),
+    replacement_receipt: signUploadPath(row.replacement_receipt),
+    reason: undefined,
+  };
+};
+
+const ADMIN_WARRANTY_SELECT_SQL = `
+  SELECT
+    w.id, w.order_id, w.order_item_id, w.customer_id, w.product_name,
+    w.claim_quantity, w.reason, w.admin_note, w.proof_url, w.warranty_expiry,
+    w.status, w.replacement_receipt, w.resolution_type, w.resolution_notes,
+    w.replacement_source, w.return_disposition, w.fulfilled_at, w.fulfilled_by,
+    w.created_at, w.updated_at, o.order_number,
+    o.order_type,
+    oi.id AS linked_order_item_id,
+    oi.product_id,
+    oi.quantity AS ordered_quantity,
+    CASE WHEN oi.customization_json IS NULL THEN 0 ELSE 1 END AS has_customization,
+    p.id AS catalog_product_id,
+    p.type AS catalog_product_type,
+    COALESCE(c.name, o.walkin_customer_name, 'Customer') AS customer_name,
+    fulfiller.name AS fulfilled_by_name
+  FROM warranties w
+  ${ADMIN_WARRANTY_JOINS_SQL}`;
+
 exports.getClaims = async (req, res) => {
   if (String(req.query.operations_report || "").trim() === "1") {
     return getOperationsWarrantyReport(req, res);
   }
 
   try {
-    const [rows] = await db.query(
-      `SELECT
-         w.id, w.order_id, w.order_item_id, w.customer_id, w.product_name,
-         w.claim_quantity, w.reason, w.admin_note, w.proof_url, w.warranty_expiry,
-         w.status, w.replacement_receipt, w.resolution_type, w.resolution_notes,
-         w.replacement_source, w.return_disposition, w.fulfilled_at, w.fulfilled_by,
-         w.created_at, w.updated_at, o.order_number,
-         o.order_type,
-         oi.id AS linked_order_item_id,
-         oi.product_id,
-         oi.quantity AS ordered_quantity,
-         CASE WHEN oi.customization_json IS NULL THEN 0 ELSE 1 END AS has_customization,
-         p.id AS catalog_product_id,
-         p.type AS catalog_product_type,
-         COALESCE(c.name, o.walkin_customer_name, 'Customer') AS customer_name,
-         fulfiller.name AS fulfilled_by_name
+    const requestedPage = parseStrictPositiveInt(req.query.page) || 1;
+    const requestedLimit =
+      parseStrictPositiveInt(req.query.limit) || ADMIN_WARRANTY_PAGE_SIZE;
+    const limit = Math.min(requestedLimit, ADMIN_WARRANTY_MAX_PAGE_SIZE);
+
+    const search =
+      typeof req.query.search === "string" ? req.query.search.trim() : "";
+    const status =
+      typeof req.query.status === "string"
+        ? req.query.status.trim().toLowerCase()
+        : "";
+    const claimType =
+      typeof req.query.claim_type === "string"
+        ? req.query.claim_type.trim().toLowerCase()
+        : "";
+
+    if (search.length > 120) {
+      return res
+        .status(400)
+        .json({ message: "Search must be 120 characters or less." });
+    }
+
+    if (status && !ADMIN_WARRANTY_STATUS_FILTERS.has(status)) {
+      return res.status(400).json({
+        message: "Invalid warranty status filter.",
+      });
+    }
+
+    if (claimType && !ADMIN_WARRANTY_TYPE_FILTERS.has(claimType)) {
+      return res.status(400).json({
+        message: "Invalid warranty product type filter.",
+      });
+    }
+
+    const where = ["1 = 1"];
+    const params = [];
+
+    if (status) {
+      where.push("LOWER(COALESCE(w.status, '')) = ?");
+      params.push(status);
+    }
+
+    if (claimType) {
+      where.push(`(${ADMIN_WARRANTY_CLAIM_TYPE_SQL}) = ?`);
+      params.push(claimType);
+    }
+
+    if (search) {
+      const pattern = `%${escapeWarrantyLikeTerm(search)}%`;
+      where.push(`
+        (
+          CAST(w.id AS CHAR) LIKE ? ESCAPE '!'
+          OR CONCAT('claim ', w.id) LIKE ? ESCAPE '!'
+          OR CONCAT('claim #', LPAD(w.id, 4, '0')) LIKE ? ESCAPE '!'
+          OR LPAD(w.id, 4, '0') LIKE ? ESCAPE '!'
+          OR COALESCE(o.order_number, '') LIKE ? ESCAPE '!'
+          OR COALESCE(c.name, o.walkin_customer_name, 'Customer') LIKE ? ESCAPE '!'
+          OR COALESCE(w.product_name, '') LIKE ? ESCAPE '!'
+          OR COALESCE(w.reason, '') LIKE ? ESCAPE '!'
+          OR COALESCE(w.admin_note, '') LIKE ? ESCAPE '!'
+          OR COALESCE(w.status, '') LIKE ? ESCAPE '!'
+          OR (${ADMIN_WARRANTY_CLAIM_TYPE_SEARCH_SQL}) LIKE ? ESCAPE '!'
+        )
+      `);
+      params.push(...Array(11).fill(pattern));
+    }
+
+    const whereSql = where.join(" AND ");
+
+    const [[countRow]] = await db.query(
+      `SELECT COUNT(*) AS total
        FROM warranties w
-       LEFT JOIN orders o ON o.id = w.order_id
-       LEFT JOIN order_items oi
-         ON oi.id = w.order_item_id
-        AND oi.order_id = w.order_id
-       LEFT JOIN products p ON p.id = oi.product_id
-       LEFT JOIN users c ON c.id = w.customer_id
-       LEFT JOIN users fulfiller ON fulfiller.id = w.fulfilled_by
-       ORDER BY FIELD(w.status, 'pending', 'approved', 'fulfilled', 'rejected', 'cancelled'), w.created_at DESC`,
+       ${ADMIN_WARRANTY_JOINS_SQL}
+       WHERE ${whereSql}`,
+      params,
+    );
+
+    const total = Number(countRow?.total || 0);
+    const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
+    const page =
+      totalPages === 0 ? 1 : Math.min(requestedPage, Math.max(1, totalPages));
+    const offset = (page - 1) * limit;
+
+    let rows = [];
+    if (total > 0) {
+      [rows] = await db.query(
+        `${ADMIN_WARRANTY_SELECT_SQL}
+         WHERE ${whereSql}
+         ORDER BY w.created_at DESC, w.id DESC
+         LIMIT ? OFFSET ?`,
+        [...params, limit, offset],
+      );
+    }
+
+    const [[summaryRow]] = await db.query(
+      `SELECT
+         COUNT(*) AS total,
+         COALESCE(SUM(
+           CASE WHEN LOWER(COALESCE(status, '')) = 'pending'
+             THEN 1 ELSE 0 END
+         ), 0) AS pending,
+         COALESCE(SUM(
+           CASE WHEN LOWER(COALESCE(status, '')) = 'approved'
+             THEN 1 ELSE 0 END
+         ), 0) AS approved,
+         COALESCE(SUM(
+           CASE WHEN LOWER(COALESCE(status, '')) = 'fulfilled'
+             THEN 1 ELSE 0 END
+         ), 0) AS fulfilled
+       FROM warranties`,
       [],
     );
 
-    return res.json(
-      rows.map((row) => {
-        const { photo_url, proof_url } = splitStoredProofs(row.proof_url);
-        const claimType = classifyWarrantyClaimType(row);
-        const {
-          order_type,
-          linked_order_item_id,
-          product_id,
-          has_customization,
-          catalog_product_id,
-          catalog_product_type,
-          ...publicRow
-        } = row;
-
-        return {
-          ...publicRow,
-          claim_type: claimType,
-          claim_quantity: Number(row.claim_quantity || 1),
-          ordered_quantity: Number(row.ordered_quantity || 0),
-          description: row.reason,
-          photo_url: signUploadPath(photo_url),
-          proof_url: signUploadPath(proof_url),
-          replacement_receipt: signUploadPath(row.replacement_receipt),
-          reason: undefined,
-        };
-      }),
-    );
+    return res.json({
+      claims: rows.map(mapAdminWarrantyClaim),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1 && totalPages > 0,
+      },
+      summary: {
+        total: Number(summaryRow?.total || 0),
+        pending: Number(summaryRow?.pending || 0),
+        approved: Number(summaryRow?.approved || 0),
+        fulfilled: Number(summaryRow?.fulfilled || 0),
+      },
+    });
   } catch (err) {
     console.error("[admin.warranty GET]", err);
+    return res.status(500).json({
+      message: "Failed to load warranty claims.",
+    });
+  }
+};
+
+exports.getClaimById = async (req, res) => {
+  const id = parseStrictPositiveInt(req.params.id);
+  if (!id) {
     return res
-      .status(500)
-      .json({ message: "Server error." });
+      .status(400)
+      .json({ message: "Valid warranty claim ID is required." });
+  }
+
+  try {
+    const [rows] = await db.query(
+      `${ADMIN_WARRANTY_SELECT_SQL}
+       WHERE w.id = ?
+       LIMIT 1`,
+      [id],
+    );
+
+    if (!rows[0]) {
+      return res.status(404).json({ message: "Warranty claim not found." });
+    }
+
+    return res.json(mapAdminWarrantyClaim(rows[0]));
+  } catch (err) {
+    console.error("[admin.warranty GET one]", err);
+    return res.status(500).json({
+      message: "Failed to load warranty claim.",
+    });
   }
 };
 

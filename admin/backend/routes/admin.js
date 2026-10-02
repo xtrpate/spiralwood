@@ -802,6 +802,12 @@ router.get(
   warrantyController.getClaims,
 );
 router.get(
+  "/warranty/:id",
+  adminStaff,
+  requirePermission("warranty.view"),
+  warrantyController.getClaimById,
+);
+router.get(
   "/warranty/:id/resolution-options",
   adminStaff,
   requirePermission("warranty.manage"),

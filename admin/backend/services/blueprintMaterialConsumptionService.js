@@ -16,6 +16,10 @@ const { parseDecimalToCentsStrict } = require("../utils/paymentAmounts");
 const {
   resolveLifecycleByOrder,
 } = require("./blueprintLifecycleService");
+const {
+  ensureBlueprintMaterialReservations,
+  BlueprintMaterialReservationError,
+} = require("./blueprintMaterialReservationService");
 
 const normalize = (value) => String(value || "").trim().toLowerCase();
 
@@ -173,7 +177,69 @@ async function consumeBlueprintMaterialsForProduction(
     );
   }
 
-  // The canonical lifecycle is already locked above. Raw materials are then
+  // Reconcile the material reservation state from the exact current approved
+  // estimation before trying to consume anything. This is intentionally
+  // idempotent:
+  // - normal paid orders keep their existing reservation rows;
+  // - a historically missed reservation can be rebuilt from the approved
+  //   estimation;
+  // - an estimation with no explicit inventory_material items is a valid
+  //   "nothing to reserve" production case;
+  // - malformed/mismatched reservation data still blocks production.
+  let reservationReconciliation = null;
+  try {
+    reservationReconciliation = await ensureBlueprintMaterialReservations(
+      conn,
+      {
+        orderId: orderIdNum,
+        actorUserId: actorUserIdNum,
+      },
+    );
+  } catch (err) {
+    if (err instanceof BlueprintMaterialReservationError) {
+      fail(
+        err.code || "MATERIAL_RESERVATION_RECONCILIATION_FAILED",
+        err.message || "Blueprint material reservations could not be reconciled.",
+        409,
+      );
+    }
+    throw err;
+  }
+
+  if (!reservationReconciliation?.threshold_reached) {
+    fail(
+      "BLUEPRINT_DOWN_PAYMENT_NOT_REACHED",
+      "Production cannot start until at least the required 30% blueprint down payment is verified.",
+      409,
+      {
+        verified_total: Number(
+          reservationReconciliation?.verified_total || 0,
+        ),
+        required_minimum: Number(
+          reservationReconciliation?.required_minimum || 0,
+        ),
+      },
+    );
+  }
+
+  if (reservationReconciliation.reason === "NO_INVENTORY_MATERIALS") {
+    return {
+      triggered: false,
+      reason: "NO_INVENTORY_MATERIALS",
+      order_id: orderIdNum,
+      blueprint_id: Number(blueprint.id),
+      estimation_id: Number(estimation.id),
+      consumed_count: 0,
+      reservation_ids: [],
+      stock_movement_ids: [],
+      materials: [],
+    };
+  }
+
+  // The canonical lifecycle is already locked above. Reservation
+  // reconciliation follows the same order -> blueprint -> estimation ->
+  // payment -> raw-material lock discipline. Raw materials below are therefore
+  // re-locked by this same transaction before physical deduction.
   // locked in ascending id order before reservation rows, matching BPI-3's
   // material-before-reservation portion of the lock order and reducing
   // cross-order deadlock risk.
@@ -188,7 +254,7 @@ async function consumeBlueprintMaterialsForProduction(
   if (reservationPreviewRows.length === 0) {
     fail(
       "MATERIAL_RESERVATIONS_MISSING",
-      "Production cannot start because this blueprint order has no material reservations.",
+      "Production materials could not be reconciled to reservation rows. Manual review is required before production can start.",
     );
   }
 

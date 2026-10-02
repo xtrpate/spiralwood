@@ -1,15 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
 import "./WarrantyPage.css";
 import WarrantyResolutionModal from "./WarrantyResolutionModal";
 import useAuthStore from "../../store/authStore";
-import {
-  formatPHDate,
-  formatPHDateTime,
-  parseSystemDateTime,
-} from "../../utils/dateTime";
+import { formatPHDate, formatPHDateTime } from "../../utils/dateTime";
 
 const STATUS_META = {
   pending: {
@@ -82,9 +78,23 @@ const openAsset = (value, label = "file") => {
 const getStatusMeta = (status) =>
   STATUS_META[String(status || "").toLowerCase()] || STATUS_META.pending;
 
-const getStatusCount = (rows, status) =>
-  rows.filter((row) => String(row.status || "").toLowerCase() === status)
-    .length;
+const ADMIN_WARRANTY_PAGE_SIZE = 20;
+
+const DEFAULT_PAGINATION = {
+  page: 1,
+  limit: ADMIN_WARRANTY_PAGE_SIZE,
+  total: 0,
+  totalPages: 0,
+  hasNextPage: false,
+  hasPreviousPage: false,
+};
+
+const DEFAULT_SUMMARY = {
+  total: 0,
+  pending: 0,
+  approved: 0,
+  fulfilled: 0,
+};
 
 const parseFocusClaimId = (value) => {
   const raw = String(value ?? "").trim();
@@ -120,37 +130,102 @@ export default function WarrantyPage() {
     useState(false);
 
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [claimTypeFilter, setClaimTypeFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState(DEFAULT_PAGINATION);
+  const [summary, setSummary] = useState(DEFAULT_SUMMARY);
 
   const [selectedRow, setSelectedRow] = useState(null);
   const [fulfillTarget, setFulfillTarget] = useState(null);
   const [decisionModal, setDecisionModal] = useState(null);
   const [decisionBusy, setDecisionBusy] = useState(false);
 
-  const loadClaims = async () => {
+  const listRequestSequenceRef = useRef(0);
+  const focusRequestSequenceRef = useRef(0);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  const loadClaims = useCallback(async () => {
+    const requestId = ++listRequestSequenceRef.current;
     setLoading(true);
     setClaimsLoadedSuccessfully(false);
+
     try {
-      const { data } = await api.get("/warranty");
-      setRows(Array.isArray(data) ? data : []);
+      const { data } = await api.get("/warranty", {
+        params: {
+          page,
+          limit: ADMIN_WARRANTY_PAGE_SIZE,
+          search: debouncedSearch || undefined,
+          status: statusFilter || undefined,
+          claim_type: claimTypeFilter || undefined,
+        },
+        suppressGlobalErrorToast: true,
+      });
+
+      if (requestId !== listRequestSequenceRef.current) return;
+
+      const nextRows = Array.isArray(data?.claims) ? data.claims : [];
+      const rawPagination = data?.pagination || {};
+      const nextPagination = {
+        page: Math.max(1, Number(rawPagination.page) || page),
+        limit:
+          Math.max(1, Number(rawPagination.limit) || ADMIN_WARRANTY_PAGE_SIZE),
+        total: Math.max(0, Number(rawPagination.total) || 0),
+        totalPages: Math.max(0, Number(rawPagination.totalPages) || 0),
+        hasNextPage: rawPagination.hasNextPage === true,
+        hasPreviousPage: rawPagination.hasPreviousPage === true,
+      };
+      const rawSummary = data?.summary || {};
+
+      setRows(nextRows);
+      setPagination(nextPagination);
+      setSummary({
+        total: Math.max(0, Number(rawSummary.total) || 0),
+        pending: Math.max(0, Number(rawSummary.pending) || 0),
+        approved: Math.max(0, Number(rawSummary.approved) || 0),
+        fulfilled: Math.max(0, Number(rawSummary.fulfilled) || 0),
+      });
       setClaimsLoadedSuccessfully(true);
+
+      if (nextPagination.page !== page) {
+        setPage(nextPagination.page);
+      }
     } catch (err) {
+      if (requestId !== listRequestSequenceRef.current) return;
+
       toast.error(
         err?.response?.data?.message || "Failed to load warranty claims.",
       );
     } finally {
-      setLoading(false);
+      if (requestId === listRequestSequenceRef.current) {
+        setLoading(false);
+      }
     }
-  };
+  }, [page, debouncedSearch, statusFilter, claimTypeFilter]);
 
   useEffect(() => {
-    loadClaims();
-  }, []);
+    void loadClaims();
+  }, [loadClaims]);
+
+  useEffect(
+    () => () => {
+      listRequestSequenceRef.current += 1;
+      focusRequestSequenceRef.current += 1;
+    },
+    [],
+  );
 
   useEffect(() => {
     const rawFocusId = searchParams.get("focus_claim_id");
-    if (!rawFocusId || loading || !claimsLoadedSuccessfully) return;
+    if (!rawFocusId) return;
 
     const clearFocusParam = () => {
       const next = new URLSearchParams(searchParams);
@@ -165,85 +240,60 @@ export default function WarrantyPage() {
       return;
     }
 
-    const matchedRow = rows.find((row) => Number(row?.id) === focusClaimId);
-    if (!matchedRow) {
-      toast.error(
-        "That warranty claim could not be found. It may no longer be available.",
-      );
-      clearFocusParam();
-      return;
-    }
+    const requestId = ++focusRequestSequenceRef.current;
+    let active = true;
 
-    setSearch("");
-    setStatusFilter("");
-    setClaimTypeFilter("");
-    setDecisionModal(null);
-    setFulfillTarget(null);
-    setSelectedRow(matchedRow);
-    clearFocusParam();
-  }, [
-    claimsLoadedSuccessfully,
-    loading,
-    rows,
-    searchParams,
-    setSearchParams,
-  ]);
+    const resolveFocusedClaim = async () => {
+      try {
+        const { data: matchedRow } = await api.get(
+          `/warranty/${focusClaimId}`,
+          { suppressGlobalErrorToast: true },
+        );
 
-  const filteredRows = useMemo(() => {
-    const term = search.trim().toLowerCase();
+        if (!active || requestId !== focusRequestSequenceRef.current) {
+          return;
+        }
 
-    const filtered = rows.filter((row) => {
-      const matchesStatus =
-        !statusFilter ||
-        String(row.status || "").toLowerCase() === statusFilter;
+        if (!matchedRow || Number(matchedRow.id) !== focusClaimId) {
+          throw new Error("Focused warranty claim response was invalid.");
+        }
 
-      const claimTypeKey = getClaimTypeKey(row.claim_type);
-      const matchesClaimType =
-        !claimTypeFilter || claimTypeKey === claimTypeFilter;
+        setSearch("");
+        setStatusFilter("");
+        setClaimTypeFilter("");
+        setPage(1);
+        setDecisionModal(null);
+        setFulfillTarget(null);
+        setSelectedRow(matchedRow);
+      } catch (err) {
+        if (!active || requestId !== focusRequestSequenceRef.current) {
+          return;
+        }
 
-      const haystack = [
-        row.id,
-        row.id ? `claim ${row.id}` : "",
-        row.id ? `claim #${String(row.id).padStart(4, "0")}` : "",
-        row.id ? String(row.id).padStart(4, "0") : "",
-        row.order_number,
-        row.customer_name,
-        row.product_name,
-        row.description,
-        row.admin_note,
-        row.status,
-        claimTypeKey,
-        getClaimTypeLabel(claimTypeKey),
-        CLAIM_TYPE_META[claimTypeKey].searchTerms,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
+        toast.error(
+          err?.response?.data?.message ||
+            "That warranty claim could not be found. It may no longer be available.",
+        );
+      } finally {
+        if (active && requestId === focusRequestSequenceRef.current) {
+          clearFocusParam();
+        }
+      }
+    };
 
-      const matchesSearch = !term || haystack.includes(term);
+    void resolveFocusedClaim();
 
-      return matchesStatus && matchesClaimType && matchesSearch;
-    });
+    return () => {
+      active = false;
+    };
+  }, [searchParams, setSearchParams]);
 
-    return filtered.sort((a, b) => {
-      const bCreatedAt = parseSystemDateTime(b.created_at)?.getTime() || 0;
-      const aCreatedAt = parseSystemDateTime(a.created_at)?.getTime() || 0;
-
-      if (bCreatedAt !== aCreatedAt) return bCreatedAt - aCreatedAt;
-
-      return Number(b.id || 0) - Number(a.id || 0);
-    });
-  }, [rows, search, statusFilter, claimTypeFilter]);
-
-  const stats = useMemo(
-    () => [
-      { label: "Total Claims", value: rows.length },
-      { label: "Pending", value: getStatusCount(rows, "pending") },
-      { label: "Approved", value: getStatusCount(rows, "approved") },
-      { label: "Fulfilled", value: getStatusCount(rows, "fulfilled") },
-    ],
-    [rows],
-  );
+  const stats = [
+    { label: "Total Claims", value: summary.total },
+    { label: "Pending", value: summary.pending },
+    { label: "Approved", value: summary.approved },
+    { label: "Fulfilled", value: summary.fulfilled },
+  ];
 
   const handleDecision = async ({ id, decision, admin_note }) => {
     if (!canManageWarranty) {
@@ -348,7 +398,11 @@ export default function WarrantyPage() {
             <span className="warranty-filter-label">Search</span>
             <input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              maxLength={120}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
               placeholder="Search claim, customer, order, or issue..."
               style={searchInput}
             />
@@ -358,7 +412,10 @@ export default function WarrantyPage() {
             <span className="warranty-filter-label">Status</span>
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setPage(1);
+              }}
               style={selectInput}
             >
               <option value="">All Statuses</option>
@@ -374,7 +431,10 @@ export default function WarrantyPage() {
             <span className="warranty-filter-label">Product Type</span>
             <select
               value={claimTypeFilter}
-              onChange={(e) => setClaimTypeFilter(e.target.value)}
+              onChange={(e) => {
+                setClaimTypeFilter(e.target.value);
+                setPage(1);
+              }}
               style={selectInput}
             >
               <option value="">All Types</option>
@@ -390,6 +450,7 @@ export default function WarrantyPage() {
                 setSearch("");
                 setStatusFilter("");
                 setClaimTypeFilter("");
+                setPage(1);
               }}
               style={ghostButton}
               className="warranty-filter-reset"
@@ -399,7 +460,11 @@ export default function WarrantyPage() {
           )}
 
           <div className="warranty-filter-result">
-            {filteredRows.length} of {rows.length} claims
+            {loading
+              ? "Loading claims..."
+              : claimsLoadedSuccessfully
+                ? `${pagination.total} of ${summary.total} claims`
+                : "Unable to load claims"}
           </div>
         </div>
       </div>
@@ -434,14 +499,14 @@ export default function WarrantyPage() {
                     Loading warranty claims...
                   </td>
                 </tr>
-              ) : filteredRows.length === 0 ? (
+              ) : rows.length === 0 ? (
                 <tr>
                   <td colSpan={6} style={emptyCell}>
                     No warranty claims found.
                   </td>
                 </tr>
               ) : (
-                filteredRows.map((row) => {
+                rows.map((row) => {
                   const statusMeta = getStatusMeta(row.status);
                   const issuePreview =
                     String(row.description || "").trim() ||
@@ -563,6 +628,42 @@ export default function WarrantyPage() {
             </tbody>
           </table>
         </div>
+
+        {pagination.total > 0 && (
+          <div className="warranty-pagination">
+            <div className="warranty-pagination-summary">
+              Showing{" "}
+              {(pagination.page - 1) * pagination.limit + 1}–
+              {Math.min(
+                (pagination.page - 1) * pagination.limit + rows.length,
+                pagination.total,
+              )}{" "}
+              of {pagination.total}
+            </div>
+
+            <div className="warranty-pagination-controls">
+              <button
+                type="button"
+                disabled={loading || !pagination.hasPreviousPage}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+              >
+                Previous
+              </button>
+
+              <span>
+                Page {pagination.page} of {Math.max(1, pagination.totalPages)}
+              </span>
+
+              <button
+                type="button"
+                disabled={loading || !pagination.hasNextPage}
+                onClick={() => setPage((current) => current + 1)}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {selectedRow && (

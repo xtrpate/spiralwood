@@ -555,6 +555,7 @@ export default function TasksPage() {
       const { data } = await api.patch(
         `/orders/${productionOrderId}/assign-staff`,
         payload,
+        { suppressGlobalErrorToast: true },
       );
 
       toast.success(
