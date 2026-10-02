@@ -70,6 +70,15 @@ exports.updateBasic = async (req, res) => {
   const normalizedName = String(name).trim();
   const normalizedAddress = String(address || "").trim();
 
+  const nameRegex = /^[\p{L}]+(?:[ '\-][\p{L}]+)*$/u;
+
+  if (!nameRegex.test(normalizedName)) {
+    return res.status(400).json({
+      message:
+        "Name may contain letters, spaces, hyphens, and apostrophes only.",
+    });
+  }
+
   if (normalizedAddress.length > MAX_PROFILE_ADDRESS_LENGTH) {
     return res.status(400).json({
       message: `Address must not exceed ${MAX_PROFILE_ADDRESS_LENGTH} characters.`,

@@ -463,6 +463,22 @@ exports.register = async (req, res) => {
   const normalizedAddress = String(address).trim();
   const normalizedPassword = String(password);
 
+  const nameRegex = /^[\p{L}]+(?:[ '\-][\p{L}]+)*$/u;
+
+  if (!nameRegex.test(normalizedFirstName)) {
+    return res.status(400).json({
+      message:
+        "First Name may contain letters, spaces, hyphens, and apostrophes only.",
+    });
+  }
+
+  if (!nameRegex.test(normalizedLastName)) {
+    return res.status(400).json({
+      message:
+        "Last Name may contain letters, spaces, hyphens, and apostrophes only.",
+    });
+  }
+
   if (normalizedFirstName.length > 50) {
     return res.status(400).json({
       message: "First name must not exceed 50 characters.",
@@ -496,6 +512,30 @@ exports.register = async (req, res) => {
   if (normalizedPassword.length > 72) {
     return res.status(400).json({
       message: "Password must not exceed 72 characters.",
+    });
+  }
+
+  if (!/[A-Z]/.test(normalizedPassword)) {
+    return res.status(400).json({
+      message: "Password must contain at least one uppercase letter.",
+    });
+  }
+
+  if (!/[a-z]/.test(normalizedPassword)) {
+    return res.status(400).json({
+      message: "Password must contain at least one lowercase letter.",
+    });
+  }
+
+  if (!/[0-9]/.test(normalizedPassword)) {
+    return res.status(400).json({
+      message: "Password must contain at least one number.",
+    });
+  }
+
+  if (!/[^A-Za-z0-9]/.test(normalizedPassword)) {
+    return res.status(400).json({
+      message: "Password must contain at least one special character.",
     });
   }
 

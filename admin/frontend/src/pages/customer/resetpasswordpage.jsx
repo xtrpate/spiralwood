@@ -11,11 +11,13 @@ const calcStrength = (pw) => {
 
   if (pw.length >= 8) score++;
   if (/[A-Z]/.test(pw)) score++;
+  if (/[a-z]/.test(pw)) score++;
   if (/[0-9]/.test(pw)) score++;
   if (/[^A-Za-z0-9]/.test(pw)) score++;
 
-  const labels = ["", "Weak", "Fair", "Good", "Strong"];
-  const colors = ["", "#e53935", "#fb8c00", "#fdd835", "#43a047"];
+  const labels = ["", "Very Weak", "Weak", "Fair", "Good", "Strong"];
+
+  const colors = ["", "#e53935", "#e53935", "#fb8c00", "#fdd835", "#43a047"];
 
   return {
     score,
@@ -62,13 +64,14 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    const hasLetters = /[A-Za-z]/.test(password);
-    const hasNumbers = /[0-9]/.test(password);
+    const hasUppercase = /[A-Z]/.test(password);
+    const hasLowercase = /[a-z]/.test(password);
+    const hasNumber = /[0-9]/.test(password);
     const hasSpecial = /[^A-Za-z0-9]/.test(password);
 
-    if (!hasLetters || !hasNumbers || !hasSpecial) {
+    if (!hasUppercase || !hasLowercase || !hasNumber || !hasSpecial) {
       setError(
-        "Password must contain a mix of letters, numbers, and special characters.",
+        "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character.",
       );
       return;
     }
@@ -171,7 +174,7 @@ export default function ResetPasswordPage() {
                   <div
                     className="pw-strength-fill"
                     style={{
-                      width: `${(strength.score / 4) * 100}%`,
+                      width: `${(strength.score / 5) * 100}%`,
                       background: strength.color,
                     }}
                   />

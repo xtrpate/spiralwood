@@ -3645,6 +3645,32 @@
   font-weight: 700 !important;
 }
 
+.cust-category-clear-filters {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 14px;
+  padding: 0 18px;
+  border: 1px solid #111111;
+  border-radius: 0;
+  background: #ffffff;
+  color: #111111;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    opacity 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.cust-category-clear-filters:hover:not(:disabled) {
+  background: #f1f1ee;
+}
+
+.cust-category-clear-filters:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .catalog-main {
   min-width: 0;
   overflow: hidden;

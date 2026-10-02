@@ -2214,6 +2214,23 @@ export default function CustomizePage() {
               </button>
             ))}
           </div>
+
+          {(categoryFilter !== "all" || search.trim()) && (
+            <button
+              type="button"
+              className="cust-category-clear-filters"
+              onClick={() => {
+                setCategoryFilter("all");
+                setSearch("");
+
+                navigate("/customize", {
+                  replace: false,
+                });
+              }}
+            >
+              Clear All Filters
+            </button>
+          )}
         </aside>
 
         <section
@@ -2243,26 +2260,6 @@ export default function CustomizePage() {
                     />
                   </div>
                 </form>
-
-                <button
-                  type="button"
-                  className={`catalog-clear-filters ${
-                    categoryFilter === "all" && !search.trim()
-                      ? "catalog-clear-filters--disabled"
-                      : ""
-                  }`}
-                  onClick={() => {
-                    setCategoryFilter("all");
-                    setSearch("");
-
-                    navigate("/customize", {
-                      replace: false,
-                    });
-                  }}
-                  disabled={categoryFilter === "all" && !search.trim()}
-                >
-                  Clear all filters
-                </button>
 
                 <button
                   type="button"

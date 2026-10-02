@@ -8,13 +8,22 @@ import LocationPicker from "../../components/LocationPicker";
 
 const calcStrength = (pw) => {
   let score = 0;
+
   if (pw.length >= 8) score++;
   if (/[A-Z]/.test(pw)) score++;
+  if (/[a-z]/.test(pw)) score++;
   if (/[0-9]/.test(pw)) score++;
   if (/[^A-Za-z0-9]/.test(pw)) score++;
-  const labels = ["", "Weak", "Fair", "Good", "Strong"];
-  const colors = ["", "#e53935", "#fb8c00", "#fdd835", "#43a047"];
-  return { score, label: labels[score] || "", color: colors[score] || "" };
+
+  const labels = ["", "Very Weak", "Weak", "Fair", "Good", "Strong"];
+
+  const colors = ["", "#e53935", "#e53935", "#fb8c00", "#fdd835", "#43a047"];
+
+  return {
+    score,
+    label: labels[score] || "",
+    color: colors[score] || "",
+  };
 };
 
 export default function RegisterPage() {
@@ -87,13 +96,15 @@ export default function RegisterPage() {
     e?.preventDefault();
     setError("");
 
-    const nameRegex = /^[a-zA-Z\s\-]+$/;
+    const nameRegex = /^[\p{L}]+(?:[ '\-][\p{L}]+)*$/u;
 
     if (
       !nameRegex.test(form.first_name.trim()) ||
       !nameRegex.test(form.last_name.trim())
     ) {
-      return setError("Names must contain only letters.");
+      return setError(
+        "First Name and Last Name may contain letters, spaces, hyphens, and apostrophes only.",
+      );
     }
 
     if (!form.email.trim()) {
@@ -114,13 +125,14 @@ export default function RegisterPage() {
       return setError("Password must be at least 8 characters.");
     }
 
-    const hasLetters = /[A-Za-z]/.test(form.password);
-    const hasNumbers = /[0-9]/.test(form.password);
+    const hasUppercase = /[A-Z]/.test(form.password);
+    const hasLowercase = /[a-z]/.test(form.password);
+    const hasNumber = /[0-9]/.test(form.password);
     const hasSpecial = /[^A-Za-z0-9]/.test(form.password);
 
-    if (!hasLetters || !hasNumbers || !hasSpecial) {
+    if (!hasUppercase || !hasLowercase || !hasNumber || !hasSpecial) {
       return setError(
-        "Password must contain a mix of letters, numbers, and special characters.",
+        "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character.",
       );
     }
 
@@ -1016,7 +1028,7 @@ export default function RegisterPage() {
                       <div
                         className="pw-strength-fill"
                         style={{
-                          width: `${(strength.score / 4) * 100}%`,
+                          width: `${(strength.score / 5) * 100}%`,
                           background: strength.color,
                         }}
                       />

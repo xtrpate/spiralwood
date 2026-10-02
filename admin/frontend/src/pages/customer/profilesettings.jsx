@@ -448,6 +448,24 @@ export default function ProfileSettings() {
       return;
     }
 
+    const nameRegex = /^[\p{L}]+(?:[ '\-][\p{L}]+)*$/u;
+
+    if (!nameRegex.test(trimmedFirst)) {
+      setNameMsg({
+        type: "error",
+        text: "First Name may contain letters, spaces, hyphens, and apostrophes only.",
+      });
+      return;
+    }
+
+    if (!nameRegex.test(trimmedLast)) {
+      setNameMsg({
+        type: "error",
+        text: "Last Name may contain letters, spaces, hyphens, and apostrophes only.",
+      });
+      return;
+    }
+
     const combinedName = `${trimmedFirst} ${trimmedLast}`.trim();
     const displayName = combinedName;
 
