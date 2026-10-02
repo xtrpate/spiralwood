@@ -139,6 +139,7 @@ const STATUS_OPTIONS_BY_OPERATION = {
     { value: "approved", label: "Approved" },
     { value: "rejected", label: "Rejected" },
     { value: "fulfilled", label: "Fulfilled" },
+    { value: "cancelled", label: "Cancelled" },
   ],
 };
 
@@ -2066,7 +2067,9 @@ export default function OperationsReportPage({ fixedOperationType = null }) {
 
         {/* NEW DATE RANGE FILTER */}
         <label className="opr-filter-field" style={{ minWidth: 160 }}>
-          <span>Date Filter</span>
+          <span>
+            {operationType === "warranty" ? "Filed Date" : "Date Filter"}
+          </span>
           <select
             value={dateFilter}
             onChange={(e) => {
@@ -2136,12 +2139,20 @@ export default function OperationsReportPage({ fixedOperationType = null }) {
             <SummaryCard
               label="Pending / Active"
               value={summary.pending}
-              note="Awaiting action or currently in progress"
+              note={
+                operationType === "warranty"
+                  ? "Pending review or approved for warranty service"
+                  : "Awaiting action or currently in progress"
+              }
             />
             <SummaryCard
-              label="Completed"
+              label={operationType === "warranty" ? "Fulfilled" : "Completed"}
               value={summary.completed}
-              note="Successfully resolved or delivered"
+              note={
+                operationType === "warranty"
+                  ? "Warranty service successfully completed"
+                  : "Successfully resolved or delivered"
+              }
             />
           </div>
 

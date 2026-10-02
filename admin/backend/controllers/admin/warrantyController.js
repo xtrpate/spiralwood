@@ -274,7 +274,9 @@ const getOperationsWarrantyReport = async (req, res) => {
 
     const joinsSql = `
       LEFT JOIN orders o ON o.id = w.order_id
-      LEFT JOIN order_items oi ON oi.id = w.order_item_id
+      LEFT JOIN order_items oi
+        ON oi.id = w.order_item_id
+       AND oi.order_id = w.order_id
       LEFT JOIN users c ON c.id = w.customer_id
       LEFT JOIN users fulfiller ON fulfiller.id = w.fulfilled_by`;
 
@@ -338,20 +340,14 @@ const getOperationsWarrantyReport = async (req, res) => {
              CASE
                WHEN LOWER(COALESCE(w.status, '')) IN (
                  'pending',
-                 'scheduled',
-                 'in_progress'
+                 'approved'
                )
                THEN 1 ELSE 0
              END
            ), 0) AS pending,
            COALESCE(SUM(
              CASE
-               WHEN LOWER(COALESCE(w.status, '')) IN (
-                 'completed',
-                 'resolved',
-                 'delivered',
-                 'done'
-               )
+               WHEN LOWER(COALESCE(w.status, '')) = 'fulfilled'
                THEN 1 ELSE 0
              END
            ), 0) AS completed
