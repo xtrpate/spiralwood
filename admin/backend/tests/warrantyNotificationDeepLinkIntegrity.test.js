@@ -138,8 +138,8 @@ assert.match(
 
 assert.match(
   customerWarrantySource,
-  /refreshedFocusLocationKeyRef\.current = location\.key;[\s\S]*setClaimFocusResolving\(true\);[\s\S]*void fetchClaims\(\);[\s\S]*return;/,
-  "Same-page warranty notification navigation must refresh claims before resolving the focused claim.",
+  /refreshedFocusLocationKeyRef\.current = location\.key;[\s\S]*setClaimFocusResolving\(true\);[\s\S]*void Promise\.all\(\[fetchClaims\(\), fetchOrders\(\)\]\);[\s\S]*return;/,
+  "Same-page warranty notification navigation must refresh both claims and eligibility before resolving the focused claim.",
 );
 
 assert.match(

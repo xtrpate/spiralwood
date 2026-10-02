@@ -255,7 +255,7 @@ export default function WarrantyPage() {
     if (isSamePageFocusNavigation && !focusLocationAlreadyRefreshed) {
       refreshedFocusLocationKeyRef.current = location.key;
       setClaimFocusResolving(true);
-      void fetchClaims();
+      void Promise.all([fetchClaims(), fetchOrders()]);
       return;
     }
 

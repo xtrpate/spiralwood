@@ -55,8 +55,14 @@ assert.match(
 
 assert.match(
   source,
-  /status <> 'cancelled'[\s\S]*LIMIT 1\s+FOR UPDATE/,
-  "Warranty submission must recheck existing non-cancelled claims under lock.",
+  /LOWER\(COALESCE\(status, ''\)\) IN \('pending', 'approved'\)[\s\S]*LIMIT 1\s+FOR UPDATE/,
+  "Warranty submission must recheck only active pending/approved claims under lock.",
+);
+
+assert.doesNotMatch(
+  source,
+  /(?:w\.)?status <> 'cancelled'/,
+  "Rejected and fulfilled claims must not permanently block a later valid claim.",
 );
 
 assert.match(
@@ -177,13 +183,19 @@ const mockConnection = {
 
     if (
       text.includes("FROM warranties") &&
-      text.includes("status <> 'cancelled'") &&
+      text.includes(
+        "LOWER(COALESCE(status, '')) IN ('pending', 'approved')",
+      ) &&
       text.includes("FOR UPDATE")
     ) {
       record("existing-lock");
 
-      if (scenario === "duplicate") {
+      if (scenario === "duplicate-pending") {
         return [[{ id: 88, status: "pending" }]];
+      }
+
+      if (scenario === "duplicate-approved") {
+        return [[{ id: 89, status: "approved" }]];
       }
 
       return [[]];
@@ -433,21 +445,42 @@ async function run() {
     assert.ok(notificationIndex > commitIndex);
   }
 
-  reset("duplicate");
-  {
+  for (const activeStatus of ["pending", "approved"]) {
+    reset(`duplicate-${activeStatus}`);
     const req = makeRequest();
     const res = makeRes();
 
     await controller.submitClaim(req, res);
 
     assert.equal(res.statusCode, 409);
-    assert.match(res.body?.message || "", /already exists/i);
+    assert.match(
+      res.body?.message || "",
+      /active warranty claim already exists/i,
+    );
     assert.equal(insertCount, 0);
     assert.equal(audits.length, 0);
     assert.equal(notifications.length, 0);
     assert.equal(events.includes("rollback"), true);
     assert.equal(events.includes("commit"), false);
     assert.ok(events.indexOf("existing-lock") > events.indexOf("item-lock"));
+  }
+
+  for (const terminalStatus of ["cancelled", "rejected", "fulfilled"]) {
+    reset(`terminal-${terminalStatus}`);
+    const req = makeRequest();
+    const res = makeRes();
+
+    await controller.submitClaim(req, res);
+
+    assert.equal(
+      res.statusCode,
+      201,
+      `${terminalStatus} history must allow a new claim while warranty is active.`,
+    );
+    assert.equal(insertCount, 1);
+    assert.equal(events.includes("existing-lock"), true);
+    assert.equal(events.includes("commit"), true);
+    assert.equal(events.includes("rollback"), false);
   }
 
   reset("success");

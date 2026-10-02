@@ -127,7 +127,7 @@ const getEligibleOrders = async (req, res) => {
            FROM warranties w
            WHERE w.order_id = o.id
              AND w.customer_id = o.customer_id
-             AND w.status <> 'cancelled'
+             AND LOWER(COALESCE(w.status, '')) IN ('pending', 'approved')
              AND (w.order_item_id = oi.id OR w.order_item_id IS NULL)
          )
        ORDER BY warranty_handoff_at DESC, oi.id ASC`,
@@ -357,7 +357,8 @@ const submitClaim = async (req, res) => {
     const [existingClaims] = await connection.query(
       `SELECT id, status
        FROM warranties
-       WHERE customer_id = ? AND order_id = ? AND status <> 'cancelled'
+       WHERE customer_id = ? AND order_id = ?
+         AND LOWER(COALESCE(status, '')) IN ('pending', 'approved')
          AND (order_item_id = ? OR order_item_id IS NULL)
        LIMIT 1
        FOR UPDATE`,
@@ -367,7 +368,7 @@ const submitClaim = async (req, res) => {
     if (existingClaims.length) {
       return await rollbackWithResponse(
         409,
-        "A warranty claim already exists for this order item. Refresh your warranty claims to view its latest status.",
+        "An active warranty claim already exists for this order item. Refresh your warranty claims to view its latest status.",
       );
     }
 

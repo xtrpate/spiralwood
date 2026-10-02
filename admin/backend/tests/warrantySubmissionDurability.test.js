@@ -185,7 +185,9 @@ async function testControllerCommitBoundary() {
       }
       if (
         text.includes("FROM warranties") &&
-        text.includes("status <> 'cancelled'") &&
+        text.includes(
+          "LOWER(COALESCE(status, '')) IN ('pending', 'approved')",
+        ) &&
         text.includes("FOR UPDATE")
       ) {
         events.push("existing-lock");

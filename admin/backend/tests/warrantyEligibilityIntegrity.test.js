@@ -24,6 +24,21 @@ assert.match(source, /INTERVAL 8 HOUR/);
 assert.doesNotMatch(source, /LEFT JOIN deliveries d ON d\.order_id = o\.id/);
 assert.doesNotMatch(source, /CURDATE\(\)/);
 assert.doesNotMatch(source, /new Date\(item\.warranty_expiry\)/);
+assert.match(
+  source,
+  /LOWER\(COALESCE\(w\.status, ''\)\) IN \('pending', 'approved'\)/,
+  "Eligible-order filtering must block only active pending/approved claims.",
+);
+assert.match(
+  source,
+  /LOWER\(COALESCE\(status, ''\)\) IN \('pending', 'approved'\)[\s\S]*LIMIT 1\s+FOR UPDATE/,
+  "Submission duplicate checks must block only active pending/approved claims.",
+);
+assert.doesNotMatch(
+  source,
+  /(?:w\.)?status <> 'cancelled'/,
+  "Terminal rejected/fulfilled claims must not permanently consume item eligibility.",
+);
 
 const dbPath = require.resolve("../config/db");
 const signedUrlPath = require.resolve("../utils/signedUrl");
@@ -123,6 +138,11 @@ const mockDb = {
       assert.match(text, /o\.picked_up_at/);
       assert.match(text, /warranty_handoff_at DESC/);
       assert.doesNotMatch(text, /LEFT JOIN deliveries d/);
+      assert.match(
+        text,
+        /LOWER\(COALESCE\(w\.status, ''\)\) IN \('pending', 'approved'\)/,
+      );
+      assert.doesNotMatch(text, /w\.status <> 'cancelled'/);
 
       return [[{
         id: 9,
@@ -175,7 +195,9 @@ const mockDb = {
 
     if (
       text.includes("FROM warranties") &&
-      text.includes("status <> 'cancelled'")
+      text.includes(
+        "LOWER(COALESCE(status, '')) IN ('pending', 'approved')",
+      )
     ) {
       return [[]];
     }
