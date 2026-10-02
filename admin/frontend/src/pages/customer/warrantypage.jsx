@@ -112,8 +112,28 @@ const SummaryStat = ({ label, value }) => (
   </div>
 );
 
+const WarrantyLoadError = ({ message, detail, onRetry, retrying }) => (
+  <div className="warranty-load-error" role="alert">
+    <AlertCircle size={18} aria-hidden="true" />
+    <div className="warranty-load-error-copy">
+      <strong>{message}</strong>
+      <p>{detail}</p>
+    </div>
+    <button
+      type="button"
+      className="warranty-load-retry"
+      onClick={onRetry}
+      disabled={retrying}
+    >
+      {retrying ? "Retrying…" : "Try again"}
+    </button>
+  </div>
+);
+
 export default function WarrantyPage() {
   const [orders, setOrders] = useState([]);
+  const [loadingOrders, setLoadingOrders] = useState(true);
+  const [ordersLoadError, setOrdersLoadError] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
   const initialFocusClaimParam = searchParams.get("focus_claim_id");
 
@@ -147,6 +167,7 @@ export default function WarrantyPage() {
 
   const [claims, setClaims] = useState([]);
   const [loadingClaims, setLoadingClaims] = useState(true);
+  const [claimsLoadError, setClaimsLoadError] = useState("");
   const [claimsLoadedSuccessfully, setClaimsLoadedSuccessfully] =
     useState(false);
   const [focusedClaimId, setFocusedClaimId] = useState(null);
@@ -165,11 +186,22 @@ export default function WarrantyPage() {
   }, []);
 
   const fetchOrders = async () => {
+    setLoadingOrders(true);
     try {
-      const res = await api.get("/customer/warranty/orders");
-      setOrders(Array.isArray(res.data) ? res.data : []);
+      const res = await api.get("/customer/warranty/orders", {
+        suppressGlobalErrorToast: true,
+      });
+      if (!Array.isArray(res.data)) {
+        throw new Error("Invalid warranty eligibility response.");
+      }
+      setOrders(res.data);
+      setOrdersLoadError("");
+      return true;
     } catch {
-      setOrders([]);
+      setOrdersLoadError("Unable to load warranty eligibility right now.");
+      return false;
+    } finally {
+      setLoadingOrders(false);
     }
   };
 
@@ -177,24 +209,43 @@ export default function WarrantyPage() {
     setLoadingClaims(true);
     setClaimsLoadedSuccessfully(false);
     try {
-      const res = await api.get("/customer/warranty");
-      setClaims(Array.isArray(res.data) ? res.data : []);
+      const res = await api.get("/customer/warranty", {
+        suppressGlobalErrorToast: true,
+      });
+      if (!Array.isArray(res.data)) {
+        throw new Error("Invalid warranty claims response.");
+      }
+      setClaims(res.data);
+      setClaimsLoadError("");
       setClaimsLoadedSuccessfully(true);
+      return true;
     } catch {
-      setClaims([]);
+      setClaimsLoadError("Unable to load your warranty claims right now.");
+      return false;
     } finally {
       setLoadingClaims(false);
     }
   };
 
+  const retryOrdersLoad = async () => {
+    await fetchOrders();
+  };
+
+  const retryClaimsLoad = async () => {
+    if (searchParams.get("focus_claim_id")) {
+      setClaimFocusResolving(true);
+    }
+    await fetchClaims();
+  };
+
   useEffect(() => {
     const rawFocusId = searchParams.get("focus_claim_id");
-    if (
-      !rawFocusId ||
-      loading ||
-      loadingClaims ||
-      !claimsLoadedSuccessfully
-    ) {
+    if (!rawFocusId || loading || loadingClaims) {
+      return;
+    }
+
+    if (!claimsLoadedSuccessfully) {
+      setClaimFocusResolving(false);
       return;
     }
 
@@ -570,16 +621,19 @@ export default function WarrantyPage() {
                 <div className="warranty-glance-label-v2">
                   Warranty coverage
                 </div>
-                <div className="warranty-glance-value-v2">1 year</div>
-                <p>Coverage starts from the completed order date.</p>
+                <div className="warranty-glance-value-v2">
+                  See eligible order
+                </div>
+                <p>
+                  Coverage starts from the customer handoff date. Check the
+                  valid-until date shown for each eligible order.
+                </p>
               </div>
 
               <div className="warranty-glance-card-v2">
                 <div className="warranty-glance-label-v2">Claim review</div>
-                <div className="warranty-glance-value-v2">
-                  3-5 business days
-                </div>
-                <p>Track updates anytime from your claims list.</p>
+                <div className="warranty-glance-value-v2">Status updates</div>
+                <p>Track review and service updates anytime from Your claims.</p>
               </div>
             </section>
             <section className="warranty-section">
@@ -624,11 +678,12 @@ export default function WarrantyPage() {
                   </div>
                   <ul className="wpolicy-condition-list-v2">
                     <li>
-                      File the claim within the active 1-year warranty period.
+                      File the claim while the order's warranty is still active.
                     </li>
                     <li>The order must be completed and fully paid.</li>
                     <li>
-                      Approved warranty repairs are completed at no added cost.
+                      Approved repairs or replacements covered by the warranty
+                      are provided at no additional cost.
                     </li>
                   </ul>
                 </div>
@@ -712,7 +767,10 @@ export default function WarrantyPage() {
                     }
                     onClick={() => setWarrantyCenterTab("claims")}
                   >
-                    Your claims ({claims.length})
+                    Your claims
+                    {(claimsLoadedSuccessfully || claims.length > 0) && (
+                      <> ({claims.length})</>
+                    )}
                   </button>
                 </div>
               </div>
@@ -720,6 +778,15 @@ export default function WarrantyPage() {
               {warrantyCenterTab === "file" && (
                 <div className="warranty-left-column">
                   <div className="warranty-form-wrap">
+                    {ordersLoadError && (
+                      <WarrantyLoadError
+                        message={ordersLoadError}
+                        detail="We could not confirm the latest eligible orders. Existing order information remains available when possible."
+                        onRetry={retryOrdersLoad}
+                        retrying={loadingOrders}
+                      />
+                    )}
+
                     {!showForm && !submitted && hasEligibleOrders && (
                       <button
                         type="button"
@@ -731,7 +798,11 @@ export default function WarrantyPage() {
                       </button>
                     )}
 
-                    {!showForm && !submitted && !hasEligibleOrders && (
+                    {!showForm &&
+                      !submitted &&
+                      !loadingOrders &&
+                      !ordersLoadError &&
+                      !hasEligibleOrders && (
                       <div className="warranty-no-eligible-card">
                         <ShieldCheck
                           size={20}
@@ -739,11 +810,11 @@ export default function WarrantyPage() {
                         />
                         <div>
                           <strong>
-                            No warranty claims available right now
+                            No eligible orders for a new claim right now
                           </strong>
                           <p>
-                            You currently have no completed and paid orders
-                            eligible for a new warranty claim.
+                            No completed and fully paid order items are currently
+                            available for a new warranty claim.
                           </p>
                         </div>
                       </div>
@@ -783,9 +854,7 @@ export default function WarrantyPage() {
                                   </option>
                                   {visibleOrders.map((order) => (
                                     <option key={order.id} value={order.id}>
-                                      {order.order_number} —{" "}
-                                      {formatDate(order.created_at)}
-                                      {" — "}valid until{" "}
+                                      {order.order_number} — valid until{" "}
                                       {formatDate(order.warranty_expiry)}
                                     </option>
                                   ))}
@@ -1006,8 +1075,8 @@ export default function WarrantyPage() {
                         <h2>Claim submitted</h2>
                         <p>
                           Your warranty request has been received. Our team will
-                          review it within 3–5 business days and contact you for
-                          the next step.
+                          review it and post the latest status and next steps in
+                          Your claims.
                         </p>
                         <button
                           type="button"
@@ -1035,7 +1104,16 @@ export default function WarrantyPage() {
                     </div>
                   </div>
 
-                  {loadingClaims ? (
+                  {claimsLoadError && (
+                    <WarrantyLoadError
+                      message={claimsLoadError}
+                      detail="We could not confirm the latest claim history. Existing claims remain on screen when available."
+                      onRetry={retryClaimsLoad}
+                      retrying={loadingClaims}
+                    />
+                  )}
+
+                  {loadingClaims && claims.length === 0 && !claimsLoadError ? (
                     <div
                       style={{
                         animation:
@@ -1073,7 +1151,7 @@ export default function WarrantyPage() {
                       ))}
                       <style>{`@keyframes appt-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }`}</style>
                     </div>
-                  ) : claims.length === 0 ? (
+                  ) : claimsLoadedSuccessfully && claims.length === 0 ? (
                     <div className="wclaims-empty">
                       <ShieldCheck size={36} strokeWidth={1} />
                       <p>You haven't filed any warranty claims yet.</p>

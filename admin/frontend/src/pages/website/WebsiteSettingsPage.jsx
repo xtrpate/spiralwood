@@ -273,7 +273,7 @@ const KEY_META = {
     min: 1,
     max: 3650,
     step: 1,
-    hint: "Number of days covered from the delivery date.",
+    hint: "Number of days covered from the customer handoff date (delivery or pickup).",
     width: "number",
   },
 

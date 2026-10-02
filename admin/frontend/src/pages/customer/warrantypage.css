@@ -315,6 +315,49 @@
   color: #4b5563;
 }
 
+.warranty-load-error {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 16px;
+  border: 1px solid #111111;
+  background: #ffffff;
+  padding: 16px;
+  color: #111111;
+}
+
+.warranty-load-error-copy strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.warranty-load-error-copy p {
+  margin: 0;
+  color: #4b5563;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.warranty-load-retry {
+  min-height: 38px;
+  border: 1px solid #111111;
+  background: #111111;
+  color: #ffffff;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.warranty-load-retry:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .warranty-form-card {
   background: #ffffff;
   border: 1px solid #dcdfe4;
@@ -1926,4 +1969,17 @@
   width: 100% !important;
   max-width: none !important;
   min-width: 0 !important;
+}
+
+@media (max-width: 560px) {
+  .warranty-load-error {
+    grid-template-columns: 20px minmax(0, 1fr);
+  }
+
+  .warranty-load-retry {
+    grid-column: 2;
+    justify-self: start;
+    width: 100%;
+    max-width: 160px;
+  }
 }

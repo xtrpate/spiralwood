@@ -81,6 +81,8 @@ api.interceptors.response.use(
     const status = error.response?.status;
     const message = error.response?.data?.message;
     const requestUrl = error.config?.url || "";
+    const suppressGlobalErrorToast =
+      error.config?.suppressGlobalErrorToast === true;
 
     // WISDOM: cancelled requests are expected when a component
     // unmounts or an older request is replaced by a newer request.
@@ -160,21 +162,23 @@ api.interceptors.response.use(
     }
 
     if (status === 500) {
-      toast.error(
-        message || "Server error. Check the backend console for details.",
-      );
+      if (!suppressGlobalErrorToast) {
+        toast.error(message || "Something went wrong. Please try again.");
+      }
       return Promise.reject(error);
     }
 
     if (!error.response) {
-      toast.error(
-        "Cannot connect to server. Make sure the backend is running on port 5000.",
-        { id: "network-error", duration: 6000 },
-      );
+      if (!suppressGlobalErrorToast) {
+        toast.error(
+          "Cannot connect right now. Check your connection and try again.",
+          { id: "network-error", duration: 6000 },
+        );
+      }
       return Promise.reject(error);
     }
 
-    if (message) {
+    if (message && !suppressGlobalErrorToast) {
       toast.error(message);
     }
 

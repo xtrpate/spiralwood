@@ -555,7 +555,7 @@ export default function ProductCatalog() {
         },
         {
           label: "WARRANTY",
-          value: "1 year",
+          value: "Eligible orders",
         },
       ]
     : [];

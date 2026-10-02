@@ -93,7 +93,7 @@ export default function LoginPage() {
                 icon: "📦",
                 text: "Track your order from production to delivery",
               },
-              { icon: "🛡️", text: "1-year warranty on all completed orders" },
+              { icon: "🛡️", text: "Warranty support for eligible orders" },
             ].map((f) => (
               <div className="brand-feature" key={f.text}>
                 <div className="brand-feature-icon">{f.icon}</div>
