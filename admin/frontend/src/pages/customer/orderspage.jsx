@@ -1155,8 +1155,14 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
                             )}
                             target="_blank"
                             rel="noreferrer"
-                            className="order-inline-btn om-action-btn"
-                            style={{ width: "100%", display: "flex" }}
+                            className="order-inline-btn order-inline-btn-primary om-action-btn"
+                            style={{
+                              width: "100%",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              textDecoration: "none",
+                            }}
                           >
                             View Proof of Delivery
                           </a>
@@ -1167,7 +1173,7 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
                               )}
                               filename={`Proof_of_Delivery_${order.order_number || order.id}`}
                               label="Download Proof of Delivery"
-                              className="order-inline-btn om-action-btn"
+                              className="order-inline-btn order-inline-btn-primary om-action-btn"
                               style={{ width: "100%" }}
                             />
                           </div>

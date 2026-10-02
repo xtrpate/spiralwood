@@ -155,6 +155,7 @@ export default function DeliveryManagement() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [failureModal, setFailureModal] = useState(null);
   const [failureReasonInput, setFailureReasonInput] = useState("");
+  const [undoModal, setUndoModal] = useState(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const [focusedDeliveryId, setFocusedDeliveryId] = useState(null);
   const [expandedDeliveryId, setExpandedDeliveryId] = useState(null);
@@ -1633,7 +1634,7 @@ export default function DeliveryManagement() {
                               <div
                                 style={{
                                   display: "flex",
-                                  gap: "8px",
+                                  gap: "12px",
                                   alignItems: "center",
                                 }}
                               >
@@ -1641,9 +1642,15 @@ export default function DeliveryManagement() {
                                   href={buildAssetUrl(delivery.signed_receipt)}
                                   target="_blank"
                                   rel="noreferrer"
-                                  style={viewLink}
+                                  className="rider-btn rider-btn-primary"
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    textDecoration: "none",
+                                  }}
                                 >
-                                  View Current Proof
+                                  View Proof of Delivery
                                 </a>
                                 <DownloadFileButton
                                   url={buildAssetUrl(delivery.signed_receipt)}
@@ -1724,14 +1731,20 @@ export default function DeliveryManagement() {
                                 name={`recipient_name_${delivery.id}`}
                                 type="text"
                                 maxLength={150}
+                                pattern="[A-Za-zÀ-ÖØ-öø-ÿ .'-]+"
                                 value={acknowledgementForm.received_by_name}
-                                onChange={(event) =>
+                                onChange={(event) => {
+                                  const value = event.target.value.replace(
+                                    /[^A-Za-zÀ-ÖØ-öø-ÿ .'-]/g,
+                                    "",
+                                  );
+
                                   updateAcknowledgementForm(
                                     delivery.id,
                                     "received_by_name",
-                                    event.target.value,
-                                  )
-                                }
+                                    value,
+                                  );
+                                }}
                                 disabled={savingId === delivery.id}
                                 style={searchInput}
                                 placeholder="Full name of recipient"
@@ -1965,12 +1978,24 @@ export default function DeliveryManagement() {
 
                         <div style={{ marginTop: 12 }}>
                           {hasReceipt && delivery.signed_receipt ? (
-                            <>
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: "12px",
+                                alignItems: "center",
+                              }}
+                            >
                               <a
                                 href={buildAssetUrl(delivery.signed_receipt)}
                                 target="_blank"
                                 rel="noreferrer"
-                                style={viewLink}
+                                className="rider-btn rider-btn-primary"
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  textDecoration: "none",
+                                }}
                               >
                                 View Proof of Delivery
                               </a>
@@ -1980,7 +2005,7 @@ export default function DeliveryManagement() {
                                 label="Download Proof"
                                 className="rider-btn rider-btn-secondary"
                               />
-                            </>
+                            </div>
                           ) : (
                             <div style={helperText}>
                               This older record has no uploaded proof yet.
@@ -2092,20 +2117,7 @@ export default function DeliveryManagement() {
                                 </div>
                                 <div className="rider-button-row">
                                   <button
-                                    onClick={() => {
-                                      if (
-                                        window.confirm(
-                                          "Are you sure you want to undo this delivery? It will be moved back to 'In Transit'.",
-                                        )
-                                      ) {
-                                        saveDeliveryUpdate({
-                                          delivery,
-                                          nextStatus: "in_transit",
-                                          successMessage:
-                                            "Delivery reverted to In Transit successfully.",
-                                        });
-                                      }
-                                    }}
+                                    onClick={() => setUndoModal(delivery)}
                                     disabled={savingId === delivery.id}
                                     className={`rider-btn ${savingId === delivery.id ? "rider-btn-disabled" : "rider-btn-undo"}`}
                                   >
@@ -2397,6 +2409,103 @@ export default function DeliveryManagement() {
                 }`}
               >
                 {savingId === failureModal.id ? "Saving..." : "Confirm Failure"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {undoModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "16px",
+          }}
+          onClick={() => {
+            if (savingId !== undoModal.id) {
+              setUndoModal(null);
+            }
+          }}
+        >
+          <div
+            style={{
+              background: "#ffffff",
+              borderRadius: 0,
+              padding: "24px",
+              width: "100%",
+              maxWidth: "420px",
+              boxShadow: "0 20px 50px rgba(0,0,0,0.2)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                fontSize: "16px",
+                fontWeight: 700,
+                color: "#18181b",
+                marginBottom: "4px",
+              }}
+            >
+              Undo Delivery
+            </div>
+            <div
+              style={{
+                fontSize: "13px",
+                color: "#71717a",
+                marginBottom: "16px",
+              }}
+            >
+              {undoModal.order_number || "—"}
+            </div>
+            <div
+              style={{
+                fontSize: "13px",
+                color: "#52525b",
+                lineHeight: 1.5,
+                marginBottom: "24px",
+              }}
+            >
+              Are you sure you want to undo this delivery? It will be moved back
+              to 'In Transit'.
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "10px",
+              }}
+            >
+              <button
+                onClick={() => setUndoModal(null)}
+                disabled={savingId === undoModal.id}
+                className="rider-btn rider-btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  saveDeliveryUpdate({
+                    delivery: undoModal,
+                    nextStatus: "in_transit",
+                    successMessage:
+                      "Delivery reverted to In Transit successfully.",
+                    onSuccess: () => setUndoModal(null),
+                  });
+                }}
+                disabled={savingId === undoModal.id}
+                className={`rider-btn ${
+                  savingId === undoModal.id
+                    ? "rider-btn-disabled"
+                    : "rider-btn-undo"
+                }`}
+              >
+                {savingId === undoModal.id ? "Undoing..." : "Confirm Undo"}
               </button>
             </div>
           </div>
