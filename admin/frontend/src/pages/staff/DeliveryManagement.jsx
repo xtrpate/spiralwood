@@ -852,10 +852,7 @@ export default function DeliveryManagement() {
   return (
     <div className="rider-page-shell">
       {/* WISDOM DELIVERY MOBILE D1-D4 R1 */}
-      <div
-        className="rider-card rider-work-header"
-        style={{ padding: "16px" }}
-      >
+      <div className="rider-card rider-work-header" style={{ padding: "16px" }}>
         <div>
           <h2 style={pageTitle}>
             {isDeliveryRider ? "Deliveries" : "Delivery Management"}
@@ -1633,7 +1630,13 @@ export default function DeliveryManagement() {
                             </span>
 
                             {hasReceipt && delivery.signed_receipt ? (
-                              <>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  gap: "8px",
+                                  alignItems: "center",
+                                }}
+                              >
                                 <a
                                   href={buildAssetUrl(delivery.signed_receipt)}
                                   target="_blank"
@@ -1648,7 +1651,7 @@ export default function DeliveryManagement() {
                                   label="Download Proof"
                                   className="rider-btn rider-btn-secondary"
                                 />
-                              </>
+                              </div>
                             ) : null}
                           </div>
 
@@ -2960,9 +2963,9 @@ const viewLink = {
   alignItems: "center",
   padding: "8px 14px",
   borderRadius: 0,
-  background: "#f4f4f5",
-  color: "#18181b",
-  border: "1px solid #e4e4e7",
+  background: "#0a0a0a",
+  color: "#ffffff",
+  border: "1px solid #0a0a0a",
   textDecoration: "none",
   fontSize: "12px",
   fontWeight: 700,
