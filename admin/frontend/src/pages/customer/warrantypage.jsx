@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import api, { buildAssetUrl } from "../../services/api";
 import {
@@ -134,8 +134,11 @@ export default function WarrantyPage() {
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [ordersLoadError, setOrdersLoadError] = useState("");
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialFocusClaimParam = searchParams.get("focus_claim_id");
+  const initialLocationKeyRef = useRef(location.key);
+  const refreshedFocusLocationKeyRef = useRef(null);
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -244,6 +247,18 @@ export default function WarrantyPage() {
       return;
     }
 
+    const isSamePageFocusNavigation =
+      location.key !== initialLocationKeyRef.current;
+    const focusLocationAlreadyRefreshed =
+      refreshedFocusLocationKeyRef.current === location.key;
+
+    if (isSamePageFocusNavigation && !focusLocationAlreadyRefreshed) {
+      refreshedFocusLocationKeyRef.current = location.key;
+      setClaimFocusResolving(true);
+      void fetchClaims();
+      return;
+    }
+
     if (!claimsLoadedSuccessfully) {
       setClaimFocusResolving(false);
       return;
@@ -283,6 +298,7 @@ export default function WarrantyPage() {
     claimsLoadedSuccessfully,
     loading,
     loadingClaims,
+    location.key,
     searchParams,
     setSearchParams,
   ]);

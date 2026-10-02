@@ -120,6 +120,30 @@ assert.match(
 
 assert.match(
   customerWarrantySource,
+  /const location = useLocation\(\);/,
+  "Customer warranty page must track router locations for same-page notification freshness.",
+);
+
+assert.match(
+  customerWarrantySource,
+  /initialLocationKeyRef = useRef\(location\.key\)/,
+  "Customer warranty page must distinguish the initial route from later same-page notification navigation.",
+);
+
+assert.match(
+  customerWarrantySource,
+  /location\.key !== initialLocationKeyRef\.current[\s\S]*refreshedFocusLocationKeyRef\.current === location\.key/,
+  "Same-page warranty focus must detect whether the current navigation still needs a fresh claims load.",
+);
+
+assert.match(
+  customerWarrantySource,
+  /refreshedFocusLocationKeyRef\.current = location\.key;[\s\S]*setClaimFocusResolving\(true\);[\s\S]*void fetchClaims\(\);[\s\S]*return;/,
+  "Same-page warranty notification navigation must refresh claims before resolving the focused claim.",
+);
+
+assert.match(
+  customerWarrantySource,
   /claimFocusResolving/,
   "Customer deep links must keep a stable resolving state.",
 );
