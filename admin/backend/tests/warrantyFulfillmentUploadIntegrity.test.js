@@ -37,6 +37,10 @@ assert.match(controllerSource, /cleanupStoredUpload/);
 assert.match(controllerSource, /warrantyFulfillmentCommitOutcomeUncertain/);
 assert.match(controllerSource, /warrantyFulfillmentCommitted/);
 assert.match(controllerSource, /Fulfillment proof upload is unavailable right now/);
+assert.match(
+  controllerSource,
+  /folder:\s*"warranty-replacements",[\s\S]*?deliveryType:\s*"authenticated",[\s\S]*?requireCloud:\s*true/,
+);
 
 // Service boundary: distinguish pre-commit failures from uncertain commit outcome.
 assert.match(serviceSource, /let commitAttempted = false/);
@@ -113,6 +117,7 @@ async function runControllerLifecycleChecks() {
   let scenario = "success";
   let storeCount = 0;
   let cleanupCount = 0;
+  let fulfillmentReceiptPath = null;
 
   mockModule(dbPath, {
     query: async () => [{ insertId: 1 }],
@@ -123,8 +128,11 @@ async function runControllerLifecycleChecks() {
   });
 
   mockModule(adaptiveUploadPath, {
-    storeUploadBuffer: async () => {
+    storeUploadBuffer: async (options) => {
       storeCount += 1;
+      assert.equal(options.folder, "warranty-replacements");
+      assert.equal(options.deliveryType, "authenticated");
+      assert.equal(options.requireCloud, true);
       if (scenario === "store_fail") {
         const error = new Error("SECRET_CLOUD_PROVIDER_FAILURE");
         error.status = 502;
@@ -132,9 +140,11 @@ async function runControllerLifecycleChecks() {
       }
       return {
         storage: "cloudinary",
-        file_url: "https://example.invalid/proof.jpg",
+        file_url: "cloudinary-auth:test-reference",
         public_id: "wisdom_uploads/warranty-replacements/test-proof",
         resource_type: "image",
+        delivery_type: "authenticated",
+        format: "jpg",
         local_path: null,
       };
     },
@@ -148,7 +158,8 @@ async function runControllerLifecycleChecks() {
 
   mockModule(servicePath, {
     getResolutionOptions: async () => ({}),
-    fulfillClaimWithInventory: async () => {
+    fulfillClaimWithInventory: async (args) => {
+      fulfillmentReceiptPath = args?.receiptPath || null;
       if (scenario === "business_fail" || scenario === "cleanup_fail") {
         const error = new Error("Insufficient available stock.");
         error.status = 409;
@@ -256,12 +267,14 @@ async function runControllerLifecycleChecks() {
     scenario = "success";
     storeCount = 0;
     cleanupCount = 0;
+    fulfillmentReceiptPath = null;
     req = makeReq();
     res = makeRes();
     await controller.fulfillClaim(req, res);
     assert.equal(res.statusCode, 200);
     assert.equal(storeCount, 1);
     assert.equal(cleanupCount, 0);
+    assert.equal(fulfillmentReceiptPath, "cloudinary-auth:test-reference");
     assert.equal(req.auditRecord?.new?.status, "fulfilled");
     assert.equal(req.auditRecord?.new?.receipt_uploaded_this_update, true);
   } finally {

@@ -1,6 +1,36 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+
+const reconciliationScriptPath = path.join(
+  __dirname,
+  "../scripts/reconcileWarrantyAssets.js",
+);
+const reconciliationScriptSource = fs.readFileSync(
+  reconciliationScriptPath,
+  "utf8",
+);
+const envLoadMarker =
+  'require("dotenv").config({ path: path.resolve(__dirname, "../.env") });';
+const dbRequireMarker = 'const db = require("../config/db");';
+const envLoadIndex = reconciliationScriptSource.indexOf(envLoadMarker);
+const dbRequireIndex = reconciliationScriptSource.indexOf(dbRequireMarker);
+
+assert.match(reconciliationScriptSource, /const path = require\("path"\);/);
+assert.ok(
+  envLoadIndex >= 0,
+  "Warranty reconciliation script must anchor dotenv to admin/backend/.env.",
+);
+assert.ok(
+  dbRequireIndex >= 0,
+  "Warranty reconciliation script must retain the DB module import.",
+);
+assert.ok(
+  envLoadIndex < dbRequireIndex,
+  "Warranty reconciliation script must load its anchored .env before DB initialization.",
+);
 
 const {
   WARRANTY_RECONCILIATION_GRACE_HOURS,
@@ -110,6 +140,15 @@ async function testParsers() {
   assert.equal(parsedAuthenticated.scope, "customer_evidence");
   assert.equal(parsedAuthenticated.deliveryType, "authenticated");
   assert.equal(parsedAuthenticated.resourceType, "image");
+
+  const authenticatedReplacement = authRef({
+    publicId: "wisdom_uploads/warranty-replacements/receipt-auth",
+  });
+  const parsedAuthenticatedReplacement =
+    _test.parseAuthenticatedReference(authenticatedReplacement);
+  assert.equal(parsedAuthenticatedReplacement.scope, "replacement_receipts");
+  assert.equal(parsedAuthenticatedReplacement.deliveryType, "authenticated");
+  assert.equal(parsedAuthenticatedReplacement.resourceType, "image");
 
   const parsedReplacement = _test.parseManagedCloudinaryUploadUrl(
     replacementUrl("wisdom_uploads/warranty-replacements/receipt-a"),
@@ -254,6 +293,76 @@ async function testDryRunAndDeleteRecheck() {
 }
 
 
+async function testAuthenticatedReplacementCompatibility() {
+  const authenticatedReceiptPublicId =
+    "wisdom_uploads/warranty-replacements/auth-receipt";
+  const legacyPublicReceiptPublicId =
+    "wisdom_uploads/warranty-replacements/public-receipt";
+
+  const rows = [
+    {
+      id: 7,
+      proof_url: null,
+      replacement_receipt: authRef({ publicId: authenticatedReceiptPublicId }),
+    },
+    {
+      id: 8,
+      proof_url: null,
+      replacement_receipt: replacementUrl(legacyPublicReceiptPublicId),
+    },
+  ];
+
+  const cloudinary = makeCloudinary({
+    assetsByRequest: {
+      [`authenticated:image:wisdom_uploads/warranty-replacements/:first`]: {
+        resources: [
+          asset({
+            publicId: authenticatedReceiptPublicId,
+            type: "authenticated",
+          }),
+        ],
+      },
+      [`upload:image:wisdom_uploads/warranty-replacements/:first`]: {
+        resources: [
+          asset({
+            publicId: legacyPublicReceiptPublicId,
+            type: "upload",
+          }),
+        ],
+      },
+    },
+  });
+  const db = makeDb([rows]);
+
+  const result = await runWarrantyAssetReconciliation(
+    runOptions(db, cloudinary, false),
+  );
+
+  assert.equal(result.deletion_blocked, false);
+  assert.equal(result.summary.db_rows, 2);
+  assert.equal(result.summary.stored_references, 2);
+  assert.equal(result.summary.referenced_cloud_keys, 2);
+  assert.equal(result.summary.provider_assets_scanned, 2);
+  assert.equal(result.summary.provider_assets_referenced, 2);
+  assert.equal(result.summary.orphan_candidates, 0);
+  assert.equal(result.summary.provider_assets_by_scope.replacement_receipts, 2);
+  assert.equal(cloudinary.destroyCalls.length, 0);
+
+  const replacementImageCalls = cloudinary.listCalls.filter(
+    (call) =>
+      call.resource_type === "image" &&
+      call.prefix === "wisdom_uploads/warranty-replacements/",
+  );
+  assert.equal(
+    replacementImageCalls.some((call) => call.type === "upload"),
+    true,
+  );
+  assert.equal(
+    replacementImageCalls.some((call) => call.type === "authenticated"),
+    true,
+  );
+}
+
 async function testDeleteBatchBound() {
   const resources = Array.from({ length: 101 }, (_, index) =>
     asset({
@@ -317,6 +426,7 @@ async function testFailClosedMalformedReference() {
 async function run() {
   await testParsers();
   await testDryRunAndDeleteRecheck();
+  await testAuthenticatedReplacementCompatibility();
   await testDeleteBatchBound();
   await testFailClosedMalformedReference();
   console.log("PASS: Warranty orphan reconciliation integrity checks passed.");
