@@ -24,6 +24,8 @@ assert.match(source, /INTERVAL 8 HOUR/);
 assert.doesNotMatch(source, /LEFT JOIN deliveries d ON d\.order_id = o\.id/);
 assert.doesNotMatch(source, /CURDATE\(\)/);
 assert.doesNotMatch(source, /new Date\(item\.warranty_expiry\)/);
+assert.match(source, /o\.warranty_period_days_snapshot/);
+assert.doesNotMatch(source, /getWarrantyPeriodDays/);
 assert.match(
   source,
   /LOWER\(COALESCE\(w\.status, ''\)\) IN \('pending', 'approved'\)/,
@@ -127,13 +129,18 @@ const mockDb = {
       return [settingsRows];
     }
 
+    if (text.includes("invalid_warranty_order_id")) {
+      assert.deepEqual(params, [17]);
+      return [[]];
+    }
+
     if (
       text.includes("SELECT") &&
       text.includes("o.id,") &&
       text.includes("NOT EXISTS") &&
       text.includes("FROM warranties w")
     ) {
-      assert.deepEqual(params, [365, 17, 365, "2026-10-01"]);
+      assert.deepEqual(params, [17, "2026-10-01"]);
       assert.match(text, /MAX\(d\.delivered_date\)/);
       assert.match(text, /o\.picked_up_at/);
       assert.match(text, /warranty_handoff_at DESC/);
@@ -169,14 +176,7 @@ const mockDb = {
       text.includes("oi.id = ?") &&
       text.includes("warranty_is_active")
     ) {
-      assert.deepEqual(params, [
-        365,
-        365,
-        "2026-10-01",
-        17,
-        9,
-        12,
-      ]);
+      assert.deepEqual(params, ["2026-10-01", 17, 9, 12]);
 
       return [[{
         order_id: 9,
@@ -184,6 +184,9 @@ const mockDb = {
         customer_id: 17,
         status: "completed",
         payment_status: "paid",
+        warranty_period_days_snapshot: 365,
+        warranty_policy_version_snapshot: "2",
+        warranty_policy_effective_at: "2026-09-01 02:00:00",
         warranty_expiry: "2027-09-01",
         warranty_is_active: scenario === "expired" ? 0 : 1,
         order_item_id: 12,

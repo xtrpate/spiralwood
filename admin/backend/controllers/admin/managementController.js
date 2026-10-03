@@ -6,6 +6,10 @@ const {
   resolveLifecycleByOrder,
 } = require("../../services/blueprintLifecycleService");
 const { calcDownPaymentAmount } = require("../../utils/paymentAmounts");
+const {
+  bindOrderWarrantyPolicy,
+  buildWarrantyTermsForPeriod,
+} = require("../../utils/warrantyPolicy");
 const { createNotificationSafe } = require("../../utils/notificationHelper");
 const { emitBlueprintUpdate } = require("../../utils/orderStatusSocket");
 const { persistUserProfilePhoto } = require("../../config/upload");
@@ -717,6 +721,16 @@ exports.generateContract = async (req, res) => {
         .json({ message: "A contract already exists for this order." });
     }
 
+    // W11A: the Project Agreement is the binding event for blueprint warranty
+    // policy. The numeric snapshot is authoritative; the agreement wording is
+    // synchronized to that snapshot so later website-setting changes cannot
+    // rewrite the customer's agreed warranty duration.
+    const warrantyPolicy = await bindOrderWarrantyPolicy(conn, order.id);
+    const canonicalWarrantyTerms = buildWarrantyTermsForPeriod(
+      warrantyPolicy.periodDays,
+      normalizedWarrantyTerms,
+    );
+
     // ── Server-derived customer name. The request body has never
     // contained a customer_name field in this function (confirmed by
     // inspection — only order_id, blueprint_id, terms, warranty_terms
@@ -757,7 +771,7 @@ exports.generateContract = async (req, res) => {
         blueprint.id,
         order.customer_id,
         customerName,
-        normalizedWarrantyTerms,
+        canonicalWarrantyTerms,
         normalizedTerms,
         req.user.id,
         requiredDownPayment,
@@ -803,6 +817,8 @@ exports.generateContract = async (req, res) => {
         signed_at: null,
         is_non_refundable: false,
         warranty_terms_present: Boolean(warranty_terms),
+        warranty_period_days: warrantyPolicy.periodDays,
+        warranty_policy_version: warrantyPolicy.version,
         changed_fields: ["project_agreement"],
       },
     };

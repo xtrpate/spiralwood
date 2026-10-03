@@ -1,6 +1,7 @@
 // controllers/staff/pos.orders.js
 const db = require("../../config/db");
 const { createPosSaleReceipt } = require("../../services/receiptService");
+const { bindOrderWarrantyPolicy } = require("../../utils/warrantyPolicy");
 const { parseStrictPositiveInt } = require("../../utils/validators");
 const {
   parseDecimalToCentsStrict,
@@ -731,6 +732,8 @@ exports.createOrder = async (req, res) => {
     );
 
     const orderId = orderResult.insertId;
+
+    await bindOrderWarrantyPolicy(conn, orderId);
 
     for (const item of canonicalItems) {
       const [itemResult] = await conn.query(

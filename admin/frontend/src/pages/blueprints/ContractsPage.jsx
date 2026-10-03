@@ -27,11 +27,23 @@ Ownership of the finished furniture transfers to the customer after full payment
 7. GOVERNING LAW
 This contract is governed by the laws of the Republic of the Philippines.`;
 
-const DEFAULT_WARRANTY = `The furniture is covered by a one (1) year warranty from the handoff date for defects in materials and workmanship under normal use.
+const DEFAULT_WARRANTY_PERIOD_DAYS = 365;
+
+const buildWarrantyTerms = (periodDays) => {
+  const days = Number(periodDays);
+  const safeDays =
+    Number.isInteger(days) && days >= 1 && days <= 3650
+      ? days
+      : DEFAULT_WARRANTY_PERIOD_DAYS;
+
+  return `The furniture is covered by a ${safeDays}-day warranty from the handoff date for defects in materials and workmanship under normal use.
 
 The warranty does not cover misuse, neglect, unauthorized changes, accidents, natural disasters, or damage caused by outside factors.
 
 For warranty service, contact Spiral Wood Services and provide proof of purchase with details or photos of the reported problem.`;
+};
+
+const DEFAULT_WARRANTY = buildWarrantyTerms(DEFAULT_WARRANTY_PERIOD_DAYS);
 
 const formatCurrencyUI = (value) =>
   `₱ ${Number(value || 0).toLocaleString("en-PH", {
@@ -102,6 +114,9 @@ export default function ContractsPage() {
   const [estimationResponse, setEstimationResponse] = useState(null);
   const [loadingEstimation, setLoadingEstimation] = useState(false);
   const [estimationError, setEstimationError] = useState("");
+  const [warrantyPeriodDays, setWarrantyPeriodDays] = useState(
+    DEFAULT_WARRANTY_PERIOD_DAYS,
+  );
 
   const [form, setForm] = useState({
     order_id: "",
@@ -115,7 +130,7 @@ export default function ContractsPage() {
       order_id: "",
       blueprint_id: "",
       terms: DEFAULT_TERMS,
-      warranty_terms: DEFAULT_WARRANTY,
+      warranty_terms: buildWarrantyTerms(warrantyPeriodDays),
     });
     setSelectedOrderInfo(null);
     setOrderInfoError("");
@@ -144,6 +159,48 @@ export default function ContractsPage() {
 
   useEffect(() => {
     load();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadWarrantyPolicy = async () => {
+      try {
+        const { data } = await api.get("/website/settings/admin");
+        const days = Number(data?.policy?.warranty_period_days);
+
+        if (!Number.isInteger(days) || days < 1 || days > 3650) {
+          throw new Error("Invalid warranty policy response.");
+        }
+
+        if (!cancelled) {
+          setWarrantyPeriodDays(days);
+          setForm((prev) => ({
+            ...prev,
+            warranty_terms:
+              prev.warranty_terms === DEFAULT_WARRANTY
+                ? buildWarrantyTerms(days)
+                : prev.warranty_terms,
+          }));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error(
+            "Failed to load current warranty policy for Project Agreement:",
+            err?.response?.data || err,
+          );
+          toast.error(
+            "Could not load the current warranty period. The server will validate it when the agreement is created.",
+          );
+        }
+      }
+    };
+
+    loadWarrantyPolicy();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {

@@ -507,6 +507,9 @@ exports.getReceiptById = async (req, res) => {
         o.delivery_fee,
         o.total,
         o.notes,
+        o.warranty_period_days_snapshot,
+        o.warranty_policy_version_snapshot,
+        o.warranty_policy_effective_at,
         u.name AS staff_name
       FROM receipts r
       JOIN orders o ON o.id = r.order_id
@@ -547,7 +550,6 @@ exports.getReceiptById = async (req, res) => {
           'business_address',
           'business_phone',
           'gcash_number',
-          'warranty_period_days',
           'thank_you_message',
           'return_policy_note'
         )
@@ -560,18 +562,36 @@ exports.getReceiptById = async (req, res) => {
       biz[s.content_key] = s.content;
     });
 
-    const parsedWarrantyDays = parseInt(biz.warranty_period_days, 10);
+    const parsedWarrantyDays = parseStoredPositiveInt(
+      receipt.warranty_period_days_snapshot,
+    );
+    const warrantyPolicyVersion = String(
+      receipt.warranty_policy_version_snapshot || "",
+    ).trim();
+    const warrantyPolicyEffectiveAt = receipt.warranty_policy_effective_at;
+
+    if (
+      !parsedWarrantyDays ||
+      parsedWarrantyDays > 3650 ||
+      !warrantyPolicyVersion ||
+      !warrantyPolicyEffectiveAt
+    ) {
+      console.error(
+        "GET /api/pos/receipts/:id integrity error: missing order warranty snapshot.",
+      );
+      return res.status(500).json({ message: RECEIPT_DATA_ERROR_MESSAGE });
+    }
 
     biz.business_name = biz.site_name || "Spiral Wood Services";
     biz.site_logo = biz.site_logo || null;
     biz.gcash_number = biz.gcash_number || null;
-    biz.warranty_period_days =
-      Number.isInteger(parsedWarrantyDays) && parsedWarrantyDays > 0
-        ? parsedWarrantyDays
-        : null;
+    biz.warranty_period_days = parsedWarrantyDays;
     biz.thank_you_message = biz.thank_you_message || DEFAULT_THANK_YOU_MESSAGE;
     biz.return_policy_note = biz.return_policy_note || null;
 
+    delete receipt.warranty_period_days_snapshot;
+    delete receipt.warranty_policy_version_snapshot;
+    delete receipt.warranty_policy_effective_at;
     receipt.business = biz;
 
     return res.json(receipt);

@@ -6,11 +6,10 @@ const { createNotificationSafe } = require("../../utils/notificationHelper");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const { getPhilippineDateKey } = require("../../utils/philippineTime");
 const { parseStrictPositiveInt } = require("../../utils/validators");
+const {
+  parseOrderWarrantyPolicySnapshot,
+} = require("../../utils/warrantyPolicy");
 
-const WARRANTY_PERIOD_KEY = "warranty_period_days";
-const WARRANTY_POLICY_VERSION_KEY = "warranty_policy_version";
-const WARRANTY_POLICY_VERSION = "2";
-const DEFAULT_WARRANTY_PERIOD_DAYS = 365;
 const MAX_WARRANTY_DESCRIPTION_LENGTH = 1000;
 const CUSTOMER_WARRANTY_PAGE_SIZE = 10;
 const CUSTOMER_WARRANTY_MAX_PAGE_SIZE = 50;
@@ -49,38 +48,11 @@ const WARRANTY_HANDOFF_PH_DATE_SQL = `
 `;
 
 const WARRANTY_EXPIRY_DATE_SQL = `
-  DATE_ADD((${WARRANTY_HANDOFF_PH_DATE_SQL}), INTERVAL ? DAY)
+  DATE_ADD(
+    (${WARRANTY_HANDOFF_PH_DATE_SQL}),
+    INTERVAL o.warranty_period_days_snapshot DAY
+  )
 `;
-
-const getWarrantyPeriodDays = async () => {
-  const [rows] = await db.query(
-    `SELECT content_key, content
-     FROM website_content
-     WHERE content_type = 'setting'
-       AND content_key IN (?, ?)`,
-    [WARRANTY_PERIOD_KEY, WARRANTY_POLICY_VERSION_KEY],
-  );
-
-  const values = new Map(
-    rows.map((row) => [String(row.content_key), row.content]),
-  );
-  if (
-    String(values.get(WARRANTY_POLICY_VERSION_KEY) || "") !==
-    WARRANTY_POLICY_VERSION
-  ) {
-    return DEFAULT_WARRANTY_PERIOD_DAYS;
-  }
-
-  const configuredDays = Number(values.get(WARRANTY_PERIOD_KEY));
-  if (
-    !Number.isInteger(configuredDays) ||
-    configuredDays < 1 ||
-    configuredDays > 3650
-  ) {
-    return DEFAULT_WARRANTY_PERIOD_DAYS;
-  }
-  return configuredDays;
-};
 
 const splitStoredProofs = (value) => {
   const parts = String(value || "")
@@ -111,8 +83,34 @@ const isWarrantySubmissionLockConflict = (err) =>
 
 const getEligibleOrders = async (req, res) => {
   try {
-    const warrantyPeriodDays = await getWarrantyPeriodDays();
     const todayKey = getPhilippineDateKey();
+
+    // Fail closed instead of silently applying today's website setting to an
+    // old order whose immutable warranty-policy snapshot is missing/corrupt.
+    const [[invalidWarrantyOrder]] = await db.query(
+      `SELECT o.id AS invalid_warranty_order_id
+       FROM orders o
+       WHERE o.customer_id = ?
+         AND o.status = 'completed'
+         AND o.payment_status = 'paid'
+         AND (
+           o.warranty_period_days_snapshot IS NULL
+           OR o.warranty_period_days_snapshot < 1
+           OR o.warranty_period_days_snapshot > 3650
+           OR NULLIF(TRIM(o.warranty_policy_version_snapshot), '') IS NULL
+           OR o.warranty_policy_effective_at IS NULL
+         )
+       LIMIT 1`,
+      [req.user.id],
+    );
+
+    if (invalidWarrantyOrder) {
+      return res.status(409).json({
+        message:
+          "Warranty policy record for this order is incomplete. Please contact support.",
+      });
+    }
+
     const [rows] = await db.query(
       `SELECT
          o.id,
@@ -137,6 +135,9 @@ const getEligibleOrders = async (req, res) => {
        WHERE o.customer_id = ?
          AND o.status = 'completed'
          AND o.payment_status = 'paid'
+         AND o.warranty_period_days_snapshot BETWEEN 1 AND 3650
+         AND NULLIF(TRIM(o.warranty_policy_version_snapshot), '') IS NOT NULL
+         AND o.warranty_policy_effective_at IS NOT NULL
          AND (${WARRANTY_EXPIRY_DATE_SQL}) >= ?
          AND NOT EXISTS (
            SELECT 1
@@ -147,7 +148,7 @@ const getEligibleOrders = async (req, res) => {
              AND (w.order_item_id = oi.id OR w.order_item_id IS NULL)
          )
        ORDER BY warranty_handoff_at DESC, oi.id ASC`,
-      [warrantyPeriodDays, req.user.id, warrantyPeriodDays, todayKey],
+      [req.user.id, todayKey],
     );
 
     const grouped = [];
@@ -418,7 +419,6 @@ const submitClaim = async (req, res) => {
   };
 
   try {
-    const warrantyPeriodDays = await getWarrantyPeriodDays();
     const todayKey = getPhilippineDateKey();
 
     connection = await db.getConnection();
@@ -433,6 +433,9 @@ const submitClaim = async (req, res) => {
     const [[item]] = await connection.query(
       `SELECT
          o.id AS order_id, o.order_number, o.customer_id, o.status, o.payment_status,
+         o.warranty_period_days_snapshot,
+         o.warranty_policy_version_snapshot,
+         o.warranty_policy_effective_at,
          DATE_FORMAT((${WARRANTY_EXPIRY_DATE_SQL}), '%Y-%m-%d') AS warranty_expiry,
          ((${WARRANTY_EXPIRY_DATE_SQL}) >= ?) AS warranty_is_active,
          oi.id AS order_item_id, oi.product_id, oi.product_name, oi.quantity AS ordered_quantity
@@ -441,20 +444,22 @@ const submitClaim = async (req, res) => {
        WHERE o.customer_id = ? AND o.id = ? AND oi.id = ?
        LIMIT 1
        FOR UPDATE`,
-      [
-        warrantyPeriodDays,
-        warrantyPeriodDays,
-        todayKey,
-        req.user.id,
-        orderId,
-        orderItemId,
-      ],
+      [todayKey, req.user.id, orderId, orderItemId],
     );
 
     if (!item) {
       return await rollbackWithResponse(
         404,
         "The selected order item was not found for this customer.",
+      );
+    }
+
+    try {
+      parseOrderWarrantyPolicySnapshot(item);
+    } catch {
+      return await rollbackWithResponse(
+        409,
+        "Warranty policy record for this order is incomplete. Please contact support.",
       );
     }
 

@@ -2,10 +2,11 @@ const assert = require("node:assert/strict");
 
 const dbPath = require.resolve("../config/db");
 const receiptServicePath = require.resolve("../services/receiptService");
+const warrantyPolicyPath = require.resolve("../utils/warrantyPolicy");
 const ordersControllerPath = require.resolve("../controllers/staff/pos.orders");
 
 const originals = new Map(
-  [dbPath, receiptServicePath, ordersControllerPath].map((modulePath) => [
+  [dbPath, receiptServicePath, warrantyPolicyPath, ordersControllerPath].map((modulePath) => [
     modulePath,
     require.cache[modulePath],
   ]),
@@ -242,6 +243,9 @@ function hasSql(fragment) {
 
 async function run() {
   install(dbPath, mockDb);
+  install(warrantyPolicyPath, {
+    bindOrderWarrantyPolicy: async () => ({ periodDays: 365, version: "2" }),
+  });
   install(receiptServicePath, {
     createPosSaleReceipt: async (unusedConn, args) => {
       receiptArgs = args;

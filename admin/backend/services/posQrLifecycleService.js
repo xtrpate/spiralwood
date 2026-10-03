@@ -1,4 +1,5 @@
 const db = require("../config/db");
+const { bindOrderWarrantyPolicy } = require("../utils/warrantyPolicy");
 const { createPosSaleReceipt } = require("./receiptService");
 const { emitOrderCreated } = require("../utils/orderStatusSocket");
 const { generateWalkInOrderNumber } = require("../utils/posOrderNumber");
@@ -475,6 +476,8 @@ const finalizePaidAttempt = async ({
       return result(500, { message: "Server error." });
     }
     const orderId = orderResult.insertId;
+
+    await bindOrderWarrantyPolicy(conn, orderId);
 
     for (const item of snapshot.items) {
       const [itemResult] = await conn.query(

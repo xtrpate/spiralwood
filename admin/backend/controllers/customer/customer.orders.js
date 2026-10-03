@@ -29,6 +29,7 @@ const {
 const {
   createStandardOnlineReceipt,
 } = require("../../services/receiptService");
+const { bindOrderWarrantyPolicy } = require("../../utils/warrantyPolicy");
 
 /* ── Standard checkout constants ── */
 const ALLOWED_PAYMENT_METHODS = ["cod", "cop", "paymongo"];
@@ -439,6 +440,8 @@ exports.createOrder = async (req, res) => {
     );
 
     const order_id = orderRes.insertId;
+
+    await bindOrderWarrantyPolicy(conn, order_id);
 
     const readyMadeCustomizationJson = storedAssemblyChoice
       ? JSON.stringify({
