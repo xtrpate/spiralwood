@@ -178,24 +178,21 @@ const readPaymentAttemptState = (attributes) => {
   const successfulPayment = paidPayments[0] || null;
 
   const paymentIntent = attributes?.payment_intent || null;
+  const paymentIntentAttributes = paymentIntent?.attributes || {};
 
-  const intentSucceeded =
-    String(paymentIntent?.attributes?.status || "")
-      .trim()
-      .toLowerCase() === "succeeded";
-
-  const paymentIntentStatus = String(paymentIntent?.attributes?.status || "")
+  const paymentIntentStatus = String(paymentIntentAttributes?.status || "")
     .trim()
     .toLowerCase();
 
-  const lastPaymentError =
-    paymentIntent?.attributes?.last_payment_error || null;
+  const intentSucceeded = paymentIntentStatus === "succeeded";
+
+  const lastPaymentError = paymentIntentAttributes?.last_payment_error || null;
 
   const paymentAmount = successfulPayment
     ? parseStrictPositiveInteger(successfulPayment?.attributes?.amount)
     : null;
 
-  const rawIntentAmount = paymentIntent?.attributes?.amount;
+  const rawIntentAmount = paymentIntentAttributes?.amount;
 
   const intentAmount =
     intentSucceeded &&
@@ -258,18 +255,68 @@ const readPaymentAttemptState = (attributes) => {
   const paidCents = paymentAmount ?? intentAmount ?? null;
 
   /*
-   * A failed Payment resource means an actual payment attempt occurred
-   * and PayMongo did not complete it.
+   * PayMongo payment-method attempts can return the Payment Intent to
+   * "awaiting_payment_method" after a failure or expiration.
    *
-   * We deliberately do NOT treat merely having an active Checkout Session
-   * as a failed attempt. This preserves the existing "press Back and
-   * continue later" behavior.
+   * IMPORTANT:
+   * "awaiting_payment_method" by itself is NOT enough to conclude that
+   * a payment attempt failed, because a brand-new Payment Intent starts
+   * in that same state.
+   *
+   * We therefore also compare the Payment Intent timestamps.
+   *
+   * Brand-new intent:
+   *   created_at ~= updated_at
+   *
+   * After an actual payment-method attempt:
+   *   updated_at > created_at
+   *
+   * This catches cases such as an expired QRPh attempt where PayMongo
+   * returns the Payment Intent to awaiting_payment_method without
+   * necessarily providing last_payment_error.
    */
+  const parseProviderTimestamp = (value) => {
+    if (value === undefined || value === null) return null;
+
+    if (typeof value === "number") {
+      return Number.isFinite(value) ? value : null;
+    }
+
+    const text = String(value).trim();
+
+    if (!text) return null;
+
+    if (/^\d+(?:\.\d+)?$/.test(text)) {
+      const numeric = Number(text);
+      return Number.isFinite(numeric) ? numeric : null;
+    }
+
+    const parsed = Date.parse(text);
+
+    return Number.isFinite(parsed) ? parsed / 1000 : null;
+  };
+
+  const intentCreatedAt = parseProviderTimestamp(
+    paymentIntentAttributes?.created_at,
+  );
+
+  const intentUpdatedAt = parseProviderTimestamp(
+    paymentIntentAttributes?.updated_at,
+  );
+
+  const intentWasPreviouslyUpdated =
+    intentCreatedAt !== null &&
+    intentUpdatedAt !== null &&
+    intentUpdatedAt > intentCreatedAt;
+
   const hasFailedPaymentAttempt =
     failedPayments.length > 0 ||
     (!intentSucceeded &&
       paymentIntentStatus === "awaiting_payment_method" &&
-      Boolean(lastPaymentError));
+      Boolean(lastPaymentError)) ||
+    (!intentSucceeded &&
+      paymentIntentStatus === "awaiting_payment_method" &&
+      intentWasPreviouslyUpdated);
 
   return {
     ok: true,
