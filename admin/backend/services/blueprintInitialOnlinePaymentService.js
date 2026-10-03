@@ -51,11 +51,7 @@ const getInitialPaymentBounds = (orderTotalRaw) => {
     Number(minimumAmount).toFixed(2),
   );
 
-  if (
-    minimumCents === null ||
-    minimumCents <= 0 ||
-    minimumCents > totalCents
-  ) {
+  if (minimumCents === null || minimumCents <= 0 || minimumCents > totalCents) {
     return {
       ok: false,
       reason: INITIAL_PAYMENT_REASON.INVALID_TOTAL,
@@ -69,10 +65,7 @@ const getInitialPaymentBounds = (orderTotalRaw) => {
   };
 };
 
-const resolveInitialOnlinePaymentAmount = ({
-  orderTotalRaw,
-  amountRaw,
-}) => {
+const resolveInitialOnlinePaymentAmount = ({ orderTotalRaw, amountRaw }) => {
   const bounds = getInitialPaymentBounds(orderTotalRaw);
   if (!bounds.ok) return bounds;
 
@@ -153,7 +146,7 @@ const readLineItemsTotalCents = (lineItems) => {
   return total > 0 ? total : NaN;
 };
 
-const readSuccessfulPaidAmountCents = (attributes) => {
+const readPaymentAttemptState = (attributes) => {
   const payments = Array.isArray(attributes?.payments)
     ? attributes.payments
     : [];
@@ -165,27 +158,45 @@ const readSuccessfulPaidAmountCents = (attributes) => {
         .toLowerCase() === "paid",
   );
 
+  const failedPayments = payments.filter(
+    (payment) =>
+      String(payment?.attributes?.status || "")
+        .trim()
+        .toLowerCase() === "failed",
+  );
+
   if (paidPayments.length > 1) {
     return {
       ok: false,
       reason: "AMBIGUOUS_SUCCESSFUL_PAYMENTS",
       hasSuccessfulPayment: true,
       paidCents: null,
+      hasFailedPaymentAttempt: false,
     };
   }
 
   const successfulPayment = paidPayments[0] || null;
+
   const paymentIntent = attributes?.payment_intent || null;
+
   const intentSucceeded =
     String(paymentIntent?.attributes?.status || "")
       .trim()
       .toLowerCase() === "succeeded";
+
+  const paymentIntentStatus = String(paymentIntent?.attributes?.status || "")
+    .trim()
+    .toLowerCase();
+
+  const lastPaymentError =
+    paymentIntent?.attributes?.last_payment_error || null;
 
   const paymentAmount = successfulPayment
     ? parseStrictPositiveInteger(successfulPayment?.attributes?.amount)
     : null;
 
   const rawIntentAmount = paymentIntent?.attributes?.amount;
+
   const intentAmount =
     intentSucceeded &&
     rawIntentAmount !== undefined &&
@@ -200,6 +211,7 @@ const readSuccessfulPaidAmountCents = (attributes) => {
       reason: "INVALID_PROVIDER_PAID_AMOUNT",
       hasSuccessfulPayment: true,
       paidCents: null,
+      hasFailedPaymentAttempt: false,
     };
   }
 
@@ -209,6 +221,7 @@ const readSuccessfulPaidAmountCents = (attributes) => {
       reason: "INVALID_PROVIDER_PAID_AMOUNT",
       hasSuccessfulPayment: true,
       paidCents: null,
+      hasFailedPaymentAttempt: false,
     };
   }
 
@@ -224,6 +237,7 @@ const readSuccessfulPaidAmountCents = (attributes) => {
       reason: "INVALID_PROVIDER_PAID_AMOUNT",
       hasSuccessfulPayment: true,
       paidCents: null,
+      hasFailedPaymentAttempt: false,
     };
   }
 
@@ -237,10 +251,25 @@ const readSuccessfulPaidAmountCents = (attributes) => {
       reason: "PROVIDER_PAID_AMOUNT_MISMATCH",
       hasSuccessfulPayment: true,
       paidCents: null,
+      hasFailedPaymentAttempt: false,
     };
   }
 
   const paidCents = paymentAmount ?? intentAmount ?? null;
+
+  /*
+   * A failed Payment resource means an actual payment attempt occurred
+   * and PayMongo did not complete it.
+   *
+   * We deliberately do NOT treat merely having an active Checkout Session
+   * as a failed attempt. This preserves the existing "press Back and
+   * continue later" behavior.
+   */
+  const hasFailedPaymentAttempt =
+    failedPayments.length > 0 ||
+    (!intentSucceeded &&
+      paymentIntentStatus === "awaiting_payment_method" &&
+      Boolean(lastPaymentError));
 
   return {
     ok: true,
@@ -248,13 +277,11 @@ const readSuccessfulPaidAmountCents = (attributes) => {
     hasSuccessfulPayment:
       Boolean(successfulPayment) || Boolean(intentSucceeded),
     paidCents,
+    hasFailedPaymentAttempt,
   };
 };
 
-const validateInitialPayMongoSessionContext = (
-  session,
-  { orderId } = {},
-) => {
+const validateInitialPayMongoSessionContext = (session, { orderId } = {}) => {
   const expectedOrderId = String(orderId ?? "").trim();
 
   if (!/^[1-9]\d*$/.test(expectedOrderId)) {
@@ -273,9 +300,7 @@ const validateInitialPayMongoSessionContext = (
       : {};
 
   const hasValue = (value) =>
-    value !== undefined &&
-    value !== null &&
-    String(value).trim() !== "";
+    value !== undefined && value !== null && String(value).trim() !== "";
 
   const metadataOrderId = hasValue(metadata.order_id)
     ? String(metadata.order_id).trim()
@@ -312,10 +337,7 @@ const validateInitialPayMongoSessionContext = (
     };
   }
 
-  if (
-    metadataPurpose !== null &&
-    metadataPurpose !== "initial_payment"
-  ) {
+  if (metadataPurpose !== null && metadataPurpose !== "initial_payment") {
     return {
       ok: false,
       reason: "SESSION_PAYMENT_PURPOSE_MISMATCH",
@@ -401,19 +423,19 @@ const analyzeInitialPayMongoSession = (
   const expectedCents =
     metadataCents ?? lineItemsCents ?? fallbackCents ?? null;
 
-  const paid = readSuccessfulPaidAmountCents(attributes);
-  if (!paid.ok) return paid;
+  const paymentAttempt = readPaymentAttemptState(attributes);
+  if (!paymentAttempt.ok) return paymentAttempt;
 
   if (
-    paid.hasSuccessfulPayment &&
+    paymentAttempt.hasSuccessfulPayment &&
     expectedCents !== null &&
-    paid.paidCents !== expectedCents
+    paymentAttempt.paidCents !== expectedCents
   ) {
     return {
       ok: false,
       reason: "PAID_AMOUNT_DOES_NOT_MATCH_SESSION_AMOUNT",
       hasSuccessfulPayment: true,
-      paidCents: paid.paidCents,
+      paidCents: paymentAttempt.paidCents,
       expectedCents,
     };
   }
@@ -426,8 +448,9 @@ const analyzeInitialPayMongoSession = (
     ok: true,
     reason: null,
     expectedCents,
-    paidCents: paid.paidCents,
-    hasSuccessfulPayment: paid.hasSuccessfulPayment,
+    paidCents: paymentAttempt.paidCents,
+    hasSuccessfulPayment: paymentAttempt.hasSuccessfulPayment,
+    hasFailedPaymentAttempt: paymentAttempt.hasFailedPaymentAttempt,
     sessionStatus,
     sessionActive: sessionStatus === "active",
   };

@@ -5000,7 +5000,8 @@ exports.createPayMongoCheckout = async (req, res) => {
 
       if (
         existingAnalysis.hasSuccessfulPayment ||
-        existingAnalysis.sessionActive
+        (existingAnalysis.sessionActive &&
+          !existingAnalysis.hasFailedPaymentAttempt)
       ) {
         if (
           amountWasExplicitlyRequested &&
@@ -5846,8 +5847,15 @@ const createPickupRemainingBalancePayMongoCheckout = async ({
       }
 
       /*
-       * Expired/failed/unknown or active-but-wrong-amount:
-       * clear only the exact session we just inspected.
+       * The existing Checkout Session is not reusable because it is
+       * expired or contains a failed payment attempt.
+       *
+       * Clear only the exact session we just inspected, then create a
+       * fresh Checkout Session below.
+       *
+       * A merely active session with no failed attempt is intentionally
+       * reused so that pressing Back and returning later does not force
+       * the customer to restart payment.
        */
       if (!sessionAmountMatchesBalance || !sessionStillActive) {
         const [clearResult] = await conn.execute(
