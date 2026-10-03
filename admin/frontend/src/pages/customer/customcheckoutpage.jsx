@@ -186,6 +186,9 @@ const IMPORTANT_PAYMENT_NOTE =
 const IMPORTANT_QUOTATION_NOTE =
   "Estimated review and quotation time is 1–3 days.";
 
+const CUSTOM_CHECKOUT_IDEMPOTENCY_STORAGE_KEY =
+  "cust_custom_checkout_idempotency";
+
 const buildCheckoutImportantNote = (value) => {
   const raw = String(value || "").trim();
   const paymentNeedle = IMPORTANT_PAYMENT_NOTE.toLowerCase();
@@ -354,6 +357,7 @@ export default function CustomCheckoutPage() {
   );
   const [locationPickerKey, setLocationPickerKey] = useState(0);
   const userToggledRef = useRef(false);
+  const customCheckoutIdempotencyKeyRef = useRef(null);
 
   useEffect(() => {
     setForm((prev) => ({
@@ -427,6 +431,57 @@ export default function CustomCheckoutPage() {
         navigate("/custom-cart", { replace: true });
         return;
       }
+
+      /*
+       * One logical Blueprint checkout gets one idempotency key.
+       *
+       * sessionStorage allows the key to survive a browser refresh while
+       * keeping it limited to the current browser session.
+       *
+       * The key is tied to the selected cart item so that a different
+       * Blueprint checkout does not accidentally reuse the previous key.
+       */
+      let checkoutIdempotencyKey = null;
+
+      try {
+        const storedIdempotency = sessionStorage.getItem(
+          CUSTOM_CHECKOUT_IDEMPOTENCY_STORAGE_KEY,
+        );
+
+        const parsedIdempotency = storedIdempotency
+          ? JSON.parse(storedIdempotency)
+          : null;
+
+        if (
+          parsedIdempotency &&
+          parsedIdempotency.selectionKey === selectedKey &&
+          typeof parsedIdempotency.key === "string" &&
+          parsedIdempotency.key.trim()
+        ) {
+          checkoutIdempotencyKey = parsedIdempotency.key.trim();
+        } else {
+          checkoutIdempotencyKey = `bp-${crypto.randomUUID()}`;
+
+          sessionStorage.setItem(
+            CUSTOM_CHECKOUT_IDEMPOTENCY_STORAGE_KEY,
+            JSON.stringify({
+              selectionKey: selectedKey,
+              key: checkoutIdempotencyKey,
+            }),
+          );
+        }
+      } catch {
+        /*
+         * If sessionStorage is temporarily unavailable, still create a
+         * valid key so duplicate clicks during this page lifetime remain
+         * protected by the backend.
+         *
+         * The durable refresh protection requires sessionStorage.
+         */
+        checkoutIdempotencyKey = `bp-${crypto.randomUUID()}`;
+      }
+
+      customCheckoutIdempotencyKeyRef.current = checkoutIdempotencyKey;
 
       let matchedItem = (customCart || []).find(
         (item) => item.key === selectedKey,
@@ -616,14 +671,30 @@ export default function CustomCheckoutPage() {
         JSON.stringify(referencePhotoManifest),
       );
 
-      const res = await api.post("/customer/custom-orders", formData);
+      const idempotencyKey = customCheckoutIdempotencyKeyRef.current;
+
+      if (!idempotencyKey) {
+        throw new Error(
+          "Unable to initialize the checkout submission safely. Please refresh the page and try again.",
+        );
+      }
+
+      const res = await api.post("/customer/custom-orders", formData, {
+        headers: {
+          "Idempotency-Key": idempotencyKey,
+        },
+      });
 
       const submittedKeys = checkoutItems
         .map((item) => item.key)
         .filter(Boolean);
 
       removeManyFromCustomCart(submittedKeys);
+
       sessionStorage.removeItem("cust_selected_custom_checkout");
+      sessionStorage.removeItem(CUSTOM_CHECKOUT_IDEMPOTENCY_STORAGE_KEY);
+
+      customCheckoutIdempotencyKeyRef.current = null;
 
       const remainingLoadingMs = Math.max(
         0,

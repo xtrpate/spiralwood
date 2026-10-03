@@ -58,7 +58,7 @@ const {
 const normalizeOptionalPayMongoIdempotencyKey = (req) => {
   const raw = req.get("Idempotency-Key");
 
-  // Backward compatible: older clients may not send the header yet.
+  // Backward compatible: older payment clients may not send the header yet.
   if (raw === undefined || raw === null || String(raw).trim() === "") {
     return {
       ok: true,
@@ -84,6 +84,19 @@ const normalizeOptionalPayMongoIdempotencyKey = (req) => {
     ok: true,
     key,
   };
+};
+
+const normalizeRequiredCustomOrderIdempotencyKey = (req) => {
+  const result = normalizeOptionalPayMongoIdempotencyKey(req);
+
+  if (!result.ok || !result.key) {
+    return {
+      ok: false,
+      key: null,
+    };
+  }
+
+  return result;
 };
 
 const buildBlueprintPayMongoIdempotencyKey = ({
@@ -756,6 +769,17 @@ const normalizeCustomOrderItem = (row = {}) => {
 
 /* ── Submit Custom Order / Request ── */
 exports.createCustomOrder = async (req, res) => {
+  const idempotency = normalizeRequiredCustomOrderIdempotencyKey(req);
+
+  if (!idempotency.ok) {
+    return res.status(400).json({
+      message:
+        "A valid Idempotency-Key is required. Please refresh the checkout page and try again.",
+    });
+  }
+
+  const checkoutIdempotencyKey = idempotency.key;
+
   // 👉 THE FIX: Unwrap the 'payload' string sent by React's FormData
   let parsedBody = req.body;
   if (req.body && typeof req.body.payload === "string") {
@@ -1010,11 +1034,13 @@ exports.createCustomOrder = async (req, res) => {
 
     const [result] = await conn.execute(
       `INSERT INTO orders
-        (order_number, customer_id, blueprint_id, type, order_type, status,
-          walkin_customer_name, walkin_customer_phone,
-          payment_method, payment_status, fulfillment_method,
-          delivery_address, delivery_lat, delivery_lng, delivery_fee, notes, subtotal, total)
-      VALUES (?, ?, NULL, 'online', 'blueprint', 'pending', ?, ?, NULL, 'unpaid', ?, ?, ?, ?, 0, ?, 0, 0)`,
+    (order_number, customer_id, blueprint_id, type, order_type, status,
+      walkin_customer_name, walkin_customer_phone,
+      payment_method, payment_status, fulfillment_method,
+      delivery_address, delivery_lat, delivery_lng, delivery_fee, notes,
+      subtotal, total, checkout_idempotency_key)
+  VALUES (?, ?, NULL, 'online', 'blueprint', 'pending', ?, ?, NULL, 'unpaid',
+          ?, ?, ?, ?, 0, ?, 0, 0, ?)`,
       [
         order_number,
         req.user.id,
@@ -1025,6 +1051,7 @@ exports.createCustomOrder = async (req, res) => {
         cleanDeliveryLat,
         cleanDeliveryLng,
         notes ? String(notes).trim() : null,
+        checkoutIdempotencyKey,
       ],
     );
 
@@ -1257,6 +1284,56 @@ exports.createCustomOrder = async (req, res) => {
       try {
         await conn.rollback();
       } catch {}
+    }
+
+    /*
+     * The database unique constraint is the final protection against
+     * concurrent duplicate Blueprint submissions.
+     *
+     * If another request already committed the same idempotency key,
+     * safely return that existing order instead of creating another one.
+     */
+    if (err?.code === "ER_DUP_ENTRY" && checkoutIdempotencyKey) {
+      try {
+        const [[existingOrder]] = await db.query(
+          `SELECT
+             id,
+             order_number,
+             customer_id,
+             status,
+             order_type
+           FROM orders
+           WHERE checkout_idempotency_key = ?
+             AND order_type = 'blueprint'
+           LIMIT 1`,
+          [checkoutIdempotencyKey],
+        );
+
+        if (existingOrder) {
+          /*
+           * Never expose or return another customer's order.
+           */
+          if (Number(existingOrder.customer_id) !== Number(req.user.id)) {
+            return res.status(409).json({
+              message:
+                "This Idempotency-Key is already associated with another request. Please refresh the checkout page and try again.",
+            });
+          }
+
+          return res.status(200).json({
+            message: "This custom request was already submitted.",
+            idempotent_replay: true,
+            order_id: existingOrder.id,
+            order_number: existingOrder.order_number,
+            detail_url: `/custom-requests/${existingOrder.id}`,
+          });
+        }
+      } catch (lookupErr) {
+        console.error(
+          "[customer.customorders POST] Idempotent replay lookup failed:",
+          lookupErr.message || lookupErr,
+        );
+      }
     }
 
     if (!requestCommitted && uploadedReferenceAssets.length) {
