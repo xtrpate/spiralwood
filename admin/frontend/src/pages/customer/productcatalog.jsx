@@ -207,16 +207,12 @@ export default function ProductCatalog() {
     api
       .get("/website/settings", { suppressGlobalErrorToast: true })
       .then((res) => {
-        const parsedDays = Number(
-          res.data?.policy?.warranty_period_days,
-        );
+        const parsedDays = Number(res.data?.policy?.warranty_period_days);
 
         if (!active) return;
 
         setWarrantyPeriodDays(
-          Number.isInteger(parsedDays) &&
-            parsedDays >= 1 &&
-            parsedDays <= 3650
+          Number.isInteger(parsedDays) && parsedDays >= 1 && parsedDays <= 3650
             ? parsedDays
             : null,
         );
