@@ -237,6 +237,15 @@ export default function BuildMaterialsPage() {
       return;
     }
 
+    const pendingStock = Number(pendingArchive.stock || 0);
+    if (pendingStock > 0) {
+      setPendingArchive(null);
+      toast.error(
+        `This product still has ${pendingStock} unit(s) in stock. Reduce stock to zero through Stock Movement before archiving it.`,
+      );
+      return;
+    }
+
     setArchiving(true);
 
     try {
@@ -346,6 +355,18 @@ export default function BuildMaterialsPage() {
     if (publishedProducts.length > 0) {
       toast.error(
         "Please remove all selected published products from the product page before you can archive them.",
+      );
+      return;
+    }
+
+    const stockedProducts = products.filter(
+      (product) =>
+        selectedIds.includes(product.id) && Number(product.stock || 0) > 0,
+    );
+
+    if (stockedProducts.length > 0) {
+      toast.error(
+        "Reduce all selected products to zero stock through Stock Movement before archiving them.",
       );
       return;
     }
@@ -792,6 +813,12 @@ export default function BuildMaterialsPage() {
                                           ) {
                                             toast.error(
                                               "Please remove the product from the product page first before you can archive it.",
+                                            );
+                                          } else if (
+                                            Number(product.stock || 0) > 0
+                                          ) {
+                                            toast.error(
+                                              `This product still has ${Number(product.stock || 0)} unit(s) in stock. Reduce stock to zero through Stock Movement before archiving it.`,
                                             );
                                           } else {
                                             setPendingArchive(product);
