@@ -51,6 +51,7 @@ const passMiddleware = (req, res, next) => next();
 const controllerMock = {
   getEligibleOrders: passMiddleware,
   getClaims: passMiddleware,
+  getClaimById: passMiddleware,
   submitClaim: passMiddleware,
   cancelClaim: passMiddleware,
 };

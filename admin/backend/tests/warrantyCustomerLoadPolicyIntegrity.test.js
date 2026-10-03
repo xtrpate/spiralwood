@@ -17,8 +17,8 @@ const productCatalog = read("pages/customer/productcatalog.jsx");
 const settingsPage = read("pages/website/WebsiteSettingsPage.jsx");
 const apiSource = read("services/api.js");
 
-const fetchOrdersStart = warrantyPage.indexOf("const fetchOrders = async () => {");
-const fetchClaimsStart = warrantyPage.indexOf("const fetchClaims = async () => {");
+const fetchOrdersStart = warrantyPage.indexOf("const fetchOrders = useCallback(async () => {");
+const fetchClaimsStart = warrantyPage.indexOf("const fetchClaims = useCallback(async (requestedPage) => {");
 const focusEffectStart = warrantyPage.indexOf(
   'const rawFocusId = searchParams.get("focus_claim_id");',
 );
@@ -59,8 +59,8 @@ assert.match(
 );
 assert.match(
   fetchClaimsSource,
-  /if \(!Array\.isArray\(res\.data\)\)/,
-  "Malformed warranty claims responses must be treated as load failures.",
+  /!Array\.isArray\(nextClaims\)/,
+  "Malformed paginated warranty claims responses must be treated as load failures.",
 );
 
 assert.ok(
@@ -86,8 +86,8 @@ assert.ok(
 
 assert.match(
   warrantyPage,
-  /if \(!claimsLoadedSuccessfully\)\s*\{\s*setClaimFocusResolving\(false\);\s*return;/,
-  "A failed notification deep-link load must stop the blocking focus spinner.",
+  /setFocusRetryNonce\(\(value\) => value \+ 1\)/,
+  "A temporary focused-claim load failure must remain retryable without discarding the target.",
 );
 assert.match(
   warrantyPage,
