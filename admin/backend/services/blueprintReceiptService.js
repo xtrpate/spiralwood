@@ -40,7 +40,10 @@ const {
   ensureBlueprintMaterialReservations,
 } = require("./blueprintMaterialReservationService");
 
-const normalize = (value) => String(value || "").trim().toLowerCase();
+const normalize = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
 
 const isPositiveInt = (value) => {
   const n = Number(value);
@@ -91,21 +94,26 @@ async function ensureReceiptForVerifiedPayment(
 ) {
   const orderIdNum = Number(orderId);
   const paymentTransactionIdNum = Number(paymentTransactionId);
-  const issuedByNum = Number(issuedByUserId);
+  const issuedByNum =
+    issuedByUserId === null || issuedByUserId === undefined
+      ? null
+      : Number(issuedByUserId);
 
   if (!isPositiveInt(orderIdNum)) {
     throw new Error(
       "ensureReceiptForVerifiedPayment: orderId must be a positive integer.",
     );
   }
+
   if (!isPositiveInt(paymentTransactionIdNum)) {
     throw new Error(
       "ensureReceiptForVerifiedPayment: paymentTransactionId must be a positive integer.",
     );
   }
-  if (!isPositiveInt(issuedByNum)) {
+
+  if (issuedByNum !== null && !isPositiveInt(issuedByNum)) {
     throw new Error(
-      "ensureReceiptForVerifiedPayment: issuedByUserId must be a positive integer.",
+      "ensureReceiptForVerifiedPayment: issuedByUserId must be a positive integer or null.",
     );
   }
 
@@ -194,9 +202,7 @@ async function ensureReceiptForVerifiedPayment(
 
   const orderTotalCents = parseDecimalToCentsStrict(order.total);
   if (orderTotalCents === null || orderTotalCents <= 0) {
-    throw new Error(
-      "ensureReceiptForVerifiedPayment: order total is invalid.",
-    );
+    throw new Error("ensureReceiptForVerifiedPayment: order total is invalid.");
   }
 
   // Never hide an overpayment behind Math.max — a locked verified total
@@ -293,7 +299,11 @@ async function ensureReceiptForVerifiedPayment(
   let providerReference = null;
   if (paymentMethod === "paymongo") {
     const proof = String(targetRow.proof_url || "").trim();
-    if (proof.length > 0 && proof.length <= 150 && PAYMONGO_REFERENCE_PATTERN.test(proof)) {
+    if (
+      proof.length > 0 &&
+      proof.length <= 150 &&
+      PAYMONGO_REFERENCE_PATTERN.test(proof)
+    ) {
       providerReference = proof;
     }
   }
@@ -305,7 +315,10 @@ async function ensureReceiptForVerifiedPayment(
   const issuedTo = String(customerRow?.name || "Customer").slice(0, 200);
 
   const blueprintTitle = blueprint?.title || null;
-  const receiptNumber = `BP-${Date.now()}-${paymentTransactionIdNum}`.slice(0, 50);
+  const receiptNumber = `BP-${Date.now()}-${paymentTransactionIdNum}`.slice(
+    0,
+    50,
+  );
 
   const itemsSnapshot = JSON.stringify({
     order_type: "blueprint",
@@ -317,7 +330,9 @@ async function ensureReceiptForVerifiedPayment(
   const previousPaidAmountStr = centsToDecimalString(previousPaidCents);
   const amountPaidStr = centsToDecimalString(amountPaidCents);
   const totalPaidAfterStr = centsToDecimalString(totalPaidAfterCents);
-  const remainingBalanceAfterStr = centsToDecimalString(remainingBalanceAfterCents);
+  const remainingBalanceAfterStr = centsToDecimalString(
+    remainingBalanceAfterCents,
+  );
   const totalAmountStr = centsToDecimalString(orderTotalCents);
 
   let insertResult;
