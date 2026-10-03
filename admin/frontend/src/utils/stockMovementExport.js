@@ -42,9 +42,9 @@ export const STOCK_MOVEMENT_EXPORT_FORMATS = {
 
 const REPORT_COLUMNS = [
   { key: "date", label: "Date & Time", width: 24 },
+  { key: "item", label: "Item", width: 34 },
   { key: "movement", label: "Movement", width: 15 },
   { key: "source", label: "Source", width: 22 },
-  { key: "item", label: "Item", width: 34 },
   { key: "specification", label: "Specification", width: 30 },
   { key: "quantity", label: "Quantity", width: 16 },
   { key: "order", label: "Order", width: 20 },
@@ -269,9 +269,9 @@ const exportPdf = async ({ rows, meta }) => {
     },
     columnStyles: {
       0: { cellWidth: 23 },
-      1: { cellWidth: 15 },
-      2: { cellWidth: 22 },
-      3: { cellWidth: 34 },
+      1: { cellWidth: 34 },
+      2: { cellWidth: 15 },
+      3: { cellWidth: 22 },
       4: { cellWidth: 30 },
       5: { cellWidth: 17 },
       6: { cellWidth: 20 },

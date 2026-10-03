@@ -13,6 +13,7 @@ const {
   isNonEmptyString,
   isValidPhoneNumber,
   isValidEmail,
+  parseStrictPositiveInt,
 } = require("../../utils/validators");
 const POSITIVE_MOVEMENT_TYPES = new Set(["in", "return"]);
 
@@ -2002,11 +2003,18 @@ exports.getStockMovements = async (req, res) => {
 };
 
 exports.createStockMovement = async (req, res) => {
-  const conn = await pool.getConnection();
+  let conn = null;
+  let transactionActive = false;
+
+  const rollbackAndRespond = async (status, body) => {
+    if (conn && transactionActive) {
+      await conn.rollback();
+      transactionActive = false;
+    }
+    return res.status(status).json(body);
+  };
 
   try {
-    await conn.beginTransaction();
-
     const {
       material_id,
       product_id,
@@ -2016,45 +2024,131 @@ exports.createStockMovement = async (req, res) => {
       order_id,
       reference,
       notes,
-    } = req.body;
+    } = req.body || {};
 
-    const movementQty = Number(quantity);
+    const materialProvided =
+      material_id !== undefined &&
+      material_id !== null &&
+      String(material_id).trim() !== "";
+    const productProvided =
+      product_id !== undefined &&
+      product_id !== null &&
+      String(product_id).trim() !== "";
+    const supplierProvided =
+      supplier_id !== undefined &&
+      supplier_id !== null &&
+      String(supplier_id).trim() !== "";
+    const orderProvided =
+      order_id !== undefined &&
+      order_id !== null &&
+      String(order_id).trim() !== "";
+
+    const materialId = materialProvided
+      ? parseStrictPositiveInt(material_id)
+      : null;
+    const productId = productProvided
+      ? parseStrictPositiveInt(product_id)
+      : null;
+    const supplierId = supplierProvided
+      ? parseStrictPositiveInt(supplier_id)
+      : null;
+    const orderId = orderProvided ? parseStrictPositiveInt(order_id) : null;
 
     if (!["in", "out", "adjustment", "return"].includes(type)) {
-      await conn.rollback();
       return res.status(400).json({ message: "Invalid stock movement type." });
     }
 
     if (type === "out") {
-      await conn.rollback();
       return res.status(400).json({
         message:
           "Manual Stock Out is disabled. Raw materials are deducted automatically by Blueprint Production, and ready-made products are deducted by order fulfillment.",
       });
     }
 
-    if (!material_id && !product_id) {
-      await conn.rollback();
+    if (!materialProvided && !productProvided) {
       return res.status(400).json({
         message: "Please select either a raw material or a ready-made product.",
       });
     }
 
-    if (material_id && product_id) {
-      await conn.rollback();
+    if (materialProvided && !materialId) {
+      return res.status(400).json({ message: "Invalid raw material selection." });
+    }
+
+    if (productProvided && !productId) {
+      return res.status(400).json({
+        message: "Invalid ready-made product selection.",
+      });
+    }
+
+    if (materialId && productId) {
       return res.status(400).json({
         message:
           "Only one target is allowed per movement: raw material or ready-made product.",
       });
     }
 
+    if (supplierProvided && !supplierId) {
+      return res.status(400).json({
+        message: "Supplier must be a valid selection.",
+      });
+    }
+
+    if (orderProvided && !orderId) {
+      return res.status(400).json({
+        message: "Order reference must be a valid selection.",
+      });
+    }
+
+    if (
+      reference !== undefined &&
+      reference !== null &&
+      typeof reference !== "string"
+    ) {
+      return res.status(400).json({ message: "Reference must be text." });
+    }
+
+    if (notes !== undefined && notes !== null && typeof notes !== "string") {
+      return res.status(400).json({ message: "Notes must be text." });
+    }
+
+    const cleanReference =
+      typeof reference === "string" ? reference.trim() : "";
+    const cleanNotes = typeof notes === "string" ? notes.trim() : "";
+
+    if (cleanReference.length > 100) {
+      return res.status(400).json({
+        message: "Reference must be 100 characters or less.",
+      });
+    }
+
+    if (cleanNotes.length > 1000) {
+      return res.status(400).json({
+        message: "Notes must be 1000 characters or less.",
+      });
+    }
+
+    const requiresTraceability = type === "adjustment" || type === "return";
+    if (requiresTraceability && !cleanReference) {
+      return res.status(400).json({
+        message: "Reference is required for adjustments and returns.",
+      });
+    }
+    if (requiresTraceability && !cleanNotes) {
+      return res.status(400).json({
+        message: "Reason is required for adjustments and returns.",
+      });
+    }
+
+    const movementQty = Number(quantity);
     const isAdjustment = type === "adjustment";
+    const MAX_STOCK_MOVEMENT_QUANTITY = 99999999.99;
+    const MAX_READY_MADE_MOVEMENT_QUANTITY = 99999999;
 
     if (
       !Number.isFinite(movementQty) ||
       (isAdjustment ? movementQty < 0 : movementQty <= 0)
     ) {
-      await conn.rollback();
       return res.status(400).json({
         message: isAdjustment
           ? "Adjustment quantity must be 0 or greater."
@@ -2062,46 +2156,30 @@ exports.createStockMovement = async (req, res) => {
       });
     }
 
-    if (
-      product_id &&
-      (!Number.isInteger(movementQty) || !hasWholeNumberFormat(quantity))
-    ) {
-      await conn.rollback();
+    if (movementQty > MAX_STOCK_MOVEMENT_QUANTITY) {
       return res.status(400).json({
-        message: "Ready-made product quantity must be a whole number.",
+        message: "Quantity is above the supported stock limit.",
       });
     }
 
     if (
-      supplier_id !== null &&
-      supplier_id !== undefined &&
-      supplier_id !== "" &&
-      (!isValidNonNegativeInteger(supplier_id) || Number(supplier_id) <= 0)
+      productId &&
+      (!Number.isSafeInteger(movementQty) ||
+        !hasWholeNumberFormat(quantity) ||
+        movementQty > MAX_READY_MADE_MOVEMENT_QUANTITY)
     ) {
-      await conn.rollback();
-      return res
-        .status(400)
-        .json({ message: "Supplier must be a valid selection." });
+      return res.status(400).json({
+        message:
+          "Ready-made product quantity must be a whole number within the supported stock limit.",
+      });
     }
 
-    if (
-      order_id !== null &&
-      order_id !== undefined &&
-      order_id !== "" &&
-      (!isValidNonNegativeInteger(order_id) || Number(order_id) <= 0)
-    ) {
-      await conn.rollback();
-      return res
-        .status(400)
-        .json({ message: "Order reference must be a valid selection." });
-    }
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+    transactionActive = true;
 
-    // ───────────────────────────────────────────────────────────
     // RAW MATERIAL DIRECT MOVEMENT
-    // ───────────────────────────────────────────────────────────
-    if (material_id) {
-      const materialId = parseInt(material_id, 10);
-
+    if (materialId) {
       const [[material]] = await conn.query(
         `SELECT id, name, unit, quantity, reorder_point, safety_stock, is_active
          FROM raw_materials
@@ -2112,20 +2190,19 @@ exports.createStockMovement = async (req, res) => {
       );
 
       if (!material) {
-        await conn.rollback();
-        return res.status(404).json({ message: "Raw material not found." });
+        return await rollbackAndRespond(404, {
+          message: "Raw material not found.",
+        });
       }
 
       if (!hasValidQuantityPrecisionForUnit(quantity, material.unit)) {
-        await conn.rollback();
-        return res.status(400).json({
+        return await rollbackAndRespond(400, {
           message: quantityRuleMessage(material.unit),
         });
       }
 
       if (Number(material.is_active) !== 1) {
-        await conn.rollback();
-        return res.status(409).json({
+        return await rollbackAndRespond(409, {
           message:
             "Archived raw materials cannot receive stock movements. Restore the material first.",
         });
@@ -2143,7 +2220,7 @@ exports.createStockMovement = async (req, res) => {
 
       let newQty;
       if (type === "adjustment") {
-        newQty = movementQty; // Set absolute quantity.
+        newQty = movementQty;
       } else {
         const delta = POSITIVE_MOVEMENT_TYPES.has(type)
           ? movementQty
@@ -2154,9 +2231,14 @@ exports.createStockMovement = async (req, res) => {
       newQty = normalizeRawMaterialQuantity(newQty);
       const stockIncreased = newQty > currentQty + 0.0000001;
 
+      if (newQty > MAX_STOCK_MOVEMENT_QUANTITY) {
+        return await rollbackAndRespond(400, {
+          message: "Resulting stock is above the supported stock limit.",
+        });
+      }
+
       if (newQty < reservedQty - 0.0000001) {
-        await conn.rollback();
-        return res.status(409).json({
+        return await rollbackAndRespond(409, {
           message: `${material.name} has ${formatQuantityForMessage(
             reservedQty,
           )} ${material.unit || "unit"} reserved for paid blueprint orders. You cannot reduce the total stock below this reserved amount.`,
@@ -2178,10 +2260,10 @@ exports.createStockMovement = async (req, res) => {
           null,
           type,
           movementQty,
-          supplier_id ? parseInt(supplier_id, 10) : null,
-          order_id ? parseInt(order_id, 10) : null,
-          reference || null,
-          notes || null,
+          supplierId,
+          orderId,
+          cleanReference || null,
+          cleanNotes || null,
           parseInt(req.user.id, 10),
         ],
       );
@@ -2202,14 +2284,14 @@ exports.createStockMovement = async (req, res) => {
       );
 
       if (stockUpdateResult.affectedRows !== 1) {
-        await conn.rollback();
-        return res.status(409).json({
+        return await rollbackAndRespond(409, {
           message:
             "Raw material stock changed before the movement could be completed. Refresh and try again.",
         });
       }
 
       await conn.commit();
+      transactionActive = false;
 
       let reservationRecovery = null;
       if (stockIncreased) {
@@ -2222,8 +2304,6 @@ exports.createStockMovement = async (req, res) => {
             },
           );
         } catch (recoveryError) {
-          // The stock increase is already committed. Report a warning instead
-          // of asking the user to repeat the physical stock movement.
           console.error(
             "[BPI-9] Pending-stock recovery failed after stock increase:",
             recoveryError,
@@ -2261,10 +2341,10 @@ exports.createStockMovement = async (req, res) => {
           product_id: null,
           type,
           quantity: movementQty,
-          supplier_id: supplier_id ? parseInt(supplier_id, 10) : null,
-          order_id: order_id ? parseInt(order_id, 10) : null,
-          reference: reference || null,
-          notes: notes || null,
+          supplier_id: supplierId,
+          order_id: orderId,
+          reference: cleanReference || null,
+          notes: cleanNotes || null,
           previous_stock: currentQty,
           reserved_stock: reservedQty,
           available_before: availableQty,
@@ -2294,10 +2374,7 @@ exports.createStockMovement = async (req, res) => {
       });
     }
 
-    // WISDOM READY-MADE STOCK MOVEMENT V1
-    // ───────────────────────────────────────────────────────────
     // READY-MADE PRODUCT MOVEMENT
-    // ───────────────────────────────────────────────────────────
     const [[product]] = await conn.query(
       `SELECT
          p.id,
@@ -2305,34 +2382,47 @@ exports.createStockMovement = async (req, res) => {
          p.type,
          p.stock,
          p.reorder_point,
+         p.is_active,
          COALESCE(ds.quantity, 0) AS display_stock
        FROM products p
        LEFT JOIN ready_made_display_stock ds ON ds.product_id = p.id
        WHERE p.id = ?
+       LIMIT 1
        FOR UPDATE`,
-      [parseInt(product_id)],
+      [productId],
     );
 
     if (!product) {
-      await conn.rollback();
-      return res.status(404).json({ message: "Ready-made product not found." });
+      return await rollbackAndRespond(404, {
+        message: "Ready-made product not found.",
+      });
     }
 
-    if (String(product.type || "").toLowerCase() === "blueprint") {
-      await conn.rollback();
-      return res.status(409).json({
+    if (Number(product.is_active) !== 1) {
+      return await rollbackAndRespond(409, {
         message:
-          "Blueprint products are made to order and do not use finished-product stock movements.",
+          "Archived ready-made products cannot receive stock movements. Restore the product first.",
+      });
+    }
+
+    if (String(product.type || "").trim().toLowerCase() !== "standard") {
+      return await rollbackAndRespond(409, {
+        message:
+          "Only standard ready-made products can receive finished-product stock movements.",
       });
     }
 
     const currentProductStock = Number(product.stock) || 0;
     const currentDisplayStock = Number(product.display_stock) || 0;
 
-    // PRODUCT STOCK-IN = RECEIVE READY-MADE FINISHED PRODUCT
-    // Ready-made products are treated as complete inventory items.
-    // No raw-material BOM deduction is performed here.
     if (type === "in") {
+      const newProductStock = currentProductStock + movementQty;
+      if (newProductStock > MAX_READY_MADE_MOVEMENT_QUANTITY) {
+        return await rollbackAndRespond(400, {
+          message: "Resulting product stock is above the supported stock limit.",
+        });
+      }
+
       const [movementResult] = await conn.query(
         `INSERT INTO stock_movements
            (material_id, product_id, type, quantity, supplier_id, order_id,
@@ -2340,18 +2430,16 @@ exports.createStockMovement = async (req, res) => {
          VALUES (?,?,?,?,?,?,?,?,?)`,
         [
           null,
-          parseInt(product_id, 10),
+          productId,
           type,
           movementQty,
-          supplier_id ? parseInt(supplier_id, 10) : null,
-          order_id ? parseInt(order_id, 10) : null,
-          reference || null,
-          notes || null,
+          supplierId,
+          orderId,
+          cleanReference || null,
+          cleanNotes || null,
           parseInt(req.user.id, 10),
         ],
       );
-
-      const newProductStock = currentProductStock + movementQty;
 
       const [stockUpdateResult] = await conn.query(
         `UPDATE products
@@ -2360,32 +2448,32 @@ exports.createStockMovement = async (req, res) => {
         [
           newProductStock,
           computeStockStatus(newProductStock, product.reorder_point),
-          parseInt(product_id, 10),
+          productId,
         ],
       );
 
       if (stockUpdateResult.affectedRows !== 1) {
-        await conn.rollback();
-        return res.status(409).json({
+        return await rollbackAndRespond(409, {
           message:
             "Product stock changed before the movement could be completed. Refresh and try again.",
         });
       }
 
       await conn.commit();
+      transactionActive = false;
 
       req.auditRecord = {
         id: movementResult.insertId,
         old: null,
         new: {
           material_id: null,
-          product_id: parseInt(product_id, 10),
+          product_id: productId,
           type,
           quantity: movementQty,
-          supplier_id: supplier_id ? parseInt(supplier_id, 10) : null,
-          order_id: order_id ? parseInt(order_id, 10) : null,
-          reference: reference || null,
-          notes: notes || null,
+          supplier_id: supplierId,
+          order_id: orderId,
+          reference: cleanReference || null,
+          notes: cleanNotes || null,
           previous_stock: currentProductStock,
           new_stock: newProductStock,
         },
@@ -2397,10 +2485,9 @@ exports.createStockMovement = async (req, res) => {
       });
     }
 
-    // PRODUCT STOCK-OUT / RETURN / ADJUSTMENT
     let newProductStock;
     if (type === "adjustment") {
-      newProductStock = movementQty; // Set absolute quantity!
+      newProductStock = movementQty;
     } else {
       const delta = POSITIVE_MOVEMENT_TYPES.has(type)
         ? movementQty
@@ -2409,15 +2496,19 @@ exports.createStockMovement = async (req, res) => {
     }
 
     if (newProductStock < 0) {
-      await conn.rollback();
-      return res.status(400).json({
+      return await rollbackAndRespond(400, {
         message: `Insufficient stock for ${product.name}. Available: ${currentProductStock}, requested deduction causes negative stock.`,
       });
     }
 
+    if (newProductStock > MAX_READY_MADE_MOVEMENT_QUANTITY) {
+      return await rollbackAndRespond(400, {
+        message: "Resulting product stock is above the supported stock limit.",
+      });
+    }
+
     if (newProductStock < currentDisplayStock) {
-      await conn.rollback();
-      return res.status(409).json({
+      return await rollbackAndRespond(409, {
         message: `${product.name} has ${currentDisplayStock} unit(s) allocated to Sales / Display. Transfer those units back to Warehouse / Production before lowering total stock below that amount.`,
         total_stock: currentProductStock,
         display_stock: currentDisplayStock,
@@ -2425,48 +2516,57 @@ exports.createStockMovement = async (req, res) => {
       });
     }
 
-    const [r] = await conn.query(
+    const [movementResult] = await conn.query(
       `INSERT INTO stock_movements
-         (material_id, product_id, type, quantity, supplier_id, order_id, reference, notes, created_by)
+         (material_id, product_id, type, quantity, supplier_id, order_id,
+          reference, notes, created_by)
        VALUES (?,?,?,?,?,?,?,?,?)`,
       [
         null,
-        parseInt(product_id),
+        productId,
         type,
         movementQty,
-        supplier_id ? parseInt(supplier_id) : null,
-        order_id ? parseInt(order_id) : null,
-        reference || null,
-        notes || null,
-        parseInt(req.user.id),
+        supplierId,
+        orderId,
+        cleanReference || null,
+        cleanNotes || null,
+        parseInt(req.user.id, 10),
       ],
     );
 
-    await conn.query(
+    const [stockUpdateResult] = await conn.query(
       `UPDATE products
        SET stock = ?, stock_status = ?
        WHERE id = ?`,
       [
         newProductStock,
         computeStockStatus(newProductStock, product.reorder_point),
-        parseInt(product_id),
+        productId,
       ],
     );
 
+    if (stockUpdateResult.affectedRows !== 1) {
+      return await rollbackAndRespond(409, {
+        message:
+          "Product stock changed before the movement could be completed. Refresh and try again.",
+      });
+    }
+
     await conn.commit();
+    transactionActive = false;
 
     req.auditRecord = {
-      id: r.insertId,
+      id: movementResult.insertId,
       old: null,
       new: {
         material_id: null,
-        product_id: parseInt(product_id),
+        product_id: productId,
         type,
         quantity: movementQty,
-        supplier_id: supplier_id ? parseInt(supplier_id) : null,
-        order_id: order_id ? parseInt(order_id) : null,
-        reference: reference || null,
-        notes: notes || null,
+        supplier_id: supplierId,
+        order_id: orderId,
+        reference: cleanReference || null,
+        notes: cleanNotes || null,
         previous_stock: currentProductStock,
         new_stock: newProductStock,
       },
@@ -2474,20 +2574,27 @@ exports.createStockMovement = async (req, res) => {
 
     return res.status(201).json({
       message: "Stock movement recorded.",
-      id: r.insertId,
+      id: movementResult.insertId,
     });
   } catch (err) {
-    await conn.rollback();
-    res.status(500).json({ message: err.message });
+    if (conn && transactionActive) {
+      try {
+        await conn.rollback();
+      } catch (rollbackError) {
+        console.error("[inventory.createStockMovement rollback]", rollbackError);
+      }
+    }
+
+    console.error("[inventory.createStockMovement]", err);
+    return res.status(500).json({
+      message: "Stock movement request failed.",
+    });
   } finally {
-    conn.release();
+    if (conn) conn.release();
   }
 };
 
-// ═══════════════════════════════════════════════════════════
 // SUPPLIERS
-// ═══════════════════════════════════════════════════════════
-
 const normalizeSupplierField = (value) =>
   typeof value === "string" ? value.trim() : value;
 

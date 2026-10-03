@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
+import useAuthStore from "../../store/authStore";
 import { formatPHDateTime, PH_TIME_ZONE } from "../../utils/dateTime";
 import toast from "react-hot-toast";
 import { FileDown } from "lucide-react";
@@ -144,14 +145,9 @@ const formatMaterialSpecification = (row = {}) => {
 };
 
 const getMovementQuantityLabel = (row = {}) => {
-  const isPositive = row.type === "in" || row.type === "return";
   const unit = row.material_unit ? ` ${row.material_unit}` : "";
-
-  if (row.type === "adjustment") {
-    return `Set to ${formatQuantity(row.quantity)}${unit}`;
-  }
-
-  return `${isPositive ? "+" : "-"}${formatQuantity(row.quantity)}${unit}`;
+  const quantity = Math.abs(Number(row.quantity) || 0);
+  return `${formatQuantity(quantity)}${unit}`;
 };
 
 // WISDOM STOCK READY-MADE SEPARATION V1
@@ -161,6 +157,9 @@ export default function StockMovementPage() {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
   const navigate = useNavigate();
+  const { hasPermission } = useAuthStore();
+  const canCreateMovement = hasPermission("stock_movements.create");
+  const canExportMovements = hasPermission("stock_movements.export");
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [summary, setSummary] = useState(EMPTY_SUMMARY);
@@ -255,7 +254,8 @@ export default function StockMovementPage() {
         setProducts(
           (r.data.products || []).filter(
             (product) =>
-              String(product.type || "standard").toLowerCase() !== "blueprint",
+              String(product.type || "standard").toLowerCase() !== "blueprint" &&
+              Number(product.is_active ?? 1) === 1,
           ),
         ),
       );
@@ -374,7 +374,7 @@ export default function StockMovementPage() {
     let collected = [];
 
     while (true) {
-      const { data } = await api.get("/inventory/movements", {
+      const { data } = await api.get("/inventory/movements/export", {
         params: {
           ...baseParams,
           page: exportPage,
@@ -439,6 +439,10 @@ export default function StockMovementPage() {
   };
 
   const handleExportReport = async () => {
+    if (!canExportMovements) {
+      toast.error("You do not have permission to export stock movements.");
+      return;
+    }
     if (exporting) return;
 
     setExporting(true);
@@ -557,6 +561,13 @@ export default function StockMovementPage() {
       ) || null,
     [rawMats, form.material_id],
   );
+  const selectedProduct = useMemo(
+    () =>
+      products.find(
+        (product) => Number(product.id) === Number(form.product_id),
+      ) || null,
+    [products, form.product_id],
+  );
   const selectedOnHand = Number(
     selectedMaterial?.on_hand_quantity ?? selectedMaterial?.quantity ?? 0,
   );
@@ -568,6 +579,31 @@ export default function StockMovementPage() {
   const selectedMaterialAllowsDecimal = unitAllowsDecimalQuantity(
     selectedMaterial?.unit,
   );
+  const requiresTraceability = ["adjustment", "return"].includes(form.type);
+  const selectedCurrentStock = isMaterialTarget
+    ? selectedOnHand
+    : isProductTarget
+      ? Number(selectedProduct?.stock || 0)
+      : null;
+  const adjustmentRequestedQuantity = Number(form.quantity);
+  const adjustmentDifference =
+    form.type === "adjustment" &&
+    form.quantity !== "" &&
+    selectedCurrentStock !== null &&
+    Number.isFinite(adjustmentRequestedQuantity)
+      ? adjustmentRequestedQuantity - selectedCurrentStock
+      : null;
+  const adjustmentUnit = isMaterialTarget
+    ? selectedMaterial?.unit || "unit"
+    : "unit(s)";
+  const adjustmentDifferenceLabel =
+    adjustmentDifference === null
+      ? ""
+      : adjustmentDifference > 0
+        ? `Increase ${formatQuantity(adjustmentDifference)} ${adjustmentUnit}`
+        : adjustmentDifference < 0
+          ? `Decrease ${formatQuantity(Math.abs(adjustmentDifference))} ${adjustmentUnit}`
+          : "No change";
   const showSupplierField =
     Boolean(selectedMaterial) && itemKind === "material" && form.type === "in";
   const assignedSupplierId = selectedMaterial?.supplier_id
@@ -610,6 +646,11 @@ export default function StockMovementPage() {
 
   const handleSave = async (event) => {
     event.preventDefault();
+
+    if (!canCreateMovement) {
+      toast.error("You do not have permission to record stock movements.");
+      return;
+    }
 
     if (!form.material_id && !form.product_id) {
       toast.error("Select an inventory item.");
@@ -659,6 +700,29 @@ export default function StockMovementPage() {
       return;
     }
 
+    const cleanReference = form.reference.trim();
+    const cleanNotes = form.notes.trim();
+
+    if (cleanReference.length > 100) {
+      toast.error("Reference must be 100 characters or less.");
+      return;
+    }
+
+    if (cleanNotes.length > 1000) {
+      toast.error("Notes must be 1000 characters or less.");
+      return;
+    }
+
+    if (requiresTraceability && !cleanReference) {
+      toast.error("Reference is required for adjustments and returns.");
+      return;
+    }
+
+    if (requiresTraceability && !cleanNotes) {
+      toast.error("Reason is required for adjustments and returns.");
+      return;
+    }
+
     setSaving(true);
     try {
       const payload = {
@@ -670,8 +734,8 @@ export default function StockMovementPage() {
             : null,
         type: form.type,
         quantity: Number(form.quantity),
-        reference: form.reference.trim() || null,
-        notes: form.notes.trim() || null,
+        reference: cleanReference || null,
+        notes: cleanNotes || null,
       };
 
       const { data } = await api.post("/inventory/movements", payload);
@@ -698,29 +762,33 @@ export default function StockMovementPage() {
           </p>
         </div>
         <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-          <button
-            onClick={() => setExportOpen(true)}
-            disabled={exporting}
-            style={{
-              padding: "9px 18px",
-              background: "#ffffff",
-              color: "#18181b",
-              border: "1px solid #d4d4d8",
-              borderRadius: "2px",
-              fontSize: "12px",
-              fontWeight: "600",
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-            }}
-          >
-            <FileDown size={14} />
-            {exporting ? "Exporting..." : "Export Report"}
-          </button>
-          <button onClick={() => setModal(true)} style={btnPrimary}>
-            Record movement
-          </button>
+          {canExportMovements && (
+            <button
+              onClick={() => setExportOpen(true)}
+              disabled={exporting}
+              style={{
+                padding: "9px 18px",
+                background: "#ffffff",
+                color: "#18181b",
+                border: "1px solid #d4d4d8",
+                borderRadius: "2px",
+                fontSize: "12px",
+                fontWeight: "600",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+              }}
+            >
+              <FileDown size={14} />
+              {exporting ? "Exporting..." : "Export Report"}
+            </button>
+          )}
+          {canCreateMovement && (
+            <button onClick={() => setModal(true)} style={btnPrimary}>
+              Record movement
+            </button>
+          )}
         </div>
       </div>
 
@@ -850,9 +918,9 @@ export default function StockMovementPage() {
             <tr style={{ background: "#fafafa" }}>
               {[
                 "Date and time",
+                "Item",
                 "Movement",
                 "Source",
-                "Item",
                 "Quantity",
                 "",
               ].map((heading, index) => (
@@ -915,6 +983,17 @@ export default function StockMovementPage() {
                     >
                       {formatDateTime(row.created_at)}
                     </td>
+                    <td style={{ ...td, minWidth: 230 }}>
+                      <div style={{ fontWeight: 600, color: "#0a0a0a" }}>
+                        {itemName}
+                      </div>
+                      {specification && (
+                        <div style={subMeta}>{specification}</div>
+                      )}
+                      {row.product_name && row.material_name && (
+                        <div style={subMeta}>For: {row.product_name}</div>
+                      )}
+                    </td>
                     <td style={td}>
                       <span style={typeBadge}>
                         {MOVEMENT_LABELS[row.type] || "Movement"}
@@ -938,17 +1017,7 @@ export default function StockMovementPage() {
                         </div>
                       )}
                     </td>
-                    <td style={{ ...td, minWidth: 230 }}>
-                      <div style={{ fontWeight: 600, color: "#0a0a0a" }}>
-                        {itemName}
-                      </div>
-                      {specification && (
-                        <div style={subMeta}>{specification}</div>
-                      )}
-                      {row.product_name && row.material_name && (
-                        <div style={subMeta}>For: {row.product_name}</div>
-                      )}
-                    </td>
+
                     <td
                       style={{
                         ...td,
@@ -1188,7 +1257,7 @@ export default function StockMovementPage() {
         </div>
       )}
 
-      {modal && (
+      {modal && canCreateMovement && (
         <div style={overlay}>
           <div style={modalBox}>
             <h3 style={modalTitle}>Record stock movement</h3>
@@ -1360,11 +1429,36 @@ export default function StockMovementPage() {
                 />
               </div>
 
+              {form.type === "adjustment" &&
+                adjustmentDifference !== null && (
+                  <div style={availabilityBox}>
+                    <div>
+                      <span style={availabilityLabel}>Current</span>
+                      <strong>
+                        {formatQuantity(selectedCurrentStock)} {adjustmentUnit}
+                      </strong>
+                    </div>
+                    <div>
+                      <span style={availabilityLabel}>New</span>
+                      <strong>
+                        {formatQuantity(adjustmentRequestedQuantity)} {adjustmentUnit}
+                      </strong>
+                    </div>
+                    <div>
+                      <span style={availabilityLabel}>Difference</span>
+                      <strong>{adjustmentDifferenceLabel}</strong>
+                    </div>
+                  </div>
+                )}
+
               <div style={fieldGroup}>
                 <label style={label}>
-                  Reference <span style={optionalText}>Optional</span>
+                  Reference {requiresTraceability ? "*" : (
+                    <span style={optionalText}>Optional</span>
+                  )}
                 </label>
                 <input
+                  required={requiresTraceability}
                   value={form.reference}
                   onChange={(event) =>
                     setForm((current) => ({
@@ -1380,9 +1474,13 @@ export default function StockMovementPage() {
 
               <div style={{ ...fieldGroup, marginBottom: 20 }}>
                 <label style={label}>
-                  Notes <span style={optionalText}>Optional</span>
+                  {requiresTraceability ? "Reason *" : "Notes"}
+                  {!requiresTraceability && (
+                    <span style={optionalText}>Optional</span>
+                  )}
                 </label>
                 <textarea
+                  required={requiresTraceability}
                   value={form.notes}
                   onChange={(event) =>
                     setForm((current) => ({
@@ -1390,6 +1488,12 @@ export default function StockMovementPage() {
                       notes: event.target.value,
                     }))
                   }
+                  placeholder={
+                    requiresTraceability
+                      ? "Explain why this adjustment or return is needed"
+                      : "Optional stock movement notes"
+                  }
+                  maxLength={1000}
                   rows={3}
                   style={{ ...inputFull, resize: "vertical" }}
                 />
@@ -1414,7 +1518,7 @@ export default function StockMovementPage() {
           </div>
         </div>
       )}
-      {exportOpen && (
+      {exportOpen && canExportMovements && (
         <div style={modalBackdrop}>
           <div
             role="dialog"

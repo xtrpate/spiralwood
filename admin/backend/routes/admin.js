@@ -471,6 +471,12 @@ router.get(
   requirePermission("stock_movements.view"),
   inventory.getStockMovements,
 );
+router.get(
+  "/inventory/movements/export",
+  adminStaff,
+  requirePermission("stock_movements.export"),
+  inventory.getStockMovements,
+);
 router.post(
   "/inventory/movements",
   adminStaff,
