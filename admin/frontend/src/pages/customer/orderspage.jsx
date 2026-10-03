@@ -551,6 +551,21 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
   const orderRequestRef = useRef(0);
 
   useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose?.();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  useEffect(() => {
     let active = true;
     const requestId = ++orderRequestRef.current;
 

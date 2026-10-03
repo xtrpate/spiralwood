@@ -833,6 +833,21 @@ function ModalShell({
   wide = false,
   variant = "",
 }) {
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose?.();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
   return (
     <div
       className={
@@ -2160,7 +2175,15 @@ export default function CustomizePage() {
     <div className="cust-page">
       <div className="premium-toast-container">
         {toastMessage && (
-          <div className={`premium-toast ${isHiding ? "hiding" : ""}`}>
+          <div
+            className={`premium-toast ${isHiding ? "hiding" : ""}`}
+            onClick={() => {
+              setToastMessage("");
+              navigate("/custom-cart");
+            }}
+            style={{ cursor: "pointer" }}
+            title="Click to view your custom cart"
+          >
             <CheckCircle2 size={20} color="#111111" />
             <span>{toastMessage}</span>
           </div>
