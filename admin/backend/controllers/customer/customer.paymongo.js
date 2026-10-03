@@ -959,7 +959,25 @@ exports.handlePaymongoWebhook = async (req, res) => {
 
     const eventId = String(eventData?.id || "").trim() || null;
 
-    if (eventType !== "checkout_session.payment.paid") {
+    const supportedPaymongoEventTypes = new Set([
+      "checkout_session.payment.paid",
+      "payment.failed",
+      "qrph.expired",
+    ]);
+
+    /*
+     * Unknown PayMongo events are acknowledged safely.
+     *
+     * Payment lifecycle events that WISDOM explicitly handles are:
+     *
+     *   checkout_session.payment.paid
+     *   payment.failed
+     *   qrph.expired
+     *
+     * The latter two are attempt-level events. They must NOT be treated
+     * as Checkout Session expiry.
+     */
+    if (!supportedPaymongoEventTypes.has(eventType)) {
       return res.status(200).json({
         received: true,
         ignored: true,
@@ -1039,6 +1057,36 @@ exports.handlePaymongoWebhook = async (req, res) => {
           received: true,
           processed: false,
           already_processed: true,
+          event_id: eventId,
+          event_type: eventType,
+        });
+      }
+
+      /*
+       * Attempt-level events do NOT create payment_transactions and do NOT
+       * change the order's payment_status.
+       *
+       * PayMongo Checkout Sessions remain active across payment attempts.
+       * A payment.failed or qrph.expired event only describes the current
+       * payment attempt/payment method.
+       *
+       * The persistent webhook-event table records the event exactly once.
+       */
+      if (eventType === "payment.failed" || eventType === "qrph.expired") {
+        await markPaymongoWebhookEventProcessed(conn, eventId);
+
+        await conn.commit();
+
+        console.log(
+          `[PayMongo Webhook] Attempt event recorded. ` +
+            `event_id=${eventId} ` +
+            `event_type=${eventType}`,
+        );
+
+        return res.status(200).json({
+          received: true,
+          processed: true,
+          attempt_event: true,
           event_id: eventId,
           event_type: eventType,
         });

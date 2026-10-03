@@ -255,68 +255,22 @@ const readPaymentAttemptState = (attributes) => {
   const paidCents = paymentAmount ?? intentAmount ?? null;
 
   /*
-   * PayMongo payment-method attempts can return the Payment Intent to
-   * "awaiting_payment_method" after a failure or expiration.
+   * Payment Intent state:
    *
-   * IMPORTANT:
-   * "awaiting_payment_method" by itself is NOT enough to conclude that
-   * a payment attempt failed, because a brand-new Payment Intent starts
-   * in that same state.
+   * - succeeded = successful payment
+   * - failed payment rows = actual failed attempt
+   * - last_payment_error = actual provider-reported failure
    *
-   * We therefore also compare the Payment Intent timestamps.
+   * DO NOT use created_at/updated_at differences as proof that a
+   * payment attempt failed or that a QR code expired.
    *
-   * Brand-new intent:
-   *   created_at ~= updated_at
-   *
-   * After an actual payment-method attempt:
-   *   updated_at > created_at
-   *
-   * This catches cases such as an expired QRPh attempt where PayMongo
-   * returns the Payment Intent to awaiting_payment_method without
-   * necessarily providing last_payment_error.
+   * PayMongo Checkout Sessions can remain active while individual
+   * Payment Intents/payment attempts fail or expire. The customer
+   * can retry inside the same Checkout Session.
    */
-  const parseProviderTimestamp = (value) => {
-    if (value === undefined || value === null) return null;
-
-    if (typeof value === "number") {
-      return Number.isFinite(value) ? value : null;
-    }
-
-    const text = String(value).trim();
-
-    if (!text) return null;
-
-    if (/^\d+(?:\.\d+)?$/.test(text)) {
-      const numeric = Number(text);
-      return Number.isFinite(numeric) ? numeric : null;
-    }
-
-    const parsed = Date.parse(text);
-
-    return Number.isFinite(parsed) ? parsed / 1000 : null;
-  };
-
-  const intentCreatedAt = parseProviderTimestamp(
-    paymentIntentAttributes?.created_at,
-  );
-
-  const intentUpdatedAt = parseProviderTimestamp(
-    paymentIntentAttributes?.updated_at,
-  );
-
-  const intentWasPreviouslyUpdated =
-    intentCreatedAt !== null &&
-    intentUpdatedAt !== null &&
-    intentUpdatedAt > intentCreatedAt;
-
   const hasFailedPaymentAttempt =
     failedPayments.length > 0 ||
-    (!intentSucceeded &&
-      paymentIntentStatus === "awaiting_payment_method" &&
-      Boolean(lastPaymentError)) ||
-    (!intentSucceeded &&
-      paymentIntentStatus === "awaiting_payment_method" &&
-      intentWasPreviouslyUpdated);
+    (!intentSucceeded && Boolean(lastPaymentError));
 
   return {
     ok: true,

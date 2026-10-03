@@ -5077,8 +5077,7 @@ exports.createPayMongoCheckout = async (req, res) => {
 
       if (
         existingAnalysis.hasSuccessfulPayment ||
-        (existingAnalysis.sessionActive &&
-          !existingAnalysis.hasFailedPaymentAttempt)
+        existingAnalysis.sessionActive
       ) {
         if (
           amountWasExplicitlyRequested &&
@@ -6719,8 +6718,7 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
        */
       if (
         sessionAmountMatchesBalance &&
-        (hasSuccessfulPayment ||
-          (sessionStillActive && !hasFailedPaymentAttempt))
+        (hasSuccessfulPayment || sessionStillActive)
       ) {
         await conn.commit();
         transactionActive = false;
@@ -6745,11 +6743,7 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
        *
        * Only clear the exact session we just inspected.
        */
-      if (
-        !sessionAmountMatchesBalance ||
-        !sessionStillActive ||
-        hasFailedPaymentAttempt
-      ) {
+      if (!sessionAmountMatchesBalance || !sessionStillActive) {
         const [clearResult] = await conn.execute(
           `UPDATE orders
        SET payment_url = NULL,
