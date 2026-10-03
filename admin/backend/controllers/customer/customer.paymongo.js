@@ -30,6 +30,112 @@ const {
 
 const WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = 5 * 60;
 
+const registerPaymongoWebhookEvent = async (
+  conn,
+  { eventId, eventType, livemode },
+) => {
+  try {
+    await conn.query(
+      `INSERT INTO paymongo_webhook_events
+       (
+         event_id,
+         event_type,
+         livemode,
+         status,
+         received_at,
+         processed_at,
+         last_error
+       )
+       VALUES (?, ?, ?, 'processing', NOW(), NULL, NULL)`,
+      [eventId, eventType, livemode ? 1 : 0],
+    );
+
+    return {
+      alreadyProcessed: false,
+      status: "processing",
+    };
+  } catch (error) {
+    /*
+     * event_id is the PRIMARY KEY.
+     *
+     * If another webhook delivery with the same event ID is already
+     * committed, MySQL raises ER_DUP_ENTRY.
+     *
+     * This is intentionally handled at the database level so two
+     * concurrent deliveries cannot both become the owner of the
+     * same event.
+     */
+    if (error?.code !== "ER_DUP_ENTRY") {
+      throw error;
+    }
+
+    const [[existingEvent]] = await conn.query(
+      `SELECT
+         event_id,
+         event_type,
+         livemode,
+         status,
+         received_at,
+         processed_at
+       FROM paymongo_webhook_events
+       WHERE event_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [eventId],
+    );
+
+    if (!existingEvent) {
+      throw error;
+    }
+
+    if (
+      existingEvent.status === "processed" ||
+      existingEvent.status === "ignored"
+    ) {
+      return {
+        alreadyProcessed: true,
+        status: existingEvent.status,
+        existingEvent,
+      };
+    }
+
+    /*
+     * Under the new transaction design, a "processing" row should
+     * never remain committed because event registration and payment
+     * processing are committed together.
+     *
+     * If one is encountered, do not process it concurrently.
+     * Returning an error causes PayMongo to retry the delivery.
+     */
+    const processingError = new Error(
+      `PayMongo webhook event ${eventId} is already being processed.`,
+    );
+
+    processingError.code = "PAYMONGO_WEBHOOK_EVENT_PROCESSING";
+
+    throw processingError;
+  }
+};
+
+const markPaymongoWebhookEventProcessed = async (conn, eventId) => {
+  const [result] = await conn.query(
+    `UPDATE paymongo_webhook_events
+     SET
+       status = 'processed',
+       processed_at = NOW(),
+       last_error = NULL
+     WHERE event_id = ?
+       AND status = 'processing'`,
+    [eventId],
+  );
+
+  if (result.affectedRows !== 1) {
+    throw new Error(
+      `Unable to mark PayMongo webhook event ${eventId} as processed.`,
+    );
+  }
+};
+
 const parsePaymongoSignature = (header) => {
   const parts = String(header || "")
     .split(",")
@@ -861,6 +967,16 @@ exports.handlePaymongoWebhook = async (req, res) => {
       });
     }
 
+    if (!eventId) {
+      console.warn("[PayMongo Webhook] Missing PayMongo event ID.");
+
+      return res.status(400).json({
+        received: false,
+        processed: false,
+        message: "Missing PayMongo webhook event ID.",
+      });
+    }
+
     /*
      * PayMongo Hosted Checkout webhook structure:
      *
@@ -896,6 +1012,37 @@ exports.handlePaymongoWebhook = async (req, res) => {
 
     try {
       await conn.beginTransaction();
+
+      const eventLivemode = Boolean(eventData?.attributes?.livemode);
+
+      const webhookEventResult = await registerPaymongoWebhookEvent(conn, {
+        eventId,
+        eventType,
+        livemode: eventLivemode,
+      });
+
+      /*
+       * The same PayMongo event has already completed successfully.
+       *
+       * Do not execute any payment, receipt, order, or inventory logic.
+       */
+      if (webhookEventResult.alreadyProcessed) {
+        await conn.rollback();
+
+        console.log(
+          `[PayMongo Webhook] Duplicate event ignored. ` +
+            `event_id=${eventId} ` +
+            `status=${webhookEventResult.status}`,
+        );
+
+        return res.status(200).json({
+          received: true,
+          processed: false,
+          already_processed: true,
+          event_id: eventId,
+          event_type: eventType,
+        });
+      }
 
       let order = null;
 
@@ -1031,6 +1178,8 @@ exports.handlePaymongoWebhook = async (req, res) => {
           },
         );
 
+        await markPaymongoWebhookEventProcessed(conn, eventId);
+
         await conn.commit();
 
         const paymentStatusChanged =
@@ -1095,6 +1244,7 @@ exports.handlePaymongoWebhook = async (req, res) => {
             order_status: blueprintWebhookResult.orderStatus || null,
             payment_status: blueprintWebhookResult.paymentStatus || null,
             event_type: eventType,
+            webhook_event_id: eventId,
             provider_session_present: true,
           },
           ipAddress: req.ip || null,
@@ -1223,6 +1373,8 @@ exports.handlePaymongoWebhook = async (req, res) => {
         paymentTransaction.id,
       );
 
+      await markPaymongoWebhookEventProcessed(conn, eventId);
+
       await conn.commit();
 
       const paymentStatusChanged =
@@ -1277,6 +1429,7 @@ exports.handlePaymongoWebhook = async (req, res) => {
           payment_status: "paid",
           receipt_id: receiptId,
           event_type: eventType,
+          webhook_event_id: eventId,
           provider_session_present: Boolean(sessionId),
         },
         ipAddress: req.ip || null,
