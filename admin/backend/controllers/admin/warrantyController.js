@@ -816,6 +816,8 @@ exports.fulfillClaim = async (req, res) => {
         freshUpload = await storeUploadBuffer({
           file: req.file,
           folder: "warranty-replacements",
+          deliveryType: "authenticated",
+          requireCloud: true,
         });
         freshUploadNeedsCleanup = true;
       } catch (uploadErr) {

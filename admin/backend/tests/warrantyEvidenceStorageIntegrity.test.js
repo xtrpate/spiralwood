@@ -52,7 +52,7 @@ const cloudinaryMock = {
           uploadSequence += 1;
           callback(null, {
             secure_url: `https://res.example.invalid/public-${uploadSequence}.jpg`,
-            public_id: `wisdom_uploads/warranty/evidence-${uploadSequence}`,
+            public_id: `${options.folder}/evidence-${uploadSequence}`,
             bytes: buffer.length,
             resource_type: "image",
             format: "jpg",
@@ -143,6 +143,47 @@ async function main() {
   await adaptiveUpload.cleanupStoredUpload(authenticatedAsset);
   assert.equal(capturedDestroy.publicId, authenticatedAsset.public_id);
   assert.equal(capturedDestroy.options.resource_type, "image");
+  assert.equal(capturedDestroy.options.type, "authenticated");
+  assert.equal(capturedDestroy.options.invalidate, true);
+
+  // New fulfillment/replacement proofs use the same authenticated cloud model.
+  uploadMode = "success";
+  capturedUploadOptions = null;
+  capturedDestroy = null;
+  capturedDownload = null;
+
+  const authenticatedReplacementAsset = await adaptiveUpload.storeUploadBuffer({
+    file,
+    folder: "warranty-replacements",
+    deliveryType: "authenticated",
+    requireCloud: true,
+  });
+
+  assert.equal(capturedUploadOptions.folder, "wisdom_uploads/warranty-replacements");
+  assert.equal(capturedUploadOptions.type, "authenticated");
+  assert.equal(authenticatedReplacementAsset.delivery_type, "authenticated");
+  assert.match(authenticatedReplacementAsset.file_url, /^cloudinary-auth:/);
+  assert.match(
+    authenticatedReplacementAsset.public_id,
+    /^wisdom_uploads\/warranty-replacements\//,
+  );
+
+  const signedReplacement = signedUrl.signUploadPath(
+    authenticatedReplacementAsset.file_url,
+  );
+  assert.match(
+    signedReplacement || "",
+    /^https:\/\/api\.example\.invalid\/download\//,
+  );
+  assert.equal(
+    capturedDownload.publicId,
+    authenticatedReplacementAsset.public_id,
+  );
+  assert.equal(capturedDownload.options.type, "authenticated");
+  assert.equal(capturedDownload.options.resource_type, "image");
+
+  await adaptiveUpload.cleanupStoredUpload(authenticatedReplacementAsset);
+  assert.equal(capturedDestroy.publicId, authenticatedReplacementAsset.public_id);
   assert.equal(capturedDestroy.options.type, "authenticated");
   assert.equal(capturedDestroy.options.invalidate, true);
 

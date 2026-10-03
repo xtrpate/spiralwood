@@ -20,6 +20,11 @@ const ASSET_SCOPES = Object.freeze([
     publicIdPrefix: "wisdom_uploads/warranty-replacements/",
     deliveryType: "upload",
   }),
+  Object.freeze({
+    name: "replacement_receipts",
+    publicIdPrefix: "wisdom_uploads/warranty-replacements/",
+    deliveryType: "authenticated",
+  }),
 ]);
 
 const safeText = (value, maxLength = 180) => {
@@ -385,7 +390,7 @@ const listAllManagedAssets = async (cloudinary) => {
 
   for (const scope of ASSET_SCOPES) {
     const assets = await listScopeAssets(cloudinary, scope);
-    scopeCounts[scope.name] = assets.length;
+    scopeCounts[scope.name] = (scopeCounts[scope.name] || 0) + assets.length;
 
     for (const asset of assets) {
       if (byKey.has(asset.key)) {
