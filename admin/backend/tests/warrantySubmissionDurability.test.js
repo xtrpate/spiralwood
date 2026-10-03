@@ -41,18 +41,38 @@ assert.match(
 
 assert.match(
   routeSource,
-  /const \{ getUploadsRoot \} = require\("\.\.\/utils\/uploadRoot"\);/,
-  "Customer warranty uploads must use the shared upload-root resolver.",
+  /const storage = multer\.memoryStorage\(\);/,
+  "Customer warranty evidence must stay in memory until validation passes.",
 );
 assert.match(
   routeSource,
-  /path\.join\(getUploadsRoot\(\), "warranty"\)/,
-  "Customer warranty uploads must be written under the shared upload root.",
+  /verifyBufferSignature\(file\.buffer, ext\)/,
+  "Customer warranty evidence must be magic-byte validated in memory.",
+);
+assert.match(
+  routeSource,
+  /storeUploadBuffer/,
+  "Customer warranty evidence must use adaptive durable storage.",
+);
+assert.match(
+  routeSource,
+  /deliveryType:\s*"authenticated"/,
+  "Customer warranty evidence must use authenticated Cloudinary delivery.",
+);
+assert.match(
+  routeSource,
+  /requireCloud:\s*true/,
+  "Customer warranty evidence must not fall back to ephemeral local storage.",
 );
 assert.doesNotMatch(
   routeSource,
-  /path\.join\(__dirname, "\.\.\/uploads\/warranty"\)/,
-  "Customer warranty uploads must not hardcode the backend uploads directory.",
+  /multer\.diskStorage\(/,
+  "Customer warranty evidence must not be written to disk before validation.",
+);
+assert.doesNotMatch(
+  routeSource,
+  /getUploadsRoot/,
+  "Customer warranty route must not rely on the runtime upload filesystem.",
 );
 
 assert.match(
@@ -271,8 +291,12 @@ async function testControllerCommitBoundary() {
         description: "Leg is cracked.",
       },
       files: {
-        photo: [{ filename: "photo.jpg" }],
-        proof: [{ filename: "proof.pdf" }],
+        photo: [{ originalname: "photo.jpg" }],
+        proof: [{ originalname: "proof.pdf" }],
+      },
+      warrantyEvidenceAssets: {
+        photo: { file_url: "cloudinary-auth:test-photo" },
+        proof: { file_url: "cloudinary-auth:test-proof" },
       },
       user: { id: 17, name: "W6A Customer" },
       ip: "127.0.0.1",
@@ -360,12 +384,13 @@ async function waitFor(predicate, timeoutMs = 1000) {
   throw new Error("Timed out waiting for warranty upload cleanup.");
 }
 
-async function testRouteRetentionAndUploadRoot() {
+async function testRouteRetentionAndDurableStorage() {
   const routePath = require.resolve("../routes/customer.warranty");
   const originalLoad = Module._load;
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "wisdom-w6a-route-"));
-  let storageConfig = null;
   let router = null;
+  let capturedStorage = null;
+  let storeCalls = [];
+  let cleanupCalls = [];
 
   const fakeRouter = {
     __routes: [],
@@ -384,6 +409,7 @@ async function testRouteRetentionAndUploadRoot() {
   };
 
   function multerMock(options) {
+    capturedStorage = options?.storage || null;
     return {
       fields() {
         return (req, _res, cb) => {
@@ -393,10 +419,8 @@ async function testRouteRetentionAndUploadRoot() {
       },
     };
   }
-  multerMock.diskStorage = (config) => {
-    storageConfig = config;
-    return config;
-  };
+  multerMock.memoryStorage = () => ({ kind: "memory" });
+  multerMock.MulterError = class MulterErrorMock extends Error {};
 
   const pass = (_req, _res, next) => next();
 
@@ -423,10 +447,26 @@ async function testRouteRetentionAndUploadRoot() {
         };
       }
       if (request === "../utils/verifyFileSignature") {
-        return { verifyFileSignature: () => true };
+        return { verifyBufferSignature: () => true };
       }
-      if (request === "../utils/uploadRoot") {
-        return { getUploadsRoot: () => tempRoot };
+      if (request === "../utils/adaptiveUpload") {
+        return {
+          storeUploadBuffer: async (args) => {
+            storeCalls.push(args);
+            return {
+              storage: "cloudinary",
+              file_url: `cloudinary-auth:${args.file.fieldname}`,
+              public_id: `wisdom_uploads/warranty/${args.file.fieldname}`,
+              resource_type: "image",
+              delivery_type: "authenticated",
+              format: "jpg",
+              local_path: null,
+            };
+          },
+          cleanupStoredUpload: async (asset) => {
+            cleanupCalls.push(asset);
+          },
+        };
       }
     }
 
@@ -441,16 +481,7 @@ async function testRouteRetentionAndUploadRoot() {
   }
 
   try {
-    assert.ok(storageConfig, "Warranty disk storage config must be captured.");
-
-    const destination = await new Promise((resolve, reject) => {
-      storageConfig.destination({}, {}, (err, value) => {
-        if (err) reject(err);
-        else resolve(value);
-      });
-    });
-    assert.equal(destination, path.join(tempRoot, "warranty"));
-    assert.equal(fs.existsSync(destination), true);
+    assert.deepEqual(capturedStorage, { kind: "memory" });
 
     const postRoute = router.__routes.find(
       (entry) => entry.method === "post" && entry.path === "/",
@@ -458,12 +489,13 @@ async function testRouteRetentionAndUploadRoot() {
     assert.ok(postRoute, "Customer warranty POST route must exist.");
     const uploadMiddleware = postRoute.handlers[2];
 
-    const createFile = (dir, filename) => {
-      fs.mkdirSync(dir, { recursive: true });
-      const filePath = path.join(dir, filename);
-      fs.writeFileSync(filePath, "w6a");
-      return { path: filePath, originalname: filename };
-    };
+    const makeFile = (fieldname, originalname, mimetype) => ({
+      fieldname,
+      originalname,
+      mimetype,
+      size: 4,
+      buffer: Buffer.from([0xff, 0xd8, 0xff, 0xd9]),
+    });
 
     const runUpload = (req, res) =>
       new Promise((resolve, reject) => {
@@ -474,47 +506,51 @@ async function testRouteRetentionAndUploadRoot() {
       });
 
     {
-      const caseDir = path.join(tempRoot, "known-failure");
-      const photo = createFile(caseDir, "photo.jpg");
-      const proof = createFile(caseDir, "proof.pdf");
+      storeCalls = [];
+      cleanupCalls = [];
+      const photo = makeFile("photo", "photo.jpg", "image/jpeg");
+      const proof = makeFile("proof", "proof.jpg", "image/jpeg");
       const req = { __mockFiles: { photo: [photo], proof: [proof] } };
       const res = makeRouteResponse();
 
       await runUpload(req, res);
+      assert.equal(storeCalls.length, 2);
+      assert.equal(storeCalls[0].deliveryType, "authenticated");
+      assert.equal(storeCalls[0].requireCloud, true);
+      assert.ok(req.warrantyEvidenceAssets?.photo);
+      assert.ok(req.warrantyEvidenceAssets?.proof);
+
       res.statusCode = 500;
       res.emit("finish");
-      await waitFor(
-        () => !fs.existsSync(photo.path) && !fs.existsSync(proof.path),
-      );
+      await waitFor(() => cleanupCalls.length === 2);
     }
 
     {
-      const caseDir = path.join(tempRoot, "commit-boundary");
-      const photo = createFile(caseDir, "photo.jpg");
-      const proof = createFile(caseDir, "proof.pdf");
+      storeCalls = [];
+      cleanupCalls = [];
+      const photo = makeFile("photo", "photo.jpg", "image/jpeg");
+      const proof = makeFile("proof", "proof.jpg", "image/jpeg");
       const req = {
         __mockFiles: { photo: [photo], proof: [proof] },
-        warrantySubmissionRetainUploads: true,
       };
       const res = makeRouteResponse();
 
       await runUpload(req, res);
+      req.warrantySubmissionRetainUploads = true;
       res.statusCode = 500;
       res.emit("finish");
       await new Promise((resolve) => setTimeout(resolve, 30));
 
-      assert.equal(fs.existsSync(photo.path), true);
-      assert.equal(fs.existsSync(proof.path), true);
+      assert.equal(cleanupCalls.length, 0);
     }
   } finally {
     delete require.cache[routePath];
-    fs.rmSync(tempRoot, { recursive: true, force: true });
   }
 }
 
 async function run() {
   await testControllerCommitBoundary();
-  await testRouteRetentionAndUploadRoot();
+  await testRouteRetentionAndDurableStorage();
   console.log("PASS: Warranty submission durability checks passed.");
 }
 

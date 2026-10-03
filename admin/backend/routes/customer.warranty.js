@@ -2,28 +2,16 @@ const express = require("express");
 const router = express.Router();
 const multer = require("multer");
 const path = require("path");
-const fs = require("fs");
 const { authenticate, requireCustomer } = require("../middleware/auth");
 const { logAction } = require("../middleware/auditLog");
 const warrantyController = require("../controllers/customer/customer.warranty");
-const { verifyFileSignature } = require("../utils/verifyFileSignature");
-const { getUploadsRoot } = require("../utils/uploadRoot");
+const { verifyBufferSignature } = require("../utils/verifyFileSignature");
+const {
+  storeUploadBuffer,
+  cleanupStoredUpload,
+} = require("../utils/adaptiveUpload");
 
-/* ── Multer storage ── */
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = path.join(getUploadsRoot(), "warranty");
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    const name = `warranty_${Date.now()}_${Math.random()
-      .toString(36)
-      .slice(2)}${ext}`;
-    cb(null, name);
-  },
-});
+const storage = multer.memoryStorage();
 
 const WARRANTY_PHOTO_EXTENSIONS = new Set([
   ".jpg",
@@ -38,32 +26,41 @@ const WARRANTY_PROOF_EXTENSIONS = new Set([
   ".pdf",
 ]);
 
-const getWarrantyUploadFiles = (req) =>
-  req.files && typeof req.files === "object"
-    ? Object.values(req.files).flat().filter(Boolean)
-    : [];
+const WARRANTY_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "application/pdf",
+]);
 
-const cleanupWarrantyUploadFiles = async (files, reason) => {
-  const filePaths = [
-    ...new Set(
-      (Array.isArray(files) ? files : [])
-        .map((file) => file?.path)
-        .filter(Boolean),
-    ),
+const extensionMatchesMime = (ext, mime) =>
+  ([".jpg", ".jpeg", ".jfif"].includes(ext) && mime === "image/jpeg") ||
+  (ext === ".png" && mime === "image/png") ||
+  (ext === ".webp" && mime === "image/webp") ||
+  (ext === ".pdf" && mime === "application/pdf");
+
+const cleanupWarrantyStoredAssets = async (assets, reason) => {
+  const uniqueAssets = [
+    ...new Map(
+      (Array.isArray(assets) ? assets : [])
+        .filter(Boolean)
+        .map((asset) => [
+          `${asset.storage || "unknown"}:${asset.public_id || asset.local_path || asset.file_url || ""}`,
+          asset,
+        ]),
+    ).values(),
   ];
 
   await Promise.all(
-    filePaths.map(async (filePath) => {
+    uniqueAssets.map(async (asset) => {
       try {
-        await fs.promises.unlink(filePath);
-      } catch (unlinkErr) {
-        if (unlinkErr?.code !== "ENOENT") {
-          console.error(
-            "[customer.warranty upload cleanup]",
-            reason,
-            unlinkErr?.message || unlinkErr,
-          );
-        }
+        await cleanupStoredUpload(asset);
+      } catch (cleanupErr) {
+        console.error(
+          "[customer.warranty upload cleanup]",
+          reason,
+          cleanupErr?.message || cleanupErr,
+        );
       }
     }),
   );
@@ -71,9 +68,12 @@ const cleanupWarrantyUploadFiles = async (files, reason) => {
 
 const rawUpload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 5 * 1024 * 1024, files: 2 },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname || "").toLowerCase();
+    const mime = String(file.mimetype || "")
+      .trim()
+      .toLowerCase();
     const allowedExtensions =
       file.fieldname === "photo"
         ? WARRANTY_PHOTO_EXTENSIONS
@@ -81,7 +81,11 @@ const rawUpload = multer({
           ? WARRANTY_PROOF_EXTENSIONS
           : null;
 
-    if (allowedExtensions?.has(ext)) {
+    if (
+      allowedExtensions?.has(ext) &&
+      WARRANTY_MIME_TYPES.has(mime) &&
+      extensionMatchesMime(ext, mime)
+    ) {
       cb(null, true);
       return;
     }
@@ -103,49 +107,102 @@ const upload = (req, res, next) => {
     { name: "photo", maxCount: 1 },
     { name: "proof", maxCount: 1 },
   ])(req, res, async (err) => {
-    const files = getWarrantyUploadFiles(req);
-
     if (err) {
-      await cleanupWarrantyUploadFiles(files, "multer rejection");
-      return next(err);
-    }
-
-    /*
-     * Register rejected-response cleanup BEFORE signature verification.
-     * If either upload is invalid, every file saved by this request must be
-     * removed; otherwise the valid sibling file can become an orphan.
-     */
-    res.on("finish", () => {
-      if (res.statusCode >= 400) {
-        if (req.warrantySubmissionRetainUploads === true) {
-          console.warn(
-            "[customer.warranty upload cleanup skipped]",
-            "Retaining evidence because the claim commit may already be durable.",
-          );
-          return;
-        }
-
-        void cleanupWarrantyUploadFiles(
-          files,
-          "response status " + res.statusCode,
-        );
-      }
-    });
-
-    try {
-      for (const file of files) {
-        const ext = path.extname(file.originalname || "").toLowerCase();
-
-        if (!verifyFileSignature(file.path, ext)) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
           return res.status(400).json({
-            message:
-              "One of your uploaded files does not match its file extension. Upload rejected.",
+            message: "Each warranty evidence file must be 5 MB or smaller.",
+          });
+        }
+        if (
+          err.code === "LIMIT_FILE_COUNT" ||
+          err.code === "LIMIT_UNEXPECTED_FILE"
+        ) {
+          return res.status(400).json({
+            message: "Upload exactly one defect photo and one proof of purchase.",
           });
         }
       }
-    } catch (verificationErr) {
-      return next(verificationErr);
+
+      if (Number(err.status) === 400) {
+        return res.status(400).json({ message: err.message });
+      }
+      return next(err);
     }
+
+    const photo = req.files?.photo?.[0] || null;
+    const proof = req.files?.proof?.[0] || null;
+
+    if (!photo || !proof) {
+      return res.status(400).json({
+        message: "Both defect photo and proof of purchase are required.",
+      });
+    }
+
+    for (const file of [photo, proof]) {
+      const ext = path.extname(file.originalname || "").toLowerCase();
+      if (!verifyBufferSignature(file.buffer, ext)) {
+        return res.status(400).json({
+          message:
+            "One of your uploaded files does not match its real file type. Upload rejected.",
+        });
+      }
+    }
+
+    const storedAssets = [];
+
+    try {
+      const photoAsset = await storeUploadBuffer({
+        file: photo,
+        folder: "warranty",
+        deliveryType: "authenticated",
+        requireCloud: true,
+      });
+      storedAssets.push(photoAsset);
+
+      const proofAsset = await storeUploadBuffer({
+        file: proof,
+        folder: "warranty",
+        deliveryType: "authenticated",
+        requireCloud: true,
+      });
+      storedAssets.push(proofAsset);
+
+      req.warrantyEvidenceAssets = {
+        photo: photoAsset,
+        proof: proofAsset,
+      };
+    } catch (storageErr) {
+      await cleanupWarrantyStoredAssets(
+        storedAssets,
+        "partial durable upload failure",
+      );
+      console.error(
+        "[customer.warranty evidence upload]",
+        storageErr?.message || storageErr,
+      );
+      return res.status(502).json({
+        message:
+          "Warranty evidence upload is unavailable right now. Please try again.",
+      });
+    }
+
+    res.on("finish", () => {
+      if (res.statusCode < 400) return;
+
+      if (req.warrantySubmissionRetainUploads === true) {
+        console.warn(
+          "[customer.warranty upload cleanup skipped]",
+          "Retaining evidence because the claim commit may already be durable.",
+        );
+        return;
+      }
+
+      void cleanupWarrantyStoredAssets(
+        storedAssets,
+        "response status " + res.statusCode,
+      );
+    });
 
     next();
   });
