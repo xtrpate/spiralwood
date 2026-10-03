@@ -580,6 +580,10 @@ export default function StockMovementPage() {
     selectedMaterial?.unit,
   );
   const requiresTraceability = ["adjustment", "return"].includes(form.type);
+  const requiresSupplierReference =
+    form.type === "in" && isMaterialTarget && Boolean(form.supplier_id);
+  const requiresReference =
+    requiresTraceability || requiresSupplierReference;
   const selectedCurrentStock = isMaterialTarget
     ? selectedOnHand
     : isProductTarget
@@ -700,6 +704,17 @@ export default function StockMovementPage() {
       return;
     }
 
+    if (
+      isAdjustment &&
+      selectedCurrentStock !== null &&
+      Math.abs(requestedQuantity - selectedCurrentStock) <= 0.0000001
+    ) {
+      toast.error(
+        "Enter a quantity different from the current stock to record an adjustment.",
+      );
+      return;
+    }
+
     const cleanReference = form.reference.trim();
     const cleanNotes = form.notes.trim();
 
@@ -713,8 +728,12 @@ export default function StockMovementPage() {
       return;
     }
 
-    if (requiresTraceability && !cleanReference) {
-      toast.error("Reference is required for adjustments and returns.");
+    if (requiresReference && !cleanReference) {
+      toast.error(
+        requiresSupplierReference
+          ? "Reference is required for supplier Stock In."
+          : "Reference is required for adjustments and returns.",
+      );
       return;
     }
 
@@ -1453,12 +1472,12 @@ export default function StockMovementPage() {
 
               <div style={fieldGroup}>
                 <label style={label}>
-                  Reference {requiresTraceability ? "*" : (
+                  Reference {requiresReference ? "*" : (
                     <span style={optionalText}>Optional</span>
                   )}
                 </label>
                 <input
-                  required={requiresTraceability}
+                  required={requiresReference}
                   value={form.reference}
                   onChange={(event) =>
                     setForm((current) => ({

@@ -1149,30 +1149,125 @@ exports.update = async (req, res) => {
 
 // ── DELETE /api/products/:id ──────────────────────────────────────────────────
 exports.remove = async (req, res) => {
+  const productId = Number(req.params.id);
+  if (!Number.isInteger(productId) || productId <= 0) {
+    return res.status(400).json({ message: "Invalid product ID." });
+  }
+
+  const conn = await pool.getConnection();
+  let transactionActive = false;
+
   try {
-    const [[p]] = await pool.query(
-      "SELECT id, name FROM products WHERE id = ?",
-      [parseInt(req.params.id)],
+    await conn.beginTransaction();
+    transactionActive = true;
+
+    const [[p]] = await conn.query(
+      `SELECT
+         p.id,
+         p.name,
+         p.type,
+         p.stock,
+         p.is_active,
+         p.is_published,
+         COALESCE(ds.quantity, 0) AS display_stock
+       FROM products p
+       LEFT JOIN ready_made_display_stock ds ON ds.product_id = p.id
+       WHERE p.id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [productId],
     );
-    if (!p) return res.status(404).json({ message: "Product not found." });
 
-    await pool.query("DELETE FROM products WHERE id = ?", [
-      parseInt(req.params.id),
-    ]);
+    if (!p) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(404).json({ message: "Product not found." });
+    }
 
-    req.auditRecord = { id: req.params.id, old: p };
-    res.json({ message: "Product deleted." });
-  } catch (err) {
-    // 👉 THE FIX: Catch the specific Foreign Key Constraint error!
-    if (err.code === "ER_ROW_IS_REFERENCED_2") {
-      return res.status(400).json({
+    const [[references]] = await conn.query(
+      `SELECT
+         (SELECT COUNT(*) FROM stock_movements WHERE product_id = ?) AS stock_movements_count,
+         (SELECT COUNT(*) FROM order_items WHERE product_id = ?) AS order_items_count,
+         (SELECT COUNT(*) FROM stock_transfer_items WHERE product_id = ?) AS stock_transfer_items_count`,
+      [productId, productId, productId],
+    );
+
+    const referenceCounts = {
+      stock_movements_count: Number(references?.stock_movements_count || 0),
+      order_items_count: Number(references?.order_items_count || 0),
+      stock_transfer_items_count: Number(
+        references?.stock_transfer_items_count || 0,
+      ),
+    };
+    const historicalReferenceCount =
+      referenceCounts.stock_movements_count +
+      referenceCounts.order_items_count +
+      referenceCounts.stock_transfer_items_count;
+
+    if (historicalReferenceCount > 0) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
         message:
-          "Cannot delete this product because it is part of existing customer orders. Please unpublish it instead to hide it from the store.",
+          "This product has inventory or sales history and cannot be permanently deleted. Disable or unpublish it instead.",
+        can_disable: true,
+        references: referenceCounts,
       });
     }
 
-    // Fallback for any other database errors
-    res.status(500).json({ message: err.message });
+    const totalStock = Number(p.stock || 0);
+    const displayStock = Number(p.display_stock || 0);
+    if (totalStock > 0 || displayStock > 0) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message:
+          "This product still has stock on hand and cannot be permanently deleted. Resolve the stock first, then disable or unpublish the product.",
+        can_disable: true,
+        total_stock: totalStock,
+        display_stock: displayStock,
+      });
+    }
+
+    const [deleteResult] = await conn.query(
+      "DELETE FROM products WHERE id = ?",
+      [productId],
+    );
+
+    if (deleteResult.affectedRows !== 1) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message: "Product could not be deleted. Refresh and try again.",
+      });
+    }
+
+    await conn.commit();
+    transactionActive = false;
+
+    req.auditRecord = { id: productId, old: p, new: { action: "deleted" } };
+    return res.json({ message: "Product deleted." });
+  } catch (err) {
+    if (transactionActive) {
+      try {
+        await conn.rollback();
+      } catch (rollbackError) {
+        console.error("[product.remove rollback]", rollbackError);
+      }
+    }
+
+    if (err.code === "ER_ROW_IS_REFERENCED_2") {
+      return res.status(409).json({
+        message:
+          "This product has linked records and cannot be permanently deleted. Disable or unpublish it instead.",
+        can_disable: true,
+      });
+    }
+
+    console.error("[product.remove]", err);
+    return res.status(500).json({ message: "Product could not be deleted." });
+  } finally {
+    conn.release();
   }
 };
 
@@ -1615,37 +1710,129 @@ exports.unpublishByBlueprint = async (req, res) => {
 
 // ── PATCH /api/products/:id/active (Enable/Disable Product) ─────────────────
 exports.toggleActive = async (req, res) => {
+  const productId = Number(req.params.id);
+  if (!Number.isInteger(productId) || productId <= 0) {
+    return res.status(400).json({ message: "Invalid product ID." });
+  }
+
+  const requestedActive = req.body?.is_active;
+  const activeValue =
+    requestedActive === true ||
+    requestedActive === 1 ||
+    requestedActive === "1"
+      ? 1
+      : requestedActive === false ||
+          requestedActive === 0 ||
+          requestedActive === "0"
+        ? 0
+        : null;
+
+  if (activeValue === null) {
+    return res.status(400).json({
+      message: "is_active must be true or false.",
+    });
+  }
+
+  const conn = await pool.getConnection();
+  let transactionActive = false;
+
   try {
-    const { is_active } = req.body;
-    const activeValue = is_active ? 1 : 0;
-    const productId = parseInt(req.params.id);
-    const [[before]] = await pool.query(
-      "SELECT name, is_active FROM products WHERE id = ? LIMIT 1",
+    await conn.beginTransaction();
+    transactionActive = true;
+
+    const [[before]] = await conn.query(
+      `SELECT
+         p.id,
+         p.name,
+         p.type,
+         p.stock,
+         p.is_active,
+         p.is_published,
+         COALESCE(ds.quantity, 0) AS display_stock
+       FROM products p
+       LEFT JOIN ready_made_display_stock ds ON ds.product_id = p.id
+       WHERE p.id = ?
+       LIMIT 1
+       FOR UPDATE`,
       [productId],
     );
 
-    await pool.query("UPDATE products SET is_active = ? WHERE id = ?", [
-      activeValue,
-      productId,
-    ]);
+    if (!before) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(404).json({ message: "Product not found." });
+    }
+
+    if (activeValue === 0) {
+      if (Number(before.is_published) === 1) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(409).json({
+          message: "Unpublish the product before archiving it.",
+        });
+      }
+
+      const totalStock = Number(before.stock || 0);
+      const displayStock = Number(before.display_stock || 0);
+
+      if (totalStock > 0 || displayStock > 0) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(409).json({
+          message:
+            "This product still has stock on hand and cannot be archived. Reduce stock to zero through the proper inventory workflow first.",
+          total_stock: totalStock,
+          display_stock: displayStock,
+        });
+      }
+    }
+
+    const [updateResult] = await conn.query(
+      "UPDATE products SET is_active = ? WHERE id = ?",
+      [activeValue, productId],
+    );
+
+    if (updateResult.affectedRows !== 1) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message: "Product status could not be changed. Refresh and try again.",
+      });
+    }
+
+    await conn.commit();
+    transactionActive = false;
 
     req.auditRecord = {
       id: productId,
-      old: before
-        ? { name: before.name, is_active: Boolean(before.is_active) }
-        : null,
+      old: {
+        name: before.name,
+        is_active: Boolean(before.is_active),
+      },
       new: {
-        name: before?.name || null,
+        name: before.name,
         is_active: Boolean(activeValue),
       },
     };
 
-    res.json({
-      is_active: !!activeValue,
-      message: activeValue ? "Product enabled." : "Product disabled.",
+    return res.json({
+      is_active: Boolean(activeValue),
+      message: activeValue ? "Product enabled." : "Product archived.",
     });
   } catch (err) {
-    console.error("[toggleActive Error]:", err);
-    res.status(500).json({ message: err.message });
+    if (transactionActive) {
+      try {
+        await conn.rollback();
+      } catch (rollbackError) {
+        console.error("[product.toggleActive rollback]", rollbackError);
+      }
+    }
+
+    console.error("[product.toggleActive]", err);
+    return res.status(500).json({
+      message: "Product status could not be changed.",
+    });
+  } finally {
+    conn.release();
   }
 };

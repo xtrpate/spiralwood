@@ -2094,6 +2094,12 @@ exports.createStockMovement = async (req, res) => {
       });
     }
 
+    if (supplierId && (!materialId || type !== "in")) {
+      return res.status(400).json({
+        message: "Supplier is only allowed for raw material Stock In.",
+      });
+    }
+
     if (orderProvided && !orderId) {
       return res.status(400).json({
         message: "Order reference must be a valid selection.",
@@ -2129,9 +2135,16 @@ exports.createStockMovement = async (req, res) => {
     }
 
     const requiresTraceability = type === "adjustment" || type === "return";
-    if (requiresTraceability && !cleanReference) {
+    const requiresSupplierReference =
+      type === "in" && Boolean(materialId) && Boolean(supplierId);
+    const requiresReference =
+      requiresTraceability || requiresSupplierReference;
+
+    if (requiresReference && !cleanReference) {
       return res.status(400).json({
-        message: "Reference is required for adjustments and returns.",
+        message: requiresSupplierReference
+          ? "Reference is required for supplier Stock In."
+          : "Reference is required for adjustments and returns.",
       });
     }
     if (requiresTraceability && !cleanNotes) {
@@ -2208,6 +2221,19 @@ exports.createStockMovement = async (req, res) => {
         });
       }
 
+      if (supplierId) {
+        const [[supplier]] = await conn.query(
+          "SELECT id FROM suppliers WHERE id = ? LIMIT 1",
+          [supplierId],
+        );
+
+        if (!supplier) {
+          return await rollbackAndRespond(400, {
+            message: "Selected supplier no longer exists.",
+          });
+        }
+      }
+
       const activeReservations = await lockActiveBlueprintReservations(
         conn,
         materialId,
@@ -2229,6 +2255,21 @@ exports.createStockMovement = async (req, res) => {
       }
 
       newQty = normalizeRawMaterialQuantity(newQty);
+
+      if (
+        type === "adjustment" &&
+        Math.abs(newQty - currentQty) <= 0.0000001
+      ) {
+        return await rollbackAndRespond(409, {
+          message:
+            "Stock is already " +
+            formatQuantityForMessage(currentQty) +
+            " " +
+            (material.unit || "unit") +
+            ". Enter a different quantity to record an adjustment.",
+        });
+      }
+
       const stockIncreased = newQty > currentQty + 0.0000001;
 
       if (newQty > MAX_STOCK_MOVEMENT_QUANTITY) {
@@ -2414,6 +2455,18 @@ exports.createStockMovement = async (req, res) => {
 
     const currentProductStock = Number(product.stock) || 0;
     const currentDisplayStock = Number(product.display_stock) || 0;
+
+    if (
+      type === "adjustment" &&
+      Math.abs(movementQty - currentProductStock) <= 0.0000001
+    ) {
+      return await rollbackAndRespond(409, {
+        message:
+          "Stock is already " +
+          formatQuantityForMessage(currentProductStock) +
+          " unit(s). Enter a different quantity to record an adjustment.",
+      });
+    }
 
     if (type === "in") {
       const newProductStock = currentProductStock + movementQty;
