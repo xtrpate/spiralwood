@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import api, { buildAssetUrl } from "../../services/api";
 import {
@@ -21,6 +21,16 @@ import "./warrantypage.css";
 
 const MAX_WARRANTY_DESCRIPTION_LENGTH = 1000;
 const MAX_WARRANTY_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+const CUSTOMER_WARRANTY_PAGE_SIZE = 10;
+
+const DEFAULT_CLAIMS_PAGINATION = {
+  page: 1,
+  limit: CUSTOMER_WARRANTY_PAGE_SIZE,
+  total: 0,
+  totalPages: 0,
+  hasNextPage: false,
+  hasPreviousPage: false,
+};
 
 const StatusBadge = ({ status }) => {
   const normalized = String(status || "").toLowerCase();
@@ -134,11 +144,8 @@ export default function WarrantyPage() {
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [ordersLoadError, setOrdersLoadError] = useState("");
-  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialFocusClaimParam = searchParams.get("focus_claim_id");
-  const initialLocationKeyRef = useRef(location.key);
-  const refreshedFocusLocationKeyRef = useRef(null);
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -169,26 +176,33 @@ export default function WarrantyPage() {
   const [feedbackMsg, setFeedbackMsg] = useState("");
 
   const [claims, setClaims] = useState([]);
+  const [claimsPage, setClaimsPage] = useState(1);
+  const [claimsPagination, setClaimsPagination] = useState(
+    DEFAULT_CLAIMS_PAGINATION,
+  );
   const [loadingClaims, setLoadingClaims] = useState(true);
   const [claimsLoadError, setClaimsLoadError] = useState("");
   const [claimsLoadedSuccessfully, setClaimsLoadedSuccessfully] =
     useState(false);
   const [focusedClaimId, setFocusedClaimId] = useState(null);
+  const [focusRetryNonce, setFocusRetryNonce] = useState(0);
   const [loading, setLoading] = useState(true);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelBusy, setCancelBusy] = useState(false);
   const [cancelError, setCancelError] = useState("");
 
-  useEffect(() => {
-    const loadInitialData = async () => {
-      await Promise.all([fetchClaims(), fetchOrders()]);
-      setLoading(false);
-    };
+  const claimsRequestSequenceRef = useRef(0);
+  const focusRequestSequenceRef = useRef(0);
 
-    loadInitialData();
-  }, []);
+  useEffect(
+    () => () => {
+      claimsRequestSequenceRef.current += 1;
+      focusRequestSequenceRef.current += 1;
+    },
+    [],
+  );
 
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     setLoadingOrders(true);
     try {
       const res = await api.get("/customer/warranty/orders", {
@@ -206,29 +220,106 @@ export default function WarrantyPage() {
     } finally {
       setLoadingOrders(false);
     }
-  };
+  }, []);
 
-  const fetchClaims = async () => {
+  const fetchClaims = useCallback(async (requestedPage) => {
+    const pageToLoad = Number(requestedPage);
+
+    if (!Number.isSafeInteger(pageToLoad) || pageToLoad < 1) {
+      setClaimsLoadError("Unable to load your warranty claims right now.");
+      return { ok: false, stale: false };
+    }
+
+    const requestId = ++claimsRequestSequenceRef.current;
     setLoadingClaims(true);
     setClaimsLoadedSuccessfully(false);
+
     try {
       const res = await api.get("/customer/warranty", {
+        params: {
+          page: pageToLoad,
+          limit: CUSTOMER_WARRANTY_PAGE_SIZE,
+        },
         suppressGlobalErrorToast: true,
       });
-      if (!Array.isArray(res.data)) {
+
+      const payload = res.data;
+      const nextClaims = payload?.claims;
+      const rawPagination = payload?.pagination;
+
+      if (
+        !Array.isArray(nextClaims) ||
+        !rawPagination ||
+        typeof rawPagination !== "object"
+      ) {
         throw new Error("Invalid warranty claims response.");
       }
-      setClaims(res.data);
+
+      const nextPagination = {
+        page: Number(rawPagination.page),
+        limit: Number(rawPagination.limit),
+        total: Number(rawPagination.total),
+        totalPages: Number(rawPagination.totalPages),
+        hasNextPage: rawPagination.hasNextPage === true,
+        hasPreviousPage: rawPagination.hasPreviousPage === true,
+      };
+
+      if (
+        !Number.isSafeInteger(nextPagination.page) ||
+        nextPagination.page < 1 ||
+        !Number.isSafeInteger(nextPagination.limit) ||
+        nextPagination.limit < 1 ||
+        !Number.isSafeInteger(nextPagination.total) ||
+        nextPagination.total < 0 ||
+        !Number.isSafeInteger(nextPagination.totalPages) ||
+        nextPagination.totalPages < 0
+      ) {
+        throw new Error("Invalid warranty claims pagination response.");
+      }
+
+      if (requestId !== claimsRequestSequenceRef.current) {
+        return { ok: false, stale: true };
+      }
+
+      setClaims(nextClaims);
+      setClaimsPagination(nextPagination);
+      setClaimsPage(nextPagination.page);
       setClaimsLoadError("");
       setClaimsLoadedSuccessfully(true);
-      return true;
+
+      return {
+        ok: true,
+        claims: nextClaims,
+        pagination: nextPagination,
+      };
     } catch {
+      if (requestId !== claimsRequestSequenceRef.current) {
+        return { ok: false, stale: true };
+      }
+
       setClaimsLoadError("Unable to load your warranty claims right now.");
-      return false;
+      return { ok: false, stale: false };
     } finally {
-      setLoadingClaims(false);
+      if (requestId === claimsRequestSequenceRef.current) {
+        setLoadingClaims(false);
+      }
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadInitialData = async () => {
+      await Promise.all([fetchClaims(1), fetchOrders()]);
+      if (active) setLoading(false);
+    };
+
+    void loadInitialData();
+
+    return () => {
+      active = false;
+    };
+  }, [fetchClaims, fetchOrders]);
 
   const retryOrdersLoad = async () => {
     await fetchOrders();
@@ -237,30 +328,16 @@ export default function WarrantyPage() {
   const retryClaimsLoad = async () => {
     if (searchParams.get("focus_claim_id")) {
       setClaimFocusResolving(true);
+      setFocusRetryNonce((value) => value + 1);
+      return;
     }
-    await fetchClaims();
+
+    await fetchClaims(claimsPage);
   };
 
   useEffect(() => {
     const rawFocusId = searchParams.get("focus_claim_id");
-    if (!rawFocusId || loading || loadingClaims) {
-      return;
-    }
-
-    const isSamePageFocusNavigation =
-      location.key !== initialLocationKeyRef.current;
-    const focusLocationAlreadyRefreshed =
-      refreshedFocusLocationKeyRef.current === location.key;
-
-    if (isSamePageFocusNavigation && !focusLocationAlreadyRefreshed) {
-      refreshedFocusLocationKeyRef.current = location.key;
-      setClaimFocusResolving(true);
-      void Promise.all([fetchClaims(), fetchOrders()]);
-      return;
-    }
-
-    if (!claimsLoadedSuccessfully) {
-      setClaimFocusResolving(false);
+    if (!rawFocusId || loading) {
       return;
     }
 
@@ -278,29 +355,103 @@ export default function WarrantyPage() {
       return;
     }
 
-    const matchedClaim = claims.find(
-      (claim) => Number(claim?.id) === focusClaimId,
-    );
-    if (!matchedClaim) {
-      toast.error(
-        "That warranty claim could not be found. It may no longer be available.",
-      );
-      clearFocusParam();
-      setClaimFocusResolving(false);
-      return;
-    }
+    const requestId = ++focusRequestSequenceRef.current;
+    let active = true;
 
-    setWarrantyCenterTab("claims");
-    setFocusedClaimId(focusClaimId);
-    clearFocusParam();
+    const resolveFocusedClaim = async () => {
+      setWarrantyCenterTab("claims");
+      setClaimFocusResolving(true);
+
+      try {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const { data } = await api.get(
+            `/customer/warranty/${focusClaimId}`,
+            {
+              params: { limit: CUSTOMER_WARRANTY_PAGE_SIZE },
+              suppressGlobalErrorToast: true,
+            },
+          );
+
+          if (!active || requestId !== focusRequestSequenceRef.current) {
+            return;
+          }
+
+          const exactClaim = data?.claim;
+          const targetPage = Number(data?.pagination?.page);
+
+          if (
+            !exactClaim ||
+            Number(exactClaim.id) !== focusClaimId ||
+            !Number.isSafeInteger(targetPage) ||
+            targetPage < 1
+          ) {
+            throw new Error("Invalid focused warranty claim response.");
+          }
+
+          const [claimsResult] = await Promise.all([
+            fetchClaims(targetPage),
+            fetchOrders(),
+          ]);
+
+          if (!active || requestId !== focusRequestSequenceRef.current) {
+            return;
+          }
+
+          if (!claimsResult?.ok) {
+            if (claimsResult?.stale) {
+              setClaimFocusResolving(false);
+              return;
+            }
+            throw new Error("Focused warranty claim page could not be loaded.");
+          }
+
+          const matchedClaim = claimsResult.claims.find(
+            (claim) => Number(claim?.id) === focusClaimId,
+          );
+
+          if (matchedClaim) {
+            setFocusedClaimId(focusClaimId);
+            clearFocusParam();
+            return;
+          }
+        }
+
+        toast.error(
+          "That warranty claim changed position while it was opening. Please try again.",
+        );
+        clearFocusParam();
+        setClaimFocusResolving(false);
+      } catch (err) {
+        if (!active || requestId !== focusRequestSequenceRef.current) {
+          return;
+        }
+
+        const status = Number(err?.response?.status);
+        if ([403, 404, 410].includes(status)) {
+          toast.error(
+            "That warranty claim could not be found. It may no longer be available.",
+          );
+          clearFocusParam();
+        } else {
+          setClaimsLoadError("Unable to load your warranty claims right now.");
+        }
+
+        setClaimFocusResolving(false);
+      }
+    };
+
+    void resolveFocusedClaim();
+
+    return () => {
+      active = false;
+    };
   }, [
-    claims,
-    claimsLoadedSuccessfully,
+    focusRetryNonce,
     loading,
-    loadingClaims,
-    location.key,
     searchParams,
     setSearchParams,
+    fetchClaims,
+    fetchOrders,
   ]);
 
   useLayoutEffect(() => {
@@ -447,7 +598,7 @@ export default function WarrantyPage() {
         setFeedbackOpen(false);
         setSubmitted(true);
         setFormError("");
-        await Promise.all([fetchClaims(), fetchOrders()]);
+        await Promise.all([fetchClaims(1), fetchOrders()]);
       }, durations.success);
     } catch (err) {
       setFeedbackOpen(false);
@@ -473,7 +624,7 @@ export default function WarrantyPage() {
     setShowForm(true);
     setWarrantyCenterTab("file");
 
-    await Promise.all([fetchClaims(), fetchOrders()]);
+    await Promise.all([fetchClaims(claimsPage), fetchOrders()]);
   };
 
   const openCancelModal = (claim) => {
@@ -495,7 +646,7 @@ export default function WarrantyPage() {
 
     try {
       await api.patch(`/customer/warranty/${cancelTarget.id}/cancel`);
-      await Promise.all([fetchClaims(), fetchOrders()]);
+      await Promise.all([fetchClaims(claimsPage), fetchOrders()]);
       setCancelTarget(null);
     } catch (err) {
       setCancelError(
@@ -505,6 +656,17 @@ export default function WarrantyPage() {
     } finally {
       setCancelBusy(false);
     }
+  };
+
+
+  const loadClaimsPage = async (nextPage) => {
+    if (loadingClaims) return;
+
+    const lastPage = Math.max(1, claimsPagination.totalPages || 1);
+    const targetPage = Math.min(Math.max(1, Number(nextPage) || 1), lastPage);
+
+    if (targetPage === claimsPagination.page) return;
+    await fetchClaims(targetPage);
   };
 
   return (
@@ -784,8 +946,10 @@ export default function WarrantyPage() {
                     onClick={() => setWarrantyCenterTab("claims")}
                   >
                     Your claims
-                    {(claimsLoadedSuccessfully || claims.length > 0) && (
-                      <> ({claims.length})</>
+                    {(claimsLoadedSuccessfully ||
+                      claimsPagination.total > 0 ||
+                      claims.length > 0) && (
+                      <> ({claimsPagination.total})</>
                     )}
                   </button>
                 </div>
@@ -1173,22 +1337,79 @@ export default function WarrantyPage() {
                       <p>You haven't filed any warranty claims yet.</p>
                     </div>
                   ) : (
-                    <div className="wclaims-list">
-                      {claims.map((claim) => {
-                        const isFocused =
-                          Number(claim?.id) === Number(focusedClaimId);
+                    <>
+                      <div className="wclaims-list" aria-busy={loadingClaims}>
+                        {claims.map((claim) => {
+                          const isFocused =
+                            Number(claim?.id) === Number(focusedClaimId);
 
-                        return (
-                          <ClaimCard
-                            key={claim.id}
-                            claim={claim}
-                            onCancel={openCancelModal}
-                            forceOpen={isFocused}
-                            focused={isFocused}
-                          />
-                        );
-                      })}
-                    </div>
+                          return (
+                            <ClaimCard
+                              key={claim.id}
+                              claim={claim}
+                              onCancel={openCancelModal}
+                              forceOpen={isFocused}
+                              focused={isFocused}
+                            />
+                          );
+                        })}
+                      </div>
+
+                      {claimsPagination.total > 0 && (
+                        <div className="warranty-claims-pagination">
+                          <div className="warranty-claims-pagination-summary">
+                            Showing{" "}
+                            {(claimsPagination.page - 1) *
+                              claimsPagination.limit +
+                              1}
+                            –
+                            {Math.min(
+                              (claimsPagination.page - 1) *
+                                claimsPagination.limit +
+                                claims.length,
+                              claimsPagination.total,
+                            )}{" "}
+                            of {claimsPagination.total}
+                          </div>
+
+                          <div className="warranty-claims-pagination-controls">
+                            <button
+                              type="button"
+                              disabled={
+                                loadingClaims ||
+                                !claimsPagination.hasPreviousPage
+                              }
+                              onClick={() =>
+                                void loadClaimsPage(
+                                  claimsPagination.page - 1,
+                                )
+                              }
+                            >
+                              Previous
+                            </button>
+
+                            <span>
+                              Page {claimsPagination.page} of{" "}
+                              {Math.max(1, claimsPagination.totalPages)}
+                            </span>
+
+                            <button
+                              type="button"
+                              disabled={
+                                loadingClaims || !claimsPagination.hasNextPage
+                              }
+                              onClick={() =>
+                                void loadClaimsPage(
+                                  claimsPagination.page + 1,
+                                )
+                              }
+                            >
+                              Next
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </aside>
               )}

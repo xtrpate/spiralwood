@@ -417,6 +417,7 @@ async function testRouteRetentionAndUploadRoot() {
         return {
           getEligibleOrders: pass,
           getClaims: pass,
+          getClaimById: pass,
           submitClaim: pass,
           cancelClaim: pass,
         };

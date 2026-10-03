@@ -164,6 +164,13 @@ router.get(
 
 router.get("/", authenticate, requireCustomer, warrantyController.getClaims);
 
+router.get(
+  "/:id",
+  authenticate,
+  requireCustomer,
+  warrantyController.getClaimById,
+);
+
 router.post(
   "/",
   authenticate,

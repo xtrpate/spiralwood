@@ -120,26 +120,32 @@ assert.match(
 
 assert.match(
   customerWarrantySource,
-  /const location = useLocation\(\);/,
-  "Customer warranty page must track router locations for same-page notification freshness.",
+  /api\.get\(\s*[\s\S]*?customer\/warranty\/\$\{focusClaimId\}/,
+  "Customer warranty notification focus must resolve the exact owned claim before loading its page.",
 );
 
 assert.match(
   customerWarrantySource,
-  /initialLocationKeyRef = useRef\(location\.key\)/,
-  "Customer warranty page must distinguish the initial route from later same-page notification navigation.",
+  /params:\s*\{\s*limit:\s*CUSTOMER_WARRANTY_PAGE_SIZE\s*\}/,
+  "Customer exact-focus lookup must use the same page size as claim history.",
 );
 
 assert.match(
   customerWarrantySource,
-  /location\.key !== initialLocationKeyRef\.current[\s\S]*refreshedFocusLocationKeyRef\.current === location\.key/,
-  "Same-page warranty focus must detect whether the current navigation still needs a fresh claims load.",
+  /fetchClaims\(targetPage\)[\s\S]*fetchOrders\(\)/,
+  "Customer focus must refresh the target claim page and current eligibility.",
+);
+
+assert.match(
+  customerWarrantyControllerSource,
+  /WHERE w\.id = \?[\s\S]*AND w\.customer_id = \?/,
+  "Customer exact warranty lookup must enforce claim ownership in SQL.",
 );
 
 assert.match(
   customerWarrantySource,
-  /refreshedFocusLocationKeyRef\.current = location\.key;[\s\S]*setClaimFocusResolving\(true\);[\s\S]*void Promise\.all\(\[fetchClaims\(\), fetchOrders\(\)\]\);[\s\S]*return;/,
-  "Same-page warranty notification navigation must refresh both claims and eligibility before resolving the focused claim.",
+  /focusRetryNonce/,
+  "Customer focused-claim failures must retain an explicit retry path.",
 );
 
 assert.match(

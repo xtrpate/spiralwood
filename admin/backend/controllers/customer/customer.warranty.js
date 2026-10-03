@@ -12,6 +12,8 @@ const WARRANTY_POLICY_VERSION_KEY = "warranty_policy_version";
 const WARRANTY_POLICY_VERSION = "2";
 const DEFAULT_WARRANTY_PERIOD_DAYS = 365;
 const MAX_WARRANTY_DESCRIPTION_LENGTH = 1000;
+const CUSTOMER_WARRANTY_PAGE_SIZE = 10;
+const CUSTOMER_WARRANTY_MAX_PAGE_SIZE = 50;
 
 /*
  * Warranty starts at the real customer handoff:
@@ -173,41 +175,167 @@ const getEligibleOrders = async (req, res) => {
   }
 };
 
+const mapCustomerWarrantyClaim = (row) => {
+  const { photo_url, proof_url } = splitStoredProofs(row.proof_url);
+  return {
+    ...row,
+    claim_quantity: Number(row.claim_quantity || 1),
+    description: row.reason,
+    photo_url: signUploadPath(photo_url),
+    proof_url: signUploadPath(proof_url),
+    replacement_receipt: signUploadPath(row.replacement_receipt),
+    reason: undefined,
+  };
+};
+
+const parseCustomerWarrantyPaging = (query = {}) => {
+  const rawPage = query?.page;
+  const rawLimit = query?.limit;
+
+  const requestedPage =
+    rawPage === undefined ? 1 : parseStrictPositiveInt(rawPage);
+  const limit =
+    rawLimit === undefined
+      ? CUSTOMER_WARRANTY_PAGE_SIZE
+      : parseStrictPositiveInt(rawLimit);
+
+  if (!requestedPage) {
+    const err = new Error("Page must be a positive whole number.");
+    err.status = 400;
+    throw err;
+  }
+
+  if (!limit || limit > CUSTOMER_WARRANTY_MAX_PAGE_SIZE) {
+    const err = new Error(
+      `Limit must be a positive whole number no greater than ${CUSTOMER_WARRANTY_MAX_PAGE_SIZE}.`,
+    );
+    err.status = 400;
+    throw err;
+  }
+
+  return { requestedPage, limit };
+};
+
+const CUSTOMER_WARRANTY_SELECT_SQL = `
+  SELECT
+    w.id, w.order_id, w.order_item_id, o.order_number, w.product_name,
+    w.claim_quantity, w.reason, w.admin_note, w.proof_url, w.status,
+    w.warranty_expiry, w.replacement_receipt, w.resolution_type,
+    w.resolution_notes, w.replacement_source, w.return_disposition,
+    w.fulfilled_at, w.created_at, w.updated_at
+  FROM warranties w
+  LEFT JOIN orders o ON o.id = w.order_id`;
+
 const getClaims = async (req, res) => {
   try {
-    const [rows] = await db.query(
-      `SELECT
-         w.id, w.order_id, w.order_item_id, o.order_number, w.product_name,
-         w.claim_quantity, w.reason, w.admin_note, w.proof_url, w.status,
-         w.warranty_expiry, w.replacement_receipt, w.resolution_type,
-         w.resolution_notes, w.replacement_source, w.return_disposition,
-         w.fulfilled_at, w.created_at, w.updated_at
-       FROM warranties w
-       LEFT JOIN orders o ON o.id = w.order_id
-       WHERE w.customer_id = ?
-       ORDER BY w.created_at DESC`,
+    const { requestedPage, limit } = parseCustomerWarrantyPaging(req.query);
+
+    const [[countRow]] = await db.query(
+      `SELECT COUNT(*) AS total
+       FROM warranties
+       WHERE customer_id = ?`,
       [req.user.id],
     );
 
-    return res.json(
-      rows.map((row) => {
-        const { photo_url, proof_url } = splitStoredProofs(row.proof_url);
-        return {
-          ...row,
-          claim_quantity: Number(row.claim_quantity || 1),
-          description: row.reason,
-          photo_url: signUploadPath(photo_url),
-          proof_url: signUploadPath(proof_url),
-          replacement_receipt: signUploadPath(row.replacement_receipt),
-          reason: undefined,
-        };
-      }),
-    );
+    const total = Number(countRow?.total || 0);
+    const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
+    const page =
+      totalPages === 0
+        ? 1
+        : Math.min(requestedPage, Math.max(1, totalPages));
+    const offset = (page - 1) * limit;
+
+    let rows = [];
+    if (total > 0) {
+      [rows] = await db.query(
+        `${CUSTOMER_WARRANTY_SELECT_SQL}
+         WHERE w.customer_id = ?
+         ORDER BY w.created_at DESC, w.id DESC
+         LIMIT ? OFFSET ?`,
+        [req.user.id, limit, offset],
+      );
+    }
+
+    return res.json({
+      claims: rows.map(mapCustomerWarrantyClaim),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1 && totalPages > 0,
+      },
+    });
   } catch (err) {
+    if (Number(err?.status) === 400) {
+      return res.status(400).json({ message: err.message });
+    }
+
     console.error("[customer.warranty GET]", err);
+    return res.status(500).json({ message: "Server error." });
+  }
+};
+
+const getClaimById = async (req, res) => {
+  const id = parseStrictPositiveInt(req.params.id);
+  if (!id) {
     return res
-      .status(500)
-      .json({ message: "Server error." });
+      .status(400)
+      .json({ message: "Valid warranty claim ID is required." });
+  }
+
+  try {
+    const { limit } = parseCustomerWarrantyPaging({
+      limit: req.query?.limit,
+    });
+
+    const [[row]] = await db.query(
+      `${CUSTOMER_WARRANTY_SELECT_SQL}
+       WHERE w.id = ?
+         AND w.customer_id = ?
+       LIMIT 1`,
+      [id, req.user.id],
+    );
+
+    if (!row) {
+      return res.status(404).json({ message: "Warranty claim not found." });
+    }
+
+    const [[positionRow]] = await db.query(
+      `SELECT COUNT(*) AS preceding
+       FROM warranties newer
+       INNER JOIN warranties target
+         ON target.id = ?
+        AND target.customer_id = ?
+       WHERE newer.customer_id = ?
+         AND (
+           newer.created_at > target.created_at
+           OR (
+             newer.created_at = target.created_at
+             AND newer.id > target.id
+           )
+         )`,
+      [id, req.user.id, req.user.id],
+    );
+
+    const preceding = Number(positionRow?.preceding || 0);
+    const page = Math.floor(preceding / limit) + 1;
+
+    return res.json({
+      claim: mapCustomerWarrantyClaim(row),
+      pagination: {
+        page,
+        limit,
+      },
+    });
+  } catch (err) {
+    if (Number(err?.status) === 400) {
+      return res.status(400).json({ message: err.message });
+    }
+
+    console.error("[customer.warranty GET one]", err);
+    return res.status(500).json({ message: "Server error." });
   }
 };
 
@@ -549,4 +677,4 @@ const cancelClaim = async (req, res) => {
   }
 };
 
-module.exports = { getEligibleOrders, getClaims, submitClaim, cancelClaim };
+module.exports = { getEligibleOrders, getClaims, getClaimById, submitClaim, cancelClaim };

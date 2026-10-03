@@ -1983,3 +1983,74 @@
     max-width: 160px;
   }
 }
+/* CUSTOMER WARRANTY CLAIM HISTORY PAGINATION */
+.warranty-claims-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.warranty-claims-pagination-summary {
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: #52525b;
+}
+
+.warranty-claims-pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.warranty-claims-pagination-controls span {
+  min-width: 92px;
+  text-align: center;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #27272a;
+}
+
+.warranty-claims-pagination-controls button {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  color: #111111;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.warranty-claims-pagination-controls button:hover:not(:disabled) {
+  border-color: #111111;
+}
+
+.warranty-claims-pagination-controls button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (max-width: 560px) {
+  .warranty-claims-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .warranty-claims-pagination-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .warranty-claims-pagination-controls button {
+    flex: 1;
+  }
+
+  .warranty-claims-pagination-controls span {
+    flex: 0 0 auto;
+  }
+}
