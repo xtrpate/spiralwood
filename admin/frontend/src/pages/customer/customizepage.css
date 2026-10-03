@@ -4774,6 +4774,14 @@
    ========================================================== */
 
 .custom-request-checkout-v2 .checkout-summary {
+  position: sticky !important;
+  top: 96px !important;
+  align-self: start !important;
+
+  width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+
   background: #ffffff !important;
   border: 1px solid #e5e7eb !important;
   border-radius: 0 !important;

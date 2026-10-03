@@ -938,26 +938,43 @@
   overflow: hidden;
 }
 
-.checkout-summary-header {
+/* ── Standard Checkout Summary (right panel) ── */
+/*
+ * IMPORTANT:
+ * These styles belong to the normal customer checkout only.
+ * Scope them under .checkout-page so they cannot leak into
+ * CustomCheckoutPage, which has its own summary design.
+ */
+
+.checkout-page .checkout-summary {
+  background: white;
+  border-radius: 14px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  position: sticky;
+  top: 88px;
+  overflow: hidden;
+}
+
+.checkout-page .checkout-summary-header {
   background: linear-gradient(135deg, #1a1a2e, #16213e);
   padding: 18px 22px;
   color: white;
 }
 
-.checkout-summary-header h3 {
+.checkout-page .checkout-summary-header h3 {
   font-family: "Playfair Display", serif;
   font-size: 16px;
   font-weight: 800;
 }
 
-.checkout-summary-items {
+.checkout-page .checkout-summary-items {
   padding: 16px 22px;
   max-height: 280px;
   overflow-y: auto;
   border-bottom: 1px solid #f0f0f0;
 }
 
-.checkout-summary-item {
+.checkout-page .checkout-summary-item {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -967,33 +984,33 @@
   gap: 8px;
 }
 
-.checkout-summary-item:last-child {
+.checkout-page .checkout-summary-item:last-child {
   border-bottom: none;
 }
 
-.checkout-summary-item-name {
+.checkout-page .checkout-summary-item-name {
   color: #333;
   font-weight: 600;
   flex: 1;
   line-height: 1.4;
 }
 
-.checkout-summary-item-qty {
+.checkout-page .checkout-summary-item-qty {
   color: #aaa;
   font-size: 12px;
 }
 
-.checkout-summary-item-price {
+.checkout-page .checkout-summary-item-price {
   font-weight: 700;
   color: #8b4513;
   white-space: nowrap;
 }
 
-.checkout-summary-totals {
+.checkout-page .checkout-summary-totals {
   padding: 16px 22px;
 }
 
-.place-order-btn {
+.checkout-page .place-order-btn {
   width: 100%;
   padding: 15px;
   background: linear-gradient(135deg, #8b4513, #d2691e);
@@ -1011,11 +1028,11 @@
   transition: opacity 0.2s;
 }
 
-.place-order-btn:hover {
+.checkout-page .place-order-btn:hover {
   opacity: 0.9;
 }
 
-.place-order-btn:disabled {
+.checkout-page .place-order-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
