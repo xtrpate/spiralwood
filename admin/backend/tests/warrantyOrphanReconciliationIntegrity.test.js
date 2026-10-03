@@ -1,6 +1,36 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+
+const reconciliationScriptPath = path.join(
+  __dirname,
+  "../scripts/reconcileWarrantyAssets.js",
+);
+const reconciliationScriptSource = fs.readFileSync(
+  reconciliationScriptPath,
+  "utf8",
+);
+const envLoadMarker =
+  'require("dotenv").config({ path: path.resolve(__dirname, "../.env") });';
+const dbRequireMarker = 'const db = require("../config/db");';
+const envLoadIndex = reconciliationScriptSource.indexOf(envLoadMarker);
+const dbRequireIndex = reconciliationScriptSource.indexOf(dbRequireMarker);
+
+assert.match(reconciliationScriptSource, /const path = require\("path"\);/);
+assert.ok(
+  envLoadIndex >= 0,
+  "Warranty reconciliation script must anchor dotenv to admin/backend/.env.",
+);
+assert.ok(
+  dbRequireIndex >= 0,
+  "Warranty reconciliation script must retain the DB module import.",
+);
+assert.ok(
+  envLoadIndex < dbRequireIndex,
+  "Warranty reconciliation script must load its anchored .env before DB initialization.",
+);
 
 const {
   WARRANTY_RECONCILIATION_GRACE_HOURS,
