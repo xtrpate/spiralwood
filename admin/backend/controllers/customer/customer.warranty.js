@@ -90,6 +90,20 @@ const splitStoredProofs = (value) => {
   return { photo_url: parts[0] || null, proof_url: parts[1] || null };
 };
 
+const getSubmittedEvidenceUrl = (req, fieldName) => {
+  const durableUrl = String(
+    req.warrantyEvidenceAssets?.[fieldName]?.file_url || "",
+  ).trim();
+  if (durableUrl) return durableUrl;
+
+  // Keep direct-controller regression tests and legacy local submission
+  // fixtures compatible. The real customer route now supplies durable assets.
+  const legacyFilename = String(
+    req.files?.[fieldName]?.[0]?.filename || "",
+  ).trim();
+  return legacyFilename ? `uploads/warranty/${legacyFilename}` : null;
+};
+
 const isWarrantySubmissionLockConflict = (err) =>
   ["ER_LOCK_DEADLOCK", "ER_LOCK_WAIT_TIMEOUT"].includes(
     String(err?.code || ""),
@@ -380,12 +394,8 @@ const submitClaim = async (req, res) => {
     });
   }
 
-  const photoUrl = req.files?.photo?.[0]
-    ? `uploads/warranty/${req.files.photo[0].filename}`
-    : null;
-  const proofUrl = req.files?.proof?.[0]
-    ? `uploads/warranty/${req.files.proof[0].filename}`
-    : null;
+  const photoUrl = getSubmittedEvidenceUrl(req, "photo");
+  const proofUrl = getSubmittedEvidenceUrl(req, "proof");
 
   if (!photoUrl || !proofUrl) {
     return res.status(400).json({

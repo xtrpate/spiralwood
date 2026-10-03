@@ -10,6 +10,9 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+const AUTHENTICATED_REFERENCE_PREFIX = "cloudinary-auth:";
+const ALLOWED_CLOUDINARY_DELIVERY_TYPES = new Set(["upload", "authenticated"]);
+
 const isCloudinaryConfigured = () =>
   Boolean(
     String(process.env.CLOUDINARY_CLOUD_NAME || "").trim() &&
@@ -50,12 +53,66 @@ const safeFilename = (value = "attachment") => {
   return `${base || "attachment"}${ext}`;
 };
 
-const uploadCloudinaryBuffer = async ({ file, folder }) =>
+const normalizeDeliveryType = (value) => {
+  const normalized = String(value || "upload")
+    .trim()
+    .toLowerCase();
+
+  if (!ALLOWED_CLOUDINARY_DELIVERY_TYPES.has(normalized)) {
+    const error = new Error("Unsupported cloud delivery type.");
+    error.status = 500;
+    throw error;
+  }
+
+  return normalized;
+};
+
+const deriveFormat = (result, file) => {
+  const fromResult = String(result?.format || "")
+    .trim()
+    .toLowerCase();
+  if (fromResult) return fromResult;
+
+  return path
+    .extname(String(file?.originalname || file?.filename || ""))
+    .replace(/^\./, "")
+    .trim()
+    .toLowerCase();
+};
+
+const buildAuthenticatedCloudReference = ({
+  publicId,
+  resourceType,
+  format,
+}) => {
+  const payload = {
+    v: 1,
+    public_id: String(publicId || "").trim(),
+    resource_type: String(resourceType || "image")
+      .trim()
+      .toLowerCase(),
+    format: String(format || "")
+      .trim()
+      .toLowerCase(),
+  };
+
+  if (!payload.public_id || !payload.format) {
+    throw new Error("Authenticated cloud upload metadata is incomplete.");
+  }
+
+  const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString(
+    "base64url",
+  );
+  return `${AUTHENTICATED_REFERENCE_PREFIX}${encoded}`;
+};
+
+const uploadCloudinaryBuffer = async ({ file, folder, deliveryType }) =>
   new Promise((resolve, reject) => {
     const upload = cloudinary.uploader.upload_stream(
       {
         folder: `wisdom_uploads/${folder}`,
         resource_type: "auto",
+        type: deliveryType,
         use_filename: true,
         unique_filename: true,
       },
@@ -65,19 +122,50 @@ const uploadCloudinaryBuffer = async ({ file, folder }) =>
           return;
         }
 
-        if (!result?.secure_url || !result?.public_id) {
+        if (!result?.public_id) {
+          reject(new Error("Cloud upload did not return a valid asset ID."));
+          return;
+        }
+
+        const effectiveDeliveryType = String(
+          result.type || deliveryType || "upload",
+        )
+          .trim()
+          .toLowerCase();
+        const resourceType = String(result.resource_type || "image")
+          .trim()
+          .toLowerCase();
+        const format = deriveFormat(result, file);
+
+        let storedFileUrl = result.secure_url || null;
+        if (effectiveDeliveryType === "authenticated") {
+          try {
+            storedFileUrl = buildAuthenticatedCloudReference({
+              publicId: result.public_id,
+              resourceType,
+              format,
+            });
+          } catch (referenceErr) {
+            reject(referenceErr);
+            return;
+          }
+        } else if (!storedFileUrl) {
           reject(new Error("Cloud upload did not return a valid file URL."));
           return;
         }
 
         resolve({
           storage: "cloudinary",
-          file_url: result.secure_url,
-          file_name: safeFilename(file.originalname || file.filename || result.public_id),
+          file_url: storedFileUrl,
+          file_name: safeFilename(
+            file.originalname || file.filename || result.public_id,
+          ),
           mime_type: String(file.mimetype || "").trim() || null,
           file_size: Number(result.bytes || file.size || 0) || null,
           public_id: result.public_id,
-          resource_type: result.resource_type || "image",
+          resource_type: resourceType,
+          delivery_type: effectiveDeliveryType,
+          format: format || null,
           local_path: null,
         });
       },
@@ -108,11 +196,18 @@ const saveLocalBuffer = async ({ file, folder }) => {
     file_size: Number(file.size || file.buffer?.length || 0) || null,
     public_id: null,
     resource_type: null,
+    delivery_type: "local",
+    format: ext.replace(/^\./, "") || null,
     local_path: absolutePath,
   };
 };
 
-exports.storeUploadBuffer = async ({ file, folder }) => {
+exports.storeUploadBuffer = async ({
+  file,
+  folder,
+  deliveryType = "upload",
+  requireCloud = false,
+}) => {
   if (!file || !Buffer.isBuffer(file.buffer) || !file.buffer.length) {
     const error = new Error("The selected upload is empty.");
     error.status = 400;
@@ -126,6 +221,7 @@ exports.storeUploadBuffer = async ({ file, folder }) => {
     throw error;
   }
 
+  const cleanDeliveryType = normalizeDeliveryType(deliveryType);
   let cloudError = null;
 
   if (isCloudinaryConfigured()) {
@@ -133,6 +229,7 @@ exports.storeUploadBuffer = async ({ file, folder }) => {
       return await uploadCloudinaryBuffer({
         file,
         folder: cleanFolder,
+        deliveryType: cleanDeliveryType,
       });
     } catch (err) {
       cloudError = err;
@@ -146,6 +243,15 @@ exports.storeUploadBuffer = async ({ file, folder }) => {
     console.warn(
       `[adaptiveUpload] Cloudinary is unavailable for ${cleanFolder}; checking local fallback.`,
     );
+  }
+
+  if (requireCloud) {
+    const error = new Error(
+      "Durable cloud upload is unavailable. Check the server upload configuration.",
+    );
+    error.status = 502;
+    error.cause = cloudError;
+    throw error;
   }
 
   if (allowLocalFallback()) {
@@ -193,6 +299,7 @@ exports.cleanupStoredUpload = async (asset = {}) => {
   if (asset.storage === "cloudinary" && asset.public_id) {
     await cloudinary.uploader.destroy(asset.public_id, {
       resource_type: asset.resource_type || "image",
+      type: asset.delivery_type || "upload",
       invalidate: true,
     });
   }

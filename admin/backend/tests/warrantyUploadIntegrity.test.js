@@ -1,7 +1,6 @@
 const assert = require("assert");
 const { EventEmitter } = require("events");
 const fs = require("fs");
-const os = require("os");
 const path = require("path");
 const Module = require("module");
 
@@ -12,6 +11,9 @@ const frontendPath = path.join(
 );
 
 let capturedMulterOptions = null;
+let capturedFieldDefinitions = null;
+let storeCalls = [];
+let cleanupCalls = [];
 
 const router = {
   __routes: [],
@@ -33,11 +35,19 @@ const expressMock = {
   Router: () => router,
 };
 
+class MulterErrorMock extends Error {
+  constructor(code) {
+    super(code);
+    this.code = code;
+  }
+}
+
 function multerMock(options) {
   capturedMulterOptions = options;
   return {
-    fields() {
-      return (req, res, cb) => {
+    fields(fieldDefinitions) {
+      capturedFieldDefinitions = fieldDefinitions;
+      return (req, _res, cb) => {
         req.files = req.__mockFiles || {};
         cb(req.__mockMulterError || null);
       };
@@ -45,15 +55,40 @@ function multerMock(options) {
   };
 }
 
-multerMock.diskStorage = (config) => config;
+multerMock.memoryStorage = () => ({ kind: "memory" });
+multerMock.MulterError = MulterErrorMock;
 
-const passMiddleware = (req, res, next) => next();
+const passMiddleware = (_req, _res, next) => next();
 const controllerMock = {
   getEligibleOrders: passMiddleware,
   getClaims: passMiddleware,
   getClaimById: passMiddleware,
   submitClaim: passMiddleware,
   cancelClaim: passMiddleware,
+};
+
+const adaptiveUploadMock = {
+  storeUploadBuffer: async (args) => {
+    storeCalls.push(args);
+    if (args.file?.__storeFail) {
+      const error = new Error("SECRET_PROVIDER_UPLOAD_FAILURE");
+      error.status = 502;
+      throw error;
+    }
+
+    return {
+      storage: "cloudinary",
+      file_url: `cloudinary-auth:${args.file.fieldname}`,
+      public_id: `wisdom_uploads/warranty/${args.file.fieldname}`,
+      resource_type: args.file.mimetype === "application/pdf" ? "raw" : "image",
+      delivery_type: "authenticated",
+      format: path.extname(args.file.originalname).replace(/^\./, "") || "jpg",
+      local_path: null,
+    };
+  },
+  cleanupStoredUpload: async (asset) => {
+    cleanupCalls.push(asset);
+  },
 };
 
 const originalLoad = Module._load;
@@ -78,6 +113,17 @@ Module._load = function patchedLoad(request, parent, isMain) {
     if (request === "../controllers/customer/customer.warranty") {
       return controllerMock;
     }
+
+    if (request === "../utils/verifyFileSignature") {
+      return {
+        verifyBufferSignature: (buffer, _ext) =>
+          Buffer.isBuffer(buffer) && buffer.length > 0 && buffer[0] !== 0x00,
+      };
+    }
+
+    if (request === "../utils/adaptiveUpload") {
+      return adaptiveUploadMock;
+    }
   }
 
   return originalLoad.call(this, request, parent, isMain);
@@ -99,24 +145,15 @@ function makeResponse() {
   return res;
 }
 
-function createTempFile(dir, filename, buffer) {
-  const filePath = path.join(dir, filename);
-  fs.writeFileSync(filePath, buffer);
+function makeFile(fieldname, originalname, mimetype, bytes = [0xff, 0xd8, 0xff]) {
+  const buffer = Buffer.from(bytes);
   return {
-    path: filePath,
-    originalname: filename,
+    fieldname,
+    originalname,
+    mimetype,
+    size: buffer.length,
+    buffer,
   };
-}
-
-function validJpegBytes() {
-  return Buffer.from([
-    0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46,
-    0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01,
-  ]);
-}
-
-function validPdfBytes() {
-  return Buffer.from("%PDF-1.7\nW5A test proof\n", "utf8");
 }
 
 async function waitFor(predicate, timeoutMs = 1000) {
@@ -128,21 +165,32 @@ async function waitFor(predicate, timeoutMs = 1000) {
   throw new Error("Timed out waiting for expected cleanup state.");
 }
 
-function runFileFilter(fieldname, originalname) {
+function runFileFilter(fieldname, originalname, mimetype) {
   return new Promise((resolve) => {
     capturedMulterOptions.fileFilter(
       {},
-      { fieldname, originalname },
+      { fieldname, originalname, mimetype },
       (err, accepted) => resolve({ err, accepted }),
     );
   });
 }
 
-async function runUpload(uploadMiddleware, req, res) {
+async function invokeUpload(uploadMiddleware, req, res) {
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve({ nextCalled: false });
+    };
+    res.once("finish", finish);
+
     uploadMiddleware(req, res, (err) => {
+      if (settled) return;
+      settled = true;
+      res.removeListener("finish", finish);
       if (err) reject(err);
-      else resolve();
+      else resolve({ nextCalled: true });
     });
   });
 }
@@ -157,29 +205,30 @@ async function main() {
   }
 
   assert.ok(capturedMulterOptions, "warranty multer options should be captured");
+  assert.deepEqual(capturedMulterOptions.storage, { kind: "memory" });
   assert.equal(
     capturedMulterOptions.limits?.fileSize,
     5 * 1024 * 1024,
     "customer warranty uploads must remain capped at 5 MB per file",
   );
+  assert.equal(capturedMulterOptions.limits?.files, 2);
 
-  const photoJpg = await runFileFilter("photo", "defect.JPG");
+  const photoJpg = await runFileFilter("photo", "defect.JPG", "image/jpeg");
   assert.equal(photoJpg.err, null);
   assert.equal(photoJpg.accepted, true);
 
-  const photoPdf = await runFileFilter("photo", "defect.pdf");
+  const photoPdf = await runFileFilter("photo", "defect.pdf", "application/pdf");
   assert.equal(photoPdf.accepted, undefined);
   assert.equal(photoPdf.err?.status, 400);
   assert.match(photoPdf.err?.message || "", /photo of the issue/i);
 
-  const proofPdf = await runFileFilter("proof", "receipt.PDF");
+  const proofPdf = await runFileFilter("proof", "receipt.PDF", "application/pdf");
   assert.equal(proofPdf.err, null);
   assert.equal(proofPdf.accepted, true);
 
-  const proofExe = await runFileFilter("proof", "receipt.exe");
-  assert.equal(proofExe.accepted, undefined);
-  assert.equal(proofExe.err?.status, 400);
-  assert.match(proofExe.err?.message || "", /proof of purchase/i);
+  const fakeJpgMime = await runFileFilter("proof", "receipt.jpg", "application/pdf");
+  assert.equal(fakeJpgMime.accepted, undefined);
+  assert.equal(fakeJpgMime.err?.status, 400);
 
   const postRoute = warrantyRouter.__routes.find(
     (entry) => entry.method === "post" && entry.path === "/",
@@ -188,97 +237,161 @@ async function main() {
   assert.equal(postRoute.handlers.length, 4);
   const uploadMiddleware = postRoute.handlers[2];
 
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "wisdom-w5a-"));
-  try {
-    // One valid sibling + one invalid-signature file: BOTH request files must go.
-    {
-      const caseDir = fs.mkdtempSync(path.join(tempRoot, "signature-"));
-      const photo = createTempFile(caseDir, "photo.jpg", validJpegBytes());
-      const proof = createTempFile(
-        caseDir,
-        "proof.pdf",
-        Buffer.from("not a real pdf", "utf8"),
-      );
-      const req = {
-        __mockFiles: { photo: [photo], proof: [proof] },
-      };
-      const res = makeResponse();
+  // Real-type mismatch must be rejected before durable storage is attempted.
+  storeCalls = [];
+  cleanupCalls = [];
+  {
+    const photo = makeFile("photo", "defect.jpg", "image/jpeg", [0x00, 0x01]);
+    const proof = makeFile(
+      "proof",
+      "receipt.pdf",
+      "application/pdf",
+      [0x25, 0x50, 0x44, 0x46, 0x2d],
+    );
+    const req = { __mockFiles: { photo: [photo], proof: [proof] } };
+    const res = makeResponse();
 
-      await new Promise((resolve, reject) => {
-        res.once("finish", () => setImmediate(resolve));
-        uploadMiddleware(req, res, (err) => {
-          reject(err || new Error("invalid signature should not call next"));
-        });
-      });
+    const result = await invokeUpload(uploadMiddleware, req, res);
+    assert.deepEqual(capturedFieldDefinitions, [
+      { name: "photo", maxCount: 1 },
+      { name: "proof", maxCount: 1 },
+    ]);
+    assert.equal(result.nextCalled, false);
+    assert.equal(res.statusCode, 400);
+    assert.match(res.body?.message || "", /real file type/i);
+    assert.equal(storeCalls.length, 0);
+    assert.equal(cleanupCalls.length, 0);
+  }
 
-      assert.equal(res.statusCode, 400);
-      assert.match(res.body?.message || "", /does not match its file extension/i);
-      await waitFor(() => !fs.existsSync(photo.path) && !fs.existsSync(proof.path));
+  // Missing required sibling should fail before durable storage.
+  storeCalls = [];
+  cleanupCalls = [];
+  {
+    const photo = makeFile("photo", "defect.jpg", "image/jpeg");
+    const req = { __mockFiles: { photo: [photo] } };
+    const res = makeResponse();
+
+    const result = await invokeUpload(uploadMiddleware, req, res);
+    assert.equal(result.nextCalled, false);
+    assert.equal(res.statusCode, 400);
+    assert.match(res.body?.message || "", /both defect photo and proof/i);
+    assert.equal(storeCalls.length, 0);
+  }
+
+  // If the second durable upload fails, the first one must be removed.
+  storeCalls = [];
+  cleanupCalls = [];
+  {
+    const photo = makeFile("photo", "defect.jpg", "image/jpeg");
+    const proof = makeFile(
+      "proof",
+      "receipt.pdf",
+      "application/pdf",
+      [0x25, 0x50, 0x44, 0x46, 0x2d],
+    );
+    proof.__storeFail = true;
+    const req = { __mockFiles: { photo: [photo], proof: [proof] } };
+    const res = makeResponse();
+
+    const originalConsoleError = console.error;
+    console.error = () => {};
+    try {
+      const result = await invokeUpload(uploadMiddleware, req, res);
+      assert.equal(result.nextCalled, false);
+    } finally {
+      console.error = originalConsoleError;
     }
 
-    // Multer-level rejection after files were seen must clean every request file.
-    {
-      const caseDir = fs.mkdtempSync(path.join(tempRoot, "multer-"));
-      const photo = createTempFile(caseDir, "photo.jpg", validJpegBytes());
-      const proof = createTempFile(caseDir, "proof.pdf", validPdfBytes());
-      const multerError = Object.assign(new Error("simulated multer rejection"), {
-        status: 400,
-      });
-      const req = {
-        __mockFiles: { photo: [photo], proof: [proof] },
-        __mockMulterError: multerError,
-      };
-      const res = makeResponse();
+    assert.equal(res.statusCode, 502);
+    assert.match(res.body?.message || "", /unavailable right now/i);
+    assert.doesNotMatch(JSON.stringify(res.body), /SECRET_PROVIDER_UPLOAD_FAILURE/);
+    assert.equal(storeCalls.length, 2);
+    assert.equal(storeCalls[0].deliveryType, "authenticated");
+    assert.equal(storeCalls[0].requireCloud, true);
+    assert.equal(cleanupCalls.length, 1);
+    assert.equal(cleanupCalls[0].public_id, "wisdom_uploads/warranty/photo");
+  }
 
-      let receivedError = null;
-      await new Promise((resolve) => {
-        uploadMiddleware(req, res, (err) => {
-          receivedError = err;
-          resolve();
-        });
-      });
+  // Known controller/business rejection cleans both fresh durable assets.
+  storeCalls = [];
+  cleanupCalls = [];
+  {
+    const photo = makeFile("photo", "defect.jpg", "image/jpeg");
+    const proof = makeFile(
+      "proof",
+      "receipt.pdf",
+      "application/pdf",
+      [0x25, 0x50, 0x44, 0x46, 0x2d],
+    );
+    const req = { __mockFiles: { photo: [photo], proof: [proof] } };
+    const res = makeResponse();
 
-      assert.equal(receivedError, multerError);
-      await waitFor(() => !fs.existsSync(photo.path) && !fs.existsSync(proof.path));
-    }
+    const result = await invokeUpload(uploadMiddleware, req, res);
+    assert.equal(result.nextCalled, true);
+    assert.ok(req.warrantyEvidenceAssets?.photo);
+    assert.ok(req.warrantyEvidenceAssets?.proof);
 
-    // Controller/business rejection (including duplicate-claim 409) cleans uploads.
-    {
-      const caseDir = fs.mkdtempSync(path.join(tempRoot, "business-409-"));
-      const photo = createTempFile(caseDir, "photo.jpg", validJpegBytes());
-      const proof = createTempFile(caseDir, "proof.pdf", validPdfBytes());
-      const req = {
-        __mockFiles: { photo: [photo], proof: [proof] },
-      };
-      const res = makeResponse();
+    res.statusCode = 409;
+    res.emit("finish");
+    await waitFor(() => cleanupCalls.length === 2);
+  }
 
-      await runUpload(uploadMiddleware, req, res);
-      res.statusCode = 409;
-      res.emit("finish");
+  // Uncertain/known commit boundary intentionally retains both assets.
+  storeCalls = [];
+  cleanupCalls = [];
+  {
+    const photo = makeFile("photo", "defect.jpg", "image/jpeg");
+    const proof = makeFile(
+      "proof",
+      "receipt.pdf",
+      "application/pdf",
+      [0x25, 0x50, 0x44, 0x46, 0x2d],
+    );
+    const req = { __mockFiles: { photo: [photo], proof: [proof] } };
+    const res = makeResponse();
 
-      await waitFor(() => !fs.existsSync(photo.path) && !fs.existsSync(proof.path));
-    }
+    const result = await invokeUpload(uploadMiddleware, req, res);
+    assert.equal(result.nextCalled, true);
+    req.warrantySubmissionRetainUploads = true;
+    res.statusCode = 500;
+    res.emit("finish");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(cleanupCalls.length, 0);
+  }
 
-    // Successful submission keeps its evidence files.
-    {
-      const caseDir = fs.mkdtempSync(path.join(tempRoot, "success-"));
-      const photo = createTempFile(caseDir, "photo.jpg", validJpegBytes());
-      const proof = createTempFile(caseDir, "proof.pdf", validPdfBytes());
-      const req = {
-        __mockFiles: { photo: [photo], proof: [proof] },
-      };
-      const res = makeResponse();
+  // Successful submission retains both assets.
+  storeCalls = [];
+  cleanupCalls = [];
+  {
+    const photo = makeFile("photo", "defect.jpg", "image/jpeg");
+    const proof = makeFile(
+      "proof",
+      "receipt.pdf",
+      "application/pdf",
+      [0x25, 0x50, 0x44, 0x46, 0x2d],
+    );
+    const req = { __mockFiles: { photo: [photo], proof: [proof] } };
+    const res = makeResponse();
 
-      await runUpload(uploadMiddleware, req, res);
-      res.statusCode = 201;
-      res.emit("finish");
-      await new Promise((resolve) => setTimeout(resolve, 30));
+    const result = await invokeUpload(uploadMiddleware, req, res);
+    assert.equal(result.nextCalled, true);
+    res.statusCode = 201;
+    res.emit("finish");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(cleanupCalls.length, 0);
+  }
 
-      assert.equal(fs.existsSync(photo.path), true);
-      assert.equal(fs.existsSync(proof.path), true);
-    }
-  } finally {
-    fs.rmSync(tempRoot, { recursive: true, force: true });
+  // Multer size failures should remain a client-safe 400 response.
+  {
+    const req = {
+      __mockFiles: {},
+      __mockMulterError: new MulterErrorMock("LIMIT_FILE_SIZE"),
+    };
+    const res = makeResponse();
+    const result = await invokeUpload(uploadMiddleware, req, res);
+    assert.equal(result.nextCalled, false);
+    assert.equal(res.statusCode, 400);
+    assert.match(res.body?.message || "", /5 MB or smaller/i);
   }
 
   const frontendSource = fs.readFileSync(frontendPath, "utf8");
