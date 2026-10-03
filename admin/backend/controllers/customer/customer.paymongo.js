@@ -11,6 +11,9 @@ const {
   createStandardOnlineReceipt,
 } = require("../../services/receiptService");
 const {
+  ensureReceiptForVerifiedPayment,
+} = require("../../services/blueprintReceiptService");
+const {
   resolveLifecycleByOrder,
 } = require("../../services/blueprintLifecycleService");
 const {
@@ -999,10 +1002,35 @@ exports.handlePaymongoWebhook = async (req, res) => {
         }
 
         /*
-         * The payment/order changes were performed inside the current
-         * transaction. Commit before emitting realtime events and audit
-         * records.
+         * Blueprint PayMongo payments must complete the full payment
+         * lifecycle inside the SAME database transaction:
+         *
+         *   payment transaction
+         *        ↓
+         *   order payment/status update
+         *        ↓
+         *   blueprint receipt
+         *        ↓
+         *   material reservation
+         *        ↓
+         *   COMMIT
+         *
+         * The webhook has no authenticated staff/admin user, so the
+         * receipt is intentionally issued_by = NULL. The audit log below
+         * records actorType = "webhook".
+         *
+         * alreadyProcessed is handled separately so a duplicate webhook
+         * does not attempt to recreate the receipt unnecessarily.
          */
+        const blueprintReceiptResult = await ensureReceiptForVerifiedPayment(
+          conn,
+          {
+            orderId: order.id,
+            paymentTransactionId: blueprintWebhookResult.paymentTransactionId,
+            issuedByUserId: null,
+          },
+        );
+
         await conn.commit();
 
         const paymentStatusChanged =
