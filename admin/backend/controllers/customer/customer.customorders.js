@@ -6554,13 +6554,32 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
         });
       }
 
-      const payments = session.attributes?.payments || [];
-      const paymentIntent = session.attributes?.payment_intent;
+      const payments = Array.isArray(session.attributes?.payments)
+        ? session.attributes.payments
+        : [];
+
+      const paymentIntent = session.attributes?.payment_intent || null;
 
       const hasSuccessfulPayment =
         payments.some(
           (payment) => normalize(payment?.attributes?.status) === "paid",
         ) || normalize(paymentIntent?.attributes?.status) === "succeeded";
+
+      /*
+       * An active Checkout Session does NOT necessarily mean that no
+       * payment attempt has failed.
+       *
+       * PayMongo can keep the Checkout Session active after a failed
+       * Payment Intent / Payment attempt. Therefore we separately inspect
+       * the payment attempt state.
+       */
+      const hasFailedPaymentAttempt =
+        payments.some(
+          (payment) => normalize(payment?.attributes?.status) === "failed",
+        ) ||
+        (normalize(paymentIntent?.attributes?.status) ===
+          "awaiting_payment_method" &&
+          Boolean(paymentIntent?.attributes?.last_payment_error));
 
       const sessionStatus = normalize(session.attributes?.status);
 
@@ -6598,14 +6617,33 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
       }
 
       /*
-       * Reuse the session only when:
+       * Reuse the existing Checkout Session only when:
        *
-       *   1. PayMongo confirms it is still active OR already paid, AND
-       *   2. The checkout amount exactly matches the current balance.
+       *   1. The checkout amount exactly matches the current balance, AND
+       *   2. The payment has already succeeded, OR
+       *   3. The Checkout Session is still active AND no actual payment
+       *      attempt has failed.
+       *
+       * Important:
+       * An active Checkout Session can still contain a failed Payment
+       * Intent/payment attempt. In that situation we intentionally create
+       * a completely new Checkout Session on the next Continue action.
+       *
+       * This preserves:
+       *
+       *   Back without paying
+       *       -> reuse
+       *
+       *   Failed payment attempt
+       *       -> new session
+       *
+       *   Expired Checkout Session
+       *       -> new session
        */
       if (
         sessionAmountMatchesBalance &&
-        (hasSuccessfulPayment || sessionStillActive)
+        (hasSuccessfulPayment ||
+          (sessionStillActive && !hasFailedPaymentAttempt))
       ) {
         await conn.commit();
         transactionActive = false;
@@ -6617,16 +6655,24 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
       }
 
       /*
-       * The old session is no longer usable:
+       * The old session must be replaced when:
        *
-       *   - expired
-       *   - failed
-       *   - unknown status
-       *   - active with the wrong amount
+       *   - the Checkout Session expired
+       *   - an actual payment attempt failed
+       *   - the provider returned an unknown/unusable status
+       *   - the checkout amount no longer matches the current balance
+       *
+       * An active session with NO failed payment attempt is intentionally
+       * preserved so pressing Back and continuing later does not create
+       * unnecessary Checkout Sessions.
        *
        * Only clear the exact session we just inspected.
        */
-      if (!sessionAmountMatchesBalance || !sessionStillActive) {
+      if (
+        !sessionAmountMatchesBalance ||
+        !sessionStillActive ||
+        hasFailedPaymentAttempt
+      ) {
         const [clearResult] = await conn.execute(
           `UPDATE orders
        SET payment_url = NULL,
