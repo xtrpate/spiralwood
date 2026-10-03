@@ -9,6 +9,8 @@ const frontendRoot = path.resolve(backendRoot, "../frontend/src");
 
 const read = (relPath) =>
   fs.readFileSync(path.join(frontendRoot, relPath), "utf8");
+const readBackend = (relPath) =>
+  fs.readFileSync(path.join(backendRoot, relPath), "utf8");
 
 const warrantyPage = read("pages/customer/warrantypage.jsx");
 const warrantyCss = read("pages/customer/warrantypage.css");
@@ -16,6 +18,9 @@ const loginPage = read("pages/customer/loginpage.js");
 const productCatalog = read("pages/customer/productcatalog.jsx");
 const settingsPage = read("pages/website/WebsiteSettingsPage.jsx");
 const apiSource = read("services/api.js");
+const websiteController = readBackend(
+  "controllers/admin/websiteController.js",
+);
 
 const fetchOrdersStart = warrantyPage.indexOf("const fetchOrders = useCallback(async () => {");
 const fetchClaimsStart = warrantyPage.indexOf("const fetchClaims = useCallback(async (requestedPage) => {");
@@ -153,9 +158,39 @@ assert.equal(
   false,
   "Product catalog must not hardcode a one-year warranty value.",
 );
-assert.ok(
+assert.equal(
   productCatalog.includes('value: "Eligible orders"'),
-  "Product catalog warranty wording must be eligibility-based.",
+  false,
+  "Product catalog must not retain the old vague warranty label.",
+);
+assert.match(
+  productCatalog,
+  /\.get\("\/website\/settings", \{ suppressGlobalErrorToast: true \}\)/,
+  "Product catalog must load the current public Website Settings warranty policy.",
+);
+assert.ok(
+  productCatalog.includes("res.data?.policy?.warranty_period_days"),
+  "Product catalog must read warranty_period_days from the public policy group.",
+);
+assert.match(
+  productCatalog,
+  /warrantyPeriodDays[\s\S]{0,220}warrantyPeriodDays === 1 \? "day" : "days"/,
+  "Product catalog must display the current warranty duration in days.",
+);
+assert.equal(
+  productCatalog.includes("from handoff"),
+  false,
+  "Product catalog warranty label must stay concise and omit handoff wording.",
+);
+assert.match(
+  websiteController,
+  /PUBLIC_SETTING_KEYS[\s\S]{0,700}"warranty_period_days"/,
+  "Public Website Settings must expose the customer-facing warranty period.",
+);
+assert.match(
+  websiteController,
+  /publicWarrantyPolicySupported[\s\S]{0,500}warranty_period_days/,
+  "Public warranty settings must fail closed when the policy version is unsupported.",
 );
 
 assert.ok(

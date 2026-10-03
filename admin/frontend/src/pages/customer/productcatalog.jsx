@@ -146,6 +146,7 @@ export default function ProductCatalog() {
   const [isImageZoomOpen, setIsImageZoomOpen] = useState(false);
   const [total, setTotal] = useState(0);
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+  const [warrantyPeriodDays, setWarrantyPeriodDays] = useState(null);
 
   const { addToCart } = useCart();
   const customerUser = useAuthStore((state) =>
@@ -199,6 +200,36 @@ export default function ProductCatalog() {
       clearTimeout(removeTimer);
     };
   }, [toastMsg]);
+
+  useEffect(() => {
+    let active = true;
+
+    api
+      .get("/website/settings", { suppressGlobalErrorToast: true })
+      .then((res) => {
+        const parsedDays = Number(
+          res.data?.policy?.warranty_period_days,
+        );
+
+        if (!active) return;
+
+        setWarrantyPeriodDays(
+          Number.isInteger(parsedDays) &&
+            parsedDays >= 1 &&
+            parsedDays <= 3650
+            ? parsedDays
+            : null,
+        );
+      })
+      .catch((err) => {
+        console.error("[catalog warranty policy]", err);
+        if (active) setWarrantyPeriodDays(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
@@ -555,7 +586,11 @@ export default function ProductCatalog() {
         },
         {
           label: "WARRANTY",
-          value: "Eligible orders",
+          value: warrantyPeriodDays
+            ? `${warrantyPeriodDays} ${
+                warrantyPeriodDays === 1 ? "day" : "days"
+              }`
+            : "Not available",
         },
       ]
     : [];

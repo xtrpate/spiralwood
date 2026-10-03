@@ -61,6 +61,7 @@ const PUBLIC_SETTING_KEYS = new Set([
   "cod_enabled",
   "paymongo_enabled",
   "checkout_note",
+  "warranty_period_days",
 ]);
 
 const TOGGLE_SETTING_KEYS = new Set([
@@ -332,6 +333,12 @@ const applyPageVisibilityToPublicSettings = (grouped, pageRows) => {
 };
 
 const groupSettingRows = (rows, { publicOnly = false } = {}) => {
+  const warrantyVersion = rows.find(
+    (row) => row.setting_key === WARRANTY_POLICY_VERSION_KEY,
+  )?.value;
+  const publicWarrantyPolicySupported =
+    String(warrantyVersion || "") === WARRANTY_POLICY_VERSION;
+
   const grouped = rows.reduce((acc, row) => {
     if (
       row.setting_key === "cancellation_fee_pct" ||
@@ -344,16 +351,20 @@ const groupSettingRows = (rows, { publicOnly = false } = {}) => {
       return acc;
     }
 
+    if (
+      publicOnly &&
+      row.setting_key === "warranty_period_days" &&
+      !publicWarrantyPolicySupported
+    ) {
+      return acc;
+    }
+
     (acc[row.group_name] = acc[row.group_name] || {})[row.setting_key] =
       row.value;
     return acc;
   }, {});
 
   if (!publicOnly) {
-    const warrantyVersion = rows.find(
-      (row) => row.setting_key === WARRANTY_POLICY_VERSION_KEY,
-    )?.value;
-
     if (String(warrantyVersion || "") !== WARRANTY_POLICY_VERSION) {
       grouped.policy = grouped.policy || {};
       grouped.policy.warranty_period_days = String(
