@@ -78,7 +78,12 @@ const emitRealtimeNotification = (payload) => {
   try {
     io.to(`user:${payload.user_id}`).emit("notification:new", payload);
 
-    console.log("[SOCKET EMIT] Sending new notification:", payload);
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[SOCKET EMIT] notification:new", {
+        id: payload.id,
+        type: payload.type,
+      });
+    }
   } catch (socketErr) {
     console.error(
       "[NOTIFICATION SOCKET EMIT]",

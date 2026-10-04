@@ -39,6 +39,9 @@ export default function POSLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(() =>
     hasStaffMobileShell ? window.innerWidth >= 900 : window.innerWidth > 768,
   );
+  const [isStaffCompactViewport, setIsStaffCompactViewport] = useState(
+    () => hasStaffMobileShell && window.innerWidth < 900,
+  );
   const [mobileAccountOpen, setMobileAccountOpen] = useState(false);
   const [showMiniLogout, setShowMiniLogout] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
@@ -372,6 +375,7 @@ export default function POSLayout() {
 
     const syncStaffNavigation = (event) => {
       setSidebarOpen(!event.matches);
+      setIsStaffCompactViewport(event.matches);
       setMobileAccountOpen(false);
       setShowMiniLogout(false);
     };
@@ -454,7 +458,7 @@ export default function POSLayout() {
           </div>
 
           <div className="pos-mobile-staff-actions">
-            <NotificationBell compact />
+            {isStaffCompactViewport && <NotificationBell compact />}
             <button
               type="button"
               className="pos-mobile-staff-account"
@@ -665,11 +669,12 @@ export default function POSLayout() {
                     <LogOut size={18} />
                   </button>
 
-                  {(isCashier || isIndoorStaff || isDeliveryRider) && (
-                    <div className="mini-bell-wrapper">
-                      <NotificationBell compact />
-                    </div>
-                  )}
+                  {!isStaffCompactViewport &&
+                    (isCashier || isIndoorStaff || isDeliveryRider) && (
+                      <div className="mini-bell-wrapper">
+                        <NotificationBell compact />
+                      </div>
+                    )}
                 </div>
               )}
 
@@ -695,9 +700,11 @@ export default function POSLayout() {
           </div>
 
           {/* Regular desktop layout when sidebar is OPEN */}
-          {sidebarOpen && (isCashier || isIndoorStaff || isDeliveryRider) && (
-            <NotificationBell compact />
-          )}
+          {!isStaffCompactViewport &&
+            sidebarOpen &&
+            (isCashier || isIndoorStaff || isDeliveryRider) && (
+              <NotificationBell compact />
+            )}
 
           {sidebarOpen && (
             <button

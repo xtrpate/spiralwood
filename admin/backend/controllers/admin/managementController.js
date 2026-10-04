@@ -32,6 +32,30 @@ const {
   canCreateInternalAccount,
 } = require("../../utils/internalAccessPolicy");
 
+const disconnectRevokedInternalUserSockets = (req, userId) => {
+  const parsedUserId = Number(userId);
+  if (!Number.isSafeInteger(parsedUserId) || parsedUserId <= 0) return;
+
+  const io =
+    (typeof req?.app?.get === "function" ? req.app.get("io") : null) ||
+    global.io ||
+    null;
+
+  if (!io || typeof io.in !== "function") return;
+
+  try {
+    const room = io.in("user:" + parsedUserId);
+    if (room && typeof room.disconnectSockets === "function") {
+      room.disconnectSockets(true);
+    }
+  } catch (err) {
+    console.error(
+      "[internal-user socket revoke]",
+      err?.message || err,
+    );
+  }
+};
+
 // ══ WARRANTY ══════════════════════════════════════════════════════════════════
 // ══ WARRANTY ══════════════════════════════════════════════════════════════════
 
@@ -1437,6 +1461,10 @@ exports.updateUser = async (req, res) => {
       updateValues,
     );
 
+    if (securityChanged) {
+      disconnectRevokedInternalUserSockets(req, targetId);
+    }
+
     req.auditRecord = {
       id: targetId,
       old: before,
@@ -1515,6 +1543,8 @@ exports.resetUserPassword = async (req, res) => {
       [hashed, targetId],
     );
 
+    disconnectRevokedInternalUserSockets(req, targetId);
+
     req.auditRecord = {
       id: targetId,
       new: {
@@ -1579,6 +1609,8 @@ exports.deleteUser = async (req, res) => {
         WHERE id = ? AND role IN ('admin','staff')`,
       [targetId],
     );
+
+    disconnectRevokedInternalUserSockets(req, targetId);
 
     req.auditRecord = {
       id: targetId,
@@ -1657,6 +1689,8 @@ exports.updateAuthority = async (req, res) => {
         WHERE id = ? AND role = 'admin'`,
       [authority, targetId],
     );
+
+    disconnectRevokedInternalUserSockets(req, targetId);
 
     req.auditRecord = {
       id: targetId,

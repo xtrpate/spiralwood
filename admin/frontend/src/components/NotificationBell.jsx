@@ -267,7 +267,9 @@ export default function NotificationBell({
       );
       if (isMountedRef.current) {
         setNotifications((current) => mergeNotifications(current, data));
-        setHistoryHasMore(data.length === NOTIFICATION_PAGE_SIZE);
+        setHistoryHasMore(
+          (hasMore) => hasMore && data.length === NOTIFICATION_PAGE_SIZE,
+        );
       }
     } catch {
       // A failed notification fetch must never break the surrounding page.
