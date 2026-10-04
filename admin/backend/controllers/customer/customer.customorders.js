@@ -17,6 +17,10 @@ const {
   resolveLifecycleByOrder,
 } = require("../../services/blueprintLifecycleService");
 const {
+  isPostProductionWithdrawal,
+  loadApprovedCancellationDecision,
+} = require("../../services/blueprintCancellationPolicy");
+const {
   ensureReceiptForVerifiedPayment,
 } = require("../../services/blueprintReceiptService");
 const {
@@ -1445,6 +1449,13 @@ exports.getCustomOrderById = async (req, res) => {
     order.fulfillment_method =
       normalize(order.fulfillment_method) === "pickup" ? "pickup" : "delivery";
     const isPickupOrder = order.fulfillment_method === "pickup";
+    const cancellationDecision =
+      normalize(order.status) === "cancelled"
+        ? await loadApprovedCancellationDecision(conn, orderId)
+        : null;
+    const postProductionWithdrawal =
+      normalize(order.status) === "cancelled" &&
+      isPostProductionWithdrawal(cancellationDecision);
 
     const blueprintPaymentAvailability =
       await getBlueprintPaymentAvailability(conn);
@@ -1454,9 +1465,11 @@ exports.getCustomOrderById = async (req, res) => {
       initial_paymongo: blueprintPaymentAvailability.paymongo,
       // Delivery-rider cash collection intentionally remains available
       // regardless of the store/pickup cash switch.
-      remaining_cash: isPickupOrder
+      remaining_cash: postProductionWithdrawal
         ? blueprintPaymentAvailability.storeCash
-        : true,
+        : isPickupOrder
+          ? blueprintPaymentAvailability.storeCash
+          : true,
       remaining_paymongo: blueprintPaymentAvailability.paymongo,
     };
 
@@ -1743,14 +1756,16 @@ exports.getCustomOrderById = async (req, res) => {
       paymentMethodAvailability.remaining_paymongo;
 
     const canSelectRemainingPaymentMethod =
-      !["cancelled", "completed"].includes(canonicalOrderStatus) &&
+      canonicalOrderStatus !== "completed" &&
+      (canonicalOrderStatus !== "cancelled" || postProductionWithdrawal) &&
       normalize(order.payment_status) !== "paid" &&
       totalVerifiedPayments > 0 &&
       balanceDue > 0 &&
-      (isPickupOrder
-        ? canonicalOrderStatus === "ready_for_pickup"
-        : Boolean(deliveryRow) &&
-          ["scheduled", "in_transit"].includes(deliveryStatus)) &&
+      (postProductionWithdrawal ||
+        (isPickupOrder
+          ? canonicalOrderStatus === "ready_for_pickup"
+          : Boolean(deliveryRow) &&
+            ["scheduled", "in_transit"].includes(deliveryStatus))) &&
       !hasPendingPayment &&
       !paymentMethodChangeLocked &&
       hasAvailableRemainingPaymentMethod;
@@ -1788,7 +1803,10 @@ exports.getCustomOrderById = async (req, res) => {
       paymentStage = "unavailable";
       paymentActionMessage =
         quotationMessage || "Payment is not available yet.";
-    } else if (canonicalOrderStatus === "cancelled") {
+    } else if (
+      canonicalOrderStatus === "cancelled" &&
+      !postProductionWithdrawal
+    ) {
       paymentStage = "unavailable";
       paymentActionMessage =
         "This order is closed and no further payment action is available.";
@@ -1835,7 +1853,10 @@ exports.getCustomOrderById = async (req, res) => {
         paymentActionMessage =
           "Your Project Agreement is accepted and the required payment is verified. We're preparing your project for production.";
       }
-    } else if (REMAINING_BALANCE_STAGES.has(canonicalOrderStatus)) {
+    } else if (
+      REMAINING_BALANCE_STAGES.has(canonicalOrderStatus) ||
+      postProductionWithdrawal
+    ) {
       if (
         !hasRealContract ||
         !projectAgreementAccepted ||
@@ -1846,7 +1867,7 @@ exports.getCustomOrderById = async (req, res) => {
           "Please contact support if you need assistance with payment.";
       } else if (
         balanceDue > 0 &&
-        isPickupOrder &&
+        (isPickupOrder || postProductionWithdrawal) &&
         !hasAvailableRemainingPaymentMethod
       ) {
         paymentStage = "unavailable";
@@ -1906,6 +1927,17 @@ exports.getCustomOrderById = async (req, res) => {
       quotation_integrity_warning: quotationIntegrityWarning,
       quotation_message: quotationMessage,
       project_agreement: projectAgreement,
+      cancellation_resolution: cancellationDecision
+        ? {
+            id: cancellationDecision.id,
+            resolution_type: cancellationDecision.resolution_type || null,
+            order_status_at_request:
+              cancellationDecision.order_status_at_request || null,
+            order_status_at_review:
+              cancellationDecision.order_status_at_review || null,
+            reviewed_at: cancellationDecision.reviewed_at || null,
+          }
+        : null,
       payment_transactions: normalizedPayments,
       discussion: discussionData.messages,
       delivery_details: customerDeliveryDetails,
@@ -5549,7 +5581,21 @@ const selectPickupRemainingPaymentMethod = async ({
         .status(409)
         .json({ message: "This order is not available for pickup payment." });
     }
-    if (normalize(order.status) !== "ready_for_pickup") {
+
+    const cancellationDecision =
+      normalize(order.status) === "cancelled"
+        ? await loadApprovedCancellationDecision(conn, orderId, {
+            forUpdate: true,
+          })
+        : null;
+    const postProductionWithdrawal =
+      normalize(order.status) === "cancelled" &&
+      isPostProductionWithdrawal(cancellationDecision);
+
+    if (
+      normalize(order.status) !== "ready_for_pickup" &&
+      !postProductionWithdrawal
+    ) {
       await conn.rollback();
       transactionActive = false;
       return res.status(400).json({
@@ -5647,9 +5693,9 @@ const selectPickupRemainingPaymentMethod = async ({
         `UPDATE orders
          SET remaining_payment_method = ?, updated_at = NOW()
          WHERE id = ? AND customer_id = ? AND order_type = 'blueprint'
-           AND status = 'ready_for_pickup' AND fulfillment_method = 'pickup'
+           AND status = ? AND fulfillment_method = 'pickup'
            AND payment_status <> 'paid'`,
-        [normalizedMethod, orderId, req.user.id],
+        [normalizedMethod, orderId, req.user.id, order.status],
       );
       if (updateResult.affectedRows !== 1) {
         await conn.rollback();
@@ -5736,7 +5782,21 @@ const createPickupRemainingBalancePayMongoCheckout = async ({
         .status(409)
         .json({ message: "This order is not available for pickup payment." });
     }
-    if (normalize(order.status) !== "ready_for_pickup") {
+
+    const cancellationDecision =
+      normalize(order.status) === "cancelled"
+        ? await loadApprovedCancellationDecision(conn, orderId, {
+            forUpdate: true,
+          })
+        : null;
+    const postProductionWithdrawal =
+      normalize(order.status) === "cancelled" &&
+      isPostProductionWithdrawal(cancellationDecision);
+
+    if (
+      normalize(order.status) !== "ready_for_pickup" &&
+      !postProductionWithdrawal
+    ) {
       await conn.rollback();
       transactionActive = false;
       return res.status(400).json({
@@ -5982,10 +6042,16 @@ const createPickupRemainingBalancePayMongoCheckout = async ({
     const [updateResult] = await conn.execute(
       `UPDATE orders SET payment_url = ?, paymongo_session_id = ?, updated_at = NOW()
        WHERE id = ? AND customer_id = ? AND order_type = 'blueprint'
-         AND fulfillment_method = 'pickup' AND status = 'ready_for_pickup'
+         AND fulfillment_method = 'pickup' AND status = ?
          AND remaining_payment_method = 'paymongo' AND payment_status <> 'paid'
          AND paymongo_session_id IS NULL AND payment_url IS NULL`,
-      [checkout.checkoutUrl, checkout.sessionId, order.id, req.user.id],
+      [
+        checkout.checkoutUrl,
+        checkout.sessionId,
+        order.id,
+        req.user.id,
+        order.status,
+      ],
     );
     if (updateResult.affectedRows !== 1) {
       await conn.rollback();
@@ -6127,7 +6193,21 @@ exports.selectRemainingPaymentMethod = async (req, res) => {
       });
     }
 
-    if (["cancelled", "completed"].includes(normalize(order.status))) {
+    const cancellationDecision =
+      normalize(order.status) === "cancelled"
+        ? await loadApprovedCancellationDecision(conn, orderId, {
+            forUpdate: true,
+          })
+        : null;
+    const postProductionWithdrawal =
+      normalize(order.status) === "cancelled" &&
+      isPostProductionWithdrawal(cancellationDecision);
+
+    if (
+      normalize(order.status) === "completed" ||
+      (normalize(order.status) === "cancelled" &&
+        !postProductionWithdrawal)
+    ) {
       await conn.rollback();
       transactionActive = false;
       return res.status(400).json({
@@ -6145,6 +6225,9 @@ exports.selectRemainingPaymentMethod = async (req, res) => {
     }
 
     // 2) Lock the newest delivery only after the canonical order lock.
+    // A post-production withdrawal has already stopped future fulfillment,
+    // so a cancelled/failed/no-longer-active delivery must not erase the
+    // contractual balance or block the customer from choosing how to pay it.
     const [[delivery]] = await conn.query(
       `SELECT id, status
        FROM deliveries
@@ -6155,52 +6238,61 @@ exports.selectRemainingPaymentMethod = async (req, res) => {
       [orderId],
     );
 
-    if (!delivery) {
-      await conn.rollback();
-      transactionActive = false;
-      return res.status(400).json({
-        message:
-          "A delivery must be scheduled before choosing the remaining payment method.",
-      });
-    }
+    const deliveryStatus = delivery ? normalize(delivery.status) : null;
 
-    const deliveryStatus = normalize(delivery.status);
-
-    const TERMINAL_DELIVERY_STATUSES = [
-      "delivered",
-      "completed",
-      "cancelled",
-      "failed",
-    ];
-    const SELECTABLE_DELIVERY_STATUSES = ["scheduled", "in_transit"];
-
-    if (TERMINAL_DELIVERY_STATUSES.includes(deliveryStatus)) {
-      await conn.rollback();
-      transactionActive = false;
-      return res.status(409).json({
-        message:
-          "The remaining payment method can no longer be changed for this delivery.",
-      });
-    }
-
-    if (!SELECTABLE_DELIVERY_STATUSES.includes(deliveryStatus)) {
-      await conn.rollback();
-      transactionActive = false;
-      return res.status(400).json({
-        message:
-          "The remaining payment method can only be chosen while delivery is scheduled or in transit.",
-      });
-    }
-
-    if (normalizedMethod === "paymongo") {
-      const blueprintPaymentAvailability =
-        await getBlueprintPaymentAvailability(conn);
-
-      if (!blueprintPaymentAvailability.paymongo) {
+    if (!postProductionWithdrawal) {
+      if (!delivery) {
         await conn.rollback();
         transactionActive = false;
         return res.status(400).json({
-          message: "Online Payment is currently unavailable.",
+          message:
+            "A delivery must be scheduled before choosing the remaining payment method.",
+        });
+      }
+
+      const TERMINAL_DELIVERY_STATUSES = [
+        "delivered",
+        "completed",
+        "cancelled",
+        "failed",
+      ];
+      const SELECTABLE_DELIVERY_STATUSES = ["scheduled", "in_transit"];
+
+      if (TERMINAL_DELIVERY_STATUSES.includes(deliveryStatus)) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(409).json({
+          message:
+            "The remaining payment method can no longer be changed for this delivery.",
+        });
+      }
+
+      if (!SELECTABLE_DELIVERY_STATUSES.includes(deliveryStatus)) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(400).json({
+          message:
+            "The remaining payment method can only be chosen while delivery is scheduled or in transit.",
+        });
+      }
+    }
+
+    if (normalizedMethod === "paymongo" || postProductionWithdrawal) {
+      const blueprintPaymentAvailability =
+        await getBlueprintPaymentAvailability(conn);
+      const requestedMethodAvailable =
+        normalizedMethod === "paymongo"
+          ? blueprintPaymentAvailability.paymongo
+          : blueprintPaymentAvailability.storeCash;
+
+      if (!requestedMethodAvailable) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(400).json({
+          message:
+            normalizedMethod === "paymongo"
+              ? "Online Payment is currently unavailable."
+              : "Cash at Store is currently unavailable.",
         });
       }
     }
@@ -6383,6 +6475,28 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
       return res.status(400).json({ message: "Invalid custom request ID." });
     }
 
+    const [[fulfillmentProbe]] = await db.execute(
+      `SELECT fulfillment_method
+       FROM orders
+       WHERE id = ?
+         AND customer_id = ?
+         AND order_type = 'blueprint'
+       LIMIT 1`,
+      [orderId, req.user.id],
+    );
+
+    if (!fulfillmentProbe) {
+      return res.status(404).json({ message: "Custom order not found." });
+    }
+
+    if (normalize(fulfillmentProbe.fulfillment_method) === "pickup") {
+      return createPickupRemainingBalancePayMongoCheckout({
+        req,
+        res,
+        orderId,
+      });
+    }
+
     const paymongoIdempotency = normalizeOptionalPayMongoIdempotencyKey(req);
 
     if (!paymongoIdempotency.ok) {
@@ -6440,7 +6554,21 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
       });
     }
 
-    if (["cancelled", "completed"].includes(normalize(order.status))) {
+    const cancellationDecision =
+      normalize(order.status) === "cancelled"
+        ? await loadApprovedCancellationDecision(conn, orderId, {
+            forUpdate: true,
+          })
+        : null;
+    const postProductionWithdrawal =
+      normalize(order.status) === "cancelled" &&
+      isPostProductionWithdrawal(cancellationDecision);
+
+    if (
+      normalize(order.status) === "completed" ||
+      (normalize(order.status) === "cancelled" &&
+        !postProductionWithdrawal)
+    ) {
       await conn.rollback();
       transactionActive = false;
       return res.status(400).json({
@@ -6466,7 +6594,8 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
       });
     }
 
-    // 2) Delivery is locked only after the order.
+    // 2) Delivery is locked only after the order. Post-production withdrawal
+    // remains financially collectible even though future delivery has stopped.
     const [[delivery]] = await conn.query(
       `SELECT id, status
        FROM deliveries
@@ -6477,24 +6606,26 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
       [orderId],
     );
 
-    if (!delivery) {
-      await conn.rollback();
-      transactionActive = false;
-      return res.status(400).json({
-        message:
-          "A delivery must be scheduled before paying the remaining balance online.",
-      });
-    }
+    const deliveryStatus = delivery ? normalize(delivery.status) : null;
 
-    const deliveryStatus = normalize(delivery.status);
+    if (!postProductionWithdrawal) {
+      if (!delivery) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(400).json({
+          message:
+            "A delivery must be scheduled before paying the remaining balance online.",
+        });
+      }
 
-    if (!["scheduled", "in_transit"].includes(deliveryStatus)) {
-      await conn.rollback();
-      transactionActive = false;
-      return res.status(400).json({
-        message:
-          "Online payment for the remaining balance is only available while delivery is scheduled or in transit.",
-      });
+      if (!["scheduled", "in_transit"].includes(deliveryStatus)) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(400).json({
+          message:
+            "Online payment for the remaining balance is only available while delivery is scheduled or in transit.",
+        });
+      }
     }
 
     const blueprintPaymentAvailability =

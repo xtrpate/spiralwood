@@ -112,7 +112,7 @@ const parseNumberedSections = (text = "") => {
 };
 
 const DEFAULT_CANCELLATION_POLICY =
-  "The customer may cancel before any payment is verified. After a payment is verified or production starts, the customer must contact Spiral Wood Services. Cancelling the project does not erase the accepted contract or payment records.";
+  "Before production starts, the customer may request cancellation for review. Verified payments remain recorded and are not refunded by this workflow. Once production starts or project-specific materials are committed or consumed, a customer withdrawal may stop avoidable future work but does not erase the agreed contract price; any unpaid balance remains due in full. If delivery is already in transit, the delivery attempt must first be recorded as failed or refused after the furniture is returned before withdrawal can be finalized. This policy does not limit rights or remedies that cannot legally be waived.";
 
 export function downloadProjectAgreementPdf({
   agreement = {},

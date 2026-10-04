@@ -88,6 +88,12 @@ const APPROVABLE_STAGES = new Set([
   "shipping",
 ]);
 
+const POST_PRODUCTION_STAGES = new Set([
+  "production",
+  "ready_for_pickup",
+  "shipping",
+]);
+
 const getStatusGroup = (row) => {
   const status = normalize(row?.status);
   if (status === "pending") return "pending";
@@ -251,7 +257,20 @@ export default function CancellationsPage() {
   const approveBlockedByStage =
     Boolean(modalRow) &&
     !APPROVABLE_STAGES.has(normalize(modalRow.order_status));
-  const approveBlocked = approveBlockedByPayment || approveBlockedByStage;
+  const approveBlockedByDelivery =
+    normalize(modalRow?.delivery_status) === "in_transit";
+  const modalIsPostProduction = POST_PRODUCTION_STAGES.has(
+    normalize(modalRow?.order_status),
+  );
+  const modalRemainingBalance = Math.max(
+    Number(modalRow?.total || 0) -
+      Number(modalRow?.verified_payment_total || 0),
+    0,
+  );
+  const approveBlocked =
+    approveBlockedByPayment ||
+    approveBlockedByStage ||
+    approveBlockedByDelivery;
 
   return (
     <div style={pageShell}>
@@ -556,8 +575,16 @@ export default function CancellationsPage() {
                 value={prettyStage(modalRow.order_status)}
               />
               <SummaryLine
+                label="Contract total"
+                value={formatMoney(modalRow.total)}
+              />
+              <SummaryLine
                 label="Verified payment"
                 value={formatMoney(modalRow.verified_payment_total)}
+              />
+              <SummaryLine
+                label="Remaining balance"
+                value={formatMoney(modalRemainingBalance)}
               />
               <SummaryLine
                 label="Production"
@@ -580,8 +607,9 @@ export default function CancellationsPage() {
 
             {modal.action === "approve" ? (
               <div style={policyNotice}>
-                Approval cancels the custom furniture order. Recorded payments
-                remain in payment history and this action does not issue a refund.
+                {modalIsPostProduction
+                  ? `This is a post-production withdrawal. Approval stops avoidable future work, keeps recorded payments, issues no refund through this workflow, and leaves ${formatMoney(modalRemainingBalance)} due under the accepted Project Agreement.`
+                  : "Approval cancels the custom furniture order. Recorded payments remain in payment history and this action does not issue a refund."}
               </div>
             ) : null}
 
@@ -589,7 +617,9 @@ export default function CancellationsPage() {
               <div style={warningCard}>
                 {approveBlockedByPayment
                   ? "Approval is blocked until the pending payment review or active online payment session is resolved."
-                  : "The order is no longer at a stage where this cancellation can be approved."}
+                  : approveBlockedByDelivery
+                    ? "Approval is blocked while the delivery is in transit. The rider must record the attempt as failed/refused after the furniture is returned before the withdrawal can be finalized."
+                    : "The order is no longer at a stage where this cancellation can be approved."}
               </div>
             ) : null}
 

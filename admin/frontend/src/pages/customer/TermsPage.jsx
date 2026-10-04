@@ -68,7 +68,7 @@ const sections = [
     paragraphs: [
       "Cancellation, refund, and order-change options may depend on the order type, payment status, production stage, delivery status, and any agreement connected to the order.",
       "For standard products, a cancellation or refund may also depend on the condition and status of the item.",
-      "For custom furniture, costs already used for approved design work, materials, or production may affect the amount that can be refunded when allowed by law and clearly communicated to the customer.",
+      "For custom furniture, verified payments remain recorded and are not refunded by the WISDOM cancellation workflow. Once production starts or project-specific materials are committed or consumed, a customer withdrawal may stop avoidable future work but does not automatically erase the remaining agreed contract balance. Any policy remains subject to customer rights and remedies that cannot legally be waived.",
       "These Terms do not remove any customer right or remedy that cannot legally be waived, including rights that may apply to defective or misrepresented goods or services.",
     ],
   },

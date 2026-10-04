@@ -8,6 +8,10 @@ const {
 } = require("../utils/paymentAmounts");
 const { resolveLifecycleByOrder } = require("./blueprintLifecycleService");
 const {
+  isPostProductionWithdrawal,
+  loadApprovedCancellationDecision,
+} = require("./blueprintCancellationPolicy");
+const {
   ensureReceiptForVerifiedPayment,
 } = require("./blueprintReceiptService");
 
@@ -139,6 +143,7 @@ const evaluate = ({
   order,
   estimation,
   contract = null,
+  cancellationDecision = null,
   verifiedTotalCents,
   hasPendingPayment,
   hasInvalidAmount,
@@ -154,7 +159,16 @@ const evaluate = ({
   if (normalize(order.order_type) !== "blueprint") {
     return build(REASON.NOT_BLUEPRINT);
   }
-  if (!ALLOWED_STATUSES.includes(normalize(order.status))) {
+
+  const orderStatus = normalize(order.status);
+  const collectiblePostProductionWithdrawal =
+    orderStatus === "cancelled" &&
+    isPostProductionWithdrawal(cancellationDecision);
+
+  if (
+    !ALLOWED_STATUSES.includes(orderStatus) &&
+    !collectiblePostProductionWithdrawal
+  ) {
     return build(REASON.INVALID_ORDER_STATUS);
   }
   if (!estimation || normalize(estimation.status) !== "approved") {
@@ -254,7 +268,13 @@ const buildQuickAmountsCents = ({
     .sort((a, b) => a - b);
 };
 
-const buildSummary = ({ order, estimation, contract = null, paymentRows }) => {
+const buildSummary = ({
+  order,
+  estimation,
+  contract = null,
+  cancellationDecision = null,
+  paymentRows,
+}) => {
   if (!order) {
     return {
       order_id: null,
@@ -288,6 +308,7 @@ const buildSummary = ({ order, estimation, contract = null, paymentRows }) => {
     order,
     estimation,
     contract,
+    cancellationDecision,
     verifiedTotalCents,
     hasPendingPayment,
     hasInvalidAmount,
@@ -326,6 +347,10 @@ const buildSummary = ({ order, estimation, contract = null, paymentRows }) => {
     order_number: order.order_number,
     order_type: order.order_type,
     order_status: order.status,
+    cancellation_resolution_type: cancellationDecision?.resolution_type || null,
+    post_production_withdrawal:
+      normalize(order.status) === "cancelled" &&
+      isPostProductionWithdrawal(cancellationDecision),
     fulfillment_method:
       normalize(order.fulfillment_method) === "pickup" ? "pickup" : "delivery",
     picked_up_at: order.picked_up_at || null,
@@ -348,6 +373,10 @@ const buildSummary = ({ order, estimation, contract = null, paymentRows }) => {
 
 exports.getRestrictedPaymentSummary = async (conn, orderId) => {
   const lifecycle = await resolveLifecycleByOrder(conn, { orderId });
+  const cancellationDecision =
+    lifecycle.order && normalize(lifecycle.order.status) === "cancelled"
+      ? await loadApprovedCancellationDecision(conn, orderId)
+      : null;
 
   if (lifecycle.status !== "OK") {
     if (!lifecycle.order) {
@@ -362,6 +391,7 @@ exports.getRestrictedPaymentSummary = async (conn, orderId) => {
     const summary = buildSummary({
       order: lifecycle.order,
       estimation: null,
+      cancellationDecision,
       paymentRows,
     });
 
@@ -383,6 +413,7 @@ exports.getRestrictedPaymentSummary = async (conn, orderId) => {
     order: lifecycle.order,
     estimation: lifecycle.estimation || null,
     contract: lifecycle.contract || null,
+    cancellationDecision,
     paymentRows,
   });
 };
@@ -442,6 +473,12 @@ exports.recordCashPayment = async ({
 
     const order = lifecycle.order;
     const estimation = lifecycle.estimation;
+    const cancellationDecision =
+      normalize(order.status) === "cancelled"
+        ? await loadApprovedCancellationDecision(conn, orderId, {
+            forUpdate: true,
+          })
+        : null;
 
     const [lockedRows] = await conn.query(
       `SELECT id, amount, payment_method, status
@@ -466,6 +503,7 @@ exports.recordCashPayment = async ({
       order,
       estimation,
       contract: lifecycle.contract || null,
+      cancellationDecision,
       verifiedTotalCents: verifiedTotalBeforeCents,
       hasPendingPayment,
       hasInvalidAmount,

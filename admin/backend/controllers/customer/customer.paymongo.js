@@ -17,6 +17,10 @@ const {
   resolveLifecycleByOrder,
 } = require("../../services/blueprintLifecycleService");
 const {
+  isPostProductionWithdrawal,
+  loadApprovedCancellationDecision,
+} = require("../../services/blueprintCancellationPolicy");
+const {
   resolveInitialOnlinePaymentAmount,
   validateInitialPayMongoSessionContext,
   analyzeInitialPayMongoSession,
@@ -472,8 +476,20 @@ const processBlueprintPayMongoWebhook = async (
     };
   }
 
+  const cancellationDecision =
+    normalizeWebhookValue(order.status) === "cancelled"
+      ? await loadApprovedCancellationDecision(conn, order.id, {
+          forUpdate: true,
+        })
+      : null;
+  const collectiblePostProductionWithdrawal =
+    normalizeWebhookValue(order.status) === "cancelled" &&
+    isPostProductionWithdrawal(cancellationDecision);
+
   if (
-    ["cancelled", "completed"].includes(normalizeWebhookValue(order.status))
+    normalizeWebhookValue(order.status) === "completed" ||
+    (normalizeWebhookValue(order.status) === "cancelled" &&
+      !collectiblePostProductionWithdrawal)
   ) {
     return {
       ok: false,

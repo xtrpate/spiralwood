@@ -16,7 +16,7 @@ Production starts after at least the required 30% minimum payment is verified. T
 Any requested change after the contract is accepted must be reviewed first. Approved changes may affect the price or completion date.
 
 4. CANCELLATION
-Before any payment is verified, the customer may cancel an eligible project through WISDOM. After a payment is verified or production starts, the customer must contact Spiral Wood Services. Cancellation does not remove existing payment or acceptance records.
+Before production starts, the customer may request cancellation through WISDOM for admin review. Verified payments remain recorded and are not refunded by this workflow. Once production starts or project-specific materials are committed or consumed, a customer withdrawal may stop avoidable future work but does not erase the agreed contract price; any unpaid balance remains due in full. If delivery is already in transit, the delivery attempt must first be recorded as failed or refused after the furniture is returned before the withdrawal can be finalized. Nothing in this policy limits customer rights or remedies that cannot legally be waived.
 
 5. COMPLETION
 The completion and handoff schedule follows the fulfillment method selected for the order. Full payment is required before final release. Delays outside the reasonable control of Spiral Wood Services may affect the schedule.

@@ -122,6 +122,7 @@ const getCustomerJourneyState = ({
   verifiedPaymentTotal = 0,
   hasProjectAgreement = false,
   projectAgreementAccepted = false,
+  cancellationResolutionType = "",
 } = {}) => {
   const order = String(orderStatus || "")
     .trim()
@@ -164,11 +165,28 @@ const getCustomerJourneyState = ({
 
   if (order === "cancelled") {
     currentIndex = 0;
-    title = "This request was cancelled";
-    description =
-      "This furniture request is no longer moving forward. You can review the saved request details below or start a new request.";
-    actionTitle = "Request closed";
-    actionText = "No further action is required for this request.";
+    const isPostProductionWithdrawal =
+      String(cancellationResolutionType || "")
+        .trim()
+        .toLowerCase() === "post_production_withdrawal";
+
+    if (isPostProductionWithdrawal) {
+      title = "Production stopped after your withdrawal";
+      description =
+        "Future production and fulfillment have been stopped where possible. Your accepted Project Agreement and verified payment records remain on file.";
+      actionTitle =
+        remainingBalance > 0 ? "Remaining balance still due" : "Withdrawal recorded";
+      actionText =
+        remainingBalance > 0
+          ? "Complete the remaining Project Agreement balance using the payment options below."
+          : "Your Project Agreement is fully paid. This withdrawal workflow does not issue a refund.";
+    } else {
+      title = "This request was cancelled";
+      description =
+        "This furniture request is no longer moving forward. You can review the saved request details below or start a new request.";
+      actionTitle = "Request closed";
+      actionText = "No further action is required for this request.";
+    }
     isCancelled = true;
   } else if (order === "completed") {
     currentIndex = journeySteps.length - 1;
@@ -1521,6 +1539,8 @@ export default function CustomRequestDetailPage() {
     verifiedPaymentTotal,
     hasProjectAgreement: Boolean(projectAgreement),
     projectAgreementAccepted,
+    cancellationResolutionType:
+      requestData?.cancellation_resolution?.resolution_type || "",
   });
 
   const submittedItemProgressLabel = getSubmittedItemProgressLabel({
@@ -3061,9 +3081,11 @@ export default function CustomRequestDetailPage() {
                                   Transaction cancelled
                                 </div>
                                 <p style={{ margin: "8px 0 0" }}>
-                                  This project will not proceed. The accepted
-                                  Project Agreement remains in your transaction
-                                  history.
+                                  {requestData?.cancellation_resolution
+                                    ?.resolution_type ===
+                                  "post_production_withdrawal"
+                                    ? "Future production and fulfillment have been stopped where possible. Your accepted Project Agreement remains active for the remaining balance."
+                                    : "This project will not proceed. The accepted Project Agreement remains in your transaction history."}
                                   {requestData?.cancellation_reason
                                     ? ` Reason: ${requestData.cancellation_reason}`
                                     : ""}

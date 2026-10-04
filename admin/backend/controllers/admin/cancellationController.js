@@ -11,6 +11,10 @@ const {
   getPhilippineDateBoundsUtc,
   getPhilippineDateKey,
 } = require("../../utils/philippineTime");
+const {
+  CANCELLATION_RESOLUTION,
+  classifyCancellationResolution,
+} = require("../../services/blueprintCancellationPolicy");
 
 const APPROVABLE_ORDER_STATUSES = new Set([
   "confirmed",
@@ -726,12 +730,13 @@ exports.approveRequest = async (req, res) => {
       .filter((row) => normalize(row.status) === "verified")
       .reduce((sum, row) => sum + Number(row.amount || 0), 0);
 
-    const materialReleaseResult =
-      await releaseBlueprintMaterialsForCancellation(conn, {
-        orderId,
-        actorUserId: req.user.id,
-        releaseReason: `Cancellation request #${requestId} approved. ${request.reason}`,
-      });
+    const resolutionType = classifyCancellationResolution(currentOrderStatus);
+    const isPostProductionWithdrawal =
+      resolutionType === CANCELLATION_RESOLUTION.POST_PRODUCTION;
+    const remainingContractBalance = Math.max(
+      Number(order.total || 0) - verifiedPaymentTotal,
+      0,
+    );
 
     const [activeDeliveries] = await conn.query(
       `SELECT id, driver_id, status
@@ -742,6 +747,28 @@ exports.approveRequest = async (req, res) => {
        FOR UPDATE`,
       [orderId],
     );
+
+    const inTransitDeliveries = activeDeliveries.filter(
+      (row) => normalize(row.status) === "in_transit",
+    );
+
+    if (inTransitDeliveries.length > 0) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        reason_code: "DELIVERY_IN_TRANSIT",
+        message:
+          "This delivery is already in transit. The rider must record the attempt as failed/refused after the furniture is returned before this withdrawal can be approved.",
+        delivery_ids: inTransitDeliveries.map((row) => row.id),
+      });
+    }
+
+    const materialReleaseResult =
+      await releaseBlueprintMaterialsForCancellation(conn, {
+        orderId,
+        actorUserId: req.user.id,
+        releaseReason: `Cancellation request #${requestId} approved. ${request.reason}`,
+      });
 
     const [unfinishedStaffRows] = await conn.query(
       `SELECT DISTINCT assigned_to
@@ -771,12 +798,16 @@ exports.approveRequest = async (req, res) => {
       });
     }
 
-    if (activeDeliveries.length > 0) {
+    const scheduledDeliveries = activeDeliveries.filter(
+      (row) => normalize(row.status) === "scheduled",
+    );
+
+    if (scheduledDeliveries.length > 0) {
       await conn.query(
         `UPDATE deliveries
          SET status = 'cancelled'
          WHERE order_id = ?
-           AND status IN ('scheduled', 'in_transit')`,
+           AND status = 'scheduled'`,
         [orderId],
       );
     }
@@ -784,12 +815,20 @@ exports.approveRequest = async (req, res) => {
     const [requestUpdate] = await conn.query(
       `UPDATE custom_cancellation_requests
        SET status = 'approved',
+           resolution_type = ?,
+           order_status_at_review = ?,
            reviewed_by = ?,
            review_note = ?,
            reviewed_at = NOW()
        WHERE id = ?
          AND status = 'pending'`,
-      [req.user.id, reviewNote || null, requestId],
+      [
+        resolutionType,
+        currentOrderStatus,
+        req.user.id,
+        reviewNote || null,
+        requestId,
+      ],
     );
 
     if (Number(requestUpdate.affectedRows || 0) !== 1) {
@@ -802,11 +841,19 @@ exports.approveRequest = async (req, res) => {
     }
 
     if (order.customer_id) {
+      const customerMessage = isPostProductionWithdrawal
+        ? remainingContractBalance > 0
+          ? `Your withdrawal request for ${order.order_number || `Order #${order.id}`} was approved. Future production and fulfillment have been stopped where possible. Recorded payments remain in payment history, no refund is issued by this workflow, and the remaining Project Agreement balance of ₱${remainingContractBalance.toFixed(2)} is still due.`
+          : `Your withdrawal request for ${order.order_number || `Order #${order.id}`} was approved. Future production and fulfillment have been stopped where possible. The Project Agreement is already fully paid and this workflow does not issue a refund.`
+        : `Your cancellation request for ${order.order_number || `Order #${order.id}`} was approved. Recorded payments remain in payment history; this cancellation does not issue a refund.`;
+
       await createNotificationSafe(conn, {
         userId: order.customer_id,
         type: "cancellation_update",
-        title: "Cancellation Request Approved",
-        message: `Your cancellation request for ${order.order_number || `Order #${order.id}`} was approved. Recorded payments remain in payment history; this cancellation does not issue a refund.`,
+        title: isPostProductionWithdrawal
+          ? "Withdrawal Request Approved"
+          : "Cancellation Request Approved",
+        message: customerMessage,
         targetType: "order",
         targetId: order.id,
         targetOrderId: order.id,
@@ -818,8 +865,12 @@ exports.approveRequest = async (req, res) => {
       await createNotificationSafe(conn, {
         userId: row.assigned_to,
         type: "task_update",
-        title: "Production Order Cancelled",
-        message: `${order.order_number || `Order #${order.id}`} was cancelled. Stop any remaining production work for this order.`,
+        title: isPostProductionWithdrawal
+          ? "Production Stopped - Customer Withdrawal"
+          : "Production Order Cancelled",
+        message: isPostProductionWithdrawal
+          ? `${order.order_number || `Order #${order.id}`} was withdrawn by the customer after production started. Stop any remaining production work for this order.`
+          : `${order.order_number || `Order #${order.id}`} was cancelled. Stop any remaining production work for this order.`,
         targetType: "order",
         targetId: order.id,
         targetOrderId: order.id,
@@ -828,7 +879,7 @@ exports.approveRequest = async (req, res) => {
 
     const riderIds = [
       ...new Set(
-        activeDeliveries
+        scheduledDeliveries
           .map((row) => Number(row.driver_id))
           .filter((id) => Number.isInteger(id) && id > 0),
       ),
@@ -838,8 +889,8 @@ exports.approveRequest = async (req, res) => {
       await createNotificationSafe(conn, {
         userId: riderId,
         type: "delivery_update",
-        title: "Delivery Cancelled",
-        message: `${order.order_number || `Order #${order.id}`} was cancelled. Do not continue this delivery.`,
+        title: "Scheduled Delivery Cancelled",
+        message: `${order.order_number || `Order #${order.id}`} was cancelled before transit. Do not start this delivery.`,
         targetType: "order",
         targetId: order.id,
         targetOrderId: order.id,
@@ -866,26 +917,39 @@ exports.approveRequest = async (req, res) => {
       new: {
         request_status: "approved",
         order_status: "cancelled",
+        resolution_type: resolutionType,
+        order_status_at_review: currentOrderStatus,
         reviewed_by: req.user.id,
         review_note_provided: Boolean(reviewNote),
         verified_payment_total_preserved: Number(
           verifiedPaymentTotal.toFixed(2),
         ),
+        remaining_contract_balance_due: Number(
+          remainingContractBalance.toFixed(2),
+        ),
         material_release_reason: materialReleaseResult.reason,
         material_reservation_ids: materialReleaseResult.reservation_ids || [],
-        active_delivery_ids_cancelled: activeDeliveries.map((row) => row.id),
+        scheduled_delivery_ids_cancelled: scheduledDeliveries.map(
+          (row) => row.id,
+        ),
       },
     };
 
     return res.json({
-      message:
-        "Cancellation approved. The order is now cancelled and recorded payments were preserved.",
+      message: isPostProductionWithdrawal
+        ? "Withdrawal approved. Production/future fulfillment is stopped where possible; recorded payments were preserved and the remaining Project Agreement balance stays due."
+        : "Cancellation approved. The order is now cancelled and recorded payments were preserved.",
       request_id: requestId,
       order_id: orderId,
       order_status: "cancelled",
+      resolution_type: resolutionType,
+      order_status_at_review: currentOrderStatus,
       verified_payment_total: Number(verifiedPaymentTotal.toFixed(2)),
+      remaining_contract_balance_due: Number(
+        remainingContractBalance.toFixed(2),
+      ),
       material_release: materialReleaseResult,
-      cancelled_delivery_ids: activeDeliveries.map((row) => row.id),
+      cancelled_delivery_ids: scheduledDeliveries.map((row) => row.id),
     });
   } catch (err) {
     if (conn && transactionActive) {
