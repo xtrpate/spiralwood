@@ -1742,6 +1742,11 @@ exports.updateStatus = async (req, res) => {
   const conn = await pool.getConnection();
 
   try {
+    const orderId = parseStrictPositiveInt(req.params.id);
+    if (!orderId) {
+      return res.status(400).json({ message: "Invalid order id." });
+    }
+
     const nextStatus = normalize(req.body?.status);
     const cancellationReason = String(
       req.body?.reason || req.body?.cancellation_reason || "",
@@ -1768,15 +1773,12 @@ exports.updateStatus = async (req, res) => {
       `SELECT
           o.*,
           o.type AS channel,
-          o.total AS total_amount,
-          c.id AS contract_id,
-          c.blueprint_id AS contract_blueprint_id
+          o.total AS total_amount
        FROM orders o
-       LEFT JOIN contracts c ON c.order_id = o.id
        WHERE o.id = ?
        LIMIT 1
        FOR UPDATE`,
-      [parseInt(req.params.id)],
+      [orderId],
     );
 
     if (!order) {
@@ -1790,12 +1792,14 @@ exports.updateStatus = async (req, res) => {
     const isWalkInOrder =
       currentChannel === "walkin" || currentChannel === "walk-in";
 
-    const blueprintId =
-      order.contract_blueprint_id || order.blueprint_id || null;
+    const blueprintId = order.blueprint_id || null;
     const isBlueprintOrder =
       normalize(order.order_type) === "blueprint" || Boolean(blueprintId);
+    const normalizedFulfillmentMethod = normalize(order.fulfillment_method);
     const isBlueprintPickupOrder =
-      isBlueprintOrder && normalize(order.fulfillment_method) === "pickup";
+      isBlueprintOrder && normalizedFulfillmentMethod === "pickup";
+    const isBlueprintDeliveryOrder =
+      isBlueprintOrder && normalizedFulfillmentMethod === "delivery";
 
     const hasDeliveryRequirement = Boolean(
       String(order.delivery_address || "").trim(),
@@ -1807,6 +1811,19 @@ exports.updateStatus = async (req, res) => {
       isStandardOrder && normalizedPaymentMethod === "cop";
 
     const isStandardDeliveryOrder = isStandardOrder && !isStandardPickupOrder;
+
+    if (
+      isBlueprintOrder &&
+      !isWalkInOrder &&
+      !isBlueprintPickupOrder &&
+      !isBlueprintDeliveryOrder
+    ) {
+      await conn.rollback();
+      return res.status(409).json({
+        message:
+          "This blueprint order has an invalid fulfillment method. Refresh the order data before changing its status.",
+      });
+    }
 
     const effectiveStatusTransitions = isBlueprintOrder
       ? isBlueprintPickupOrder
@@ -1832,16 +1849,18 @@ exports.updateStatus = async (req, res) => {
               completed: [],
               cancelled: [],
             }
-          : {
-              pending: ["confirmed", "cancelled"],
-              confirmed: ["contract_released", "cancelled"],
-              contract_released: ["production", "cancelled"],
-              production: ["shipping", "cancelled"],
-              shipping: ["delivered", "completed"],
-              delivered: ["completed"],
-              completed: [],
-              cancelled: [],
-            }
+          : isBlueprintDeliveryOrder
+            ? {
+                pending: ["confirmed", "cancelled"],
+                confirmed: ["contract_released", "cancelled"],
+                contract_released: ["production", "cancelled"],
+                production: ["shipping", "cancelled"],
+                shipping: ["delivered", "completed"],
+                delivered: ["completed"],
+                completed: [],
+                cancelled: [],
+              }
+            : {}
       : isWalkInOrder
         ? hasDeliveryRequirement
           ? {
@@ -1905,7 +1924,9 @@ exports.updateStatus = async (req, res) => {
       });
     }
 
-    const usesManagedDeliveryFlow = hasDeliveryRequirement;
+    const usesManagedDeliveryFlow = isBlueprintOrder
+      ? isBlueprintDeliveryOrder && !isWalkInOrder
+      : hasDeliveryRequirement;
 
     if (usesManagedDeliveryFlow && nextStatus === "shipping") {
       await conn.rollback();
@@ -1934,20 +1955,35 @@ exports.updateStatus = async (req, res) => {
           "Complete the actual delivery first. A delivery order can only be completed after Delivered.",
       });
     }
+    const lifecycle = isBlueprintOrder
+      ? await resolveLifecycleByOrder(conn, {
+          orderId,
+          lockOrder: true,
+          lockBlueprint: true,
+          lockEstimation: true,
+          lockContext: true,
+        })
+      : null;
+
     const totalAmount = Number(order.total_amount || order.total || 0);
 
-    const [[paymentSummary]] = await conn.query(
-      `SELECT
-         COALESCE(
-           SUM(CASE WHEN LOWER(status) = 'verified' THEN amount ELSE 0 END),
-           0
-         ) AS verified_total
-       FROM payment_transactions
-       WHERE order_id = ?`,
-      [parseInt(req.params.id)],
-    );
+    let verifiedPaymentTotal = Number(lifecycle?.verified_payment_total || 0);
 
-    const verifiedPaymentTotal = Number(paymentSummary?.verified_total || 0);
+    if (!isBlueprintOrder) {
+      const [[paymentSummary]] = await conn.query(
+        `SELECT
+           COALESCE(
+             SUM(CASE WHEN LOWER(status) = 'verified' THEN amount ELSE 0 END),
+             0
+           ) AS verified_total
+         FROM payment_transactions
+         WHERE order_id = ?`,
+        [orderId],
+      );
+
+      verifiedPaymentTotal = Number(paymentSummary?.verified_total || 0);
+    }
+
     const paymentBalance = Math.max(0, totalAmount - verifiedPaymentTotal);
 
     const requiredBlueprintDownPayment = calcDownPaymentAmount(totalAmount);
@@ -1962,17 +1998,6 @@ exports.updateStatus = async (req, res) => {
 
     const isFullyPaid =
       totalAmount > 0 && verifiedPaymentTotal >= totalAmount - 0.01;
-
-    // Resolved through the lifecycle service instead of a raw
-    // blueprint_id-only query. Always uses order.blueprint_id as the
-    // canonical source internally (not the pre-computed `blueprintId`
-    // above, which can also pull from contract.blueprint_id) — matches the
-    // same canonical-source rule used everywhere else in this fix.
-    const lifecycle = isBlueprintOrder
-      ? await resolveLifecycleByOrder(conn, {
-          orderId: parseInt(req.params.id),
-        })
-      : null;
 
     const lifecycleGatedStatuses = [
       "contract_released",
@@ -2031,7 +2056,7 @@ exports.updateStatus = async (req, res) => {
         }
       }
 
-      if (!order.contract_id) {
+      if (!lifecycle?.contract?.id) {
         failures.push("A contract must exist for this order.");
       }
 
@@ -2089,7 +2114,7 @@ exports.updateStatus = async (req, res) => {
         `SELECT task_role, status
         FROM project_tasks
         WHERE order_id = ?`,
-        [parseInt(req.params.id)],
+        [orderId],
       );
 
       const existingRoleSet = new Set(
@@ -2162,7 +2187,7 @@ exports.updateStatus = async (req, res) => {
       materialConsumptionResult = await consumeBlueprintMaterialsForProduction(
         conn,
         {
-          orderId: parseInt(req.params.id),
+          orderId,
           actorUserId: req.user.id,
         },
       );
@@ -2172,7 +2197,7 @@ exports.updateStatus = async (req, res) => {
       materialReleaseResult = await releaseBlueprintMaterialsForCancellation(
         conn,
         {
-          orderId: parseInt(req.params.id),
+          orderId,
           actorUserId: req.user.id,
           releaseReason:
             cancellationReason ||
@@ -2185,7 +2210,7 @@ exports.updateStatus = async (req, res) => {
       `UPDATE orders
        SET status = ?
        WHERE id = ? AND status = ?`,
-      [nextStatus, parseInt(req.params.id), currentStatus],
+      [nextStatus, orderId, currentStatus],
     );
 
     // Guard against a race condition where another request already
@@ -2205,7 +2230,7 @@ exports.updateStatus = async (req, res) => {
     if (nextStatus === "cancelled" && !isBlueprintOrder) {
       await restoreStandardOrderStock(
         conn,
-        parseInt(req.params.id),
+        orderId,
         req.user.id,
       );
     }
@@ -2222,7 +2247,7 @@ exports.updateStatus = async (req, res) => {
          ORDER BY id DESC
          LIMIT 1
          FOR UPDATE`,
-        [parseInt(req.params.id)],
+        [orderId],
       );
 
       if (latestSuccessfulDelivery?.id) {
@@ -2242,7 +2267,7 @@ exports.updateStatus = async (req, res) => {
          SET status = 'cancelled'
          WHERE order_id = ?
            AND status IN ('scheduled', 'in_transit')`,
-        [parseInt(req.params.id)],
+        [orderId],
       );
     }
 
@@ -2339,7 +2364,7 @@ exports.updateStatus = async (req, res) => {
     }
 
     req.auditRecord = {
-      id: parseInt(req.params.id),
+      id: orderId,
       old: { status: currentStatus },
       new: {
         status: nextStatus,
@@ -2391,7 +2416,8 @@ exports.updateStatus = async (req, res) => {
       });
     }
 
-    res.status(500).json({ message: err.message });
+    console.error("[orderController.updateStatus]", err);
+    res.status(500).json({ message: "Failed to update order status." });
   } finally {
     conn.release();
   }

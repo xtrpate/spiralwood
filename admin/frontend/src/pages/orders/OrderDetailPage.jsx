@@ -746,7 +746,7 @@ export default function OrderDetailPage() {
 
     // 👉 NEW: Strict Delivery Rider Checks
     if (
-      hasDeliveryRequirement &&
+      usesManagedDeliveryFlow &&
       ["delivered", "completed"].includes(nextStatus)
     ) {
       if (!order?.delivery) {
@@ -1311,6 +1311,12 @@ export default function OrderDetailPage() {
     normalize(order?.order_type) === "blueprint" ||
     Boolean(blueprintId || order?.contract);
 
+  const normalizedFulfillmentMethod = normalize(order?.fulfillment_method);
+  const isBlueprintPickupOrder =
+    isBlueprintOrder && normalizedFulfillmentMethod === "pickup";
+  const isBlueprintDeliveryOrder =
+    isBlueprintOrder && normalizedFulfillmentMethod === "delivery";
+
   const shouldShowProductionPacketIntegrityWarning =
     isBlueprintOrder &&
     !hasRequiredBlueprintTaskPacket &&
@@ -1348,7 +1354,12 @@ export default function OrderDetailPage() {
 
   const isOnlineStandardDeliveryOrder =
     isOnlineStandardOrder && !isOnlineStandardPickupOrder;
-  const requiresDeliveryReceiptForCompletion = hasDeliveryRequirement;
+
+  const usesManagedDeliveryFlow = isBlueprintOrder
+    ? isBlueprintDeliveryOrder && !isWalkInOrder
+    : hasDeliveryRequirement;
+
+  const requiresDeliveryReceiptForCompletion = usesManagedDeliveryFlow;
   const needsContractFirst =
     isBlueprintOrder &&
     normalizedOrderStatus === "confirmed" &&
@@ -1369,27 +1380,41 @@ export default function OrderDetailPage() {
     ["confirmed", "contract_released"].includes(normalizedOrderStatus) &&
     !hasRequiredBlueprintDownPayment;
   const effectiveStatusTransitions = isBlueprintOrder
-    ? isWalkInOrder
+    ? isBlueprintPickupOrder
       ? {
-          pending: ["confirmed", "cancelled"],
-          confirmed: ["contract_released", "cancelled"],
-          contract_released: ["production", "cancelled"],
-          production: ["completed", "cancelled"],
-          shipping: ["completed"],
-          delivered: ["completed"],
+          pending: ["confirmed"],
+          confirmed: ["contract_released"],
+          contract_released: ["production"],
+          production: [],
+          ready_for_pickup: [],
+          shipping: [],
+          delivered: [],
           completed: [],
           cancelled: [],
         }
-      : {
-          pending: ["confirmed", "cancelled"],
-          confirmed: ["contract_released", "cancelled"],
-          contract_released: ["production", "cancelled"],
-          production: ["shipping", "cancelled"],
-          shipping: ["delivered", "completed"],
-          delivered: ["completed"],
-          completed: [],
-          cancelled: [],
-        }
+      : isWalkInOrder
+        ? {
+            pending: ["confirmed"],
+            confirmed: ["contract_released"],
+            contract_released: ["production"],
+            production: ["completed"],
+            shipping: ["completed"],
+            delivered: ["completed"],
+            completed: [],
+            cancelled: [],
+          }
+        : isBlueprintDeliveryOrder
+          ? {
+              pending: ["confirmed"],
+              confirmed: ["contract_released"],
+              contract_released: ["production"],
+              production: ["shipping"],
+              shipping: ["delivered", "completed"],
+              delivered: ["completed"],
+              completed: [],
+              cancelled: [],
+            }
+          : {}
     : isWalkInPickupOrder
       ? {
           pending: ["confirmed", "cancelled"],
@@ -1465,7 +1490,7 @@ export default function OrderDetailPage() {
       !hasRequiredBlueprintDownPayment;
 
     const blockedByManagedDelivery =
-      hasDeliveryRequirement &&
+      usesManagedDeliveryFlow &&
       ["shipping", "delivered"].includes(normalizedStatus);
 
     return !(
@@ -1544,9 +1569,11 @@ export default function OrderDetailPage() {
         : normalizedOrderStatus === "contract_released"
           ? "Move to production"
           : normalizedOrderStatus === "production"
-            ? isWalkInOrder
-              ? "Complete order when finished"
-              : "Prepare delivery"
+            ? isBlueprintPickupOrder
+              ? "Complete production tasks for pickup"
+              : isWalkInOrder
+                ? "Complete order when finished"
+                : "Prepare delivery"
             : normalizedOrderStatus === "shipping"
               ? "Confirm delivery"
               : normalizedOrderStatus === "delivered"
@@ -1568,11 +1595,13 @@ export default function OrderDetailPage() {
         ? ONLINE_STANDARD_PICKUP_TIMELINE
         : isOnlineStandardDeliveryOrder
           ? ONLINE_STANDARD_DELIVERY_TIMELINE
-          : isBlueprintOrder || hasBlueprintFlow
-            ? !hasDeliveryRequirement
-              ? BLUEPRINT_PICKUP_TIMELINE
-              : BLUEPRINT_TIMELINE
-            : ONLINE_STANDARD_DELIVERY_TIMELINE;
+          : isBlueprintOrder && isWalkInOrder
+            ? WALKIN_BLUEPRINT_TIMELINE
+            : isBlueprintOrder || hasBlueprintFlow
+              ? isBlueprintPickupOrder
+                ? BLUEPRINT_PICKUP_TIMELINE
+                : BLUEPRINT_TIMELINE
+              : ONLINE_STANDARD_DELIVERY_TIMELINE;
 
   const timelineCurrentKey =
     normalizedOrderStatus === "cancelled"
@@ -1766,7 +1795,7 @@ export default function OrderDetailPage() {
                 >
                   Delivery: {titleCase(order.delivery.status)}
                 </span>
-              ) : hasDeliveryRequirement ? (
+              ) : usesManagedDeliveryFlow ? (
                 <span
                   style={{
                     ...pill,
@@ -1848,19 +1877,6 @@ export default function OrderDetailPage() {
                     </button>
                   )}
 
-                  {canAdminManageOrders && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStatusModalMode("cancel");
-                        setNewStatus("cancelled");
-                        setStatusModal(true);
-                      }}
-                      style={btnDecline}
-                    >
-                      Cancel Order
-                    </button>
-                  )}
                 </>
               )}
 
@@ -3452,7 +3468,7 @@ export default function OrderDetailPage() {
             )}
 
             {/* 👉 NEW: Warnings for Rider Assignments */}
-            {hasDeliveryRequirement &&
+            {usesManagedDeliveryFlow &&
               !order?.delivery &&
               ["delivered", "completed"].includes(newStatus) && (
                 <div style={alertWarning}>
@@ -3460,7 +3476,7 @@ export default function OrderDetailPage() {
                 </div>
               )}
 
-            {hasDeliveryRequirement &&
+            {usesManagedDeliveryFlow &&
               order?.delivery &&
               !hasSignedDeliveryReceipt &&
               ["delivered", "completed"].includes(newStatus) && (
@@ -3522,12 +3538,12 @@ export default function OrderDetailPage() {
                   paymentBalance > 0;
 
                 const blockedByNoRiderAssigned =
-                  hasDeliveryRequirement &&
+                  usesManagedDeliveryFlow &&
                   ["delivered", "completed"].includes(normalizedStatus) &&
                   !order?.delivery;
 
                 const blockedByRiderNotFinished =
-                  hasDeliveryRequirement &&
+                  usesManagedDeliveryFlow &&
                   ["delivered", "completed"].includes(normalizedStatus) &&
                   order?.delivery &&
                   !hasSignedDeliveryReceipt;
@@ -3542,7 +3558,7 @@ export default function OrderDetailPage() {
 
                 // 👉 NEW: Block manual shipping/delivered for ALL managed deliveries
                 const blockedByManagedDelivery =
-                  hasDeliveryRequirement &&
+                  usesManagedDeliveryFlow &&
                   ["shipping", "delivered"].includes(normalizedStatus);
 
                 const isBlocked =
@@ -3590,10 +3606,10 @@ export default function OrderDetailPage() {
                   normalizedNewStatus === "shipping" &&
                   normalizedPaymentMethod !== "cod" &&
                   paymentBalance > 0) ||
-                (hasDeliveryRequirement &&
+                (usesManagedDeliveryFlow &&
                   ["delivered", "completed"].includes(normalizedNewStatus) &&
                   !order?.delivery) ||
-                (hasDeliveryRequirement &&
+                (usesManagedDeliveryFlow &&
                   ["delivered", "completed"].includes(normalizedNewStatus) &&
                   order?.delivery &&
                   !hasSignedDeliveryReceipt) ||
@@ -3601,7 +3617,7 @@ export default function OrderDetailPage() {
                 (isBlueprintOrder &&
                   normalizedNewStatus === "production" &&
                   !hasRequiredBlueprintDownPayment) ||
-                (hasDeliveryRequirement &&
+                (usesManagedDeliveryFlow &&
                   ["shipping", "delivered"].includes(normalizedNewStatus));
 
               return (
