@@ -22,7 +22,7 @@ const readPositiveInt = (value, fallback) => {
 };
 
 const buildSalesReportFilters = (query = {}) => {
-  const where = ["o.status IN ('completed', 'delivered')"];
+  const where = ["o.status = 'completed'"];
   const params = [];
 
   const search = String(query.search || "").trim();
@@ -173,7 +173,7 @@ exports.getSalesProfitabilityReport = async (req, res) => {
       SELECT
         o.id AS order_id,
         o.order_number,
-        o.created_at AS date_sold,
+        o.created_at AS order_date,
         o.order_type,
         o.customer_id,
         COALESCE(u.name, o.walkin_customer_name, 'Walk-in Customer') AS customer_name,

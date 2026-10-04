@@ -7,6 +7,14 @@ const { requirePermission } = require("../middleware/permission");
 // Use your system's correct admin/staff authorization
 const adminStaff = [authenticate, authorize("admin", "staff")];
 
+// GET /api/reports/sales-profitability/export
+router.get(
+  "/sales-profitability/export",
+  adminStaff,
+  requirePermission("sales_report.export"),
+  reportsController.getSalesProfitabilityReport,
+);
+
 // GET /api/reports/sales-profitability
 router.get(
   "/sales-profitability",

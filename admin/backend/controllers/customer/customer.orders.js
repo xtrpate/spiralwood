@@ -355,6 +355,7 @@ exports.createOrder = async (req, res) => {
            p.id,
            p.name,
            p.online_price,
+           p.production_cost,
            p.stock,
            p.is_published,
            COALESCE(ds.quantity, 0) AS display_stock
@@ -397,6 +398,7 @@ exports.createOrder = async (req, res) => {
         product_name: displayName,
         quantity: qty,
         unit_price: unitPrice,
+        production_cost: roundMoney(Number(product.production_cost || 0)),
         item_subtotal: roundMoney(unitPrice * qty),
       });
     }
@@ -457,14 +459,15 @@ exports.createOrder = async (req, res) => {
       const [orderItemResult] = await conn.query(
         `INSERT INTO order_items
           (order_id, product_id,
-           product_name, quantity, unit_price, customization_json)
-         VALUES (?,?,?,?,?,?)`,
+           product_name, quantity, unit_price, production_cost, customization_json)
+         VALUES (?,?,?,?,?,?,?)`,
         [
           order_id,
           item.product_id,
           item.product_name,
           item.quantity,
           item.unit_price,
+          item.production_cost,
           readyMadeCustomizationJson,
         ],
       );
