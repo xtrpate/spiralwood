@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Eye, X, FileDown } from "lucide-react";
 import toast from "react-hot-toast";
 import * as XLSX from "xlsx-js-style";
@@ -687,9 +688,14 @@ function EmptyRow({ colSpan, text }) {
 
 export default function StockReportPage() {
   const { user } = useAuthStore();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const requestedTab = searchParams.get("tab");
+  const initialReportType =
+    requestedTab === "transfers" ? "transfers" : "movements";
 
   // Core Selection
-  const [reportType, setReportType] = useState("movements");
+  const [reportType, setReportType] = useState(initialReportType);
 
   // Filters
   const [search, setSearch] = useState("");
@@ -716,6 +722,23 @@ export default function StockReportPage() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [generatedAt, setGeneratedAt] = useState("");
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "transfers" || tab === "movements") {
+      if (tab !== reportType) {
+        setReportType(tab);
+        setSearch("");
+        setDebouncedSearch("");
+        setPage(1);
+      }
+    } else if (!tab && reportType !== "movements") {
+      setReportType("movements");
+      setSearch("");
+      setDebouncedSearch("");
+      setPage(1);
+    }
+  }, [searchParams, reportType]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -1172,6 +1195,7 @@ export default function StockReportPage() {
             setSearch("");
             setDebouncedSearch("");
             setPage(1);
+            setSearchParams({ tab: "movements" }, { replace: true });
           }}
           style={{
             padding: "10px 18px",
@@ -1203,6 +1227,7 @@ export default function StockReportPage() {
             setSearch("");
             setDebouncedSearch("");
             setPage(1);
+            setSearchParams({ tab: "transfers" }, { replace: true });
           }}
           style={{
             padding: "10px 18px",

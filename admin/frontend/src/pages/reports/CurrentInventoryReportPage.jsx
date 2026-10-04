@@ -5,6 +5,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import * as XLSX from "xlsx-js-style";
 import api from "../../services/api";
@@ -264,6 +265,7 @@ function EmptyRow({ colSpan, text }) {
 
 export default function CurrentInventoryReportPage() {
   const { user } = useAuthStore();
+  const [searchParams, setSearchParams] = useSearchParams();
   const todayManila = getManilaDateInput();
 
   const [rawMaterials, setRawMaterials] = useState([]);
@@ -284,8 +286,26 @@ export default function CurrentInventoryReportPage() {
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
   const [search, setSearch] = useState("");
-  const [inventoryType, setInventoryType] = useState("");
   const [stockStatus, setStockStatus] = useState("");
+
+  const requestedType = searchParams.get("tab");
+  const initialType =
+    requestedType === "raw" || requestedType === "ready_made"
+      ? requestedType
+      : "";
+  const [inventoryType, setInventoryType] = useState(initialType);
+
+  useEffect(() => {
+    const typeParam = searchParams.get("tab");
+    const validParam =
+      typeParam === "raw" || typeParam === "ready_made" ? typeParam : "";
+
+    if (validParam !== inventoryType) {
+      setInventoryType(validParam);
+      setSearch("");
+      setStockStatus("");
+    }
+  }, [searchParams, inventoryType]);
 
   const loadReport = useCallback(async () => {
     const requestId = ++reportRequestIdRef.current;
@@ -485,7 +505,6 @@ export default function CurrentInventoryReportPage() {
 
   const clearFilters = () => {
     setSearch("");
-    setInventoryType("");
     setStockStatus("");
     setDateFilter("all");
     setCustomStart("");
@@ -781,6 +800,7 @@ export default function CurrentInventoryReportPage() {
             setInventoryType("");
             setSearch("");
             setStockStatus("");
+            setSearchParams({}, { replace: true });
           }}
           style={{
             padding: "10px 18px",
@@ -809,6 +829,7 @@ export default function CurrentInventoryReportPage() {
             setInventoryType("raw");
             setSearch("");
             setStockStatus("");
+            setSearchParams({ tab: "raw" }, { replace: true });
           }}
           style={{
             padding: "10px 18px",
@@ -837,6 +858,7 @@ export default function CurrentInventoryReportPage() {
             setInventoryType("ready_made");
             setSearch("");
             setStockStatus("");
+            setSearchParams({ tab: "ready_made" }, { replace: true });
           }}
           style={{
             padding: "10px 18px",

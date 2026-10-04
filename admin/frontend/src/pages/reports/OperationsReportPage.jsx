@@ -9,7 +9,7 @@ import { Eye, X, FileDown, Download } from "lucide-react";
 import toast from "react-hot-toast";
 import * as XLSX from "xlsx-js-style";
 import jsPDF from "jspdf";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import useAuthStore from "../../store/authStore";
 
@@ -1057,9 +1057,19 @@ function EmptyRow({ colSpan, text }) {
 export default function OperationsReportPage({ fixedOperationType = null }) {
   const { user } = useAuthStore();
   const navigate = useNavigate();
-  const [operationType, setOperationType] = useState(
-    fixedOperationType || "tasks",
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const requestedOperationType = searchParams.get("tab");
+
+  const validOperationType = OPERATION_TYPES.some(
+    (item) => item.value === requestedOperationType,
   );
+
+  const initialOperationType =
+    fixedOperationType ||
+    (validOperationType ? requestedOperationType : "tasks");
+
+  const [operationType, setOperationType] = useState(initialOperationType);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -1120,6 +1130,35 @@ export default function OperationsReportPage({ fixedOperationType = null }) {
     () => OPERATION_TYPES.find((op) => op.value === operationType),
     [operationType],
   );
+
+  useEffect(() => {
+    if (fixedOperationType) return;
+
+    const requestedType = searchParams.get("tab");
+
+    if (
+      requestedType &&
+      OPERATION_TYPES.some((item) => item.value === requestedType)
+    ) {
+      if (requestedType !== operationType) {
+        setOperationType(requestedType);
+        setSearch("");
+        setDebouncedSearch("");
+        setStatusFilter("all");
+        setPage(1);
+      }
+
+      return;
+    }
+
+    if (!requestedType && operationType !== "tasks") {
+      setOperationType("tasks");
+      setSearch("");
+      setDebouncedSearch("");
+      setStatusFilter("all");
+      setPage(1);
+    }
+  }, [fixedOperationType, searchParams, operationType]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -2001,6 +2040,11 @@ export default function OperationsReportPage({ fixedOperationType = null }) {
                 setDebouncedSearch("");
                 setStatusFilter("all");
                 setPage(1);
+
+                setSearchParams(
+                  item.value === "tasks" ? {} : { tab: item.value },
+                  { replace: true },
+                );
               }}
               style={{
                 padding: "10px 18px",

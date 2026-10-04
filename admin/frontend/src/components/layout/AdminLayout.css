@@ -38,7 +38,7 @@ body,
    ========================================================================== */
 
 .wisdom-sidebar {
-  border-radius: 0 16px 16px 0;
+  border-radius: 0;
   overflow: hidden;
   box-shadow: 4px 0 18px rgba(0, 0, 0, 0.08);
 }
@@ -46,33 +46,6 @@ body,
 /* ==========================================================================
    SIDEBAR SECTION DROPDOWN BUTTONS
    ========================================================================== */
-
-.wisdom-sidebar-section-toggle {
-  width: calc(100% - 16px) !important;
-  min-height: 36px;
-  margin: 5px 8px 3px !important;
-  padding: 8px 12px !important;
-  border-radius: 8px !important;
-  box-sizing: border-box;
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease;
-}
-
-.wisdom-sidebar-section-toggle:hover {
-  background: #18181b !important;
-  color: #ffffff !important;
-}
-
-.wisdom-sidebar-section-toggle[aria-expanded="true"] {
-  color: #e4e4e7 !important;
-}
-
-.wisdom-sidebar-section-toggle:hover .wisdom-sidebar-section-icon,
-.wisdom-sidebar-section-toggle[aria-expanded="true"]
-  .wisdom-sidebar-section-icon {
-  color: #ffffff;
-}
 
 @media (max-width: 1023px) {
   .wisdom-admin-shell {
@@ -246,34 +219,6 @@ body,
   text-rendering: optimizeLegibility;
 }
 
-.wisdom-sidebar nav a {
-  font-family: inherit !important;
-  font-size: 13px !important;
-  font-weight: 400 !important;
-  line-height: 1.35 !important;
-  letter-spacing: -0.012em !important;
-}
-
-.wisdom-sidebar nav a[aria-current="page"] {
-  font-weight: 500 !important;
-}
-
-.wisdom-sidebar nav a span {
-  font-weight: inherit !important;
-}
-
-.wisdom-sidebar nav > div {
-  font-family: inherit !important;
-  font-weight: 500 !important;
-}
-
-.wisdom-sidebar nav > button {
-  font-family: inherit !important;
-  font-size: 13px !important;
-  font-weight: 400 !important;
-  letter-spacing: -0.012em !important;
-}
-
 /* ==========================================================================
    DESKTOP SIDEBAR HEADER TOGGLE
    ========================================================================== */
@@ -308,14 +253,100 @@ body,
   outline-offset: 2px;
 }
 
+.wisdom-sidebar nav a {
+  font-family: inherit !important;
+  font-size: 13.5px !important;
+  font-weight: 500 !important;
+  line-height: 1.35 !important;
+  letter-spacing: -0.012em !important;
+}
+
+.wisdom-sidebar nav a[aria-current="page"] {
+  font-weight: 600 !important;
+}
+
+.wisdom-sidebar nav a span {
+  font-weight: inherit !important;
+}
+
 /* ==========================================================================
-   SIDEBAR SUBNAVIGATION
+   SIDEBAR SECTION HEADINGS
+   ========================================================================== */
+
+.wisdom-sidebar-section-heading {
+  margin: 18px 12px 6px;
+  padding: 0 0 0 2px;
+  color: #71717a;
+  font-family: inherit;
+  font-size: 10.5px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   SIDEBAR SECTION DROPDOWNS
+   ========================================================================== */
+
+.wisdom-sidebar-section-toggle {
+  width: calc(100% - 24px);
+  min-height: 28px;
+  margin: 14px 12px 4px;
+  padding: 0 2px;
+  border: none;
+  background: transparent;
+  color: #71717a;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 10.5px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  text-align: left;
+  white-space: nowrap;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.wisdom-sidebar-section-toggle:hover {
+  color: #a1a1aa;
+}
+
+.wisdom-sidebar-section-toggle.is-open {
+  color: #ffffff;
+}
+
+.wisdom-sidebar-section-toggle-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wisdom-sidebar-section-chevron {
+  flex: 0 0 auto;
+  transition: transform 0.15s ease;
+}
+
+.wisdom-sidebar-section-toggle.is-open .wisdom-sidebar-section-chevron {
+  transform: rotate(90deg);
+}
+
+/* ==========================================================================
+   SIDEBAR CHILD LINKS
    ========================================================================== */
 
 .wisdom-sidebar-subnav-link {
-  position: relative;
-  min-height: 34px;
-  border-left: 1px solid #3f3f46 !important;
+  min-height: 36px;
+  border-left: none !important;
 }
 
 .wisdom-sidebar-subnav-link:hover {
@@ -335,15 +366,114 @@ body,
 
 .wisdom-sidebar-primary-link {
   font-size: 13.5px !important;
-}
-
-.wisdom-sidebar-subnav-link {
-  font-size: 12.5px !important;
-}
-
-.wisdom-sidebar-primary-link {
-  font-size: 13.5px !important;
   font-weight: 500 !important;
+}
+
+/* ==========================================================================
+   SIDEBAR CHILD ICONS
+   ========================================================================== */
+
+.wisdom-sidebar-child-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+}
+
+/* ==========================================================================
+   REPORT GROUPS
+   ========================================================================== */
+
+.wisdom-sidebar-report-group {
+  margin: 2px 8px;
+}
+
+.wisdom-sidebar-report-toggle {
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #a1a1aa;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: -0.012em;
+  text-align: left;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.wisdom-sidebar-report-toggle:hover {
+  background: #18181b;
+  color: #ffffff;
+}
+
+.wisdom-sidebar-report-toggle.is-open {
+  color: #ffffff;
+}
+
+.wisdom-sidebar-report-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wisdom-sidebar-chevron {
+  flex: 0 0 auto;
+  transition: transform 0.15s ease;
+}
+
+.wisdom-sidebar-chevron.is-open {
+  transform: rotate(90deg);
+}
+
+.wisdom-sidebar-report-children {
+  margin: 1px 0 4px 14px;
+  padding-left: 12px;
+  border-left: 1px solid #3f3f46;
+}
+
+.wisdom-sidebar-report-child {
+  min-height: 34px;
+  padding: 7px 8px;
+  border-radius: 5px;
+  color: #a1a1aa;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  text-decoration: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: nowrap;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.wisdom-sidebar-report-child:hover {
+  background: #18181b;
+  color: #ffffff;
+}
+
+.wisdom-sidebar-report-child[aria-current="page"] {
+  background: #27272a;
+  color: #ffffff;
+  font-weight: 600;
 }
 
 .wisdom-sidebar-logout {

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Eye, X, FileDown } from "lucide-react";
 import toast from "react-hot-toast";
 import * as XLSX from "xlsx-js-style";
@@ -607,9 +608,31 @@ function EmptyRow({ colSpan, text }) {
 
 export default function TransactionReportPage() {
   const { user } = useAuthStore();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const requestedTab = searchParams.get("tab");
+  const initialReportType =
+    requestedTab === "cancellations" ? "cancellations" : "orders";
 
   // Core Selection
-  const [reportType, setReportType] = useState("orders");
+  const [reportType, setReportType] = useState(initialReportType);
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "cancellations" || tab === "orders") {
+      if (tab !== reportType) {
+        setReportType(tab);
+        setSearch("");
+        setDebouncedSearch("");
+        setPage(1);
+      }
+    } else if (!tab && reportType !== "orders") {
+      setReportType("orders");
+      setSearch("");
+      setDebouncedSearch("");
+      setPage(1);
+    }
+  }, [searchParams, reportType]);
 
   // Filters
   const [search, setSearch] = useState("");
@@ -632,6 +655,23 @@ export default function TransactionReportPage() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [generatedAt, setGeneratedAt] = useState("");
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "cancellations" || tab === "orders") {
+      if (tab !== reportType) {
+        setReportType(tab);
+        setSearch("");
+        setDebouncedSearch("");
+        setPage(1);
+      }
+    } else if (!tab && reportType !== "orders") {
+      setReportType("orders");
+      setSearch("");
+      setDebouncedSearch("");
+      setPage(1);
+    }
+  }, [searchParams, reportType]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -1088,6 +1128,10 @@ export default function TransactionReportPage() {
             onClick={() => {
               setReportType(item.value);
               setSearch("");
+              setSearchParams(
+                item.value === "orders" ? {} : { tab: item.value },
+                { replace: true },
+              );
             }}
             style={{
               padding: "10px 18px",

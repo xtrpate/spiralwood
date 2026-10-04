@@ -6,7 +6,13 @@ import React, {
   useLayoutEffect,
   useRef,
 } from "react";
-import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
+import {
+  Outlet,
+  NavLink,
+  Link,
+  useNavigate,
+  useLocation,
+} from "react-router-dom";
 import {
   ArrowLeftRight,
   BarChart3,
@@ -16,7 +22,7 @@ import {
   Calendar,
   CalendarCheck2,
   ChartCandlestick,
-  Minus,
+  ChevronRight,
   ClipboardList,
   Database,
   Download,
@@ -27,7 +33,6 @@ import {
   LogOut,
   Menu,
   Package,
-  Plus,
   RefreshCw,
   RotateCcw,
   Ruler,
@@ -67,7 +72,9 @@ const getLogoUrl = (value) => {
 };
 
 const NAV_ITEMS = [
-  { section: "Maintenance" },
+  // ============================================================
+  // TOP-LEVEL NAVIGATION
+  // ============================================================
   {
     label: "Products",
     path: "/admin/products",
@@ -75,6 +82,33 @@ const NAV_ITEMS = [
     icon: Package,
     roles: ["admin", "staff"],
   },
+  {
+    label: "Orders",
+    path: "/admin/orders",
+    permission: "orders.view",
+    icon: ShoppingCart,
+    roles: ["admin"],
+  },
+  {
+    label: "Task Assignments",
+    path: "/admin/tasks",
+    permission: "task_assignments.view",
+    icon: ClipboardList,
+    roles: ["admin", "staff"],
+  },
+  {
+    label: "Delivery Scheduling",
+    path: "/admin/delivery",
+    permission: "delivery_scheduling.view",
+    icon: Truck,
+    roles: ["admin", "staff"],
+  },
+
+  // ============================================================
+  // MAINTENANCE
+  // ============================================================
+  { section: "Maintenance" },
+
   {
     label: "Raw Materials",
     path: "/admin/inventory/raw",
@@ -97,7 +131,11 @@ const NAV_ITEMS = [
     roles: ["admin", "staff"],
   },
 
+  // ============================================================
+  // TRANSACTIONS
+  // ============================================================
   { section: "Transactions" },
+
   {
     label: "Stock Movements",
     path: "/admin/inventory/movements",
@@ -120,42 +158,23 @@ const NAV_ITEMS = [
     roles: ["admin", "staff"],
   },
   {
-    label: "Orders",
-    path: "/admin/orders",
-    permission: "orders.view",
-    icon: ShoppingCart,
-    roles: ["admin"],
-  },
-  {
     label: "Cancellations",
     path: "/admin/orders/cancellations",
     permission: "cancellations.view",
     icon: RotateCcw,
     roles: ["admin", "staff"],
   },
-  // POS QR Recovery remains routed and functional, but is intentionally
-  // hidden from the Admin sidebar for the current evaluation build.
 
+  // ============================================================
+  // OPERATIONS
+  // ============================================================
   { section: "Operations" },
-  {
-    label: "Task Assignments",
-    path: "/admin/tasks",
-    permission: "task_assignments.view",
-    icon: ClipboardList,
-    roles: ["admin", "staff"],
-  },
+
   {
     label: "Appointments",
     path: "/admin/appointments",
     icon: Calendar,
     permission: "appointments.view",
-    roles: ["admin", "staff"],
-  },
-  {
-    label: "Delivery Scheduling",
-    path: "/admin/delivery",
-    icon: Truck,
-    permission: "delivery_scheduling.view",
     roles: ["admin", "staff"],
   },
   {
@@ -166,7 +185,11 @@ const NAV_ITEMS = [
     roles: ["admin", "staff"],
   },
 
+  // ============================================================
+  // BLUEPRINTS
+  // ============================================================
   { section: "Blueprints" },
+
   {
     label: "Blueprint Management",
     path: "/admin/blueprints",
@@ -182,51 +205,139 @@ const NAV_ITEMS = [
     roles: ["admin", "staff"],
   },
 
+  // ============================================================
+  // REPORTS
+  //
+  // Reports itself is NOT a dropdown.
+  // Each individual report is a dropdown.
+  // ============================================================
   { section: "Reports" },
+
   {
     label: "Inventory Report",
-    path: "/admin/reports/current-inventory",
+    reportGroup: true,
+    permission: "stock_movements.view",
+    roles: ["admin", "staff"],
     icon: ShelvingUnit,
-    permission: "stock_movements.view",
-    roles: ["admin", "staff"],
-  },
-  {
-    label: "Stock Report",
-    path: "/admin/reports/stock",
-    icon: ChartCandlestick,
-    permission: "stock_movements.view",
-    roles: ["admin", "staff"],
-  },
-  {
-    label: "Operations Report",
-    path: "/admin/reports/operations",
-    icon: CalendarCheck2,
-    permission: "task_assignments.view",
-    roles: ["admin", "staff"],
-  },
-  {
-    label: "Transaction Report",
-    path: "/admin/reports/transactions",
-    icon: ArrowLeftRight,
-    permission: "orders.view",
-    roles: ["admin", "staff"],
-  },
-  {
-    label: "Sales Report",
-    path: "/admin/sales",
-    permission: "sales_report.view",
-    icon: BarChart3,
-    roles: ["admin", "staff"],
-  },
-  {
-    label: "Sales & Profitability",
-    path: "/admin/reports/sales-profitability",
-    permission: "sales_report.view",
-    icon: TrendingUp,
-    roles: ["admin", "staff"],
+    children: [
+      {
+        label: "Raw Materials",
+        path: "/admin/reports/current-inventory?tab=raw",
+        icon: Boxes,
+      },
+      {
+        label: "Ready-made Products",
+        path: "/admin/reports/current-inventory?tab=ready_made",
+        icon: Package,
+      },
+    ],
   },
 
+  {
+    label: "Stock Report",
+    reportGroup: true,
+    permission: "stock_movements.view",
+    roles: ["admin", "staff"],
+    icon: ChartCandlestick,
+    children: [
+      {
+        label: "Stock Movements",
+        path: "/admin/reports/stock?tab=movements",
+        icon: RefreshCw,
+      },
+      {
+        label: "Stock Transfers",
+        path: "/admin/reports/stock?tab=transfers",
+        icon: ArrowLeftRight,
+      },
+    ],
+  },
+
+  {
+    label: "Operations Report",
+    reportGroup: true,
+    permission: "task_assignments.view",
+    roles: ["admin", "staff"],
+    icon: CalendarCheck2,
+    children: [
+      {
+        label: "Task Assignments",
+        path: "/admin/reports/operations?tab=tasks",
+        icon: ClipboardList,
+      },
+      {
+        label: "Appointments",
+        path: "/admin/reports/operations?tab=appointments",
+        icon: Calendar,
+      },
+      {
+        label: "Deliveries",
+        path: "/admin/reports/operations?tab=delivery",
+        icon: Truck,
+      },
+      {
+        label: "Warranty Claims",
+        path: "/admin/reports/operations?tab=warranty",
+        icon: Shield,
+      },
+    ],
+  },
+
+  {
+    label: "Transaction Report",
+    reportGroup: true,
+    permission: "orders.view",
+    roles: ["admin", "staff"],
+    icon: ArrowLeftRight,
+    children: [
+      {
+        label: "Orders",
+        path: "/admin/reports/transactions?tab=orders",
+        icon: ShoppingCart,
+      },
+      {
+        label: "Cancellations",
+        path: "/admin/reports/transactions?tab=cancellations",
+        icon: RotateCcw,
+      },
+    ],
+  },
+
+  {
+    label: "Sales Report",
+    reportGroup: true,
+    permission: "sales_report.view",
+    roles: ["admin", "staff"],
+    icon: BarChart3,
+    children: [
+      {
+        label: "Sales",
+        path: "/admin/sales",
+        icon: TrendingUp,
+      },
+    ],
+  },
+
+  {
+    label: "Sales & Profitability",
+    reportGroup: true,
+    permission: "sales_report.view",
+    roles: ["admin", "staff"],
+    icon: TrendingUp,
+    children: [
+      {
+        label: "Profitability",
+        path: "/admin/reports/sales-profitability",
+        icon: BarChart3,
+      },
+    ],
+  },
+
+  // ============================================================
+  // ADMINISTRATION
+  // ============================================================
   { section: "Administration" },
+
   {
     label: "Customers",
     path: "/admin/customers",
@@ -249,7 +360,11 @@ const NAV_ITEMS = [
     roles: ["admin", "staff"],
   },
 
+  // ============================================================
+  // WEBSITE
+  // ============================================================
   { section: "Website" },
+
   {
     label: "Site Settings",
     path: "/admin/website/settings",
@@ -279,16 +394,6 @@ const NAV_ITEMS = [
     roles: ["admin", "staff"],
   },
 ];
-
-const SECTION_ICONS = {
-  Maintenance: Package,
-  Transactions: ArrowLeftRight,
-  Operations: ClipboardList,
-  Blueprints: Ruler,
-  Reports: BarChart3,
-  Administration: Users,
-  Website: Settings,
-};
 
 const getSectionForPath = (pathname) => {
   let currentSection = null;
@@ -332,6 +437,7 @@ export default function AdminLayout() {
   const location = useLocation();
   const [open, setOpen] = useState(true);
   const [openSection, setOpenSection] = useState("Dashboard");
+  const [openReportGroup, setOpenReportGroup] = useState(null);
   const [sidebarHovering, setSidebarHovering] = useState(false);
   // WISDOM ADMIN OFFICIAL LOGO V1
   const [brandLogo, setBrandLogo] = useState("");
@@ -349,6 +455,19 @@ export default function AdminLayout() {
 
     if (activeSection) {
       setOpenSection(activeSection);
+    }
+
+    const activeReportGroup = NAV_ITEMS.find(
+      (item) =>
+        item.reportGroup &&
+        item.children?.some(
+          (child) => location.pathname === child.path.split("?")[0],
+        ),
+    );
+
+    if (activeReportGroup) {
+      setOpenReportGroup(activeReportGroup.label);
+      setOpenSection("Reports");
     }
   }, [location.pathname]);
 
@@ -597,94 +716,214 @@ export default function AdminLayout() {
           }}
         >
           {visibleItems.map((item, i) => {
+            // ==========================================================
+            // SECTION TITLE / DROPDOWN
+            // Reports is a permanent heading.
+            // All other sections are collapsible.
+            // ==========================================================
             if (item.section) {
               currentSection = item.section;
 
-              const SectionIcon = SECTION_ICONS[item.section];
+              // Reports is NOT a dropdown.
+              if (item.section === "Reports") {
+                return (
+                  <div
+                    key={`section-${item.section}`}
+                    className="wisdom-sidebar-section-heading"
+                  >
+                    {sidebarExpanded && item.section}
+                  </div>
+                );
+              }
+
+              const sectionIsOpen = openSection === item.section;
 
               return (
                 <button
-                  key={i}
+                  key={`section-${item.section}`}
                   type="button"
-                  className="wisdom-sidebar-section-toggle"
+                  className={`wisdom-sidebar-section-toggle ${
+                    sectionIsOpen ? "is-open" : ""
+                  }`}
                   onClick={() => {
                     setOpenSection((current) =>
                       current === item.section ? null : item.section,
                     );
+                    setOpenReportGroup(null);
                   }}
-                  aria-expanded={openSection === item.section}
-                  aria-label={`Toggle ${item.section} menu`}
-                  title={!sidebarExpanded ? item.section : undefined}
-                  style={{
-                    width: "100%",
-                    minHeight: 36,
-                    padding: sidebarExpanded ? "8px 12px" : "8px 0",
-                    border: "none",
-                    background: "transparent",
-                    color: "#71717a",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: sidebarExpanded
-                      ? "space-between"
-                      : "center",
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    fontSize: 11,
-                    textTransform: "uppercase",
-                    letterSpacing: 1.1,
-                    fontWeight: 600,
-                    textAlign: "left",
-                  }}
+                  aria-expanded={sectionIsOpen}
+                  aria-label={`${sectionIsOpen ? "Collapse" : "Expand"} ${
+                    item.section
+                  }`}
                 >
-                  <span
-                    className="wisdom-sidebar-section-label"
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: sidebarExpanded ? "flex-start" : "center",
-                      gap: 9,
-                      minWidth: 0,
-                    }}
-                  >
-                    {SectionIcon && (
-                      <SectionIcon
-                        className="wisdom-sidebar-section-icon"
-                        size={15}
-                        strokeWidth={1.8}
-                        aria-hidden="true"
-                      />
-                    )}
-
-                    {sidebarExpanded && (
-                      <span
-                        style={{
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
-                        {item.section}
-                      </span>
-                    )}
+                  <span className="wisdom-sidebar-section-toggle-label">
+                    {sidebarExpanded && item.section}
                   </span>
 
-                  {sidebarExpanded &&
-                    (openSection === item.section ? (
-                      <Minus size={14} strokeWidth={1.8} aria-hidden="true" />
-                    ) : (
-                      <Plus size={14} strokeWidth={1.8} aria-hidden="true" />
-                    ))}
+                  {sidebarExpanded && (
+                    <ChevronRight
+                      size={14}
+                      strokeWidth={1.8}
+                      className="wisdom-sidebar-section-chevron"
+                      aria-hidden="true"
+                    />
+                  )}
                 </button>
               );
             }
 
-            if (
-              currentSection &&
-              (!sidebarExpanded || currentSection !== openSection)
-            ) {
-              return null;
+            // ==========================================================
+            // REPORT GROUP
+            // Reports itself is NOT collapsible.
+            // Each individual report is collapsible.
+            // ==========================================================
+            if (currentSection === "Reports" && item.reportGroup) {
+              const reportIsOpen = openReportGroup === item.label;
+
+              const visibleChildren = (item.children || []).filter((child) => {
+                return true;
+              });
+
+              if (
+                !item.roles?.includes(user?.role) ||
+                (item.permission && !hasPermission(item.permission))
+              ) {
+                return null;
+              }
+
+              return (
+                <div
+                  key={`report-group-${item.label}`}
+                  className="wisdom-sidebar-report-group"
+                >
+                  <button
+                    type="button"
+                    className={`wisdom-sidebar-report-toggle ${
+                      reportIsOpen ? "is-open" : ""
+                    }`}
+                    onClick={() => {
+                      setOpenReportGroup((current) =>
+                        current === item.label ? null : item.label,
+                      );
+                      setOpenSection("Reports");
+                    }}
+                    aria-expanded={reportIsOpen}
+                  >
+                    <span className="wisdom-sidebar-report-label">
+                      {sidebarExpanded && item.label}
+                    </span>
+
+                    {sidebarExpanded && (
+                      <ChevronRight
+                        size={15}
+                        strokeWidth={1.8}
+                        className={`wisdom-sidebar-chevron ${
+                          reportIsOpen ? "is-open" : ""
+                        }`}
+                        aria-hidden="true"
+                      />
+                    )}
+                  </button>
+
+                  {sidebarExpanded && reportIsOpen && (
+                    <div className="wisdom-sidebar-report-children">
+                      {visibleChildren.map((child) => {
+                        const ChildIcon = child.icon;
+                        const [basePath, query] = child.path.split("?");
+                        const isMatch = query
+                          ? location.pathname === basePath &&
+                            (location.search.includes(query) ||
+                              (!location.search &&
+                                (query === "tab=orders" ||
+                                  query === "tab=tasks" ||
+                                  query === "tab=raw" ||
+                                  query === "tab=movements")))
+                          : location.pathname === basePath;
+
+                        return (
+                          <Link
+                            key={`${item.label}-${child.path}-${child.label}`}
+                            to={child.path}
+                            className="wisdom-sidebar-report-child"
+                            aria-current={isMatch ? "page" : undefined}
+                            onClick={() => setMobileOpen(false)}
+                          >
+                            <span
+                              className="wisdom-sidebar-child-icon"
+                              aria-hidden="true"
+                            >
+                              {ChildIcon && (
+                                <ChildIcon size={15} strokeWidth={1.7} />
+                              )}
+                            </span>
+
+                            <span>{child.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
             }
 
+            // ==========================================================
+            // NORMAL SECTION CHILD
+            // ==========================================================
+            if (currentSection) {
+              if (!sidebarExpanded || currentSection !== openSection) {
+                return null;
+              }
+
+              const Icon = item.icon;
+
+              return (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  end
+                  className="wisdom-sidebar-link wisdom-sidebar-subnav-link"
+                  title={!sidebarExpanded ? item.label : undefined}
+                  onClick={() => setMobileOpen(false)}
+                  style={({ isActive }) => {
+                    const [basePath, query] = item.path.split("?");
+                    const isMatch = query
+                      ? isActive && location.search.includes(query)
+                      : isActive;
+                    return {
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "flex-start",
+                      gap: 10,
+                      margin: "2px 8px 2px 18px",
+                      padding: "9px 10px",
+                      color: isMatch ? "#ffffff" : "#a1a1aa",
+                      background: isMatch ? "#27272a" : "transparent",
+                      borderRadius: 6,
+                      textDecoration: "none",
+                      fontSize: 13.5,
+                      fontWeight: isMatch ? 600 : 500,
+                      whiteSpace: "nowrap",
+                      transition: "background .15s, color .15s",
+                    };
+                  }}
+                >
+                  <span
+                    className="wisdom-sidebar-child-icon"
+                    aria-hidden="true"
+                  >
+                    {Icon && <Icon size={16} strokeWidth={1.7} />}
+                  </span>
+
+                  {sidebarExpanded && <span>{item.label}</span>}
+                </NavLink>
+              );
+            }
+
+            // ==========================================================
+            // TOP-LEVEL NAVIGATION
+            // Products / Orders / Task Assignments / Delivery Scheduling
+            // ==========================================================
             const Icon = item.icon;
 
             return (
@@ -692,53 +931,35 @@ export default function AdminLayout() {
                 key={item.path}
                 to={item.path}
                 end
-                className={`wisdom-sidebar-link ${
-                  currentSection
-                    ? "wisdom-sidebar-subnav-link"
-                    : "wisdom-sidebar-primary-link"
-                }`}
+                className="wisdom-sidebar-link wisdom-sidebar-primary-link"
                 title={!sidebarExpanded ? item.label : undefined}
                 onClick={() => setMobileOpen(false)}
-                style={({ isActive }) => ({
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: currentSection
-                    ? "flex-start"
-                    : sidebarExpanded
-                      ? "flex-start"
-                      : "center",
-                  gap: currentSection ? 0 : sidebarExpanded ? 10 : 0,
-                  margin: currentSection ? "0 8px 0 30px" : "2px 8px",
-                  padding: currentSection
-                    ? "8px 10px 8px 20px"
-                    : sidebarExpanded
-                      ? "9px 10px"
-                      : "9px 0",
-                  color: isActive ? "#ffffff" : "#a1a1aa",
-                  background: isActive ? "#27272a" : "transparent",
-                  borderRadius: currentSection ? "0 6px 6px 0" : 6,
-                  textDecoration: "none",
-                  fontSize: currentSection ? 12.5 : 13.5,
-                  fontWeight: isActive ? 600 : 500,
-                  whiteSpace: "nowrap",
-                  transition: "background .15s, color .15s",
-                })}
+                style={({ isActive }) => {
+                  const [basePath, query] = item.path.split("?");
+                  const isMatch = query
+                    ? isActive && location.search.includes(query)
+                    : isActive;
+                  return {
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: sidebarExpanded ? "flex-start" : "center",
+                    gap: sidebarExpanded ? 10 : 0,
+                    margin: "2px 8px",
+                    padding: sidebarExpanded ? "9px 10px" : "9px 0",
+                    color: isMatch ? "#ffffff" : "#a1a1aa",
+                    background: isMatch ? "#27272a" : "transparent",
+                    borderRadius: 6,
+                    textDecoration: "none",
+                    fontSize: 13.5,
+                    fontWeight: isMatch ? 600 : 500,
+                    whiteSpace: "nowrap",
+                    transition: "background .15s, color .15s",
+                  };
+                }}
               >
-                {!currentSection && (
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      width: 18,
-                      height: 18,
-                      flex: "0 0 18px",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Icon size={16} strokeWidth={1.7} />
-                  </span>
-                )}
+                <span className="wisdom-sidebar-child-icon" aria-hidden="true">
+                  {Icon && <Icon size={17} strokeWidth={1.7} />}
+                </span>
 
                 {sidebarExpanded && <span>{item.label}</span>}
               </NavLink>
