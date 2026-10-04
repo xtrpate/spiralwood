@@ -491,10 +491,25 @@ export default function RawMaterialsPage() {
   const handleArchive = (item) => {
     const reservedQuantity = Number(item.reserved_quantity || 0);
     const pendingNeedQuantity = Number(item.pending_need_quantity || 0);
+    const onHandQuantity = Number(item.on_hand_quantity ?? item.quantity);
 
     if (reservedQuantity > 0 || pendingNeedQuantity > 0) {
       toast.error(
         "This material has active blueprint reservations or stock needs. Resolve those orders before archiving it.",
+      );
+      return;
+    }
+
+    if (!Number.isFinite(onHandQuantity)) {
+      toast.error(
+        "Current on-hand stock could not be verified. Refresh raw materials before archiving.",
+      );
+      return;
+    }
+
+    if (Math.abs(onHandQuantity) > 0.0000001) {
+      toast.error(
+        "This material still has stock on hand. Reduce stock to zero through Stock Movement before archiving it.",
       );
       return;
     }
@@ -876,8 +891,19 @@ export default function RawMaterialsPage() {
                 const pendingNeedQuantity = Number(
                   item.pending_need_quantity || 0,
                 );
+                const onHandQuantity = Number(
+                  item.on_hand_quantity ?? item.quantity,
+                );
                 const hasActiveReservations =
                   reservedQuantity > 0 || pendingNeedQuantity > 0;
+                const hasUnknownOnHandStock = !Number.isFinite(onHandQuantity);
+                const hasOnHandStock =
+                  !hasUnknownOnHandStock &&
+                  Math.abs(onHandQuantity) > 0.0000001;
+                const archiveBlocked =
+                  hasActiveReservations ||
+                  hasUnknownOnHandStock ||
+                  hasOnHandStock;
 
                 return (
                   <tr
@@ -1051,11 +1077,15 @@ export default function RawMaterialsPage() {
                                 <button
                                   type="button"
                                   role="menuitem"
-                                  disabled={hasActiveReservations}
+                                  disabled={archiveBlocked}
                                   title={
                                     hasActiveReservations
                                       ? "Resolve active reservations or waiting stock needs before archiving."
-                                      : "Archive material"
+                                      : hasUnknownOnHandStock
+                                        ? "Refresh to verify current on-hand stock before archiving."
+                                        : hasOnHandStock
+                                          ? "Reduce on-hand stock to zero through Stock Movement before archiving."
+                                          : "Archive material"
                                   }
                                   onClick={() => {
                                     setActionMenuId(null);
@@ -1063,7 +1093,7 @@ export default function RawMaterialsPage() {
                                   }}
                                   style={{
                                     ...moreActionsItem,
-                                    ...(hasActiveReservations
+                                    ...(archiveBlocked
                                       ? moreActionsItemDisabled
                                       : {}),
                                   }}

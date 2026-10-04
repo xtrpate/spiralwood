@@ -1394,16 +1394,25 @@ exports.updateRawMaterial = async (req, res) => {
 };
 
 exports.archiveRawMaterial = async (req, res) => {
-  const conn = await pool.getConnection();
+  const materialId = parseStrictPositiveInt(req.params.id);
+  if (!materialId) {
+    return res.status(400).json({ message: "Invalid raw material ID." });
+  }
+
+  let conn = null;
+  let transactionActive = false;
+
+  const rollback = async () => {
+    if (conn && transactionActive) {
+      await conn.rollback();
+      transactionActive = false;
+    }
+  };
 
   try {
+    conn = await pool.getConnection();
     await conn.beginTransaction();
-
-    const materialId = parseInt(req.params.id, 10);
-    if (!Number.isInteger(materialId) || materialId <= 0) {
-      await conn.rollback();
-      return res.status(400).json({ message: "Invalid raw material ID." });
-    }
+    transactionActive = true;
 
     const [[before]] = await conn.query(
       `SELECT id, name, category_id, unit, quantity, reorder_point,
@@ -1416,12 +1425,12 @@ exports.archiveRawMaterial = async (req, res) => {
     );
 
     if (!before) {
-      await conn.rollback();
+      await rollback();
       return res.status(404).json({ message: "Raw material not found." });
     }
 
     if (Number(before.is_active) === 0) {
-      await conn.rollback();
+      await rollback();
       return res.json({ message: "Raw material is already archived." });
     }
 
@@ -1431,7 +1440,7 @@ exports.archiveRawMaterial = async (req, res) => {
     );
 
     if (activeReservations.length > 0) {
-      await conn.rollback();
+      await rollback();
 
       const reservedCount = activeReservations.filter(
         (row) => String(row.status).toLowerCase() === "reserved",
@@ -1449,6 +1458,17 @@ exports.archiveRawMaterial = async (req, res) => {
       });
     }
 
+    const currentQty = normalizeRawMaterialQuantity(before.quantity);
+    if (Math.abs(currentQty) > 0.0000001) {
+      await rollback();
+      return res.status(409).json({
+        message:
+          "This raw material still has stock on hand and cannot be archived. Reduce stock to zero through Stock Movement before archiving it.",
+        current_quantity: currentQty,
+        unit: before.unit || null,
+      });
+    }
+
     const [result] = await conn.query(
       `UPDATE raw_materials
        SET is_active = 0
@@ -1457,13 +1477,14 @@ exports.archiveRawMaterial = async (req, res) => {
     );
 
     if (result.affectedRows !== 1) {
-      await conn.rollback();
+      await rollback();
       return res.status(409).json({
         message: "Raw material could not be archived. Refresh and try again.",
       });
     }
 
     await conn.commit();
+    transactionActive = false;
 
     req.auditRecord = {
       id: materialId,
@@ -1473,10 +1494,20 @@ exports.archiveRawMaterial = async (req, res) => {
 
     return res.json({ message: "Raw material archived." });
   } catch (err) {
-    await conn.rollback();
-    return res.status(500).json({ message: err.message });
+    if (transactionActive) {
+      try {
+        await rollback();
+      } catch (rollbackError) {
+        console.error("[inventory.archiveRawMaterial rollback]", rollbackError);
+      }
+    }
+
+    console.error("[inventory.archiveRawMaterial]", err);
+    return res.status(500).json({
+      message: "Raw material could not be archived.",
+    });
   } finally {
-    conn.release();
+    if (conn) conn.release();
   }
 };
 
