@@ -423,9 +423,6 @@ export default function VerifyOtpPage() {
 
         <div className="auth-card-panel" style={{ justifyContent: "center" }}>
           <div className="otp-header">
-            <div className="otp-icon">
-              {verificationStep === "phone" ? "📱" : "📧"}
-            </div>
             <h2>
               {isForgotPassword
                 ? "Verify Reset Code"

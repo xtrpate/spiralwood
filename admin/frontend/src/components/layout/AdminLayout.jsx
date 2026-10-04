@@ -107,7 +107,7 @@ const NAV_ITEMS = [
   // ============================================================
   // MAINTENANCE
   // ============================================================
-  { section: "Maintenance" },
+  { section: "Maintenance", icon: Wrench },
 
   {
     label: "Raw Materials",
@@ -134,7 +134,7 @@ const NAV_ITEMS = [
   // ============================================================
   // TRANSACTIONS
   // ============================================================
-  { section: "Transactions" },
+  { section: "Transactions", icon: ArrowLeftRight },
 
   {
     label: "Stock Movements",
@@ -168,7 +168,7 @@ const NAV_ITEMS = [
   // ============================================================
   // OPERATIONS
   // ============================================================
-  { section: "Operations" },
+  { section: "Operations", icon: CalendarCheck2 },
 
   {
     label: "Appointments",
@@ -188,7 +188,7 @@ const NAV_ITEMS = [
   // ============================================================
   // BLUEPRINTS
   // ============================================================
-  { section: "Blueprints" },
+  { section: "Blueprints", icon: Ruler },
 
   {
     label: "Blueprint Management",
@@ -211,7 +211,7 @@ const NAV_ITEMS = [
   // Reports itself is NOT a dropdown.
   // Each individual report is a dropdown.
   // ============================================================
-  { section: "Reports" },
+  { section: "Reports", icon: FileText },
 
   {
     label: "Inventory Report",
@@ -336,7 +336,7 @@ const NAV_ITEMS = [
   // ============================================================
   // ADMINISTRATION
   // ============================================================
-  { section: "Administration" },
+  { section: "Administration", icon: Shield },
 
   {
     label: "Customers",
@@ -363,7 +363,7 @@ const NAV_ITEMS = [
   // ============================================================
   // WEBSITE
   // ============================================================
-  { section: "Website" },
+  { section: "Website", icon: Settings },
 
   {
     label: "Site Settings",
@@ -678,8 +678,8 @@ export default function AdminLayout() {
                 alignItems: "center",
                 justifyContent: sidebarExpanded ? "flex-start" : "center",
                 gap: sidebarExpanded ? 10 : 0,
-                margin: "0 8px",
-                padding: sidebarExpanded ? "9px 10px" : "9px 0",
+                margin: sidebarExpanded ? "0 8px" : "0",
+                padding: sidebarExpanded ? "9px 10px" : "10px 0",
                 color: isActive ? "#ffffff" : "#a1a1aa",
                 background: isActive ? "#27272a" : "transparent",
                 borderRadius: 6,
@@ -723,6 +723,7 @@ export default function AdminLayout() {
             // ==========================================================
             if (item.section) {
               currentSection = item.section;
+              const SectionIcon = item.icon;
 
               // Reports is NOT a dropdown.
               if (item.section === "Reports") {
@@ -730,8 +731,33 @@ export default function AdminLayout() {
                   <div
                     key={`section-${item.section}`}
                     className="wisdom-sidebar-section-heading"
+                    title={!sidebarExpanded ? item.section : undefined}
+                    style={
+                      !sidebarExpanded
+                        ? {
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            margin: "12px 8px",
+                            padding: "12px 0",
+                          }
+                        : {}
+                    }
                   >
-                    {sidebarExpanded && item.section}
+                    {!sidebarExpanded && SectionIcon ? (
+                      <span
+                        style={{
+                          color: "#71717a",
+                          display: "flex",
+                          justifyContent: "center",
+                          width: "100%",
+                        }}
+                      >
+                        <SectionIcon size={18} strokeWidth={1.8} />
+                      </span>
+                    ) : (
+                      sidebarExpanded && item.section
+                    )}
                   </div>
                 );
               }
@@ -750,23 +776,50 @@ export default function AdminLayout() {
                       current === item.section ? null : item.section,
                     );
                     setOpenReportGroup(null);
+                    if (!open && !sidebarHovering && !mobileOpen) setOpen(true);
                   }}
                   aria-expanded={sectionIsOpen}
+                  title={!sidebarExpanded ? item.section : undefined}
                   aria-label={`${sectionIsOpen ? "Collapse" : "Expand"} ${
                     item.section
                   }`}
+                  style={
+                    !sidebarExpanded
+                      ? {
+                          justifyContent: "center",
+                          padding: "10px 0",
+                          margin: "12px 8px",
+                          width: "calc(100% - 16px)",
+                        }
+                      : {}
+                  }
                 >
-                  <span className="wisdom-sidebar-section-toggle-label">
-                    {sidebarExpanded && item.section}
-                  </span>
+                  {!sidebarExpanded && SectionIcon ? (
+                    <span
+                      style={{
+                        color: sectionIsOpen ? "#ffffff" : "#71717a",
+                        display: "flex",
+                        justifyContent: "center",
+                        width: "100%",
+                      }}
+                    >
+                      <SectionIcon size={18} strokeWidth={1.8} />
+                    </span>
+                  ) : (
+                    <>
+                      <span className="wisdom-sidebar-section-toggle-label">
+                        {sidebarExpanded && item.section}
+                      </span>
 
-                  {sidebarExpanded && (
-                    <ChevronRight
-                      size={14}
-                      strokeWidth={1.8}
-                      className="wisdom-sidebar-section-chevron"
-                      aria-hidden="true"
-                    />
+                      {sidebarExpanded && (
+                        <ChevronRight
+                          size={14}
+                          strokeWidth={1.8}
+                          className="wisdom-sidebar-section-chevron"
+                          aria-hidden="true"
+                        />
+                      )}
+                    </>
                   )}
                 </button>
               );
@@ -779,6 +832,7 @@ export default function AdminLayout() {
             // ==========================================================
             if (currentSection === "Reports" && item.reportGroup) {
               const reportIsOpen = openReportGroup === item.label;
+              const GroupIcon = item.icon;
 
               const visibleChildren = (item.children || []).filter((child) => {
                 return true;
@@ -806,22 +860,46 @@ export default function AdminLayout() {
                         current === item.label ? null : item.label,
                       );
                       setOpenSection("Reports");
+                      if (!open && !sidebarHovering && !mobileOpen)
+                        setOpen(true);
                     }}
                     aria-expanded={reportIsOpen}
+                    title={!sidebarExpanded ? item.label : undefined}
+                    style={
+                      !sidebarExpanded
+                        ? {
+                            justifyContent: "center",
+                            padding: "10px 0",
+                          }
+                        : {}
+                    }
                   >
-                    <span className="wisdom-sidebar-report-label">
-                      {sidebarExpanded && item.label}
-                    </span>
+                    {!sidebarExpanded && GroupIcon ? (
+                      <span
+                        className="wisdom-sidebar-child-icon"
+                        style={{
+                          color: reportIsOpen ? "#ffffff" : "#a1a1aa",
+                        }}
+                      >
+                        <GroupIcon size={18} strokeWidth={1.7} />
+                      </span>
+                    ) : (
+                      <>
+                        <span className="wisdom-sidebar-report-label">
+                          {sidebarExpanded && item.label}
+                        </span>
 
-                    {sidebarExpanded && (
-                      <ChevronRight
-                        size={15}
-                        strokeWidth={1.8}
-                        className={`wisdom-sidebar-chevron ${
-                          reportIsOpen ? "is-open" : ""
-                        }`}
-                        aria-hidden="true"
-                      />
+                        {sidebarExpanded && (
+                          <ChevronRight
+                            size={15}
+                            strokeWidth={1.8}
+                            className={`wisdom-sidebar-chevron ${
+                              reportIsOpen ? "is-open" : ""
+                            }`}
+                            aria-hidden="true"
+                          />
+                        )}
+                      </>
                     )}
                   </button>
 
@@ -944,8 +1022,8 @@ export default function AdminLayout() {
                     alignItems: "center",
                     justifyContent: sidebarExpanded ? "flex-start" : "center",
                     gap: sidebarExpanded ? 10 : 0,
-                    margin: "2px 8px",
-                    padding: sidebarExpanded ? "9px 10px" : "9px 0",
+                    margin: sidebarExpanded ? "2px 8px" : "2px 0",
+                    padding: sidebarExpanded ? "9px 10px" : "10px 0",
                     color: isMatch ? "#ffffff" : "#a1a1aa",
                     background: isMatch ? "#27272a" : "transparent",
                     borderRadius: 6,
@@ -965,10 +1043,15 @@ export default function AdminLayout() {
               </NavLink>
             );
           })}
+        </nav>
 
-          {/* WISDOM ADMIN LOGOUT AFTER BACKUP V1 */}
-          {/* WISDOM ADMIN WHITE BELL ALIGNED LOGOUT V1 */}
-          {/* WISDOM ADMIN YELLOW BELL LOGOUT ALIGNMENT V1 */}
+        {/* LOGOUT BUTTON - Outside <nav> to pin to bottom */}
+        <div
+          style={{
+            padding: sidebarExpanded ? "8px 16px" : "8px 0",
+            borderTop: "1px solid #27272a",
+          }}
+        >
           <button
             type="button"
             className="wisdom-sidebar-logout"
@@ -978,9 +1061,9 @@ export default function AdminLayout() {
             style={{
               width: "100%",
               minHeight: 36,
-              padding: sidebarExpanded ? "9px 21px" : "9px 0",
+              padding: sidebarExpanded ? "9px 12px" : "10px 0",
               border: "none",
-              borderLeft: "3px solid transparent",
+              borderRadius: 6,
               background: "transparent",
               color: "#a1a1aa",
               display: "flex",
@@ -992,7 +1075,6 @@ export default function AdminLayout() {
               fontSize: 13,
               fontWeight: 500,
               whiteSpace: "nowrap",
-              textAlign: "left",
               transition: "all .15s",
             }}
             onMouseEnter={(event) => {
@@ -1007,9 +1089,9 @@ export default function AdminLayout() {
             <span
               aria-hidden="true"
               style={{
-                width: 16,
-                height: 16,
-                flex: "0 0 16px",
+                width: 18,
+                height: 18,
+                flex: "0 0 18px",
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -1019,7 +1101,7 @@ export default function AdminLayout() {
             </span>
             {sidebarExpanded && <span>Logout</span>}
           </button>
-        </nav>
+        </div>
 
         <button
           className="wisdom-sidebar-collapse-toggle"
