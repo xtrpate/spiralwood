@@ -189,6 +189,13 @@ router.post(
   posFulfillmentController.rescheduleDelivery,
 );
 
+router.post(
+  "/deliveries/:id/retry-collection",
+  deliveryStatusAccess,
+  logAction("retry_delivery_collection", "payment_transactions"),
+  posFulfillmentController.retryDeliveryCollection,
+);
+
 router.patch(
   "/deliveries/:id/status",
   deliveryStatusAccess,

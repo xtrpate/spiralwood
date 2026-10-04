@@ -685,14 +685,10 @@ export default function DeliveryManagement() {
       return;
     }
 
-    // Blueprint completions always require a fresh photo. Any delivery
-    // being completed again after Undo Delivery also requires fresh POD,
-    // so an old retained proof can never silently satisfy a correction.
-    if (
-      targetStatus === "delivered" &&
-      (isBlueprintDelivery || isCorrectedDelivery) &&
-      !selectedFile
-    ) {
+    // Every actual handoff completion requires a fresh POD. An existing
+    // retained proof is still valid for viewing/replacement, but it must
+    // never silently satisfy a new In Transit -> Delivered transition.
+    if (isCompletingDelivery && !selectedFile) {
       setError(
         isCorrectedDelivery
           ? "Please upload a fresh Proof of Delivery photo to complete this corrected delivery."
@@ -813,6 +809,61 @@ export default function DeliveryManagement() {
       setError(
         err?.response?.data?.message ||
           `Failed to update delivery.${
+            err?.response?.status ? ` (HTTP ${err.response.status})` : ""
+          }`,
+      );
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const retryRejectedCollection = async (delivery) => {
+    if (!delivery?.id || savingId === delivery.id) return;
+
+    const balance = Number(delivery.payment_balance || 0);
+    if (!(balance > 0.009)) {
+      setError("This order has no remaining balance to record.");
+      setSuccess("");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Record the corrected cash collection of ₱${balance.toLocaleString(
+        "en-PH",
+        {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        },
+      )} for ${delivery.order_number || `Delivery #${delivery.id}`}?\n\n` +
+        "Use this only after the rejected collection has been corrected and the cash is ready for Admin review.",
+    );
+
+    if (!confirmed) return;
+
+    setSavingId(delivery.id);
+    setError("");
+    setSuccess("");
+
+    try {
+      const { data } = await api.post(
+        `/pos/deliveries/${delivery.id}/retry-collection`,
+        {},
+      );
+
+      setSuccess(
+        data?.message ||
+          "Corrected delivery collection recorded and sent for Admin verification.",
+      );
+
+      await loadDeliveries({ silent: true });
+    } catch (err) {
+      console.error(
+        "Delivery collection retry error:",
+        err?.response?.data || err,
+      );
+      setError(
+        err?.response?.data?.message ||
+          `Failed to record corrected collection.${
             err?.response?.status ? ` (HTTP ${err.response.status})` : ""
           }`,
       );
@@ -985,6 +1036,16 @@ export default function DeliveryManagement() {
             const pendingPaymentCount = Number(
               delivery.pending_payment_count || 0,
             );
+            const rejectedDeliveryCollectionCount = Number(
+              delivery.rejected_delivery_collection_count || 0,
+            );
+            const canRetryRejectedCollection =
+              isDelivered &&
+              paymentBalance > 0.009 &&
+              pendingPaymentCount === 0 &&
+              rejectedDeliveryCollectionCount > 0 &&
+              (isStandardCodDelivery ||
+                (isBlueprintDelivery && remainingPaymentMethod === "cash"));
             const standardCodHasPendingPayment =
               isStandardCodDelivery &&
               paymentBalance > 0.009 &&
@@ -2107,6 +2168,42 @@ export default function DeliveryManagement() {
                                 </div>
                               </div>
 
+                              {canRetryRejectedCollection && (
+                                <div
+                                  style={{
+                                    marginTop: "24px",
+                                    paddingTop: "16px",
+                                    borderTop: "1px dashed #e4e4e7",
+                                  }}
+                                >
+                                  <div style={sectionTitle}>
+                                    Rejected Payment
+                                  </div>
+                                  <div style={helperText}>
+                                    The previous rider cash collection was
+                                    rejected. If the cash issue is already
+                                    corrected, record the collection again for
+                                    Admin verification. Delivery proof,
+                                    acknowledgement, signature, and Delivered
+                                    status will not change.
+                                  </div>
+                                  <div className="rider-button-row">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        retryRejectedCollection(delivery)
+                                      }
+                                      disabled={savingId === delivery.id}
+                                      className={`rider-btn ${savingId === delivery.id ? "rider-btn-disabled" : "rider-btn-secondary"}`}
+                                    >
+                                      {savingId === delivery.id
+                                        ? "Recording..."
+                                        : "Record Payment Again"}
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
                               <div
                                 style={{
                                   marginTop: "24px",
@@ -2115,12 +2212,13 @@ export default function DeliveryManagement() {
                                 }}
                               >
                                 <div style={sectionTitle}>
-                                  Need Corrections?
+                                  Wrong Delivery Status?
                                 </div>
                                 <div style={helperText}>
-                                  If you accidentally marked this as delivered,
-                                  you can undo it to correct the collection
-                                  amount or proof of delivery.
+                                  Use Undo Delivery only if this order was marked
+                                  Delivered by mistake. For a wrong POD photo,
+                                  use Replace Proof above. A rejected payment
+                                  should use Record Payment Again instead.
                                 </div>
                                 <div className="rider-button-row">
                                   <button

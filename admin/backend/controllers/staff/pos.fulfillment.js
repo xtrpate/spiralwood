@@ -31,6 +31,7 @@ const {
 } = require("../../services/customerMilestoneNotificationService");
 const {
   emitOrderStatusUpdate,
+  emitOrderPaymentUpdate,
   emitDeliveryUpdate,
   emitDeliveryAssigned,
   emitDeliveryUnassigned,
@@ -611,13 +612,16 @@ const computeOrderPaymentStatus = ({
   return "unpaid";
 };
 
-const isRiderDeliveryCollectionPayment = (row = {}) => {
+const isRiderDeliveryCollectionPayment = (
+  row = {},
+  expectedStatus = "pending",
+) => {
   const method = normalizeText(row.payment_method).toLowerCase();
   const status = normalizeText(row.status).toLowerCase();
   const notes = normalizeText(row.notes).toLowerCase();
 
   return (
-    status === "pending" &&
+    status === expectedStatus &&
     method === "cash" &&
     Boolean(normalizeText(row.proof_url)) &&
     (notes === "collected on delivery." ||
@@ -1173,6 +1177,7 @@ exports.getDeliveries = async (req, res) => {
             verifiedCents: 0,
             pendingCount: 0,
             pendingRows: [],
+            rejectedDeliveryCollectionCount: 0,
           });
         }
 
@@ -1191,6 +1196,13 @@ exports.getDeliveries = async (req, res) => {
             amountCents,
           });
         }
+
+        if (
+          paymentStatus === "rejected" &&
+          isRiderDeliveryCollectionPayment(paymentRow, "rejected")
+        ) {
+          summary.rejectedDeliveryCollectionCount += 1;
+        }
       });
     }
 
@@ -1201,6 +1213,7 @@ exports.getDeliveries = async (req, res) => {
         verifiedCents: 0,
         pendingCount: 0,
         pendingRows: [],
+        rejectedDeliveryCollectionCount: 0,
       };
 
       const orderTotalCents = parseDecimalToCentsStrict(row.total);
@@ -1213,6 +1226,8 @@ exports.getDeliveries = async (req, res) => {
       row.payment_verified_total = centsToAmount(verifiedCents);
       row.payment_balance = centsToAmount(remainingCents);
       row.pending_payment_count = paymentSummary.pendingCount;
+      row.rejected_delivery_collection_count =
+        paymentSummary.rejectedDeliveryCollectionCount;
       row.delivery_has_reusable_pending_collection =
         paymentSummary.pendingRows.some(
           ({ row: pendingRow, amountCents }) =>
@@ -2846,6 +2861,30 @@ exports.updateDeliveryStatus = async (req, res) => {
       normalizeText(order.order_type || "").toLowerCase() === "blueprint";
     isCompletingDeliveryNow =
       requestedStatus === "delivered" && currentStatus !== "delivered";
+
+    if (isCompletingDeliveryNow) {
+      const isAssignedActiveRider =
+        isActiveDeliveryRider(req.user) &&
+        Number(existing.driver_id) === Number(req.user.id);
+
+      if (!isAssignedActiveRider) {
+        await conn.rollback();
+        cleanupRequestUpload();
+        return res.status(403).json({
+          message:
+            "Only the assigned active delivery rider may complete this delivery.",
+        });
+      }
+
+      if (!uploadedReceiptPath) {
+        await conn.rollback();
+        return res.status(400).json({
+          message:
+            "Please upload a fresh Proof of Delivery photo to complete this delivery.",
+        });
+      }
+    }
+
     if (isBlueprintOrder) {
       const linkedOrderStatus = normalizeText(order.status).toLowerCase();
 
@@ -4110,6 +4149,409 @@ exports.updateDeliveryStatus = async (req, res) => {
     if (freshUploadNeedsCleanup && !commitAttempted && !committed) {
       cleanupRequestUpload();
     }
+    if (conn) conn.release();
+  }
+};
+
+exports.retryDeliveryCollection = async (req, res) => {
+  req.auditRecord = null;
+
+  const deliveryId = parseStrictPositiveInt(req.params.id);
+  if (!deliveryId) {
+    return res.status(400).json({ message: "Invalid delivery id." });
+  }
+
+  if (!isActiveDeliveryRider(req.user)) {
+    return res.status(403).json({
+      message:
+        "Only an active delivery rider may record a corrected delivery collection.",
+    });
+  }
+
+  if (Object.keys(req.body || {}).length > 0) {
+    return res.status(400).json({
+      message:
+        "Corrected delivery collection does not accept client-supplied amount or payment method.",
+    });
+  }
+
+  let conn = null;
+  let transactionStarted = false;
+  let commitAttempted = false;
+  let committed = false;
+
+  try {
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+    transactionStarted = true;
+
+    const [[deliveryProbe]] = await conn.query(
+      `SELECT order_id, driver_id
+       FROM deliveries
+       WHERE id = ?
+       LIMIT 1`,
+      [deliveryId],
+    );
+
+    if (!deliveryProbe) {
+      await conn.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: "Delivery not found." });
+    }
+
+    if (Number(deliveryProbe.driver_id) !== Number(req.user.id)) {
+      await conn.rollback();
+      transactionStarted = false;
+      return res.status(403).json({
+        message:
+          "You can only record a corrected collection for a delivery assigned to you.",
+      });
+    }
+
+    const [[order]] = await conn.query(
+      `SELECT id, order_number, total, status, payment_status, customer_id,
+              order_type, payment_method, remaining_payment_method
+       FROM orders
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [deliveryProbe.order_id],
+    );
+
+    if (!order) {
+      await conn.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: "Linked order not found." });
+    }
+
+    const [[delivery]] = await conn.query(
+      `SELECT id, order_id, driver_id, assigned_by, status, signed_receipt
+       FROM deliveries
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [deliveryId],
+    );
+
+    if (
+      !delivery ||
+      Number(delivery.order_id) !== Number(order.id)
+    ) {
+      await conn.rollback();
+      transactionStarted = false;
+      return res.status(409).json({
+        message:
+          "The delivery changed before this payment correction started. Refresh and try again.",
+      });
+    }
+
+    if (Number(delivery.driver_id) !== Number(req.user.id)) {
+      await conn.rollback();
+      transactionStarted = false;
+      return res.status(403).json({
+        message:
+          "You can only record a corrected collection for a delivery assigned to you.",
+      });
+    }
+
+    const orderStatus = normalizeText(order.status).toLowerCase();
+    const deliveryStatus = normalizeText(delivery.status).toLowerCase();
+
+    if (orderStatus !== "delivered" || deliveryStatus !== "delivered") {
+      await conn.rollback();
+      transactionStarted = false;
+      return res.status(409).json({
+        reason_code: "DELIVERY_COLLECTION_RETRY_NOT_AVAILABLE",
+        message:
+          "Corrected collection is only available after a successful Delivered handoff and before final order completion.",
+      });
+    }
+
+    const orderType = normalizeText(order.order_type).toLowerCase();
+    const initialPaymentMethod = normalizeText(
+      order.payment_method,
+    ).toLowerCase();
+    const remainingPaymentMethod =
+      normalizeText(order.remaining_payment_method).toLowerCase() || "cash";
+
+    const isStandardCod =
+      orderType === "standard" && initialPaymentMethod === "cod";
+    const isBlueprintCash =
+      orderType === "blueprint" && remainingPaymentMethod === "cash";
+
+    if (!isStandardCod && !isBlueprintCash) {
+      await conn.rollback();
+      transactionStarted = false;
+      return res.status(409).json({
+        reason_code: "DELIVERY_COLLECTION_RETRY_NOT_CASH",
+        message:
+          "This order does not use rider cash collection for its remaining balance.",
+      });
+    }
+
+    const [paymentRows] = await conn.query(
+      `SELECT id, amount, status, payment_method, proof_url, notes
+       FROM payment_transactions
+       WHERE order_id = ?
+       ORDER BY id
+       FOR UPDATE`,
+      [order.id],
+    );
+
+    const orderTotalCents = parseDecimalToCentsStrict(order.total);
+    if (orderTotalCents === null || orderTotalCents <= 0) {
+      await conn.rollback();
+      transactionStarted = false;
+      return res.status(409).json({
+        message: "This order's total is invalid. Please contact support.",
+      });
+    }
+
+    let verifiedCents = 0;
+    let hasPendingPayment = false;
+    let hasInvalidAmount = false;
+    const rejectedDeliveryCollections = [];
+
+    for (const payment of paymentRows) {
+      const amountCents = parseDecimalToCentsStrict(payment.amount);
+      if (amountCents === null) {
+        hasInvalidAmount = true;
+        continue;
+      }
+
+      const paymentStatus = normalizeText(payment.status).toLowerCase();
+
+      if (paymentStatus === "verified") {
+        const nextVerifiedCents = verifiedCents + amountCents;
+        if (!Number.isSafeInteger(nextVerifiedCents)) {
+          hasInvalidAmount = true;
+        } else {
+          verifiedCents = nextVerifiedCents;
+        }
+      } else if (paymentStatus === "pending") {
+        hasPendingPayment = true;
+      }
+
+      if (
+        paymentStatus === "rejected" &&
+        isRiderDeliveryCollectionPayment(payment, "rejected")
+      ) {
+        rejectedDeliveryCollections.push(payment);
+      }
+    }
+
+    if (hasInvalidAmount || verifiedCents > orderTotalCents) {
+      await conn.rollback();
+      transactionStarted = false;
+      return res.status(409).json({
+        message:
+          "This order's payment records are inconsistent. Please contact support.",
+      });
+    }
+
+    if (hasPendingPayment) {
+      await conn.rollback();
+      transactionStarted = false;
+      return res.status(409).json({
+        reason_code: "DELIVERY_COLLECTION_REVIEW_PENDING",
+        message:
+          "A payment is already awaiting Admin review for this order.",
+      });
+    }
+
+    if (rejectedDeliveryCollections.length === 0) {
+      await conn.rollback();
+      transactionStarted = false;
+      return res.status(409).json({
+        reason_code: "NO_REJECTED_DELIVERY_COLLECTION",
+        message:
+          "There is no rejected rider collection to record again for this delivery.",
+      });
+    }
+
+    const remainingCents = orderTotalCents - verifiedCents;
+    if (remainingCents <= 0) {
+      await conn.rollback();
+      transactionStarted = false;
+      return res.status(409).json({
+        message: "This order is already fully paid.",
+      });
+    }
+
+    const lastRejectedCollection =
+      rejectedDeliveryCollections[rejectedDeliveryCollections.length - 1];
+    const proofUrl =
+      normalizeText(delivery.signed_receipt) ||
+      normalizeText(lastRejectedCollection.proof_url);
+
+    if (!proofUrl) {
+      await conn.rollback();
+      transactionStarted = false;
+      return res.status(409).json({
+        message:
+          "The delivered handoff has no Proof of Delivery linked to the collection.",
+      });
+    }
+
+    const amountDecimalString = centsToDecimalString(remainingCents);
+    const paymentNotes = [
+      `Collected on delivery by ${req.user.name || "assigned rider"}.`,
+      `Order: ${order.order_number || `#${order.id}`}`,
+      "Corrected collection submitted after a rejected rider payment.",
+    ].join("\n");
+
+    const [insertResult] = await conn.query(
+      `INSERT INTO payment_transactions
+        (
+          order_id,
+          amount,
+          payment_method,
+          proof_url,
+          verified_by,
+          verified_at,
+          status,
+          notes
+        )
+       VALUES (?, ?, 'cash', ?, NULL, NULL, 'pending', ?)`,
+      [order.id, amountDecimalString, proofUrl, paymentNotes],
+    );
+
+    if (
+      insertResult.affectedRows !== 1 ||
+      !Number.isSafeInteger(insertResult.insertId) ||
+      insertResult.insertId <= 0
+    ) {
+      await conn.rollback();
+      transactionStarted = false;
+      return res.status(409).json({
+        message:
+          "The corrected collection could not be recorded. Refresh and try again.",
+      });
+    }
+
+    const [[paymentRollup]] = await conn.query(
+      `SELECT
+         COALESCE(
+           SUM(CASE WHEN LOWER(status) = 'verified' THEN amount ELSE 0 END),
+           0
+         ) AS verified_total,
+         MAX(CASE WHEN LOWER(status) = 'pending' THEN 1 ELSE 0 END) AS has_pending,
+         MAX(CASE WHEN LOWER(status) = 'rejected' THEN 1 ELSE 0 END) AS has_rejected
+       FROM payment_transactions
+       WHERE order_id = ?`,
+      [order.id],
+    );
+
+    const nextOrderPaymentStatus = computeOrderPaymentStatus({
+      totalAmount: centsToAmount(orderTotalCents),
+      verifiedTotal: Number(paymentRollup?.verified_total || 0),
+      hasPending: Number(paymentRollup?.has_pending || 0) === 1,
+      hasRejected: Number(paymentRollup?.has_rejected || 0) === 1,
+    });
+
+    await conn.query(
+      `UPDATE orders
+       SET payment_status = ?
+       WHERE id = ?`,
+      [nextOrderPaymentStatus, order.id],
+    );
+
+    if (delivery.assigned_by) {
+      await createNotificationSafe(conn, {
+        userId: Number(delivery.assigned_by),
+        type: "payment_review",
+        title: "Corrected Delivery Payment Pending Review",
+        message: `${req.user.name || "Assigned rider"} recorded the corrected ₱${centsToAmount(
+          remainingCents,
+        ).toLocaleString("en-PH", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })} cash collection for ${order.order_number || `#${order.id}`}. Review it after confirming the cash remittance.`,
+        targetType: "order",
+        targetId: order.id,
+        targetOrderId: order.id,
+      });
+    }
+
+    commitAttempted = true;
+    await conn.commit();
+    committed = true;
+    transactionStarted = false;
+
+    req.auditRecord = {
+      id: insertResult.insertId,
+      old: {
+        order_id: order.id,
+        order_status: order.status,
+        payment_status: order.payment_status,
+        rejected_delivery_collection_count:
+          rejectedDeliveryCollections.length,
+      },
+      new: {
+        delivery_id: deliveryId,
+        order_id: order.id,
+        order_status: "delivered",
+        payment_status: nextOrderPaymentStatus,
+        payment_transaction_id: insertResult.insertId,
+        collection_status: "pending",
+        collection_amount: centsToAmount(remainingCents),
+        payment_method: "cash",
+        delivery_status_unchanged: true,
+        proof_of_delivery_unchanged: true,
+        acknowledgement_unchanged: true,
+      },
+    };
+
+    const io = req.app.get("io");
+    emitOrderPaymentUpdate(io, {
+      orderId: order.id,
+      orderNumber: order.order_number,
+      paymentStatus: nextOrderPaymentStatus,
+      paymentMethod: "cash",
+      paymentTransactionId: insertResult.insertId,
+      customerId: order.customer_id,
+    });
+
+    return res.json({
+      message:
+        "Corrected delivery collection recorded. It is now pending Admin verification.",
+      payment: {
+        id: insertResult.insertId,
+        amount: centsToAmount(remainingCents),
+        method: "cash",
+        status: "pending",
+      },
+    });
+  } catch (err) {
+    if (conn && transactionStarted && !commitAttempted && !committed) {
+      try {
+        await conn.rollback();
+        transactionStarted = false;
+      } catch (rollbackErr) {
+        console.error(
+          "[retryDeliveryCollection] rollback failed:",
+          rollbackErr?.message || rollbackErr,
+        );
+      }
+    }
+
+    console.error(
+      "POST /api/pos/deliveries/:id/retry-collection error:",
+      err,
+    );
+
+    if (isRetryableTransactionError(err)) {
+      return res.status(409).json(
+        buildConcurrentUpdateResponse(
+          "This order or delivery was updated at the same time by another process. Refresh and try again.",
+        ),
+      );
+    }
+
+    return res.status(500).json({
+      message: "Failed to record the corrected delivery collection.",
+    });
+  } finally {
     if (conn) conn.release();
   }
 };

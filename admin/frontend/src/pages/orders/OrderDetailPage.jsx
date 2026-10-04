@@ -2863,9 +2863,10 @@ export default function OrderDetailPage() {
                   <div style={{ marginTop: 14 }}>
                     <div style={{ ...alertWarning, marginBottom: 12 }}>
                       This order still has an unpaid remaining balance. The
-                      assigned rider should record the on-site collection from
-                      the delivery page first, then admin can verify the pending
-                      payment here before marking the order as completed.
+                      assigned rider should record or re-record the on-site
+                      collection from the delivery page, then admin can verify
+                      the pending payment here before marking the order as
+                      completed.
                     </div>
                   </div>
                 )}
