@@ -1561,27 +1561,43 @@ exports.restoreRawMaterial = async (req, res) => {
 };
 
 exports.deleteRawMaterial = async (req, res) => {
-  try {
-    const materialId = parseInt(req.params.id, 10);
-    if (!Number.isInteger(materialId) || materialId <= 0) {
-      return res.status(400).json({ message: "Invalid raw material ID." });
-    }
+  const materialId = parseStrictPositiveInt(req.params.id);
+  if (!materialId) {
+    return res.status(400).json({ message: "Invalid raw material ID." });
+  }
 
-    const [[before]] = await pool.query(
+  let conn = null;
+  let transactionActive = false;
+
+  const rollback = async () => {
+    if (!conn || !transactionActive) return;
+    await conn.rollback();
+    transactionActive = false;
+  };
+
+  try {
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+    transactionActive = true;
+
+    const [[before]] = await conn.query(
       `SELECT id, name, category_id, unit, quantity, reorder_point,
               unit_cost, supplier_id, stock_status, is_active
        FROM raw_materials
        WHERE id = ?
-       LIMIT 1`,
+       LIMIT 1
+       FOR UPDATE`,
       [materialId],
     );
 
     if (!before) {
+      await rollback();
       return res.status(404).json({ message: "Raw material not found." });
     }
 
-    const references = await getRawMaterialReferenceCounts(pool, materialId);
+    const references = await getRawMaterialReferenceCounts(conn, materialId);
     if (references.total > 0) {
+      await rollback();
       return res.status(409).json({
         message:
           "This raw material has historical or linked records and cannot be permanently deleted. Archive it instead.",
@@ -1590,16 +1606,37 @@ exports.deleteRawMaterial = async (req, res) => {
       });
     }
 
-    const [deleteResult] = await pool.query(
+    const currentQty = Number(before.quantity);
+    if (
+      before.quantity === null ||
+      before.quantity === undefined ||
+      !Number.isFinite(currentQty) ||
+      Math.abs(currentQty) > 0.0000001
+    ) {
+      await rollback();
+      return res.status(409).json({
+        message:
+          "This raw material still has stock on hand and cannot be permanently deleted. Reconcile the stock through Stock Movement, then archive the material to preserve its inventory history.",
+        can_archive: true,
+        current_quantity: Number.isFinite(currentQty) ? currentQty : null,
+        unit: before.unit || null,
+      });
+    }
+
+    const [deleteResult] = await conn.query(
       "DELETE FROM raw_materials WHERE id = ?",
       [materialId],
     );
 
     if (deleteResult.affectedRows !== 1) {
+      await rollback();
       return res.status(409).json({
         message: "Raw material could not be deleted. Refresh and try again.",
       });
     }
+
+    await conn.commit();
+    transactionActive = false;
 
     req.auditRecord = {
       id: materialId,
@@ -1607,8 +1644,16 @@ exports.deleteRawMaterial = async (req, res) => {
       new: { action: "deleted" },
     };
 
-    res.json({ message: "Raw material permanently deleted." });
+    return res.json({ message: "Raw material permanently deleted." });
   } catch (err) {
+    if (transactionActive) {
+      try {
+        await rollback();
+      } catch (rollbackError) {
+        console.error("[inventory.deleteRawMaterial rollback]", rollbackError);
+      }
+    }
+
     if (err.code === "ER_ROW_IS_REFERENCED_2") {
       return res.status(409).json({
         message:
@@ -1616,7 +1661,13 @@ exports.deleteRawMaterial = async (req, res) => {
         can_archive: true,
       });
     }
-    res.status(500).json({ message: err.message });
+
+    console.error("[inventory.deleteRawMaterial]", err);
+    return res.status(500).json({
+      message: "Raw material could not be permanently deleted.",
+    });
+  } finally {
+    conn?.release();
   }
 };
 

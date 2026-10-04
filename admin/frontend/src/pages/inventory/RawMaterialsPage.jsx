@@ -530,6 +530,32 @@ export default function RawMaterialsPage() {
   };
 
   const handleDelete = (item) => {
+    const hasReferences = Number(item.has_references) === 1;
+    const reservedQuantity = Number(item.reserved_quantity || 0);
+    const pendingNeedQuantity = Number(item.pending_need_quantity || 0);
+    const onHandQuantity = Number(item.on_hand_quantity ?? item.quantity);
+
+    if (hasReferences || reservedQuantity > 0 || pendingNeedQuantity > 0) {
+      toast.error(
+        "This material has linked or historical records and cannot be permanently deleted. Archive it instead.",
+      );
+      return;
+    }
+
+    if (!Number.isFinite(onHandQuantity)) {
+      toast.error(
+        "Current on-hand stock could not be verified. Refresh raw materials before permanently deleting.",
+      );
+      return;
+    }
+
+    if (Math.abs(onHandQuantity) > 0.0000001) {
+      toast.error(
+        "This material still has stock on hand and cannot be permanently deleted. Reconcile stock through Stock Movement, then archive it to preserve inventory history.",
+      );
+      return;
+    }
+
     setConfirmAction({ type: "delete", item });
   };
 
@@ -904,6 +930,11 @@ export default function RawMaterialsPage() {
                   hasActiveReservations ||
                   hasUnknownOnHandStock ||
                   hasOnHandStock;
+                const deleteBlocked =
+                  reservationRecordCount > 0 ||
+                  hasActiveReservations ||
+                  hasUnknownOnHandStock ||
+                  hasOnHandStock;
 
                 return (
                   <tr
@@ -1106,6 +1137,17 @@ export default function RawMaterialsPage() {
                                 <button
                                   type="button"
                                   role="menuitem"
+                                  disabled={deleteBlocked}
+                                  title={
+                                    reservationRecordCount > 0 ||
+                                    hasActiveReservations
+                                      ? "This material has reservation history and cannot be permanently deleted."
+                                      : hasUnknownOnHandStock
+                                        ? "Refresh to verify current on-hand stock before permanently deleting."
+                                        : hasOnHandStock
+                                          ? "Reconcile on-hand stock through Stock Movement, then archive this material."
+                                          : "Delete unused material permanently"
+                                  }
                                   onClick={() => {
                                     setActionMenuId(null);
                                     handleDelete(item);
@@ -1113,6 +1155,9 @@ export default function RawMaterialsPage() {
                                   style={{
                                     ...moreActionsItem,
                                     ...moreActionsDanger,
+                                    ...(deleteBlocked
+                                      ? moreActionsItemDisabled
+                                      : {}),
                                   }}
                                 >
                                   Delete
@@ -1877,7 +1922,7 @@ export default function RawMaterialsPage() {
               {confirmAction.type === "delete"
                 ? 'Delete "' +
                   confirmAction.item.name +
-                  '" permanently? This is only available when the material has no linked or historical records.'
+                  '" permanently? This is only available for an unused material with zero on-hand stock and no linked or historical records.'
                 : 'Archive "' +
                   confirmAction.item.name +
                   '"? It will be hidden from active inventory and new material selectors, while its history stays available.'}
