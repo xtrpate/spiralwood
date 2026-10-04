@@ -361,6 +361,9 @@ exports.createOrder = async (req, res) => {
          FROM products p
          LEFT JOIN ready_made_display_stock ds ON ds.product_id = p.id
          WHERE p.id = ?
+           AND p.type = 'standard'
+           AND p.is_active = 1
+           AND p.is_published = 1
          LIMIT 1
          FOR UPDATE`,
         [productId],

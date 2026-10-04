@@ -32,7 +32,8 @@ const buildWhereClause = ({
   price_max,
   includePrice = true,
 }) => {
-  let where = "WHERE p.is_published = 1";
+  let where =
+    "WHERE p.is_published = 1 AND p.is_active = 1 AND p.type = 'standard'";
   const params = [];
 
   if (q) {
@@ -214,6 +215,7 @@ exports.getAllProducts = async (req, res) => {
         ON p.category_id = c.id
        AND p.type = 'standard'
        AND p.is_published = 1
+       AND p.is_active = 1
       GROUP BY c.id, c.name
       HAVING COUNT(p.id) > 0
       ORDER BY c.name ASC
@@ -282,6 +284,8 @@ exports.getProductById = async (req, res) => {
       LEFT JOIN categories c ON c.id = p.category_id
       WHERE p.id = ?
         AND p.is_published = 1
+        AND p.is_active = 1
+        AND p.type = 'standard'
       LIMIT 1
       `,
       [productId],
