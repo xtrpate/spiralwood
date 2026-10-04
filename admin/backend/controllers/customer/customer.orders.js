@@ -1564,6 +1564,29 @@ exports.getOrderById = async (req, res) => {
 
     order.delivery_receipt = deliveryReceipt || null;
 
+    const [[latestDelivery]] = await db.query(
+      `SELECT
+         d.id,
+         d.driver_id,
+         d.status,
+         d.scheduled_date,
+         d.delivered_date,
+         driver.name AS driver_name,
+         CASE
+           WHEN LOWER(COALESCE(d.status, '')) IN ('scheduled', 'in_transit')
+           THEN NULLIF(TRIM(driver.phone), '')
+           ELSE NULL
+         END AS driver_phone
+       FROM deliveries d
+       LEFT JOIN users driver ON driver.id = d.driver_id
+       WHERE d.order_id = ?
+       ORDER BY d.id DESC
+       LIMIT 1`,
+      [order.id],
+    );
+
+    order.delivery_details = latestDelivery || null;
+
     res.json(order);
   } catch (err) {
     console.error("[customer.orders/:id]", err);

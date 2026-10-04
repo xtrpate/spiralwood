@@ -71,6 +71,7 @@ const cleanupFreshUpload = (file) => {
 };
 
 const DELIVERY_STATUSES = ["scheduled", "in_transit", "delivered", "failed"];
+const DELIVERY_CONTACT_VISIBLE_STATUSES = new Set(["scheduled", "in_transit"]);
 
 const DELIVERY_TRANSITIONS = {
   scheduled: ["scheduled", "in_transit"],
@@ -1229,6 +1230,15 @@ exports.getDeliveries = async (req, res) => {
         : choices.has("none")
           ? "none"
           : "";
+
+      if (
+        req.user.role === "staff" &&
+        !DELIVERY_CONTACT_VISIBLE_STATUSES.has(
+          normalizeText(row.status).toLowerCase(),
+        )
+      ) {
+        row.customer_phone = "";
+      }
 
       if (row.signed_receipt)
         row.signed_receipt = signUploadPath(row.signed_receipt);

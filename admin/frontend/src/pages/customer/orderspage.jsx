@@ -872,6 +872,21 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
         ? "Not Requested"
         : "";
 
+  const deliveryPersonnelStatus = String(
+    order?.delivery_details?.status || "",
+  )
+    .trim()
+    .toLowerCase();
+  const deliveryPersonnelName = String(
+    order?.delivery_details?.driver_name || "",
+  ).trim();
+  const deliveryPersonnelPhone = String(
+    order?.delivery_details?.driver_phone || "",
+  ).trim();
+  const showDeliveryPersonnelContact =
+    ["scheduled", "in_transit"].includes(deliveryPersonnelStatus) &&
+    Boolean(deliveryPersonnelName);
+
   return (
     <div className="om-backdrop" onClick={onClose}>
       <div className="om-panel" onClick={(e) => e.stopPropagation()}>
@@ -1110,6 +1125,21 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
                       <span>Delivery Address</span>
                       <strong>{order.delivery_address || "—"}</strong>
                     </div>
+
+                    {showDeliveryPersonnelContact ? (
+                      <>
+                        <div className="om-detail-row">
+                          <span>Delivery Personnel</span>
+                          <strong>{deliveryPersonnelName}</strong>
+                        </div>
+                        <div className="om-detail-row">
+                          <span>Contact Number</span>
+                          <strong>
+                            {deliveryPersonnelPhone || "Not provided"}
+                          </strong>
+                        </div>
+                      </>
+                    ) : null}
 
                     <div className="om-detail-row">
                       <span>Payment Method</span>

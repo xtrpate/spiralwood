@@ -1546,6 +1546,7 @@ exports.getCustomOrderById = async (req, res) => {
           d.signed_receipt,
           d.updated_at,
           u.name AS driver_name,
+          u.phone AS driver_phone,
           da.receipt_number AS delivery_receipt_number,
           da.acknowledged_at AS delivery_acknowledged_at,
           CASE
@@ -1581,6 +1582,9 @@ exports.getCustomOrderById = async (req, res) => {
             latitude: parseStrictCoordinate(order.delivery_lat),
             longitude: parseStrictCoordinate(order.delivery_lng),
             driver_name: toTrimmedStringOrNull(deliveryRow.driver_name),
+            driver_phone: ["scheduled", "in_transit"].includes(deliveryStatus)
+              ? toTrimmedStringOrNull(deliveryRow.driver_phone)
+              : null,
             receipt_number: toTrimmedStringOrNull(
               deliveryRow.delivery_receipt_number,
             ),

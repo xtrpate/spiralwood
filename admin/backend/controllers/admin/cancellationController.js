@@ -763,6 +763,16 @@ exports.approveRequest = async (req, res) => {
       });
     }
 
+    const [[latestDeliveryForClosure]] = await conn.query(
+      `SELECT id, driver_id, status
+       FROM deliveries
+       WHERE order_id = ?
+       ORDER BY id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [orderId],
+    );
+
     const materialReleaseResult =
       await releaseBlueprintMaterialsForCancellation(conn, {
         orderId,
@@ -891,6 +901,26 @@ exports.approveRequest = async (req, res) => {
         type: "delivery_update",
         title: "Scheduled Delivery Cancelled",
         message: `${order.order_number || `Order #${order.id}`} was cancelled before transit. Do not start this delivery.`,
+        targetType: "order",
+        targetId: order.id,
+        targetOrderId: order.id,
+      });
+    }
+
+    const latestDeliveryStatus = normalize(latestDeliveryForClosure?.status);
+    const latestDeliveryRiderId = Number(latestDeliveryForClosure?.driver_id);
+
+    if (
+      isPostProductionWithdrawal &&
+      latestDeliveryStatus === "failed" &&
+      Number.isInteger(latestDeliveryRiderId) &&
+      latestDeliveryRiderId > 0
+    ) {
+      await createNotificationSafe(conn, {
+        userId: latestDeliveryRiderId,
+        type: "delivery_update",
+        title: "Withdrawal Approved - Delivery Closed",
+        message: `${order.order_number || `Order #${order.id}`} was approved for customer withdrawal after the failed/refused delivery. No further delivery action is required.`,
         targetType: "order",
         targetId: order.id,
         targetOrderId: order.id,

@@ -1458,6 +1458,14 @@ export default function CustomRequestDetailPage() {
     deliveryDetailsForCustomer?.driver_name || "",
   ).trim();
 
+  const customerDeliveryRiderPhone = String(
+    deliveryDetailsForCustomer?.driver_phone || "",
+  ).trim();
+
+  const customerDeliveryContactVisible =
+    ["scheduled", "in_transit"].includes(customerDeliveryStatusKey) &&
+    Boolean(customerDeliveryRider);
+
   const customerDeliveryRiderFallback = customerDeliveryIsFinished
     ? "Rider information not available"
     : "Not assigned yet";
@@ -4680,6 +4688,15 @@ export default function CustomRequestDetailPage() {
                             <small>Delivery staff</small>
                           ) : null}
                         </div>
+
+                        {customerDeliveryContactVisible ? (
+                          <div className="crd-delivery-confirmation-row-v5">
+                            <span>Contact Number</span>
+                            <strong>
+                              {customerDeliveryRiderPhone || "Not provided"}
+                            </strong>
+                          </div>
+                        ) : null}
 
                         <div className="crd-delivery-confirmation-row-v5">
                           <span>Proof of delivery</span>

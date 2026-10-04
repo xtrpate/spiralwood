@@ -1191,6 +1191,13 @@ export default function DeliveryManagement() {
                       </div>
                     }
                   />
+                  {isDeliveryRider &&
+                  ["scheduled", "in_transit"].includes(status) ? (
+                    <InfoCard
+                      label="Contact Number"
+                      value={delivery.customer_phone || "Not provided"}
+                    />
+                  ) : null}
                   <InfoCard
                     label="Scheduled"
                     value={
