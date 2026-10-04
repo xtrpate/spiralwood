@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
+import useAuthStore from "../../store/authStore";
 import * as XLSX from "xlsx-js-style";
 import "./SalesReportPage.css";
 
@@ -24,6 +25,25 @@ const PERIODS = [
   { value: "yearly", label: "This Year" },
   { value: "custom", label: "Custom Range" },
 ];
+
+const buildSalesReportParams = ({
+  channel = "",
+  payment = "",
+  period = "monthly",
+  from = "",
+  to = "",
+} = {}) => {
+  const params = { channel, payment };
+
+  if (period === "custom") {
+    params.from = from;
+    params.to = to;
+  } else {
+    params.period = period;
+  }
+
+  return params;
+};
 
 const money = (value) =>
   `₱${Number(value || 0).toLocaleString("en-PH", {
@@ -88,6 +108,7 @@ const dateTime = (value) => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "—";
   return parsed.toLocaleString("en-PH", {
+    timeZone: REPORT_TIME_ZONE,
     year: "numeric",
     month: "short",
     day: "2-digit",
@@ -184,6 +205,9 @@ function EmptyRow({ colSpan, text }) {
 
 export default function SalesReportPage() {
   const navigate = useNavigate();
+  const hasPermission = useAuthStore((state) => state.hasPermission);
+  const canExport = hasPermission("sales_report.export");
+  const requestIdRef = useRef(0);
 
   const [channel, setChannel] = useState("");
   const [payment, setPayment] = useState("");
@@ -191,6 +215,7 @@ export default function SalesReportPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [data, setData] = useState(null);
+  const [appliedFilters, setAppliedFilters] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [exportOpen, setExportOpen] = useState(false);
@@ -205,35 +230,43 @@ export default function SalesReportPage() {
   const load = useCallback(async () => {
     if (period === "custom" && (!from || !to || from > to)) return;
 
+    const requestedFilters = {
+      channel,
+      payment,
+      period,
+      from: period === "custom" ? from : "",
+      to: period === "custom" ? to : "",
+    };
+    const requestId = ++requestIdRef.current;
+
     setLoading(true);
     setError("");
 
     try {
-      const params = { channel, payment };
+      const response = await api.get("/sales/report", {
+        params: buildSalesReportParams(requestedFilters),
+      });
 
-      if (period === "custom") {
-        params.from = from;
-        params.to = to;
-      } else {
-        params.period = period;
-      }
+      if (requestId !== requestIdRef.current) return;
 
-      const response = await api.get("/sales/report", { params });
       setData(response.data);
+      setAppliedFilters(requestedFilters);
     } catch (err) {
-      setData(null);
+      if (requestId !== requestIdRef.current) return;
+
       setError(
         err.response?.data?.message || "Failed to load the sales report.",
       );
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [channel, from, payment, period, to]);
 
   useEffect(() => {
     if (period !== "custom") load();
   }, [load, period]);
-
   const summary = data?.summary || {};
   const collections = data?.collections || [];
   const orders = data?.orders || [];
@@ -273,20 +306,26 @@ export default function SalesReportPage() {
 
   const collectionTotal = Number(summary.actual_collected || 0);
 
+  const appliedChannel = appliedFilters?.channel ?? channel;
+  const appliedPayment = appliedFilters?.payment ?? payment;
+  const appliedPeriod = appliedFilters?.period ?? period;
+  const appliedFrom = appliedFilters?.from ?? from;
+  const appliedTo = appliedFilters?.to ?? to;
+
   const reportDateRangeLabel = useMemo(() => {
-    if (period === "custom") {
-      if (!from || !to) return "Custom Range";
-      return `${formatDateOnly(from)} – ${formatDateOnly(to)}`;
+    if (appliedPeriod === "custom") {
+      if (!appliedFrom || !appliedTo) return "Custom Range";
+      return `${formatDateOnly(appliedFrom)} – ${formatDateOnly(appliedTo)}`;
     }
 
     const { year, month, day } = getManilaDateParts();
     const today = toCalendarYMD(year, month, day);
 
-    if (period === "daily") {
+    if (appliedPeriod === "daily") {
       return formatDateOnly(today);
     }
 
-    if (period === "weekly") {
+    if (appliedPeriod === "weekly") {
       const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
       const mondayOffset = weekday === 0 ? -6 : 1 - weekday;
       const start = shiftCalendarDate(year, month, day, mondayOffset);
@@ -295,7 +334,7 @@ export default function SalesReportPage() {
       return `${formatDateOnly(start)} – ${formatDateOnly(end)}`;
     }
 
-    if (period === "yearly") {
+    if (appliedPeriod === "yearly") {
       const start = toCalendarYMD(year, 1, 1);
       const end = toCalendarYMD(year, 12, 31);
 
@@ -306,31 +345,31 @@ export default function SalesReportPage() {
     const end = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
 
     return `${formatDateOnly(start)} – ${formatDateOnly(end)}`;
-  }, [from, period, to]);
+  }, [appliedFrom, appliedPeriod, appliedTo]);
 
   const channelLabel =
-    CHANNELS.find((item) => item.key === channel)?.label || "All Channels";
+    CHANNELS.find((item) => item.key === appliedChannel)?.label ||
+    "All Channels";
   const paymentLabel =
-    PAYMENT_TYPES.find((item) => item.key === payment)?.label || "All Payments";
-
+    PAYMENT_TYPES.find((item) => item.key === appliedPayment)?.label ||
+    "All Payments";
   const exportExcel = async () => {
-    if (!data) return;
+    if (!data || !appliedFilters || loading || !canExport) return;
     setExporting(true);
 
     try {
-      let exportData = data;
-      let periodLabel = reportDateRangeLabel;
-
-      if (exportScope === "all") {
-        const response = await api.get("/sales/report", {
-          params: {
-            period: "all",
-          },
-        });
-        exportData = response.data;
-        periodLabel = "All Time (Complete History)";
-      }
-
+      const exportParams =
+        exportScope === "all"
+          ? { period: "all" }
+          : buildSalesReportParams(appliedFilters);
+      const response = await api.get("/sales/report/print", {
+        params: exportParams,
+      });
+      const exportData = response.data;
+      const periodLabel =
+        exportScope === "all"
+          ? "All Time (Complete History)"
+          : reportDateRangeLabel;
       // Isolate the data variables so we format the correct target data
       const exSummary = exportData?.summary || {};
       const exSalesByChannel = exportData?.sales_by_channel || [];
@@ -407,7 +446,7 @@ export default function SalesReportPage() {
       excelData.push([{ v: "Period:", s: titleStyle }, periodLabel]);
       excelData.push([
         { v: "Generated:", s: titleStyle },
-        new Date().toLocaleString("en-PH"),
+        new Date().toLocaleString("en-PH", { timeZone: REPORT_TIME_ZONE }),
       ]);
       excelData.push([]);
 
@@ -584,9 +623,10 @@ export default function SalesReportPage() {
 
       XLSX.utils.book_append_sheet(wb, ws, "Sales Report");
 
-      const safeChannel = exportScope === "all" ? "all" : channel || "all";
+      const safeChannel =
+        exportScope === "all" ? "all" : appliedChannel || "all";
       const safePeriod =
-        exportScope === "all" ? "lifetime" : period || "report";
+        exportScope === "all" ? "lifetime" : appliedPeriod || "report";
       XLSX.writeFile(
         wb,
         `wisdom_sales_report_${safeChannel}_${safePeriod}.xlsx`,
@@ -595,7 +635,9 @@ export default function SalesReportPage() {
       setExportOpen(false);
       toast.success("Sales report downloaded successfully.");
     } catch (err) {
-      toast.error("Failed to generate the export file.");
+      toast.error(
+        err.response?.data?.message || "Failed to generate the export file.",
+      );
     } finally {
       setExporting(false);
     }
@@ -617,7 +659,8 @@ export default function SalesReportPage() {
             type="button"
             className="sales-button sales-button-primary"
             onClick={() => setExportOpen(true)}
-            disabled={!data}
+            disabled={!data || !appliedFilters || loading || !canExport}
+            title={!canExport ? "Sales report export permission is required." : undefined}
           >
             Export Report
           </button>
@@ -625,6 +668,8 @@ export default function SalesReportPage() {
             type="button"
             className="sales-button sales-button-secondary"
             onClick={() => window.print()}
+            disabled={!data || !appliedFilters || loading || !canExport}
+            title={!canExport ? "Sales report export permission is required." : undefined}
           >
             Print
           </button>
@@ -998,7 +1043,7 @@ export default function SalesReportPage() {
         </>
       ) : null}
 
-      {exportOpen && (
+      {exportOpen && canExport && (
         <div className="sales-modal-backdrop">
           <div
             role="dialog"
@@ -1012,7 +1057,7 @@ export default function SalesReportPage() {
             </h2>
             <p className="sales-dialog-text">
               Create an Excel report of your sales performance based on your
-              currently selected filters.
+              last successfully applied filters.
             </p>
 
             <div className="sales-export-scope-list">
@@ -1107,7 +1152,7 @@ export default function SalesReportPage() {
               <strong>Period:</strong> {reportDateRangeLabel}
             </span>
             <span>
-              <strong>Generated:</strong> {new Date().toLocaleString("en-PH")}
+              <strong>Generated:</strong> {new Date().toLocaleString("en-PH", { timeZone: REPORT_TIME_ZONE })}
             </span>
           </div>
 

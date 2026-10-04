@@ -1,6 +1,11 @@
 // controllers/admin/salesController.js
 // Sales reporting separates order value from money that was actually collected.
 const pool = require("../../config/db");
+const {
+  getPhilippineBusinessPeriods,
+  getPhilippineDateBoundsUtc,
+  getPhilippineDateKey,
+} = require("../../utils/philippineTime");
 
 const normalize = (value) =>
   String(value || "")
@@ -21,14 +26,6 @@ const buildChannelFilter = (rawChannel, alias = "o") => {
   return { sql: `${alias}.type = ?`, params: [channel] };
 };
 
-const REPORT_SOURCE_OFFSET = "+00:00";
-const REPORT_LOCAL_OFFSET = "+08:00";
-
-const toReportLocalTime = (expression) =>
-  `CONVERT_TZ(${expression}, '${REPORT_SOURCE_OFFSET}', '${REPORT_LOCAL_OFFSET}')`;
-
-const reportLocalNowSql = () =>
-  `CONVERT_TZ(UTC_TIMESTAMP(), '${REPORT_SOURCE_OFFSET}', '${REPORT_LOCAL_OFFSET}')`;
 
 const buildPaymentFilter = (rawPayment, alias = "pt") => {
   const payment = normalize(rawPayment);
@@ -74,70 +71,84 @@ const buildOrderPaymentFilter = (rawPayment, orderAlias = "o") => {
   };
 };
 
-const buildDateFilter = ({ from, to, period }, expression) => {
-  const start = String(from || "").trim();
-  const end = String(to || "").trim();
-  const localExpression = toReportLocalTime(expression);
-  const localNow = reportLocalNowSql();
-
-  if (start || end) {
-    const clauses = [];
-    const params = [];
-    if (start) {
-      clauses.push(`DATE(${localExpression}) >= ?`);
-      params.push(start);
-    }
-    if (end) {
-      clauses.push(`DATE(${localExpression}) <= ?`);
-      params.push(end);
-    }
-    return { sql: clauses.join(" AND "), params };
-  }
-
-  const normalizedPeriod = VALID_PERIODS.has(normalize(period))
-    ? normalize(period)
-    : "monthly";
-
-  if (normalizedPeriod === "all") {
-    return {
-      sql: "1=1",
-      params: [],
-    };
-  }
-
-  if (normalizedPeriod === "daily") {
-    return {
-      sql: `DATE(${localExpression}) = DATE(${localNow})`,
-      params: [],
-    };
-  }
-  if (normalizedPeriod === "weekly") {
-    return {
-      sql: `YEARWEEK(${localExpression}, 1) = YEARWEEK(${localNow}, 1)`,
-      params: [],
-    };
-  }
-  if (normalizedPeriod === "yearly") {
-    return {
-      sql: `YEAR(${localExpression}) = YEAR(${localNow})`,
-      params: [],
-    };
-  }
-
-  return {
-    sql: `YEAR(${localExpression}) = YEAR(${localNow}) AND MONTH(${localExpression}) = MONTH(${localNow})`,
-    params: [],
-  };
+const badRequest = (message) => {
+  const error = new Error(message);
+  error.statusCode = 400;
+  return error;
 };
 
+const buildDateFilter = ({ from, to, period }, expression, now = new Date()) => {
+  const start = String(from || "").trim();
+  const end = String(to || "").trim();
+
+  if (start || end) {
+    if (!start || !end) {
+      throw badRequest("Both from and to dates are required for a custom sales range.");
+    }
+
+    let startBounds;
+    let endBounds;
+
+    try {
+      startBounds = getPhilippineDateBoundsUtc(start);
+      endBounds = getPhilippineDateBoundsUtc(end);
+    } catch {
+      throw badRequest("Invalid sales report date. Use a valid YYYY-MM-DD value.");
+    }
+
+    if (start > end) {
+      throw badRequest("Sales report start date cannot be after end date.");
+    }
+
+    return {
+      sql: `${expression} >= ? AND ${expression} < ?`,
+      params: [startBounds.startUtc, endBounds.nextStartUtc],
+    };
+  }
+
+  const normalizedPeriod = normalize(period) || "monthly";
+  if (!VALID_PERIODS.has(normalizedPeriod)) {
+    throw badRequest("Invalid sales report period.");
+  }
+
+  if (normalizedPeriod === "all") {
+    return { sql: "1=1", params: [] };
+  }
+
+  if (normalizedPeriod === "yearly") {
+    const currentYear = Number(getPhilippineDateKey(now).slice(0, 4));
+    const yearStart = getPhilippineDateBoundsUtc(`${currentYear}-01-01`).startUtc;
+    const nextYearStart = getPhilippineDateBoundsUtc(`${currentYear + 1}-01-01`).startUtc;
+
+    return {
+      sql: `${expression} >= ? AND ${expression} < ?`,
+      params: [yearStart, nextYearStart],
+    };
+  }
+
+  const periods = getPhilippineBusinessPeriods(now);
+  const bounds =
+    normalizedPeriod === "daily"
+      ? [periods.todayStart, periods.tomorrowStart]
+      : normalizedPeriod === "weekly"
+        ? [periods.weekStart, periods.nextWeekStart]
+        : [periods.monthStart, periods.nextMonthStart];
+
+  return {
+    sql: `${expression} >= ? AND ${expression} < ?`,
+    params: bounds,
+  };
+};
 const getFilters = (query) => {
+  const now = new Date();
   const channel = buildChannelFilter(query.channel, "o");
   const payment = buildPaymentFilter(query.payment, "pt");
   const orderPayment = buildOrderPaymentFilter(query.payment, "o");
-  const orderDate = buildDateFilter(query, "o.created_at");
+  const orderDate = buildDateFilter(query, "o.created_at", now);
   const paymentDate = buildDateFilter(
     query,
     "COALESCE(pt.verified_at, pt.created_at)",
+    now,
   );
   return { channel, payment, orderPayment, orderDate, paymentDate };
 };

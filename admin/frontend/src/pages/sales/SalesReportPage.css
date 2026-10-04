@@ -705,6 +705,41 @@
     display: none !important;
   }
 
+  /* WISDOM ADMIN SALES PRINT SHELL FLOW R1.2
+     AdminLayout uses a fixed 100vh shell and an overflow-y main scroller
+     on screen. Those viewport constraints can clip later print sections.
+     Override them only when the Sales print root exists. */
+  body:has(.sales-print-report) .wisdom-sidebar,
+  body:has(.sales-print-report) .wisdom-admin-topbar {
+    display: none !important;
+  }
+
+  body:has(.sales-print-report) .wisdom-admin-shell {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  body:has(.sales-print-report) .wisdom-admin-main {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+  }
+
+  body:has(.sales-print-report) .wisdom-admin-main > main {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
   .sales-print-report {
     display: block !important;
     position: static !important;
