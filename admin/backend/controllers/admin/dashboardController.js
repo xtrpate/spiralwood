@@ -325,14 +325,17 @@ exports.getDashboard = async (req, res) => {
     };
 
     // ── 4. PAYMENTS QUEUE ──
-    let payments = { pending_reviews: 0 };
-    try {
-      const [[paymentRows]] = await pool.query(`
-        SELECT COALESCE(SUM(status = 'pending'), 0) AS pending_reviews
-        FROM payments
-      `);
-      payments = paymentRows;
-    } catch (e) {}
+    // Pending review work is stored in payment_transactions. Do not swallow
+    // database failures here: showing a fake zero could hide money awaiting
+    // admin review.
+    const [[paymentRows]] = await pool.query(`
+      SELECT COUNT(*) AS pending_reviews
+      FROM payment_transactions
+      WHERE status = 'pending'
+    `);
+    const payments = {
+      pending_reviews: Number(paymentRows?.pending_reviews || 0),
+    };
 
     // ── 5. BLUEPRINT PIPELINE (Strictly using order_type and valid statuses) ──
     const [[blueprintDbRows]] = await pool.query(
