@@ -58,6 +58,36 @@ assert.throws(
   /unsupported SQL statement/i,
 );
 
+const ansiQuotedSql = `-- WISDOM Database Backup
+-- Generated: 2026-10-05T00:00:00.000Z
+-- Database: wisdom_db
+SET @WISDOM_OLD_FOREIGN_KEY_CHECKS=@@SESSION.foreign_key_checks;
+SET FOREIGN_KEY_CHECKS=0;
+SET SESSION sql_mode='NO_AUTO_VALUE_ON_ZERO,ANSI_QUOTES';
+SET SESSION time_zone='+00:00';
+-- Table: sample
+CREATE TABLE "sample" (
+  "id" int NOT NULL AUTO_INCREMENT,
+  "value" varchar(255) DEFAULT NULL,
+  PRIMARY KEY ("id")
+) ENGINE=InnoDB AUTO_INCREMENT=44 DEFAULT CHARSET=utf8mb4;
+SET FOREIGN_KEY_CHECKS=@WISDOM_OLD_FOREIGN_KEY_CHECKS;`;
+
+const ansiParsed = validateWisdomBackupSql(ansiQuotedSql);
+assert.strictEqual(ansiParsed.createTableDdls.size, 1);
+assert.ok(ansiParsed.createTableDdls.has("sample"));
+assert.match(
+  ansiParsed.createTableDdls.get("sample"),
+  /^CREATE TABLE "sample"/i,
+);
+
+assert.throws(
+  () =>
+    validateWisdomBackupSql(
+      '-- WISDOM Database Backup\nALTER TABLE "sample" ADD COLUMN "x" int;',
+    ),
+  /unsupported SQL statement/i,
+);
 const backupService = read("backend/services/databaseBackupService.js");
 assert.match(backupService, /BACKUP_LOCK_NAME/);
 assert.match(backupService, /module\.exports[\s\S]*BACKUP_LOCK_NAME/);

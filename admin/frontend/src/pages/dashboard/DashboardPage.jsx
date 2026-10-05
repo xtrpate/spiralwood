@@ -441,7 +441,7 @@ export default function DashboardPage() {
       labels: chartLabels,
       datasets: [
         {
-          label: "Online Sales",
+          label: "Online Collections",
           data: salesChart.map((row) => Number(row.online_sales || 0)),
           borderColor: "#18181b",
           backgroundColor: (context) => {
@@ -477,7 +477,7 @@ export default function DashboardPage() {
           pointBorderColor: "#18181b",
         },
         {
-          label: "Walk-in Sales",
+          label: "Walk-in Collections",
           data: salesChart.map((row) => Number(row.walkin_sales || 0)),
           borderColor: "#9ca3af",
           backgroundColor: "transparent",
@@ -883,9 +883,11 @@ export default function DashboardPage() {
 
       <section className="metric-grid metric-grid--five">
         <MetricCard
-          title="Sales"
-          value={peso.format(Number(sales.total_revenue || 0))}
-          meta={`Profit ${peso.format(Number(sales.total_profit || 0))}`}
+          title="Verified collections"
+          value={peso.format(
+            Number(sales.verified_collections ?? sales.total_revenue ?? 0),
+          )}
+          meta={`Order value ${peso.format(Number(sales.order_value || 0))}`}
           onClick={() => navigate("/admin/sales")}
         />
 
@@ -940,9 +942,9 @@ export default function DashboardPage() {
         <div className="dash-card">
           <div className="card-header">
             <div>
-              <h2 className="card-title">Sales trend</h2>
+              <h2 className="card-title">Collection trend</h2>
               <p className="card-description">
-                Online and walk-in sales for the selected period.
+                Verified online and walk-in payments for the selected period.
               </p>
             </div>
 
@@ -958,9 +960,11 @@ export default function DashboardPage() {
           <div className="dash-chart-area dash-chart-area--sales">
             {salesChart.length === 0 ? (
               <div className="dash-empty-state">
-                <div className="dash-empty-title">No sales recorded</div>
+                <div className="dash-empty-title">
+                  No verified collections
+                </div>
                 <div className="dash-empty-text">
-                  No sales were recorded in the selected period.
+                  No verified payments were recorded in the selected period.
                 </div>
               </div>
             ) : (
