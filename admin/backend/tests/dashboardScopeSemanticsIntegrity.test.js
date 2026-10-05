@@ -59,6 +59,9 @@ assert.match(
 );
 
 // Backend semantics: period order counts remain date-scoped.
+// D7 uses canonical Philippine UTC boundaries instead of wrapping created_at
+// in DATE(DATE_ADD(...)), preserving the same business-day meaning while
+// keeping the timestamp column directly range-filterable.
 const periodOrdersStart = controller.indexOf(
   "const [[currentOpsDate]] = await pool.query",
 );
@@ -74,7 +77,12 @@ const periodOrdersSection = controller.slice(
 );
 assert.match(
   periodOrdersSection,
-  /DATE\(DATE_ADD\(created_at, INTERVAL 8 HOUR\)\) BETWEEN \? AND \?/,
+  /WHERE created_at >= \?\s+AND created_at < \?/,
+);
+assert.match(periodOrdersSection, /\bperiodUtcParams\b/);
+assert.doesNotMatch(
+  periodOrdersSection,
+  /DATE\(DATE_ADD\(created_at, INTERVAL 8 HOUR\)\)/,
 );
 
 // Backend semantics: Open Orders remains all-time/current, not date-filtered.

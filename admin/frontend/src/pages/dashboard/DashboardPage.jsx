@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Line, Bar, Doughnut } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -77,6 +77,7 @@ function formatDateTime(value) {
   if (Number.isNaN(date.getTime())) return value;
 
   return date.toLocaleString("en-PH", {
+    timeZone: "Asia/Manila",
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -203,7 +204,9 @@ function StatusBadge({ status }) {
     confirmed: ["#eff6ff", "#1d4ed8", "#bfdbfe"],
     contract_released: ["#eff6ff", "#1d4ed8", "#bfdbfe"],
     production: ["#f5f3ff", "#6d28d9", "#ddd6fe"],
+    ready_for_pickup: ["#fff7ed", "#c2410c", "#fed7aa"],
     shipping: ["#fff7ed", "#c2410c", "#fed7aa"],
+    rejected: ["#fef2f2", "#b91c1c", "#fecaca"],
     cancelled: ["#fef2f2", "#b91c1c", "#fecaca"],
   }[normalized] || ["#f4f4f5", "#52525b", "#e4e4e7"];
 
@@ -268,6 +271,12 @@ export default function DashboardPage() {
   const [preset, setPreset] = useState("last30");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [appliedRange, setAppliedRange] = useState({
+    preset: "last30",
+    from: "",
+    to: "",
+  });
+  const requestSequenceRef = useRef(0);
 
   const loadDashboard = useCallback(
     async ({
@@ -276,6 +285,8 @@ export default function DashboardPage() {
       toArg = "",
       silent = false,
     } = {}) => {
+      const requestId = ++requestSequenceRef.current;
+
       try {
         setFetchError("");
 
@@ -291,15 +302,29 @@ export default function DashboardPage() {
             : { preset: presetArg };
 
         const res = await api.get("/dashboard", { params });
+
+        if (requestId !== requestSequenceRef.current) return;
+
+        const responseRange = res.data?.dateRange || {};
         setData(res.data);
+        setAppliedRange({
+          preset: responseRange.preset || presetArg,
+          from:
+            responseRange.from || (presetArg === "custom" ? fromArg : ""),
+          to: responseRange.to || (presetArg === "custom" ? toArg : ""),
+        });
       } catch (err) {
+        if (requestId !== requestSequenceRef.current) return;
+
         const message =
           err.response?.data?.message ||
           "Failed to load dashboard. Check your server connection.";
         setFetchError(message);
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (requestId === requestSequenceRef.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     },
     [],
@@ -307,6 +332,10 @@ export default function DashboardPage() {
 
   useEffect(() => {
     loadDashboard({ presetArg: "last30" });
+
+    return () => {
+      requestSequenceRef.current += 1;
+    };
   }, [loadDashboard]);
 
   const handlePresetChange = (key) => {
@@ -350,15 +379,16 @@ export default function DashboardPage() {
 
   const handleRefresh = () => {
     loadDashboard({
-      presetArg: preset,
-      fromArg: from,
-      toArg: to,
+      presetArg: appliedRange.preset,
+      fromArg: appliedRange.from,
+      toArg: appliedRange.to,
       silent: true,
     });
   };
 
   const activeLabel =
-    PRESETS.find((item) => item.key === preset)?.label || "Custom Range";
+    PRESETS.find((item) => item.key === appliedRange.preset)?.label ||
+    "Custom Range";
 
   const inventory = data?.inventory || {};
   const orders = data?.orders || {};
@@ -781,7 +811,11 @@ export default function DashboardPage() {
           <button
             className="dash-btn dash-btn-primary"
             onClick={() =>
-              loadDashboard({ presetArg: preset, fromArg: from, toArg: to })
+              loadDashboard({
+                presetArg: appliedRange.preset,
+                fromArg: appliedRange.from,
+                toArg: appliedRange.to,
+              })
             }
           >
             Retry
@@ -1320,7 +1354,7 @@ export default function DashboardPage() {
               <tbody>
                 {recentOrders.slice(0, 8).map((order) => (
                   <tr key={order.id}>
-                    <td className="dash-strong">#{order.id}</td>
+                    <td className="dash-strong">{order.order_number || `#${order.id}`}</td>
                     <td>{order.customer_name || "Walk-in"}</td>
                     <td className="dash-amount">
                       {peso.format(Number(order.total_amount || 0))}

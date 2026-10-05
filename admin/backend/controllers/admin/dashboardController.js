@@ -208,8 +208,8 @@ exports.getDashboard = async (req, res) => {
   try {
     const { preset, from: rawFrom, to: rawTo } = req.query;
     const { from, to } = getDateRange(preset, rawFrom, rawTo);
-    const dateParams = [from, to];
-    const salesUtcParams = getPhilippineUtcRange(from, to);
+    const periodUtcParams = getPhilippineUtcRange(from, to);
+    const salesUtcParams = periodUtcParams;
 
     const totalDays = diffInDaysInclusive(from, to);
     const chartMode =
@@ -358,9 +358,10 @@ exports.getDashboard = async (req, res) => {
           COALESCE(SUM(CASE WHEN type = 'in' THEN quantity ELSE 0 END), 0) AS stock_in_total,
           COALESCE(SUM(CASE WHEN type = 'out' THEN quantity ELSE 0 END), 0) AS stock_out_total
         FROM stock_movements
-        WHERE DATE(DATE_ADD(created_at, INTERVAL 8 HOUR)) BETWEEN ? AND ?
+        WHERE created_at >= ?
+          AND created_at < ?
       `,
-        dateParams,
+        periodUtcParams,
       );
       stockMovements = movements;
     } catch (e) {}
@@ -393,9 +394,10 @@ exports.getDashboard = async (req, res) => {
         COALESCE(SUM(status = 'delivered'), 0) AS delivered_orders,
         COALESCE(SUM(status = 'cancelled'), 0) AS cancelled_orders
       FROM orders
-      WHERE DATE(DATE_ADD(created_at, INTERVAL 8 HOUR)) BETWEEN ? AND ?
+      WHERE created_at >= ?
+        AND created_at < ?
       `,
-      dateParams,
+      periodUtcParams,
     );
 
     // All-time Open Queue (Ignores date filter)
@@ -488,9 +490,10 @@ exports.getDashboard = async (req, res) => {
         COALESCE(SUM(status = 'cancelled'), 0) AS cancelled_blueprint_orders
       FROM orders
       WHERE (order_type = 'blueprint' OR blueprint_id IS NOT NULL)
-        AND DATE(DATE_ADD(created_at, INTERVAL 8 HOUR)) BETWEEN ? AND ?
+        AND created_at >= ?
+        AND created_at < ?
       `,
-      dateParams,
+      periodUtcParams,
     );
 
     const blueprint = {
@@ -617,6 +620,7 @@ exports.getDashboard = async (req, res) => {
       `
       SELECT
         o.id,
+        o.order_number,
         COALESCE(u.name, o.walkin_customer_name, 'Walk-in') AS customer_name,
         o.total AS total_amount,
         o.status,
@@ -626,11 +630,12 @@ exports.getDashboard = async (req, res) => {
         o.created_at
       FROM orders o
       LEFT JOIN users u ON u.id = o.customer_id
-      WHERE DATE(DATE_ADD(o.created_at, INTERVAL 8 HOUR)) BETWEEN ? AND ?
+      WHERE o.created_at >= ?
+        AND o.created_at < ?
       ORDER BY o.created_at DESC
       LIMIT 15
       `,
-      dateParams,
+      periodUtcParams,
     );
 
     return res.json({
