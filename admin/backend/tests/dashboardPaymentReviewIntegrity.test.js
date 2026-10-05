@@ -84,11 +84,11 @@ const mockDb = {
     }
 
     if (
-      text.includes("COALESCE(SUM(o.total), 0) AS total_revenue") &&
+      text.includes("COALESCE(SUM(o.total), 0) AS order_value") &&
       text.includes("avg_order_value")
     ) {
       return [[{
-        total_revenue: 0,
+        order_value: 0,
         avg_order_value: 0,
         online_orders: 0,
         walkin_orders: 0,
@@ -102,7 +102,21 @@ const mockDb = {
       return [[{ total_profit: 0 }]];
     }
 
-    if (text.includes("FROM payment_transactions")) {
+    if (
+      text.includes("AS verified_collections") &&
+      text.includes("verified_payment_count") &&
+      text.includes("FROM payment_transactions")
+    ) {
+      return [[{
+        verified_collections: 0,
+        verified_payment_count: 0,
+      }]];
+    }
+
+    if (
+      text.includes("COUNT(*) AS pending_reviews") &&
+      text.includes("FROM payment_transactions")
+    ) {
       if (failPaymentQuery) {
         throw new Error("simulated payment ledger failure");
       }

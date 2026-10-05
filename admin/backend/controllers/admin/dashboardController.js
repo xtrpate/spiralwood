@@ -1,4 +1,7 @@
 const pool = require("../../config/db");
+const {
+  getPhilippineDateBoundsUtc,
+} = require("../../utils/philippineTime");
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -129,6 +132,16 @@ function diffInDaysInclusive(from, to) {
   return Math.floor(ms / 86400000) + 1;
 }
 
+function getPhilippineUtcRange(from, to) {
+  try {
+    const start = getPhilippineDateBoundsUtc(from);
+    const end = getPhilippineDateBoundsUtc(to);
+    return [start.startUtc, end.nextStartUtc];
+  } catch {
+    throw createHttpError(400, "Invalid custom date range. Use YYYY-MM-DD.");
+  }
+}
+
 function buildDailySeries(rows, from, to) {
   const rowMap = new Map(
     rows.map((r) => [
@@ -196,6 +209,7 @@ exports.getDashboard = async (req, res) => {
     const { preset, from: rawFrom, to: rawTo } = req.query;
     const { from, to } = getDateRange(preset, rawFrom, rawTo);
     const dateParams = [from, to];
+    const salesUtcParams = getPhilippineUtcRange(from, to);
 
     const totalDays = diffInDaysInclusive(from, to);
     const chartMode =
@@ -286,19 +300,24 @@ exports.getDashboard = async (req, res) => {
 
     const currentOps = { ...currentOpsDate, ...currentOpsAllTime };
 
-    // ── 3. SALES & REVENUE (Strictly using `type` for online/walkin) ──
-    const [[salesTotals]] = await pool.query(
+    // ── 3. SALES / VERIFIED COLLECTIONS ──
+    // Order value and collected money are different business measures.
+    // Keep non-cancelled order value as context, but the dashboard's primary
+    // sales KPI follows the canonical Sales Report definition: only verified
+    // payment_transactions recognized by payment verification date.
+    const [[orderValueTotals]] = await pool.query(
       `
       SELECT
-        COALESCE(SUM(o.total), 0) AS total_revenue,
+        COALESCE(SUM(o.total), 0) AS order_value,
         COALESCE(AVG(o.total), 0) AS avg_order_value,
         COALESCE(SUM(o.type = 'online'), 0) AS online_orders,
         COALESCE(SUM(o.type = 'walkin'), 0) AS walkin_orders
       FROM orders o
       WHERE o.status != 'cancelled'
-        AND DATE(DATE_ADD(o.created_at, INTERVAL 8 HOUR)) BETWEEN ? AND ?
+        AND o.created_at >= ?
+        AND o.created_at < ?
       `,
-      dateParams,
+      salesUtcParams,
     );
 
     let totalProfit = 0;
@@ -316,12 +335,37 @@ exports.getDashboard = async (req, res) => {
       totalProfit = profitTotals.total_profit;
     } catch (e) {}
 
+    const [[collectionTotals]] = await pool.query(
+      `
+      SELECT
+        COALESCE(SUM(pt.amount), 0) AS verified_collections,
+        COUNT(*) AS verified_payment_count
+      FROM payment_transactions pt
+      INNER JOIN orders o ON o.id = pt.order_id
+      WHERE LOWER(pt.status) = 'verified'
+        AND COALESCE(pt.verified_at, pt.created_at) >= ?
+        AND COALESCE(pt.verified_at, pt.created_at) < ?
+      `,
+      salesUtcParams,
+    );
+
+    const verifiedCollections = Number(
+      collectionTotals.verified_collections || 0,
+    );
+
     const salesStats = {
-      total_revenue: Number(salesTotals.total_revenue || 0),
+      // Compatibility alias: dashboard consumers historically read
+      // total_revenue. It now represents actual verified collections.
+      total_revenue: verifiedCollections,
+      verified_collections: verifiedCollections,
+      verified_payment_count: Number(
+        collectionTotals.verified_payment_count || 0,
+      ),
+      order_value: Number(orderValueTotals.order_value || 0),
       total_profit: Number(totalProfit || 0),
-      avg_order_value: Number(salesTotals.avg_order_value || 0),
-      online_orders: Number(salesTotals.online_orders || 0),
-      walkin_orders: Number(salesTotals.walkin_orders || 0),
+      avg_order_value: Number(orderValueTotals.avg_order_value || 0),
+      online_orders: Number(orderValueTotals.online_orders || 0),
+      walkin_orders: Number(orderValueTotals.walkin_orders || 0),
     };
 
     // ── 4. PAYMENTS QUEUE ──
@@ -369,31 +413,59 @@ exports.getDashboard = async (req, res) => {
       [rawChartRows] = await pool.query(
         `
         SELECT
-          DATE_FORMAT(DATE_ADD(created_at, INTERVAL 8 HOUR), '%Y-%m') AS bucket,
-          COALESCE(SUM(CASE WHEN type = 'online' THEN total ELSE 0 END), 0) AS online_sales,
-          COALESCE(SUM(CASE WHEN type = 'walkin' THEN total ELSE 0 END), 0) AS walkin_sales
-        FROM orders
-        WHERE status != 'cancelled'
-          AND DATE(DATE_ADD(created_at, INTERVAL 8 HOUR)) BETWEEN ? AND ?
-        GROUP BY DATE_FORMAT(DATE_ADD(created_at, INTERVAL 8 HOUR), '%Y-%m')
+          DATE_FORMAT(
+            DATE_ADD(COALESCE(pt.verified_at, pt.created_at), INTERVAL 8 HOUR),
+            '%Y-%m'
+          ) AS bucket,
+          COALESCE(
+            SUM(CASE WHEN o.type = 'online' THEN pt.amount ELSE 0 END),
+            0
+          ) AS online_sales,
+          COALESCE(
+            SUM(CASE WHEN o.type = 'walkin' THEN pt.amount ELSE 0 END),
+            0
+          ) AS walkin_sales
+        FROM payment_transactions pt
+        INNER JOIN orders o ON o.id = pt.order_id
+        WHERE LOWER(pt.status) = 'verified'
+          AND COALESCE(pt.verified_at, pt.created_at) >= ?
+          AND COALESCE(pt.verified_at, pt.created_at) < ?
+        GROUP BY DATE_FORMAT(
+          DATE_ADD(COALESCE(pt.verified_at, pt.created_at), INTERVAL 8 HOUR),
+          '%Y-%m'
+        )
         ORDER BY bucket ASC
         `,
-        dateParams,
+        salesUtcParams,
       );
     } else {
       [rawChartRows] = await pool.query(
         `
         SELECT
-          DATE_FORMAT(DATE_ADD(created_at, INTERVAL 8 HOUR), '%Y-%m-%d') AS bucket,
-          COALESCE(SUM(CASE WHEN type = 'online' THEN total ELSE 0 END), 0) AS online_sales,
-          COALESCE(SUM(CASE WHEN type = 'walkin' THEN total ELSE 0 END), 0) AS walkin_sales
-        FROM orders
-        WHERE status != 'cancelled'
-          AND DATE(DATE_ADD(created_at, INTERVAL 8 HOUR)) BETWEEN ? AND ?
-        GROUP BY DATE_FORMAT(DATE_ADD(created_at, INTERVAL 8 HOUR), '%Y-%m-%d')
+          DATE_FORMAT(
+            DATE_ADD(COALESCE(pt.verified_at, pt.created_at), INTERVAL 8 HOUR),
+            '%Y-%m-%d'
+          ) AS bucket,
+          COALESCE(
+            SUM(CASE WHEN o.type = 'online' THEN pt.amount ELSE 0 END),
+            0
+          ) AS online_sales,
+          COALESCE(
+            SUM(CASE WHEN o.type = 'walkin' THEN pt.amount ELSE 0 END),
+            0
+          ) AS walkin_sales
+        FROM payment_transactions pt
+        INNER JOIN orders o ON o.id = pt.order_id
+        WHERE LOWER(pt.status) = 'verified'
+          AND COALESCE(pt.verified_at, pt.created_at) >= ?
+          AND COALESCE(pt.verified_at, pt.created_at) < ?
+        GROUP BY DATE_FORMAT(
+          DATE_ADD(COALESCE(pt.verified_at, pt.created_at), INTERVAL 8 HOUR),
+          '%Y-%m-%d'
+        )
         ORDER BY bucket ASC
         `,
-        dateParams,
+        salesUtcParams,
       );
     }
 
