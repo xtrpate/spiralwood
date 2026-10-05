@@ -238,8 +238,7 @@ const buildEditableCartBlueprint = (baseBlueprint = {}, item = {}) => {
       "",
     finish_color:
       item?.finish_color || item?.color || baseBlueprint?.finish_color || "",
-    color:
-      item?.color || item?.finish_color || baseBlueprint?.color || "",
+    color: item?.color || item?.finish_color || baseBlueprint?.color || "",
     door_style: item?.door_style || baseBlueprint?.door_style || "",
     hardware: item?.hardware || baseBlueprint?.hardware || "",
     default_dimensions: {
@@ -268,6 +267,8 @@ export default function CustomCartPage() {
   } = useCustomCart();
 
   const [previewItem, setPreviewItem] = useState(null);
+  const [removeConfirmKeys, setRemoveConfirmKeys] = useState([]);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState([]);
   const [referencePhotoPreviews, setReferencePhotoPreviews] = useState({});
 
@@ -381,8 +382,7 @@ export default function CustomCartPage() {
       params.delete("edit");
       params.delete("returnTo");
       const nextSearch = params.toString();
-      const nextUrl =
-        location.pathname + (nextSearch ? "?" + nextSearch : "");
+      const nextUrl = location.pathname + (nextSearch ? "?" + nextSearch : "");
       navigate(nextUrl, { replace: true });
     }
   }, [location.pathname, location.search, navigate, releaseEditObjectUrls]);
@@ -572,7 +572,8 @@ export default function CustomCartPage() {
     } catch (error) {
       console.error("Failed to save edited custom design:", error);
       setEditError(
-        error.message || "Failed to save your design changes. Please try again.",
+        error.message ||
+          "Failed to save your design changes. Please try again.",
       );
       setEditSaving(false);
     }
@@ -591,10 +592,41 @@ export default function CustomCartPage() {
     setSelectedKeys((prev) => (prev[0] === key ? [] : [key]));
   };
 
+  const requestRemove = (keys) => {
+    const nextKeys = Array.from(
+      new Set((Array.isArray(keys) ? keys : [keys]).filter(Boolean)),
+    );
+
+    if (!nextKeys.length) return;
+
+    setRemoveConfirmKeys(nextKeys);
+  };
+
   const handleRemoveSelected = () => {
     if (!selectedItem?.key) return;
-    removeManyFromCustomCart([selectedItem.key]);
+    requestRemove([selectedItem.key]);
+  };
+
+  const handleConfirmRemove = () => {
+    if (!removeConfirmKeys.length) return;
+
+    if (removeConfirmKeys.length === 1) {
+      removeFromCustomCart(removeConfirmKeys[0]);
+    } else {
+      removeManyFromCustomCart(removeConfirmKeys);
+    }
+
+    setSelectedKeys((prev) =>
+      prev.filter((key) => !removeConfirmKeys.includes(key)),
+    );
+
+    setRemoveConfirmKeys([]);
+  };
+
+  const handleConfirmClear = () => {
+    clearCustomCart();
     setSelectedKeys([]);
+    setClearConfirmOpen(false);
   };
 
   const handleProceedSelectedCheckout = () => {
@@ -610,7 +642,10 @@ export default function CustomCartPage() {
         JSON.stringify(selectedKeysArray),
       );
     } catch (error) {
-      console.error("[custom cart] failed to save selected checkout keys", error);
+      console.error(
+        "[custom cart] failed to save selected checkout keys",
+        error,
+      );
       return;
     }
 
@@ -632,7 +667,8 @@ export default function CustomCartPage() {
         <div>
           <h1 style={{ margin: 0 }}>Custom Designs</h1>
           <p style={{ margin: "8px 0 0", color: "#666" }}>
-            Submit one design per request. Each design receives its own quotation, payment, and project workflow.
+            Submit one design per request. Each design receives its own
+            quotation, payment, and project workflow.
           </p>
         </div>
 
@@ -653,7 +689,7 @@ export default function CustomCartPage() {
           {customCart.length > 0 ? (
             <button
               type="button"
-              onClick={clearCustomCart}
+              onClick={() => setClearConfirmOpen(true)}
               style={{
                 padding: "10px 14px",
                 borderRadius: "10px",
@@ -710,7 +746,9 @@ export default function CustomCartPage() {
               marginBottom: "2px",
             }}
           >
-            <div style={{ color: "#334155", fontSize: "14px", fontWeight: 700 }}>
+            <div
+              style={{ color: "#334155", fontSize: "14px", fontWeight: 700 }}
+            >
               {selectedItem
                 ? `Selected for this request • Qty ${Math.max(
                     1,
@@ -740,7 +778,9 @@ export default function CustomCartPage() {
           </div>
 
           {customCart.map((item) => {
-            const imageSrc = resolveImage(item.image_url || item.preview_image_url);
+            const imageSrc = resolveImage(
+              item.image_url || item.preview_image_url,
+            );
             const dims = getItemDisplayDims(item);
             const isSelected = selectedKeys.includes(item.key);
 
@@ -753,7 +793,9 @@ export default function CustomCartPage() {
                   display: "grid",
                   gridTemplateColumns: "32px 180px 1fr",
                   gap: "16px",
-                  border: isSelected ? "1.5px solid #3b82f6" : "1px solid #e5e7eb",
+                  border: isSelected
+                    ? "1.5px solid #3b82f6"
+                    : "1px solid #e5e7eb",
                   borderRadius: "16px",
                   padding: "16px",
                   background: isSelected ? "#f8fbff" : "#fff",
@@ -783,7 +825,9 @@ export default function CustomCartPage() {
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    border: showEditedCardPreview ? "1px solid #dbeafe" : "none",
+                    border: showEditedCardPreview
+                      ? "1px solid #dbeafe"
+                      : "none",
                   }}
                 >
                   {showEditedCardPreview ? (
@@ -836,7 +880,9 @@ export default function CustomCartPage() {
                       </p>
                     </div>
 
-                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    <div
+                      style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}
+                    >
                       {hasEditorSnapshot(item) ? (
                         <button
                           type="button"
@@ -864,7 +910,7 @@ export default function CustomCartPage() {
 
                       <button
                         type="button"
-                        onClick={() => removeFromCustomCart(item.key)}
+                        onClick={() => requestRemove([item.key])}
                         style={{
                           padding: "8px 12px",
                           borderRadius: "10px",
@@ -882,7 +928,8 @@ export default function CustomCartPage() {
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                      gridTemplateColumns:
+                        "repeat(auto-fit, minmax(160px, 1fr))",
                       gap: "10px",
                       marginTop: "14px",
                     }}
@@ -951,7 +998,8 @@ export default function CustomCartPage() {
                       <strong>Wood:</strong> {item.wood_type || "—"}
                     </div>
                     <div>
-                      <strong>Finish:</strong> {item.finish_color || item.color || "—"}
+                      <strong>Finish:</strong>{" "}
+                      {item.finish_color || item.color || "—"}
                     </div>
                     <div>
                       <strong>Door Style:</strong> {item.door_style || "—"}
@@ -1063,11 +1111,189 @@ export default function CustomCartPage() {
         </div>
       )}
 
-      {editItem ? (
+      {removeConfirmKeys.length > 0 ? (
         <div
-          className="custom-review-edit-backdrop"
-          onClick={closeEditDesign}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="remove-custom-design-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "24px",
+            zIndex: 10000,
+          }}
         >
+          <div
+            style={{
+              width: "min(460px, 100%)",
+              background: "#fff",
+              borderRadius: "16px",
+              padding: "24px",
+              boxShadow: "0 24px 60px rgba(0,0,0,.28)",
+            }}
+          >
+            <h2
+              id="remove-custom-design-title"
+              style={{
+                margin: "0 0 10px",
+                fontSize: "22px",
+              }}
+            >
+              Remove Custom Design?
+            </h2>
+
+            <p
+              style={{
+                margin: "0 0 22px",
+                color: "#475569",
+                lineHeight: 1.6,
+              }}
+            >
+              {removeConfirmKeys.length === 1
+                ? "Are you sure you want to remove this saved custom design from your cart?"
+                : `Are you sure you want to remove ${removeConfirmKeys.length} saved custom designs from your cart?`}
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "10px",
+                flexWrap: "wrap",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setRemoveConfirmKeys([])}
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: "10px",
+                  border: "1px solid #cbd5e1",
+                  background: "#fff",
+                  color: "#111827",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleConfirmRemove}
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: "10px",
+                  border: "1px solid #dc2626",
+                  background: "#dc2626",
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                }}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {clearConfirmOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="clear-custom-cart-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "24px",
+            zIndex: 10000,
+          }}
+        >
+          <div
+            style={{
+              width: "min(460px, 100%)",
+              background: "#fff",
+              borderRadius: "16px",
+              padding: "24px",
+              boxShadow: "0 24px 60px rgba(0,0,0,.28)",
+            }}
+          >
+            <h2
+              id="clear-custom-cart-title"
+              style={{
+                margin: "0 0 10px",
+                fontSize: "22px",
+              }}
+            >
+              Clear Custom Cart?
+            </h2>
+
+            <p
+              style={{
+                margin: "0 0 22px",
+                color: "#475569",
+                lineHeight: 1.6,
+              }}
+            >
+              This will remove all saved custom designs from your cart. This
+              action cannot be undone from this page.
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "10px",
+                flexWrap: "wrap",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setClearConfirmOpen(false)}
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: "10px",
+                  border: "1px solid #cbd5e1",
+                  background: "#fff",
+                  color: "#111827",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleConfirmClear}
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: "10px",
+                  border: "1px solid #dc2626",
+                  background: "#dc2626",
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                }}
+              >
+                Clear Cart
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {editItem ? (
+        <div className="custom-review-edit-backdrop" onClick={closeEditDesign}>
           <div
             className="custom-review-edit-shell"
             onClick={(event) => event.stopPropagation()}
@@ -1182,7 +1408,10 @@ export default function CustomCartPage() {
             </div>
 
             <div style={{ padding: 16 }}>
-              <CustomerTemplateWorkbench blueprint={previewBlueprint} readOnly />
+              <CustomerTemplateWorkbench
+                blueprint={previewBlueprint}
+                readOnly
+              />
             </div>
           </div>
         </div>

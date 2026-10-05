@@ -123,6 +123,7 @@ export default function CheckoutPage() {
   const orderIdempotencyKeyRef = useRef(null);
   const [checkoutFeedbackStatus, setCheckoutFeedbackStatus] =
     useState("loading");
+  const [checkoutError, setCheckoutError] = useState(null);
   const [assemblyChoice, setAssemblyChoice] = useState("");
 
   const [checkoutNote, setCheckoutNote] = useState("");
@@ -447,6 +448,7 @@ export default function CheckoutPage() {
           ? crypto.randomUUID()
           : `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     }
+    setCheckoutError(null);
     setCheckoutFeedbackStatus("loading");
     setLoading(true);
 
@@ -456,6 +458,7 @@ export default function CheckoutPage() {
           "Content-Type": "multipart/form-data",
           "Idempotency-Key": orderIdempotencyKeyRef.current,
         },
+        suppressGlobalErrorToast: true,
       });
 
       /* WISDOM ORDER CONFIRMATION SNAPSHOT START */
@@ -542,11 +545,17 @@ export default function CheckoutPage() {
 
       navigate("/order-complete", { replace: true });
     } catch (err) {
-      toast.error(
-        err.response?.data?.message ||
-          err.response?.data?.error ||
-          "Failed to place order. Please try again.",
+      console.error(
+        "Failed to place customer order:",
+        err?.response?.data || err,
       );
+
+      setCheckoutError({
+        title: "Order Could Not Be Placed",
+        message:
+          err?.response?.data?.message ||
+          "We could not place your order. Please review your details and try again.",
+      });
     } finally {
       setLoading(false);
     }
@@ -1283,6 +1292,90 @@ export default function CheckoutPage() {
         }
         blocking
       />
+      {checkoutError && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="checkout-error-title"
+          aria-describedby="checkout-error-message"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 11000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+            background: "rgba(15, 23, 42, 0.35)",
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: "390px",
+              background: "#ffffff",
+              border: "1px solid #d9d9dc",
+              borderRadius: 6,
+              boxShadow: "0 18px 46px rgba(0,0,0,0.18)",
+              padding: "24px",
+            }}
+          >
+            <h3
+              id="checkout-error-title"
+              style={{
+                margin: 0,
+                color: "#111111",
+                fontSize: "22px",
+                fontWeight: 750,
+                lineHeight: 1.2,
+                letterSpacing: "-0.015em",
+              }}
+            >
+              {checkoutError.title}
+            </h3>
+
+            <p
+              id="checkout-error-message"
+              style={{
+                margin: "8px 0 0",
+                color: "#66666b",
+                fontSize: "14px",
+                fontWeight: 400,
+                lineHeight: 1.5,
+              }}
+            >
+              {checkoutError.message}
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                marginTop: "22px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setCheckoutError(null)}
+                style={{
+                  minWidth: "96px",
+                  height: "40px",
+                  padding: "0 14px",
+                  border: "1px solid #111111",
+                  borderRadius: 6,
+                  background: "#111111",
+                  color: "#ffffff",
+                  cursor: "pointer",
+                  fontSize: "13px",
+                  fontWeight: 650,
+                }}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

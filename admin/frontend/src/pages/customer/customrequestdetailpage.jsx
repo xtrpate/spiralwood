@@ -175,7 +175,9 @@ const getCustomerJourneyState = ({
       description =
         "Future production and fulfillment have been stopped where possible. Your accepted Project Agreement and verified payment records remain on file.";
       actionTitle =
-        remainingBalance > 0 ? "Remaining balance still due" : "Withdrawal recorded";
+        remainingBalance > 0
+          ? "Remaining balance still due"
+          : "Withdrawal recorded";
       actionText =
         remainingBalance > 0
           ? "Complete the remaining Project Agreement balance using the payment options below."
@@ -729,6 +731,23 @@ export default function CustomRequestDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [previewItem, setPreviewItem] = useState(null);
+  const [feedback, setFeedback] = useState(null);
+  useEffect(() => {
+    if (!feedback) return undefined;
+
+    const handleFeedbackKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setFeedback(null);
+      }
+    };
+
+    document.addEventListener("keydown", handleFeedbackKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleFeedbackKeyDown);
+    };
+  }, [feedback]);
   const [decisionLoading, setDecisionLoading] = useState("");
   const [agreementChecked, setAgreementChecked] = useState(false);
   const [agreementConfirmOpen, setAgreementConfirmOpen] = useState(false);
@@ -955,17 +974,34 @@ export default function CustomRequestDetailPage() {
       let isSuccess = false;
 
       try {
-        const res = await api.post(endpoint);
+        const res = await api.post(endpoint, undefined, {
+          suppressGlobalErrorToast: true,
+        });
 
-        // 👉 FIX: Strictly check the boolean sent by the backend
+        // Strictly check the boolean sent by the backend.
         if (res.data && res.data.success === false) {
-          toast.error(res.data.message || "Payment is still processing.");
+          setFeedback({
+            title: "Payment Verification Pending",
+            message:
+              res.data.message ||
+              "Your payment is still being processed. Please check again shortly.",
+          });
         } else {
-          toast.success(res.data.message || "Payment verified successfully.");
+          setFeedback({
+            title: "Payment Verified",
+            message:
+              res.data.message ||
+              "Your payment has been successfully verified.",
+          });
           isSuccess = true;
         }
       } catch (err) {
-        toast.error(err.response?.data?.message || "Unable to verify payment.");
+        setFeedback({
+          title: "Payment Verification Failed",
+          message:
+            err?.response?.data?.message ||
+            "Unable to verify your payment. Please try again.",
+        });
       } finally {
         // 👉 FIX: Only delete the URL trigger if it actually worked!
         if (isSuccess) {
@@ -1853,15 +1889,27 @@ export default function CustomRequestDetailPage() {
 
     setDecisionLoading(action);
     try {
-      await api.post(endpoint, payload);
+      await api.post(endpoint, payload, {
+        suppressGlobalErrorToast: true,
+      });
       await loadRequestDetail(false);
-      toast.success(successMessage);
+
+      setFeedback({
+        title:
+          action === "accept"
+            ? "Quotation Approved"
+            : action === "request-revision"
+              ? "Revision Request Sent"
+              : "Quotation Rejected",
+        message: successMessage,
+      });
     } catch (err) {
-      toast.error(
-        err.response?.data?.message ||
-          err.response?.data?.error ||
-          "Failed to process quotation decision.",
-      );
+      setFeedback({
+        title: "Quotation Action Failed",
+        message:
+          err?.response?.data?.message ||
+          "Failed to process your quotation decision. Please try again.",
+      });
     } finally {
       setDecisionLoading("");
     }
@@ -1883,17 +1931,24 @@ export default function CustomRequestDetailPage() {
       const res = await api.post(
         `/customer/custom-orders/${requestData.id}/project-agreement/accept`,
         { acknowledged: true },
+        { suppressGlobalErrorToast: true },
       );
       setAgreementConfirmOpen(false);
       setAgreementChecked(false);
       await loadRequestDetail(false);
-      toast.success(
-        res.data?.message || "Project Agreement accepted successfully.",
-      );
+
+      setFeedback({
+        title: "Project Agreement Accepted",
+        message:
+          res.data?.message || "Project Agreement accepted successfully.",
+      });
     } catch (err) {
-      toast.error(
-        err.response?.data?.message || "Failed to accept Project Agreement.",
-      );
+      setFeedback({
+        title: "Project Agreement Could Not Be Accepted",
+        message:
+          err?.response?.data?.message ||
+          "Failed to accept the Project Agreement. Please try again.",
+      });
     } finally {
       setAgreementAccepting(false);
     }
@@ -1944,17 +1999,25 @@ export default function CustomRequestDetailPage() {
       const res = await api.post(
         `/customer/custom-orders/${requestData.id}/cancellation-request`,
         { reason },
+        { suppressGlobalErrorToast: true },
       );
       setCancelConfirmOpen(false);
       setCancelReason("");
       await loadRequestDetail(false);
-      toast.success(
-        res.data?.message || "Cancellation request submitted for admin review.",
-      );
+
+      setFeedback({
+        title: "Cancellation Request Submitted",
+        message:
+          res.data?.message ||
+          "Your cancellation request has been submitted for admin review.",
+      });
     } catch (err) {
-      toast.error(
-        err.response?.data?.message || "Failed to submit cancellation request.",
-      );
+      setFeedback({
+        title: "Cancellation Request Failed",
+        message:
+          err?.response?.data?.message ||
+          "Failed to submit the cancellation request. Please try again.",
+      });
     } finally {
       setCancellingProject(false);
     }
@@ -2077,6 +2140,7 @@ export default function CustomRequestDetailPage() {
           headers: {
             "Content-Type": "multipart/form-data",
           },
+          suppressGlobalErrorToast: true,
         },
       );
 
@@ -2147,11 +2211,15 @@ export default function CustomRequestDetailPage() {
           headers: {
             "Idempotency-Key": paymongoIdempotencyKey,
           },
+          suppressGlobalErrorToast: true,
         },
       );
 
       if (!res.data?.payment_url) {
-        toast.error("Unable to launch PayMongo checkout.");
+        setFeedback({
+          title: "Payment Session Unavailable",
+          message: "Unable to start the payment session. Please try again.",
+        });
         return;
       }
 
@@ -2159,11 +2227,12 @@ export default function CustomRequestDetailPage() {
     } catch (err) {
       console.error(err);
 
-      toast.error(
-        err.response?.data?.message ||
-          err.response?.data?.error ||
-          "Failed to launch PayMongo checkout.",
-      );
+      setFeedback({
+        title: "Payment Session Could Not Be Started",
+        message:
+          err?.response?.data?.message ||
+          "Unable to start the payment session. Please try again.",
+      });
     } finally {
       setPayingInitialOnline(false);
     }
@@ -2194,11 +2263,16 @@ export default function CustomRequestDetailPage() {
           headers: {
             "Idempotency-Key": paymongoIdempotencyKey,
           },
+          suppressGlobalErrorToast: true,
         },
       );
 
       if (!res.data?.payment_url) {
-        toast.error("Unable to launch PayMongo checkout.");
+        setFeedback({
+          title: "Payment Session Unavailable",
+          message:
+            "Unable to start the payment session for your remaining balance. Please try again.",
+        });
         return;
       }
 
@@ -2206,11 +2280,12 @@ export default function CustomRequestDetailPage() {
     } catch (err) {
       console.error(err);
 
-      toast.error(
-        err.response?.data?.message ||
-          err.response?.data?.error ||
-          "Failed to launch PayMongo checkout.",
-      );
+      setFeedback({
+        title: "Payment Session Could Not Be Started",
+        message:
+          err?.response?.data?.message ||
+          "Unable to start the payment session for your remaining balance. Please try again.",
+      });
     } finally {
       setPayingRemainingBalance(false);
     }
@@ -5131,6 +5206,88 @@ export default function CustomRequestDetailPage() {
             </div>
           ) : null}
         </>
+      )}
+      {feedback && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="custom-request-feedback-title"
+          aria-describedby="custom-request-feedback-message"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 13000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+            background: "rgba(15, 23, 42, 0.42)",
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 430,
+              background: "#ffffff",
+              border: "1px solid #d9d9dc",
+              borderRadius: 6,
+              boxShadow: "0 18px 46px rgba(0,0,0,0.18)",
+              padding: 24,
+            }}
+          >
+            <h3
+              id="custom-request-feedback-title"
+              style={{
+                margin: 0,
+                color: "#111111",
+                fontSize: 22,
+                fontWeight: 750,
+                lineHeight: 1.2,
+              }}
+            >
+              {feedback.title}
+            </h3>
+
+            <p
+              id="custom-request-feedback-message"
+              style={{
+                margin: "10px 0 0",
+                color: "#66666b",
+                fontSize: 14,
+                lineHeight: 1.55,
+              }}
+            >
+              {feedback.message}
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                marginTop: 22,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setFeedback(null)}
+                style={{
+                  minWidth: 96,
+                  height: 40,
+                  padding: "0 14px",
+                  border: "1px solid #111111",
+                  borderRadius: 6,
+                  background: "#111111",
+                  color: "#ffffff",
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: 650,
+                }}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

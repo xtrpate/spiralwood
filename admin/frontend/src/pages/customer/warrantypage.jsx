@@ -1,6 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useSearchParams } from "react-router-dom";
-import toast from "react-hot-toast";
 import api, { buildAssetUrl } from "../../services/api";
 import {
   ShieldCheck,
@@ -74,7 +80,16 @@ const parseFocusClaimId = (value) => {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
-const FileUpload = ({ label, hint, name, file, onChange, onClear, accept, typeHint }) => (
+const FileUpload = ({
+  label,
+  hint,
+  name,
+  file,
+  onChange,
+  onClear,
+  accept,
+  typeHint,
+}) => (
   <div className="w-upload-box">
     <div className="w-upload-label">{label}</div>
     {hint && <div className="w-upload-hint">{hint}</div>}
@@ -187,6 +202,23 @@ export default function WarrantyPage() {
   const [focusedClaimId, setFocusedClaimId] = useState(null);
   const [focusRetryNonce, setFocusRetryNonce] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [claimFocusFeedback, setClaimFocusFeedback] = useState(null);
+  useEffect(() => {
+    if (!claimFocusFeedback) return undefined;
+
+    const handleClaimFocusFeedbackKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setClaimFocusFeedback(null);
+      }
+    };
+
+    document.addEventListener("keydown", handleClaimFocusFeedbackKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleClaimFocusFeedbackKeyDown);
+    };
+  }, [claimFocusFeedback]);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelBusy, setCancelBusy] = useState(false);
   const [cancelError, setCancelError] = useState("");
@@ -349,7 +381,11 @@ export default function WarrantyPage() {
 
     const focusClaimId = parseFocusClaimId(rawFocusId);
     if (!focusClaimId) {
-      toast.error("Invalid warranty claim link.");
+      setClaimFocusFeedback({
+        title: "Warranty Claim Link Invalid",
+        message:
+          "This warranty claim link is invalid. Please open the Warranty page and select a claim from your claim history.",
+      });
       clearFocusParam();
       setClaimFocusResolving(false);
       return;
@@ -364,13 +400,10 @@ export default function WarrantyPage() {
 
       try {
         for (let attempt = 0; attempt < 2; attempt += 1) {
-          const { data } = await api.get(
-            `/customer/warranty/${focusClaimId}`,
-            {
-              params: { limit: CUSTOMER_WARRANTY_PAGE_SIZE },
-              suppressGlobalErrorToast: true,
-            },
-          );
+          const { data } = await api.get(`/customer/warranty/${focusClaimId}`, {
+            params: { limit: CUSTOMER_WARRANTY_PAGE_SIZE },
+            suppressGlobalErrorToast: true,
+          });
 
           if (!active || requestId !== focusRequestSequenceRef.current) {
             return;
@@ -416,9 +449,11 @@ export default function WarrantyPage() {
           }
         }
 
-        toast.error(
-          "That warranty claim changed position while it was opening. Please try again.",
-        );
+        setClaimFocusFeedback({
+          title: "Warranty Claim Could Not Be Opened",
+          message:
+            "The claim changed position while it was being opened. Please open it again from your warranty claim history.",
+        });
         clearFocusParam();
         setClaimFocusResolving(false);
       } catch (err) {
@@ -428,9 +463,11 @@ export default function WarrantyPage() {
 
         const status = Number(err?.response?.status);
         if ([403, 404, 410].includes(status)) {
-          toast.error(
-            "That warranty claim could not be found. It may no longer be available.",
-          );
+          setClaimFocusFeedback({
+            title: "Warranty Claim Not Available",
+            message:
+              "That warranty claim could not be found. It may no longer be available.",
+          });
           clearFocusParam();
         } else {
           setClaimsLoadError("Unable to load your warranty claims right now.");
@@ -658,7 +695,6 @@ export default function WarrantyPage() {
     }
   };
 
-
   const loadClaimsPage = async (nextPage) => {
     if (loadingClaims) return;
 
@@ -681,10 +717,7 @@ export default function WarrantyPage() {
           role="status"
           aria-label="Loading warranty claim"
         >
-          <span
-            className="warranty-focus-spinner"
-            aria-hidden="true"
-          />
+          <span className="warranty-focus-spinner" aria-hidden="true" />
         </div>
       )}
 
@@ -811,7 +844,9 @@ export default function WarrantyPage() {
               <div className="warranty-glance-card-v2">
                 <div className="warranty-glance-label-v2">Claim review</div>
                 <div className="warranty-glance-value-v2">Status updates</div>
-                <p>Track review and service updates anytime from Your claims.</p>
+                <p>
+                  Track review and service updates anytime from Your claims.
+                </p>
               </div>
             </section>
             <section className="warranty-section">
@@ -948,9 +983,7 @@ export default function WarrantyPage() {
                     Your claims
                     {(claimsLoadedSuccessfully ||
                       claimsPagination.total > 0 ||
-                      claims.length > 0) && (
-                      <> ({claimsPagination.total})</>
-                    )}
+                      claims.length > 0) && <> ({claimsPagination.total})</>}
                   </button>
                 </div>
               </div>
@@ -983,22 +1016,22 @@ export default function WarrantyPage() {
                       !loadingOrders &&
                       !ordersLoadError &&
                       !hasEligibleOrders && (
-                      <div className="warranty-no-eligible-card">
-                        <ShieldCheck
-                          size={20}
-                          className="warranty-no-eligible-icon"
-                        />
-                        <div>
-                          <strong>
-                            No eligible orders for a new claim right now
-                          </strong>
-                          <p>
-                            No completed and fully paid order items are currently
-                            available for a new warranty claim.
-                          </p>
+                        <div className="warranty-no-eligible-card">
+                          <ShieldCheck
+                            size={20}
+                            className="warranty-no-eligible-icon"
+                          />
+                          <div>
+                            <strong>
+                              No eligible orders for a new claim right now
+                            </strong>
+                            <p>
+                              No completed and fully paid order items are
+                              currently available for a new warranty claim.
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
 
                     {showForm && !submitted && (
                       <div className="warranty-form-card">
@@ -1380,9 +1413,7 @@ export default function WarrantyPage() {
                                 !claimsPagination.hasPreviousPage
                               }
                               onClick={() =>
-                                void loadClaimsPage(
-                                  claimsPagination.page - 1,
-                                )
+                                void loadClaimsPage(claimsPagination.page - 1)
                               }
                             >
                               Previous
@@ -1399,9 +1430,7 @@ export default function WarrantyPage() {
                                 loadingClaims || !claimsPagination.hasNextPage
                               }
                               onClick={() =>
-                                void loadClaimsPage(
-                                  claimsPagination.page + 1,
-                                )
+                                void loadClaimsPage(claimsPagination.page + 1)
                               }
                             >
                               Next
@@ -1492,6 +1521,114 @@ export default function WarrantyPage() {
         message={feedbackMsg}
         blocking
       />
+
+      {claimFocusFeedback && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="warranty-claim-feedback-title"
+          aria-describedby="warranty-claim-feedback-message"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 11000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+            background: "rgba(15, 23, 42, 0.42)",
+          }}
+          onClick={() => setClaimFocusFeedback(null)}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: "420px",
+              background: "#ffffff",
+              border: "1px solid #d9d9dc",
+              borderRadius: 6,
+              boxShadow: "0 18px 46px rgba(0,0,0,0.18)",
+              padding: "24px",
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "12px",
+              }}
+            >
+              <AlertCircle
+                size={22}
+                strokeWidth={2}
+                aria-hidden="true"
+                style={{
+                  flexShrink: 0,
+                  marginTop: 1,
+                  color: "#111111",
+                }}
+              />
+
+              <div>
+                <h3
+                  id="warranty-claim-feedback-title"
+                  style={{
+                    margin: 0,
+                    color: "#111111",
+                    fontSize: "21px",
+                    fontWeight: 750,
+                    lineHeight: 1.25,
+                    letterSpacing: "-0.015em",
+                  }}
+                >
+                  {claimFocusFeedback.title}
+                </h3>
+
+                <p
+                  id="warranty-claim-feedback-message"
+                  style={{
+                    margin: "9px 0 0",
+                    color: "#66666b",
+                    fontSize: "14px",
+                    fontWeight: 400,
+                    lineHeight: 1.55,
+                  }}
+                >
+                  {claimFocusFeedback.message}
+                </p>
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                marginTop: "22px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setClaimFocusFeedback(null)}
+                style={{
+                  minWidth: "96px",
+                  height: "40px",
+                  padding: "0 14px",
+                  border: "1px solid #111111",
+                  borderRadius: 6,
+                  background: "#111111",
+                  color: "#ffffff",
+                  cursor: "pointer",
+                  fontSize: "13px",
+                  fontWeight: 650,
+                }}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
