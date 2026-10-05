@@ -567,22 +567,50 @@ exports.getDashboard = async (req, res) => {
         ? buildMonthlySeries(rawChartRows, from, to)
         : buildDailySeries(rawChartRows, from, to);
 
+    // Rank actual standard catalog products when the order first becomes a
+    // verified sale. This excludes unpaid/open noise and custom/blueprint
+    // order-item names that are not backed by a catalog product_id.
     const [topProducts] = await pool.query(
       `
       SELECT
         oi.product_id,
-        oi.product_name,
+        COALESCE(
+          MAX(p.name),
+          MAX(oi.product_name),
+          CONCAT('Product #', oi.product_id)
+        ) AS product_name,
         COALESCE(SUM(oi.quantity), 0) AS units_sold,
-        COALESCE(SUM(oi.subtotal), 0) AS revenue
+        COALESCE(
+          SUM(
+            CASE
+              WHEN oi.subtotal IS NULL
+                THEN COALESCE(oi.unit_price, 0) * COALESCE(oi.quantity, 0)
+              ELSE oi.subtotal
+            END
+          ),
+          0
+        ) AS revenue
       FROM order_items oi
-      JOIN orders o ON o.id = oi.order_id
-      WHERE o.status != 'cancelled'
-        AND DATE(DATE_ADD(o.created_at, INTERVAL 8 HOUR)) BETWEEN ? AND ?
-      GROUP BY oi.product_id, oi.product_name
-      ORDER BY units_sold DESC, revenue DESC
+      INNER JOIN orders o ON o.id = oi.order_id
+      INNER JOIN (
+        SELECT
+          pt.order_id,
+          MIN(COALESCE(pt.verified_at, pt.created_at)) AS first_verified_at
+        FROM payment_transactions pt
+        WHERE LOWER(pt.status) = 'verified'
+        GROUP BY pt.order_id
+      ) verified_sale ON verified_sale.order_id = o.id
+      LEFT JOIN products p ON p.id = oi.product_id
+      WHERE o.status <> 'cancelled'
+        AND LOWER(COALESCE(o.order_type, 'standard')) = 'standard'
+        AND oi.product_id IS NOT NULL
+        AND verified_sale.first_verified_at >= ?
+        AND verified_sale.first_verified_at < ?
+      GROUP BY oi.product_id
+      ORDER BY units_sold DESC, revenue DESC, oi.product_id ASC
       LIMIT 10
       `,
-      dateParams,
+      salesUtcParams,
     );
 
     const [recentOrders] = await pool.query(
