@@ -871,6 +871,11 @@ export default function DashboardPage() {
         </div>
       </section>
 
+      <div className="dash-period-scope-note">
+        Period filters sales and order activity. Open orders, payment reviews,
+        and inventory show current state.
+      </div>
+
       {rangeError ? (
         <div className="dash-inline-error">{rangeError}</div>
       ) : null}
@@ -887,28 +892,30 @@ export default function DashboardPage() {
           value={peso.format(
             Number(sales.verified_collections ?? sales.total_revenue ?? 0),
           )}
-          meta={`Order value ${peso.format(Number(sales.order_value || 0))}`}
+          meta={`Selected period • Order value of orders created ${peso.format(
+            Number(sales.order_value || 0),
+          )}`}
           onClick={() => navigate("/admin/sales")}
         />
 
         <MetricCard
           title="Orders"
           value={num.format(totalOrders)}
-          meta={`${num.format(periodCompleted)} completed`}
+          meta={`Selected period • ${num.format(periodCompleted)} currently completed`}
           onClick={() => navigate("/admin/orders")}
         />
 
         <MetricCard
           title="Open orders"
           value={num.format(currentOpenOrders)}
-          meta={`${num.format(currentOpenPending)} pending`}
+          meta={`Current queue • ${num.format(currentOpenPending)} pending`}
           onClick={() => navigate("/admin/orders")}
         />
 
         <MetricCard
           title="Payment reviews"
           value={num.format(pendingReviews)}
-          meta={`${num.format(deliveredUnpaid)} delivered unpaid`}
+          meta={`Current queue • ${num.format(deliveredUnpaid)} delivered unpaid`}
           tone={
             pendingReviews > 0 || deliveredUnpaid > 0 ? "warning" : "neutral"
           }
@@ -920,6 +927,8 @@ export default function DashboardPage() {
           value={num.format(stockAlerts)}
           meta={
             <>
+              <span>Current stock</span>
+              <span className="metric-card__separator">•</span>
               <span>{num.format(lowStockTotal)} low</span>
               <span className="metric-card__separator">•</span>
               <span>{num.format(criticalStockTotal)} critical</span>
@@ -978,7 +987,7 @@ export default function DashboardPage() {
             <div>
               <h2 className="card-title">Order status</h2>
               <p className="card-description">
-                Orders created in the selected period.
+                Current status of orders created in the selected period.
               </p>
             </div>
 
@@ -1168,7 +1177,7 @@ export default function DashboardPage() {
             <div>
               <h2 className="card-title">Custom orders</h2>
               <p className="card-description">
-                Blueprint orders created in the selected period.
+                Current status of blueprint orders created in the selected period.
               </p>
             </div>
 
@@ -1245,7 +1254,7 @@ export default function DashboardPage() {
             <div>
               <h2 className="card-title">Top products</h2>
               <p className="card-description">
-                Best-selling products by units sold.
+                Best-selling standard products from verified sales in the selected period.
               </p>
             </div>
           </div>
@@ -1384,6 +1393,13 @@ const dashboardCss = `
     display: flex;
     align-items: flex-end;
     gap: 10px;
+  }
+
+  .dash-period-scope-note {
+    margin-top: -4px;
+    color: #71717a;
+    font-size: 11.5px;
+    line-height: 1.45;
   }
 
   .dash-field {
