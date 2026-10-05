@@ -428,6 +428,7 @@ async function runDatabaseBackup({
 }
 
 module.exports = {
+  BACKUP_LOCK_NAME,
   BackupBusyError,
   getBackupDirectory,
   runDatabaseBackup,

@@ -17,6 +17,9 @@ const adminRoutes = require("./routes/admin");
 const customerCustomOrdersRoutes = require("./routes/customer.custom-orders");
 const { errorHandler } = require("./middleware/errorHandler");
 const { startCronJobs } = require("./services/cronService");
+const {
+  isDatabaseRestoreInProgress,
+} = require("./services/databaseRestoreService");
 const pool = require("./config/db");
 
 const app = express();
@@ -382,6 +385,24 @@ const generalApiLimiter = rateLimit({
 
 app.use("/api", generalApiLimiter);
 
+app.use("/api", (req, res, next) => {
+  const isRestoreRequest = req.originalUrl.startsWith("/api/backup/restore/");
+
+  if (
+    !isDatabaseRestoreInProgress() ||
+    req.method === "OPTIONS" ||
+    isRestoreRequest
+  ) {
+    return next();
+  }
+
+  return res.status(503).json({
+    code: "DATABASE_RESTORE_IN_PROGRESS",
+    message:
+      "Database maintenance is in progress. Requests are temporarily unavailable.",
+  });
+});
+
 const { getUploadsRoot } = require("./utils/uploadRoot");
 const uploadDir = getUploadsRoot();
 
@@ -509,6 +530,13 @@ const {
 cron.schedule(
   "0 * * * *",
   () => {
+    if (isDatabaseRestoreInProgress()) {
+      console.log(
+        "[CRON] Skipping expired-order cleanup during database restore.",
+      );
+      return;
+    }
+
     console.log(
       "Running scheduled task: Checking for expired PayMongo orders...",
     );

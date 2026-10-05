@@ -9,10 +9,12 @@ import {
   Download,
   HardDrive,
   RefreshCw,
+  RotateCcw,
   Search,
 } from "lucide-react";
 import api from "../../services/api";
 import toast from "react-hot-toast";
+import useAuthStore from "../../store/authStore";
 import {
   formatPHDate,
   formatPHDateTime,
@@ -24,10 +26,18 @@ export default function BackupPage() {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
 
+  const hasPermission = useAuthStore((state) => state.hasPermission);
+  const canCreateBackup = hasPermission("backup.create");
+  const canManageBackup = hasPermission("backup.manage");
+
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [triggering, setTrigger] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [restoreTarget, setRestoreTarget] = useState(null);
+  const [restoreConfirmation, setRestoreConfirmation] = useState("");
+  const [restoreAcknowledged, setRestoreAcknowledged] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -82,6 +92,54 @@ export default function BackupPage() {
       toast.error(msg, { duration: 6000 });
     } finally {
       setTrigger(false);
+    }
+  };
+
+  const openRestoreModal = (log) => {
+    setRestoreTarget(log);
+    setRestoreConfirmation("");
+    setRestoreAcknowledged(false);
+  };
+
+  const closeRestoreModal = () => {
+    if (restoring) return;
+    setRestoreTarget(null);
+    setRestoreConfirmation("");
+    setRestoreAcknowledged(false);
+  };
+
+  const restoreBackup = async () => {
+    if (!restoreTarget || restoreConfirmation !== "RESTORE") return;
+
+    setRestoring(true);
+    try {
+      const { data } = await api.post(
+        `/backup/restore/${restoreTarget.id}`,
+        {
+          confirmation: restoreConfirmation,
+          expected_filename: restoreTarget.filename,
+        },
+        {
+          timeout: 5 * 60 * 1000,
+          suppressGlobalErrorToast: true,
+        },
+      );
+
+      toast.success(
+        `Database restored from ${data.restored_file}. Safety backup: ${data.safety_backup?.fileName || "created"}.`,
+        { duration: 8000 },
+      );
+      setRestoreTarget(null);
+      setRestoreConfirmation("");
+      setRestoreAcknowledged(false);
+      await load();
+    } catch (err) {
+      const msg =
+        err.response?.data?.message ||
+        "Database restore failed. Review the server logs before retrying.";
+      toast.error(msg, { duration: 10000 });
+    } finally {
+      setRestoring(false);
     }
   };
 
@@ -336,6 +394,28 @@ export default function BackupPage() {
           transform: translateY(-1px);
           border-color: #aeb6c2;
           background: #fafbfc;
+        }
+
+        .backup-action-group {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          flex-wrap: wrap;
+        }
+
+        .backup-restore-btn {
+          border-color: #e4b4af;
+          color: var(--backup-danger);
+        }
+
+        .backup-restore-btn:hover:not(:disabled) {
+          border-color: #d38d85;
+          background: #fff8f7;
+        }
+
+        .backup-restore-btn:disabled {
+          cursor: not-allowed;
+          opacity: 0.55;
         }
 
         .backup-text-btn {
@@ -913,6 +993,54 @@ export default function BackupPage() {
           color: var(--backup-muted);
         }
 
+        .backup-restore-warning {
+          margin-top: 14px;
+          padding: 11px 12px;
+          border: 1px solid var(--backup-danger-border);
+          border-radius: 3px;
+          background: var(--backup-danger-soft);
+          color: #7f1d1d;
+          font-size: 11px;
+          line-height: 1.5;
+        }
+
+        .backup-confirm-label {
+          display: block;
+          margin-top: 14px;
+          font-size: 11px;
+          font-weight: 650;
+          color: #343a43;
+        }
+
+        .backup-confirm-input {
+          width: 100%;
+          height: 38px;
+          margin-top: 6px;
+          padding: 0 10px;
+          border: 1px solid #d8dde5;
+          border-radius: 3px;
+          outline: none;
+        }
+
+        .backup-confirm-input:focus {
+          border-color: #111111;
+          box-shadow: 0 0 0 2px rgba(17, 17, 17, 0.08);
+        }
+
+        .backup-acknowledge {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          margin-top: 12px;
+          font-size: 11px;
+          line-height: 1.45;
+          color: #4b5563;
+        }
+
+        .backup-acknowledge input {
+          margin-top: 2px;
+        }
+
         .backup-modal-actions {
           display: flex;
           justify-content: flex-end;
@@ -979,29 +1107,31 @@ export default function BackupPage() {
         <div>
           <h1 className="backup-page-title">Database Backups</h1>
           <p className="backup-page-subtitle">
-            Monitor backup health, create manual backups, and download
-            available database files.
+            Monitor backup health, create manual backups, restore approved
+            snapshots, and download available database files.
           </p>
         </div>
 
-        <button
-          type="button"
-          className="backup-primary-btn"
-          onClick={() => setConfirmOpen(true)}
-          disabled={triggering}
-        >
-          {triggering ? (
-            <>
-              <RefreshCw size={15} className="backup-spin" />
-              Creating backup...
-            </>
-          ) : (
-            <>
-              <Database size={15} />
-              Create Backup
-            </>
-          )}
-        </button>
+        {canCreateBackup && (
+          <button
+            type="button"
+            className="backup-primary-btn"
+            onClick={() => setConfirmOpen(true)}
+            disabled={triggering || restoring}
+          >
+            {triggering ? (
+              <>
+                <RefreshCw size={15} className="backup-spin" />
+                Creating backup...
+              </>
+            ) : (
+              <>
+                <Database size={15} />
+                Create Backup
+              </>
+            )}
+          </button>
+        )}
       </header>
 
       <section className="backup-summary-grid" aria-label="Backup summary">
@@ -1283,14 +1413,29 @@ export default function BackupPage() {
 
                         <td>
                           {isSuccess && log.file_url ? (
-                            <button
-                              type="button"
-                              className="backup-secondary-btn"
-                              onClick={() => downloadBackup(log)}
-                            >
-                              <Download size={13} />
-                              Download
-                            </button>
+                            <div className="backup-action-group">
+                              <button
+                                type="button"
+                                className="backup-secondary-btn"
+                                onClick={() => downloadBackup(log)}
+                                disabled={restoring}
+                              >
+                                <Download size={13} />
+                                Download
+                              </button>
+
+                              {canManageBackup && (
+                                <button
+                                  type="button"
+                                  className="backup-secondary-btn backup-restore-btn"
+                                  onClick={() => openRestoreModal(log)}
+                                  disabled={restoring || triggering}
+                                >
+                                  <RotateCcw size={13} />
+                                  Restore
+                                </button>
+                              )}
+                            </div>
                           ) : isSuccess ? (
                             <span
                               style={{
@@ -1414,6 +1559,96 @@ export default function BackupPage() {
                   <>
                     <Database size={14} />
                     Create Backup
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {restoreTarget && (
+        <div
+          className="backup-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="backup-restore-title"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeRestoreModal();
+            }
+          }}
+        >
+          <div className="backup-modal">
+            <div className="backup-modal-icon">
+              <RotateCcw size={20} />
+            </div>
+
+            <h3 id="backup-restore-title">Restore database backup</h3>
+            <p>
+              Restore the database to the selected backup snapshot. A fresh
+              safety backup is created automatically before live restoration
+              starts.
+            </p>
+
+            <div className="backup-restore-warning">
+              <strong>{restoreTarget.filename}</strong>
+              <br />
+              Newer database changes can be lost. Cross-schema restores are
+              blocked automatically.
+            </div>
+
+            <label className="backup-confirm-label" htmlFor="restore-confirmation">
+              Type RESTORE to confirm
+            </label>
+            <input
+              id="restore-confirmation"
+              className="backup-confirm-input"
+              value={restoreConfirmation}
+              onChange={(event) => setRestoreConfirmation(event.target.value)}
+              autoComplete="off"
+              disabled={restoring}
+            />
+
+            <label className="backup-acknowledge">
+              <input
+                type="checkbox"
+                checked={restoreAcknowledged}
+                onChange={(event) => setRestoreAcknowledged(event.target.checked)}
+                disabled={restoring}
+              />
+              <span>I understand that newer data may be lost.</span>
+            </label>
+
+            <div className="backup-modal-actions">
+              <button
+                type="button"
+                className="backup-secondary-btn"
+                onClick={closeRestoreModal}
+                disabled={restoring}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="backup-primary-btn"
+                onClick={restoreBackup}
+                disabled={
+                  restoring ||
+                  restoreConfirmation !== "RESTORE" ||
+                  !restoreAcknowledged
+                }
+              >
+                {restoring ? (
+                  <>
+                    <RefreshCw size={14} className="backup-spin" />
+                    Restoring...
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw size={14} />
+                    Restore Backup
                   </>
                 )}
               </button>

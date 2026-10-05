@@ -1026,6 +1026,13 @@ router.post(
   website.triggerManualBackup,
 );
 
+router.post(
+  "/backup/restore/:id",
+  adminOnly,
+  requirePermission("backup.manage"),
+  website.restoreBackup,
+);
+
 router.get(
   "/backup/download/:filename",
   adminOnly,

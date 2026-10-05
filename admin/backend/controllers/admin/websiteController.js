@@ -14,6 +14,9 @@ const {
   isR2StoragePath,
   getR2BackupObject,
 } = require("../../services/databaseBackupService");
+const {
+  runDatabaseRestore,
+} = require("../../services/databaseRestoreService");
 
 // Setting-key categorization for audit metadata only — does not affect
 // validation or business behavior. Values are never logged, only which
@@ -1253,6 +1256,84 @@ exports.triggerManualBackup = async (req, res) => {
   } catch (err) {
     res.status(Number(err?.statusCode) || 500).json({
       message: err?.message || "Backup failed.",
+    });
+  }
+};
+
+// RESTORE a successful backup record through the guarded restore service.
+exports.restoreBackup = async (req, res) => {
+  const backupId = Number(req.params.id);
+  const confirmation = String(req.body?.confirmation || "").trim();
+  const expectedFilename = String(req.body?.expected_filename || "").trim();
+
+  if (!Number.isInteger(backupId) || backupId <= 0) {
+    return res.status(400).json({ message: "Invalid backup ID." });
+  }
+
+  if (confirmation !== "RESTORE") {
+    return res.status(400).json({
+      message: "Type RESTORE exactly to confirm database restoration.",
+    });
+  }
+
+  try {
+    const result = await runDatabaseRestore({
+      backupId,
+      expectedFilename,
+      triggeredBy: req.user.id,
+    });
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "database_restore_success",
+      tableName: "backup_logs",
+      recordId: backupId,
+      newValues: {
+        file_name: result.restoredFileName,
+        restored_table_count: result.restoredTableCount,
+        safety_backup_file: result.safetyBackup?.fileName || null,
+        result: "success",
+      },
+      ipAddress: req.ip || null,
+    });
+
+    return res.json({
+      message: "Database restored successfully.",
+      restored_file: result.restoredFileName,
+      restored_table_count: result.restoredTableCount,
+      safety_backup: result.safetyBackup,
+    });
+  } catch (err) {
+    console.error("[database restore]", err);
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "database_restore_failed",
+      tableName: "backup_logs",
+      recordId: backupId,
+      newValues: {
+        expected_file_name: expectedFilename || null,
+        destructive_restore_started: Boolean(err?.destructiveRestoreStarted),
+        safety_backup_file: err?.safetyBackup?.fileName || null,
+        result: "failed",
+        error_code: err?.code || "DATABASE_RESTORE_FAILED",
+      },
+      ipAddress: req.ip || null,
+    });
+
+    const statusCode = Number(err?.statusCode) || 500;
+    let message = err?.message || "Database restore failed.";
+
+    if (err?.destructiveRestoreStarted && err?.safetyBackup?.fileName) {
+      message =
+        "Database restore failed after live restoration started. Do not retry automatically. " +
+        `Pre-restore safety backup: ${err.safetyBackup.fileName}.`;
+    }
+
+    return res.status(statusCode).json({
+      message,
+      code: err?.code || "DATABASE_RESTORE_FAILED",
+      safety_backup: err?.safetyBackup || null,
     });
   }
 };

@@ -2,6 +2,9 @@
 const cron = require("node-cron");
 const pool = require("../config/db");
 const { runDatabaseBackup } = require("./databaseBackupService");
+const {
+  isDatabaseRestoreInProgress,
+} = require("./databaseRestoreService");
 const { runPosQrCleanupBatch } = require("./posQrCleanupService");
 const {
   cleanupUnverifiedCustomers,
@@ -12,6 +15,13 @@ async function runBackup(type = "auto") {
 }
 
 async function runScheduledAutoBackup(label) {
+  if (isDatabaseRestoreInProgress()) {
+    console.log(
+      `[BACKUP] ${label} auto-backup skipped: database restore is in progress.`,
+    );
+    return;
+  }
+
   try {
     const result = await runBackup("auto");
 
@@ -70,6 +80,11 @@ function startCronJobs(io = null) {
   cron.schedule(
     "*/5 * * * *",
     async () => {
+      if (isDatabaseRestoreInProgress()) {
+        console.log("[CRON] Skipping POS QR cleanup during database restore.");
+        return;
+      }
+
       try {
         await runPosQrCleanupBatch({ io });
       } catch (err) {
@@ -83,6 +98,13 @@ function startCronJobs(io = null) {
   cron.schedule(
     "30 2 * * *",
     async () => {
+      if (isDatabaseRestoreInProgress()) {
+        console.log(
+          "[CRON] Skipping unverified registration cleanup during database restore.",
+        );
+        return;
+      }
+
       try {
         const result = await cleanupUnverifiedCustomers({
           ageDays: 7,
@@ -105,6 +127,13 @@ function startCronJobs(io = null) {
   cron.schedule(
     "0 0 * * *",
     async () => {
+      if (isDatabaseRestoreInProgress()) {
+        console.log(
+          "[CRON] Skipping support ticket auto-close during database restore.",
+        );
+        return;
+      }
+
       try {
         console.log(
           "[CRON] Running nightly auto-close check for resolved tickets...",
