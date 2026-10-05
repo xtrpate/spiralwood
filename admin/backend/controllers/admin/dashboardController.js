@@ -218,27 +218,136 @@ exports.getDashboard = async (req, res) => {
         : "daily";
 
     // ── 1. INVENTORY ──
+    // Compute current health from inventory facts instead of persisted labels.
     const [[invStats]] = await pool.query(`
       SELECT
         COUNT(*) AS total_products,
-        COALESCE(SUM(stock_status = 'in_stock'), 0) AS healthy_stock_count,
-        COALESCE(SUM(stock_status = 'low_stock'), 0) AS low_stock_count,
-        COALESCE(SUM(stock_status = 'critical_stock'), 0) AS critical_stock_count,
-        COALESCE(SUM(stock_status = 'out_of_stock'), 0) AS out_of_stock_count
-      FROM products
-      WHERE is_active = 1
-        AND type = 'standard'
+        COALESCE(
+          SUM(
+            CASE
+              WHEN COALESCE(p.stock, 0) > COALESCE(p.reorder_point, 0)
+              THEN 1 ELSE 0
+            END
+          ),
+          0
+        ) AS healthy_stock_count,
+        COALESCE(
+          SUM(
+            CASE
+              WHEN COALESCE(p.stock, 0) > 0
+               AND COALESCE(p.stock, 0) <= COALESCE(p.reorder_point, 0)
+              THEN 1 ELSE 0
+            END
+          ),
+          0
+        ) AS low_stock_count,
+        0 AS critical_stock_count,
+        COALESCE(
+          SUM(
+            CASE
+              WHEN COALESCE(p.stock, 0) <= 0
+              THEN 1 ELSE 0
+            END
+          ),
+          0
+        ) AS out_of_stock_count
+      FROM products p
+      WHERE p.is_active = 1
+        AND LOWER(COALESCE(p.type, 'standard')) = 'standard'
     `);
 
     const [[rawStats]] = await pool.query(`
       SELECT
         COUNT(*) AS total_raw_materials,
-        COALESCE(SUM(stock_status = 'healthy_stock'), 0) AS raw_healthy_stock,
-        COALESCE(SUM(stock_status = 'low_stock'), 0) AS raw_low_stock,
-        COALESCE(SUM(stock_status = 'critical_stock'), 0) AS raw_critical_stock,
-        COALESCE(SUM(stock_status = 'out_of_stock'), 0) AS raw_out_of_stock
-      FROM raw_materials
-      WHERE is_active = 1
+        COALESCE(
+          SUM(computed_stock_status = 'healthy_stock'),
+          0
+        ) AS raw_healthy_stock,
+        COALESCE(
+          SUM(computed_stock_status = 'low_stock'),
+          0
+        ) AS raw_low_stock,
+        COALESCE(
+          SUM(computed_stock_status = 'critical_stock'),
+          0
+        ) AS raw_critical_stock,
+        COALESCE(
+          SUM(computed_stock_status = 'out_of_stock'),
+          0
+        ) AS raw_out_of_stock
+      FROM (
+        SELECT
+          rm.id,
+          CASE
+            WHEN COALESCE(rm.quantity, 0) <= 0
+              THEN 'out_of_stock'
+            WHEN COALESCE(bmr_summary.pending_need_quantity, 0) > 0
+              THEN 'critical_stock'
+            WHEN GREATEST(
+              COALESCE(rm.quantity, 0) -
+                COALESCE(bmr_summary.reserved_quantity, 0),
+              0
+            ) <= 0
+              THEN 'critical_stock'
+            WHEN GREATEST(
+              COALESCE(rm.quantity, 0) -
+                COALESCE(bmr_summary.reserved_quantity, 0),
+              0
+            ) <= COALESCE(rm.safety_stock, 0)
+              THEN 'critical_stock'
+            WHEN COALESCE(rm.lead_time_days, 0) > 0
+             AND COALESCE(usage_summary.avg_daily_usage_30d, 0) > 0
+             AND GREATEST(
+               COALESCE(rm.quantity, 0) -
+                 COALESCE(bmr_summary.reserved_quantity, 0),
+               0
+             ) <= (
+               COALESCE(rm.safety_stock, 0) +
+               (
+                 COALESCE(usage_summary.avg_daily_usage_30d, 0) *
+                 GREATEST(COALESCE(rm.lead_time_days, 0), 0)
+               )
+             )
+              THEN 'critical_stock'
+            WHEN GREATEST(
+              COALESCE(rm.quantity, 0) -
+                COALESCE(bmr_summary.reserved_quantity, 0),
+              0
+            ) <= COALESCE(rm.reorder_point, 0)
+              THEN 'low_stock'
+            ELSE 'healthy_stock'
+          END AS computed_stock_status
+        FROM raw_materials rm
+        LEFT JOIN (
+          SELECT
+            material_id,
+            SUM(
+              CASE
+                WHEN status = 'reserved' THEN quantity ELSE 0
+              END
+            ) AS reserved_quantity,
+            SUM(
+              CASE
+                WHEN status = 'pending_stock' THEN quantity ELSE 0
+              END
+            ) AS pending_need_quantity
+          FROM blueprint_material_reservations
+          GROUP BY material_id
+        ) bmr_summary ON bmr_summary.material_id = rm.id
+        LEFT JOIN (
+          SELECT
+            material_id,
+            SUM(quantity) / 30 AS avg_daily_usage_30d
+          FROM stock_movements
+          WHERE material_id IS NOT NULL
+            AND product_id IS NULL
+            AND type = 'out'
+            AND reference LIKE 'BLUEPRINT-RESERVATION-%'
+            AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+          GROUP BY material_id
+        ) usage_summary ON usage_summary.material_id = rm.id
+        WHERE rm.is_active = 1
+      ) raw_health
     `);
 
     let stockMovements = { stock_in_total: 0, stock_out_total: 0 };
