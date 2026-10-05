@@ -106,6 +106,7 @@ export default function CartPage() {
   }, []);
 
   const [itemToDelete, setItemToDelete] = useState(null);
+  const [clearCartConfirmOpen, setClearCartConfirmOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState("");
   const [isHiding, setIsHiding] = useState(false);
 
@@ -540,7 +541,7 @@ export default function CartPage() {
             <button
               type="button"
               className="fm-cart-clear-btn"
-              onClick={clearCart}
+              onClick={() => setClearCartConfirmOpen(true)}
             >
               Clear all
             </button>
@@ -782,6 +783,41 @@ export default function CartPage() {
                       removeItem(itemToDelete.key);
                       setItemToDelete(null);
                       setToastMsg(`"${itemName}" has been removed.`);
+                    }}
+                  >
+                    Yes
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {clearCartConfirmOpen && (
+            <div className="fm-modal-overlay">
+              <div className="fm-modal-card">
+                <h3>Clear Cart</h3>
+
+                <p>Are you sure you want to remove all items from your cart?</p>
+
+                <div className="fm-modal-actions">
+                  <button
+                    type="button"
+                    className="fm-modal-btn secondary"
+                    onClick={() => setClearCartConfirmOpen(false)}
+                  >
+                    No
+                  </button>
+
+                  <button
+                    type="button"
+                    className="fm-modal-btn primary"
+                    onClick={() => {
+                      clearCart();
+                      setSelected(new Set());
+                      setClearCartConfirmOpen(false);
+                      setToastMsg(
+                        "All items have been removed from your cart.",
+                      );
                     }}
                   >
                     Yes

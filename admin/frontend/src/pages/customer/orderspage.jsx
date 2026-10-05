@@ -543,7 +543,13 @@ function OrderBlueprintPreview({ order, item }) {
   );
 }
 
-function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
+function OrderModal({
+  orderId,
+  onClose,
+  onConfirmOrder,
+  onCancelOrder,
+  onFeedback,
+}) {
   const navigate = useNavigate();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -794,7 +800,11 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
     setPayingNow(true);
 
     try {
-      const { data } = await api.post(`/customer/orders/${order.id}/pay`);
+      const { data } = await api.post(
+        `/customer/orders/${order.id}/pay`,
+        undefined,
+        { suppressGlobalErrorToast: true },
+      );
 
       if (data?.already_paid) {
         const verifyResponse = await api.post(
@@ -802,6 +812,7 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
           {
             order_number: data.order_number || order.order_number,
           },
+          { suppressGlobalErrorToast: true },
         );
 
         if (
@@ -833,11 +844,14 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
     } catch (err) {
       console.error("[OrdersPage Pay Now]", err?.response?.data || err);
 
-      window.alert(
-        err?.response?.data?.message ||
+      onFeedback?.({
+        type: "error",
+        title: "Payment Could Not Be Started",
+        message:
+          err?.response?.data?.message ||
           err?.message ||
-          "Unable to open PayMongo payment. Please try again.",
-      );
+          "Unable to open payment session. Please try again.",
+      });
     } finally {
       setPayingNow(false);
     }
@@ -872,9 +886,7 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
         ? "Not Requested"
         : "";
 
-  const deliveryPersonnelStatus = String(
-    order?.delivery_details?.status || "",
-  )
+  const deliveryPersonnelStatus = String(order?.delivery_details?.status || "")
     .trim()
     .toLowerCase();
   const deliveryPersonnelName = String(
@@ -1345,6 +1357,24 @@ export default function OrdersPage() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [focusedOrderId, setFocusedOrderId] = useState(null);
+  const [feedback, setFeedback] = useState(null);
+
+  useEffect(() => {
+    if (!feedback) return undefined;
+
+    const handleFeedbackKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setFeedback(null);
+      }
+    };
+
+    document.addEventListener("keydown", handleFeedbackKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleFeedbackKeyDown);
+    };
+  }, [feedback]);
 
   useEffect(() => {
     const handleOrderStatusUpdated = (payload) => {
@@ -1599,12 +1629,29 @@ export default function OrdersPage() {
   const executeConfirmOrder = async () => {
     if (!orderToConfirm) return;
     try {
-      await api.put(`/customer/orders/${orderToConfirm}/confirm`);
+      const { data } = await api.put(
+        `/customer/orders/${orderToConfirm}/confirm`,
+        undefined,
+        { suppressGlobalErrorToast: true },
+      );
       setSelectedId(null);
       setOrderToConfirm(null);
       fetchOrders();
-    } catch {
-      alert("Failed to confirm the order. Please try again.");
+      setFeedback({
+        type: "success",
+        title: "Order Confirmed",
+        message:
+          data?.message ||
+          "Your order has been successfully confirmed as received.",
+      });
+    } catch (err) {
+      setFeedback({
+        type: "error",
+        title: "Order Confirmation Failed",
+        message:
+          err?.response?.data?.message ||
+          "Failed to confirm the order. Please try again.",
+      });
     }
   };
 
@@ -1618,14 +1665,31 @@ export default function OrdersPage() {
 
     setIsCancelling(true);
     try {
-      await api.put(`/customer/orders/${orderToCancel}/cancel`, {
-        reason: cancelReason,
-      });
+      const { data } = await api.put(
+        `/customer/orders/${orderToCancel}/cancel`,
+        {
+          reason: cancelReason,
+        },
+        { suppressGlobalErrorToast: true },
+      );
       setSelectedId(null);
       setOrderToCancel(null);
       fetchOrders();
-    } catch {
-      alert("Failed to cancel the order. Please try again.");
+      setFeedback({
+        type: "success",
+        title: "Cancellation Submitted",
+        message:
+          data?.message ||
+          "Your order cancellation request was submitted successfully.",
+      });
+    } catch (err) {
+      setFeedback({
+        type: "error",
+        title: "Order Cancellation Failed",
+        message:
+          err?.response?.data?.message ||
+          "Failed to cancel the order. Please try again.",
+      });
     } finally {
       setIsCancelling(false);
     }
@@ -1697,7 +1761,11 @@ export default function OrdersPage() {
     setPayingOrderId(order.id);
 
     try {
-      const { data } = await api.post(`/customer/orders/${order.id}/pay`);
+      const { data } = await api.post(
+        `/customer/orders/${order.id}/pay`,
+        undefined,
+        { suppressGlobalErrorToast: true },
+      );
 
       if (data?.already_paid) {
         const verifyResponse = await api.post(
@@ -1705,6 +1773,7 @@ export default function OrdersPage() {
           {
             order_number: data.order_number || order.order_number,
           },
+          { suppressGlobalErrorToast: true },
         );
 
         if (
@@ -1737,11 +1806,14 @@ export default function OrdersPage() {
         err?.response?.data || err,
       );
 
-      window.alert(
-        err?.response?.data?.message ||
+      setFeedback({
+        type: "error",
+        title: "Payment Could Not Be Started",
+        message:
+          err?.response?.data?.message ||
           err?.message ||
-          "Unable to open PayMongo payment. Please try again.",
-      );
+          "Unable to open payment session. Please try again.",
+      });
     } finally {
       setPayingOrderId(null);
     }
@@ -2104,6 +2176,7 @@ export default function OrdersPage() {
           onClose={() => setSelectedId(null)}
           onConfirmOrder={confirmOrderById}
           onCancelOrder={cancelOrderById}
+          onFeedback={setFeedback}
         />
       )}
 
@@ -2336,6 +2409,93 @@ export default function OrdersPage() {
                 }}
               >
                 {isCancelling ? "Cancelling..." : "Cancel Order"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {feedback && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="customer-order-feedback-title"
+          aria-describedby="customer-order-feedback-message"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 11000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+            background: "rgba(15, 23, 42, 0.35)",
+            pointerEvents: "auto",
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: "390px",
+              background: "#ffffff",
+              border: "1px solid #d9d9dc",
+              borderRadius: 6,
+              boxShadow: "0 18px 46px rgba(0,0,0,0.18)",
+              padding: "24px",
+            }}
+          >
+            <h3
+              id="customer-order-feedback-title"
+              style={{
+                margin: 0,
+                color: "#111111",
+                fontSize: "22px",
+                fontWeight: 750,
+                lineHeight: 1.2,
+                letterSpacing: "-0.015em",
+              }}
+            >
+              {feedback.title}
+            </h3>
+
+            <p
+              id="customer-order-feedback-message"
+              style={{
+                margin: "8px 0 0",
+                color: "#66666b",
+                fontSize: "14px",
+                fontWeight: 400,
+                lineHeight: 1.5,
+              }}
+            >
+              {feedback.message}
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "8px",
+                marginTop: "22px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setFeedback(null)}
+                style={{
+                  minWidth: "96px",
+                  height: "40px",
+                  padding: "0 14px",
+                  border: "1px solid #111111",
+                  borderRadius: 6,
+                  background: "#111111",
+                  color: "#ffffff",
+                  cursor: "pointer",
+                  fontSize: "13px",
+                  fontWeight: 650,
+                }}
+              >
+                OK
               </button>
             </div>
           </div>

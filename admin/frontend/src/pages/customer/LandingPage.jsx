@@ -14,9 +14,6 @@ import homepageFinishCabinetWarmOak from "../../assets/homepage/editorial/finish
 import homepageFinishCabinetWalnut from "../../assets/homepage/editorial/finish-cabinet-walnut.png";
 import homepageFinishCabinetDarkWalnut from "../../assets/homepage/editorial/finish-cabinet-dark-walnut.png";
 
-
-
-
 /* WISDOM HOMEPAGE SHOWCASE + SHOP CATEGORY V6 */
 /* WISDOM HOMEPAGE WOOD FINISH INTERACTION V6.4 */
 const HOME_FINISH_OPTIONS = [
@@ -116,17 +113,26 @@ const normalizeHomeCategoryText = (value) =>
     .trim();
 
 const resolveHomeReadyMadeCategory = (card, categories = []) => {
+  const requestedLabel = normalizeHomeCategoryText(card?.label);
   const requestedName = normalizeHomeCategoryText(card?.category);
   const requestedText = normalizeHomeCategoryText(
     `${card?.label || ""} ${card?.category || ""}`,
   );
 
-  const exact = categories.find(
-    (category) =>
-      normalizeHomeCategoryText(category?.name) === requestedName,
+  // Prefer the visible homepage category label when it exactly matches
+  // a database category. This prevents a broad semantic signal such as
+  // "closet" from selecting a different category with a similar name.
+  const labelExact = categories.find(
+    (category) => normalizeHomeCategoryText(category?.name) === requestedLabel,
   );
 
-  if (exact) return exact;
+  if (labelExact) return labelExact;
+
+  const categoryExact = categories.find(
+    (category) => normalizeHomeCategoryText(category?.name) === requestedName,
+  );
+
+  if (categoryExact) return categoryExact;
 
   for (const signal of HOME_CATEGORY_SIGNALS) {
     if (!requestedText.includes(signal)) continue;
@@ -176,23 +182,16 @@ const glideHomepageToTop = () => {
     return;
   }
 
-  const duration = Math.min(
-    720,
-    Math.max(460, Math.round(startY * 0.11)),
-  );
+  const duration = Math.min(720, Math.max(460, Math.round(startY * 0.11)));
   const startedAt = window.performance.now();
 
-  const easeOutCubic = (progress) =>
-    1 - Math.pow(1 - progress, 3);
+  const easeOutCubic = (progress) => 1 - Math.pow(1 - progress, 3);
 
   const step = (now) => {
     const elapsed = now - startedAt;
     const progress = Math.min(1, elapsed / duration);
     const eased = easeOutCubic(progress);
-    const nextY = Math.max(
-      0,
-      Math.round(startY * (1 - eased)),
-    );
+    const nextY = Math.max(0, Math.round(startY * (1 - eased)));
 
     window.scrollTo(0, nextY);
 
@@ -254,7 +253,9 @@ function HomepageFurniture3DReview() {
         powerPreference: "high-performance",
       });
 
-      renderer.setPixelRatio(Math.min(Math.max(1, Number(window.devicePixelRatio || 1)), 1.5));
+      renderer.setPixelRatio(
+        Math.min(Math.max(1, Number(window.devicePixelRatio || 1)), 1.5),
+      );
       renderer.setClearColor(0x000000, 0);
       renderer.shadowMap.enabled = false;
       renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -317,7 +318,12 @@ function HomepageFurniture3DReview() {
 
       parts.forEach((part) => {
         const selectableMeshes = [];
-        const object = createFurnitureObject(part, false, false, selectableMeshes);
+        const object = createFurnitureObject(
+          part,
+          false,
+          false,
+          selectableMeshes,
+        );
 
         object.position.set(
           part.x + part.width / 2 - sourceCenterX,
@@ -336,13 +342,24 @@ function HomepageFurniture3DReview() {
           child.castShadow = false;
           child.receiveShadow = false;
 
-          const materials = Array.isArray(child.material) ? child.material : child.material ? [child.material] : [];
+          const materials = Array.isArray(child.material)
+            ? child.material
+            : child.material
+              ? [child.material]
+              : [];
           materials.forEach((material) => {
             if (!material) return;
-            if (typeof material.roughness === "number") material.roughness = Math.min(1, Math.max(0.42, material.roughness));
+            if (typeof material.roughness === "number")
+              material.roughness = Math.min(
+                1,
+                Math.max(0.42, material.roughness),
+              );
             if (typeof material.metalness === "number") material.metalness = 0;
             if (material.map) {
-              material.map.anisotropy = Math.max(1, renderer.capabilities.getMaxAnisotropy?.() || 1);
+              material.map.anisotropy = Math.max(
+                1,
+                renderer.capabilities.getMaxAnisotropy?.() || 1,
+              );
               material.map.needsUpdate = true;
             }
             material.needsUpdate = true;
@@ -381,20 +398,16 @@ function HomepageFurniture3DReview() {
       const getFitDistance = (width, height) => {
         const aspect = Math.max(1, width) / Math.max(1, height);
         const vFov = THREE.MathUtils.degToRad(camera.fov);
-        const hFov =
-          2 * Math.atan(Math.tan(vFov / 2) * aspect);
+        const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
 
         const horizontalSpan = Math.hypot(size.x, size.z);
-        const verticalSpan =
-          size.y + Math.min(size.x, size.z) * 0.68;
+        const verticalSpan = size.y + Math.min(size.x, size.z) * 0.68;
 
         const distanceByWidth =
-          (horizontalSpan / 2) /
-          Math.max(0.15, Math.tan(hFov / 2));
+          horizontalSpan / 2 / Math.max(0.15, Math.tan(hFov / 2));
 
         const distanceByHeight =
-          (verticalSpan / 2) /
-          Math.max(0.15, Math.tan(vFov / 2));
+          verticalSpan / 2 / Math.max(0.15, Math.tan(vFov / 2));
 
         return Math.max(
           radius * 1.72,
@@ -413,10 +426,12 @@ function HomepageFurniture3DReview() {
 
         const distance = getFitDistance(width, height);
         const frontBiasY = Math.max(18, size.y * 0.06);
-        const threeDirection = new THREE.Vector3(1.02, 0.30, 1.08).normalize();
+        const threeDirection = new THREE.Vector3(1.02, 0.3, 1.08).normalize();
 
         viewPositionsRef.current = {
-          "3D": center.clone().add(threeDirection.clone().multiplyScalar(distance)),
+          "3D": center
+            .clone()
+            .add(threeDirection.clone().multiplyScalar(distance)),
           Front: center.clone().add(new THREE.Vector3(0, frontBiasY, distance)),
           Side: center.clone().add(new THREE.Vector3(distance, frontBiasY, 0)),
           Back: center.clone().add(new THREE.Vector3(0, frontBiasY, -distance)),
@@ -428,7 +443,9 @@ function HomepageFurniture3DReview() {
 
       const settleCurrentView = () => {
         updateViewPositions();
-        const next = viewPositionsRef.current[activeViewRef.current] || viewPositionsRef.current["3D"];
+        const next =
+          viewPositionsRef.current[activeViewRef.current] ||
+          viewPositionsRef.current["3D"];
         if (next) camera.position.copy(next);
         controls.target.copy(center);
         controls.enableRotate = activeViewRef.current === "3D";
@@ -444,7 +461,11 @@ function HomepageFurniture3DReview() {
         if (disposed) return;
         renderFrameRef.current = window.requestAnimationFrame(renderLoop);
         if (!isVisible || !renderer || !camera) return;
-        if (controls.enabled && activeViewRef.current === "3D" && !transitionFrameRef.current) {
+        if (
+          controls.enabled &&
+          activeViewRef.current === "3D" &&
+          !transitionFrameRef.current
+        ) {
           controls.update();
         }
         renderer.render(scene, camera);
@@ -467,9 +488,12 @@ function HomepageFurniture3DReview() {
       }
 
       if (typeof IntersectionObserver !== "undefined") {
-        intersectionObserver = new IntersectionObserver(([entry]) => {
-          isVisible = Boolean(entry?.isIntersecting);
-        }, { threshold: 0.02 });
+        intersectionObserver = new IntersectionObserver(
+          ([entry]) => {
+            isVisible = Boolean(entry?.isIntersecting);
+          },
+          { threshold: 0.02 },
+        );
         intersectionObserver.observe(host);
       }
 
@@ -487,7 +511,8 @@ function HomepageFurniture3DReview() {
 
         resizeObserver?.disconnect();
         intersectionObserver?.disconnect();
-        if (fallbackResize) window.removeEventListener("resize", fallbackResize);
+        if (fallbackResize)
+          window.removeEventListener("resize", fallbackResize);
 
         controls?.dispose();
 
@@ -505,7 +530,13 @@ function HomepageFurniture3DReview() {
           list.forEach((material) => {
             if (!material) return;
             materials.add(material);
-            [material.map, material.normalMap, material.roughnessMap, material.metalnessMap, material.bumpMap].forEach((texture) => {
+            [
+              material.map,
+              material.normalMap,
+              material.roughnessMap,
+              material.metalnessMap,
+              material.bumpMap,
+            ].forEach((texture) => {
               if (texture) textures.add(texture);
             });
           });
@@ -572,7 +603,9 @@ function HomepageFurniture3DReview() {
       transitionFrameRef.current = null;
     };
 
-    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    const reduceMotion = window.matchMedia?.(
+      "(prefers-reduced-motion: reduce)",
+    )?.matches;
     if (reduceMotion) {
       finish();
       return;
@@ -583,9 +616,10 @@ function HomepageFurniture3DReview() {
 
     const animate = (now) => {
       const progress = Math.min(1, (now - startTime) / duration);
-      const eased = progress < 0.5
-        ? 4 * progress * progress * progress
-        : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+      const eased =
+        progress < 0.5
+          ? 4 * progress * progress * progress
+          : 1 - Math.pow(-2 * progress + 2, 3) / 2;
 
       camera.position.lerpVectors(start, target, eased);
       camera.lookAt(center);
@@ -735,7 +769,10 @@ function HomepageFurniture3DReview() {
 
       <div
         ref={hostRef}
-        className={"wisdom-home-actual-3d__canvas" + (activeView === "3D" ? " is-3d" : "")}
+        className={
+          "wisdom-home-actual-3d__canvas" +
+          (activeView === "3D" ? " is-3d" : "")
+        }
         aria-label="Read-only interactive WISDOM coffee table preview"
       >
         {isUnavailable ? (
@@ -746,10 +783,7 @@ function HomepageFurniture3DReview() {
       </div>
 
       {!isUnavailable ? (
-        <div
-          className="wisdom-home-actual-3d__360-guide"
-          aria-hidden="true"
-        >
+        <div className="wisdom-home-actual-3d__360-guide" aria-hidden="true">
           <span className="wisdom-home-actual-3d__360-guide-title">
             Explore in 360°
           </span>
@@ -765,7 +799,10 @@ function HomepageFurniture3DReview() {
           <button
             key={view}
             type="button"
-            className={"wisdom-home-editorial__view-option" + (activeView === view ? " is-active" : "")}
+            className={
+              "wisdom-home-editorial__view-option" +
+              (activeView === view ? " is-active" : "")
+            }
             aria-pressed={activeView === view}
             onClick={() => changeView(view)}
           >
@@ -787,7 +824,6 @@ export default function LandingPage() {
   const activeHomeFinish =
     HOME_FINISH_OPTIONS.find((option) => option.key === homeFinishKey) ||
     HOME_FINISH_OPTIONS[0];
-
 
   useEffect(() => {
     let active = true;
@@ -836,8 +872,7 @@ export default function LandingPage() {
   useEffect(() => {
     if (location.pathname !== "/" || location.hash) return undefined;
 
-    const supportsScrollRestoration =
-      "scrollRestoration" in window.history;
+    const supportsScrollRestoration = "scrollRestoration" in window.history;
     const previousScrollRestoration = supportsScrollRestoration
       ? window.history.scrollRestoration
       : null;
@@ -953,8 +988,8 @@ export default function LandingPage() {
       }}
     >
       {/* WISDOM HOMEPAGE CLEAN IMAGE HERO V1 */
-/* WISDOM HOMEPAGE CLEAN HERO POLISH V1.1 */
-/* WISDOM HOMEPAGE HERO REFERENCE TUNE V4 */}
+      /* WISDOM HOMEPAGE CLEAN HERO POLISH V1.1 */
+      /* WISDOM HOMEPAGE HERO REFERENCE TUNE V4 */}
       <section
         className="wisdom-home-clean-hero"
         aria-labelledby="wisdom-home-clean-hero-title"
@@ -1722,8 +1757,8 @@ export default function LandingPage() {
             </h1>
 
             <p className="wisdom-home-clean-hero__summary">
-              Customize the size, layout, and wood finish in 3D, or browse
-              ready made furniture from Spiral Wood.
+              Customize the size, layout, and wood finish in 3D, or browse ready
+              made furniture from Spiral Wood.
             </p>
 
             <div className="wisdom-home-clean-hero__actions">
@@ -2217,9 +2252,7 @@ export default function LandingPage() {
             </div>
 
             <div className="wisdom-home-editorial__copy">
-              <p className="wisdom-home-editorial__eyebrow">
-                Flexible storage
-              </p>
+              <p className="wisdom-home-editorial__eyebrow">Flexible storage</p>
               <h2 className="wisdom-home-editorial__title">
                 Storage designed around what you need.
               </h2>
@@ -2249,9 +2282,7 @@ export default function LandingPage() {
                       key={option.key}
                       src={option.image}
                       alt={
-                        isActive
-                          ? `${option.label} cabinet finish preview`
-                          : ""
+                        isActive ? `${option.label} cabinet finish preview` : ""
                       }
                       aria-hidden={!isActive}
                       className={`wisdom-home-editorial__image is-tall is-finish-preview${
@@ -2286,9 +2317,7 @@ export default function LandingPage() {
             </div>
 
             <div className="wisdom-home-editorial__copy">
-              <p className="wisdom-home-editorial__eyebrow">
-                Wood finish
-              </p>
+              <p className="wisdom-home-editorial__eyebrow">Wood finish</p>
               <h2 className="wisdom-home-editorial__title">
                 Find the finish that feels right.
               </h2>
@@ -2308,9 +2337,7 @@ export default function LandingPage() {
             </div>
 
             <div className="wisdom-home-editorial__copy">
-              <p className="wisdom-home-editorial__eyebrow">
-                3D review
-              </p>
+              <p className="wisdom-home-editorial__eyebrow">3D review</p>
               <h2 className="wisdom-home-editorial__title">
                 See the design before it is built.
               </h2>
@@ -2330,12 +2357,11 @@ export default function LandingPage() {
             <h2>Designed digitally. Built for real spaces.</h2>
             <p>
               WISDOM connects furniture customization with the actual Spiral
-              Wood workflow, giving the approved dimensions, layout, and
-              finish a clearer reference before production.
+              Wood workflow, giving the approved dimensions, layout, and finish
+              a clearer reference before production.
             </p>
           </div>
         </section>
-
 
         <section
           id="shop-by-category"
@@ -2352,8 +2378,8 @@ export default function LandingPage() {
                 Shop by category.
               </h2>
               <p className="wisdom-home-shop__copy">
-                Choose a furniture category, then browse the available
-                ready made pieces from Spiral Wood.
+                Choose a furniture category, then browse the available ready
+                made pieces from Spiral Wood.
               </p>
             </div>
 
@@ -2418,10 +2444,7 @@ export default function LandingPage() {
         onClick={handleBackToTop}
         aria-label="Back to top"
       >
-        <span
-          className="wisdom-home-back-to-top__arrow"
-          aria-hidden="true"
-        />
+        <span className="wisdom-home-back-to-top__arrow" aria-hidden="true" />
         <span>Top</span>
       </button>
     </div>

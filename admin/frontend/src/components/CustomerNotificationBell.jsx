@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bell } from "lucide-react";
-import toast from "react-hot-toast";
 import api from "../services/api";
 import { getSocket, subscribeSocketReady } from "../services/socket";
 
@@ -65,7 +64,9 @@ async function preflightCustomerDirectNotificationTarget(n) {
   }
 
   try {
-    await api.get(`/customer/custom-orders/${targetId}`);
+    await api.get(`/customer/custom-orders/${targetId}`, {
+      suppressGlobalErrorToast: true,
+    });
     return { available: true, fallback };
   } catch (err) {
     const status = Number(err?.response?.status);
@@ -86,6 +87,23 @@ export default function CustomerNotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [historyHasMore, setHistoryHasMore] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [notificationFeedback, setNotificationFeedback] = useState(null);
+  useEffect(() => {
+    if (!notificationFeedback) return undefined;
+
+    const handleFeedbackKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setNotificationFeedback(null);
+      }
+    };
+
+    document.addEventListener("keydown", handleFeedbackKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleFeedbackKeyDown);
+    };
+  }, [notificationFeedback]);
 
   const CUSTOMER_NOTIFICATION_PAGE_SIZE = 20;
 
@@ -280,8 +298,12 @@ export default function CustomerNotificationBell() {
     setOpen(false);
 
     if (!targetState.available) {
-      toast.error("The related request is no longer available.");
-      navigate(targetState.fallback || "/orders");
+      setNotificationFeedback({
+        title: "Notification Target Unavailable",
+        message:
+          "The related request is no longer available. You can continue from your My Orders page.",
+        fallback: targetState.fallback || "/orders",
+      });
       return;
     }
 
@@ -491,6 +513,97 @@ export default function CustomerNotificationBell() {
             )}
           </div>
         </>
+      )}
+      {notificationFeedback && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="customer-notification-feedback-title"
+          aria-describedby="customer-notification-feedback-message"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 11000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+            background: "rgba(15, 23, 42, 0.42)",
+          }}
+          onClick={() => setNotificationFeedback(null)}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: "420px",
+              background: "#ffffff",
+              border: "1px solid #d9d9dc",
+              borderRadius: 6,
+              boxShadow: "0 18px 46px rgba(0,0,0,0.18)",
+              padding: "24px",
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3
+              id="customer-notification-feedback-title"
+              style={{
+                margin: 0,
+                color: "#111111",
+                fontSize: "21px",
+                fontWeight: 750,
+                lineHeight: 1.25,
+                letterSpacing: "-0.015em",
+              }}
+            >
+              {notificationFeedback.title}
+            </h3>
+
+            <p
+              id="customer-notification-feedback-message"
+              style={{
+                margin: "10px 0 0",
+                color: "#66666b",
+                fontSize: "14px",
+                lineHeight: 1.55,
+              }}
+            >
+              {notificationFeedback.message}
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "8px",
+                marginTop: "22px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  const fallback = notificationFeedback.fallback || "/orders";
+
+                  setNotificationFeedback(null);
+                  navigate(fallback);
+                }}
+                style={{
+                  minWidth: "130px",
+                  height: "40px",
+                  padding: "0 14px",
+                  border: "1px solid #111111",
+                  borderRadius: 6,
+                  background: "#111111",
+                  color: "#ffffff",
+                  cursor: "pointer",
+                  fontSize: "13px",
+                  fontWeight: 650,
+                }}
+              >
+                Go to My Orders
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
