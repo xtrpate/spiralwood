@@ -320,21 +320,6 @@ exports.getDashboard = async (req, res) => {
       salesUtcParams,
     );
 
-    let totalProfit = 0;
-    try {
-      const [[profitTotals]] = await pool.query(
-        `
-        SELECT COALESCE(SUM(oi.profit_margin * oi.quantity), 0) AS total_profit
-        FROM order_items oi
-        JOIN orders o ON o.id = oi.order_id
-        WHERE o.status != 'cancelled'
-          AND DATE(DATE_ADD(o.created_at, INTERVAL 8 HOUR)) BETWEEN ? AND ?
-        `,
-        dateParams,
-      );
-      totalProfit = profitTotals.total_profit;
-    } catch (e) {}
-
     const [[collectionTotals]] = await pool.query(
       `
       SELECT
@@ -362,7 +347,6 @@ exports.getDashboard = async (req, res) => {
         collectionTotals.verified_payment_count || 0,
       ),
       order_value: Number(orderValueTotals.order_value || 0),
-      total_profit: Number(totalProfit || 0),
       avg_order_value: Number(orderValueTotals.avg_order_value || 0),
       online_orders: Number(orderValueTotals.online_orders || 0),
       walkin_orders: Number(orderValueTotals.walkin_orders || 0),

@@ -97,13 +97,6 @@ const mockDb = {
     }
 
     if (
-      text.includes("AS total_profit") &&
-      text.includes("FROM order_items oi")
-    ) {
-      return [[{ total_profit: 2109401 }]];
-    }
-
-    if (
       text.includes("AS verified_collections") &&
       text.includes("verified_payment_count")
     ) {
@@ -230,6 +223,21 @@ async function run() {
     assert.equal(res.body?.sales?.verified_collections, 17378232.71);
     assert.equal(res.body?.sales?.total_revenue, 17378232.71);
     assert.equal(res.body?.sales?.verified_payment_count, 151);
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(res.body?.sales || {}, "total_profit"),
+      false,
+    );
+
+    const staleProfitCalls = calls.filter(
+      (call) =>
+        call.sql.includes("FROM order_items oi") &&
+        call.sql.includes("AS total_profit"),
+    );
+    assert.equal(
+      staleProfitCalls.length,
+      0,
+      "Dashboard must not calculate the retired order-item profit metric.",
+    );
 
     const orderValueCall = firstCallContaining("AS order_value");
     assert.match(
