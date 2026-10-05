@@ -77,15 +77,29 @@ function normalizeCreateTableDdl(value) {
     .trim();
 }
 
+function extractCreateTableName(statement) {
+  const clean = String(statement || "");
+  const match = clean.match(
+    /^CREATE\s+TABLE\s+(?:`([^`]+)`|"((?:""|[^"])*)")\s+/i,
+  );
+
+  if (!match) return null;
+  if (match[1] !== undefined) return match[1];
+
+  // ANSI_QUOTES permits SHOW CREATE TABLE to emit double-quoted identifiers.
+  // Inside a double-quoted identifier, a literal quote is represented as "".
+  return String(match[2] || "").replace(/""/g, "\"");
+}
+
 function collectCreateTableDdls(statements) {
   const tables = new Map();
 
   for (const statement of statements || []) {
     const clean = stripLeadingComments(statement);
-    const match = clean.match(/^CREATE\s+TABLE\s+`([^`]+)`\s+/i);
-    if (!match) continue;
+    const tableName = extractCreateTableName(clean);
+    if (!tableName) continue;
 
-    tables.set(match[1], clean);
+    tables.set(tableName, clean);
   }
 
   return tables;
@@ -113,7 +127,7 @@ function validateWisdomBackupSql(sql) {
     /^SET\s+SESSION\s+sql_mode\s*=/i,
     /^SET\s+SESSION\s+time_zone\s*=/i,
     /^DROP\s+TABLE\s+IF\s+EXISTS\s+`/i,
-    /^CREATE\s+TABLE\s+`/i,
+    /^CREATE\s+TABLE\s+(?:`[^`]+`|"(?:""|[^"])+")\s+/i,
     /^INSERT\s+INTO\s+`/i,
   ];
 
