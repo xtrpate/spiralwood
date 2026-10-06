@@ -11,6 +11,7 @@ import {
   Image as KonvaImage,
 } from "react-konva";
 import { formatDim } from "../data/utils";
+import { getSafeVerticalDimensionPlacement } from "../data/technicalOutputUtils";
 import { renderBlueprintShape } from "./render2D";
 import {
   DimensionLine,
@@ -290,6 +291,7 @@ function Canvas2D({
 }) {
   const {
     drawingArea,
+    metadataBand,
     activeProjectionView,
     referenceImage,
     referenceImageBox,
@@ -309,6 +311,7 @@ function Canvas2D({
     canvasH,
     referenceFile,
     unit,
+    showMetadataBand: Boolean(selectedComp) && view !== "exploded",
   });
 
   const visibleTraceObjects = Array.isArray(traceObjects) ? traceObjects : [];
@@ -337,6 +340,13 @@ function Canvas2D({
     view === "exploded"
       ? buildExplodedCalloutLayout(scaledItems, drawingArea)
       : new Map();
+
+  const verticalDimensionPlacement = getSafeVerticalDimensionPlacement(
+    overallScreenBounds,
+    drawingArea,
+    28,
+    20,
+  );
 
   const gridLines = () => {
     if (!showGrid) return [];
@@ -529,6 +539,7 @@ function Canvas2D({
         {scaledItems.map(({ comp, screenBox }, idx) => {
           const isSelected = comp.id === selectedComp?.id;
           const renderView = view === "exploded" ? "front" : view;
+          const showInlineLabel = scaledItems.length <= 1;
 
           return (
             <Group key={comp.id}>
@@ -556,7 +567,7 @@ function Canvas2D({
                   drawingArea={drawingArea}
                   placement={explodedCalloutLayout.get(comp.id)}
                 />
-              ) : (
+              ) : showInlineLabel ? (
                 <Text
                   x={screenBox.x}
                   y={screenBox.y + screenBox.h + 6}
@@ -567,7 +578,7 @@ function Canvas2D({
                   fill="#475569"
                   listening={false}
                 />
-              )}
+              ) : null}
             </Group>
           );
         })}
@@ -592,11 +603,11 @@ function Canvas2D({
               />
 
               <DimensionLine
-                x1={overallScreenBounds.maxX}
+                x1={verticalDimensionPlacement.anchorX}
                 y1={overallScreenBounds.minY}
-                x2={overallScreenBounds.maxX}
+                x2={verticalDimensionPlacement.anchorX}
                 y2={overallScreenBounds.maxY}
-                offset={28}
+                offset={verticalDimensionPlacement.offset}
                 text={verticalDimText}
                 orientation="vertical"
               />
@@ -627,41 +638,56 @@ function Canvas2D({
                 listening={false}
               />
 
-              <Text
-                x={drawingArea.x + 8}
-                y={drawingArea.y + drawingArea.h - 40}
-                text={`PARTS: ${selectedComponents.length}`}
-                fontSize={10}
-                fill="#475569"
-                listening={false}
-              />
+              {metadataBand && (
+                <>
+                  <Line
+                    points={[
+                      metadataBand.x,
+                      metadataBand.y - 5,
+                      metadataBand.x + metadataBand.w,
+                      metadataBand.y - 5,
+                    ]}
+                    stroke="#e2e8f0"
+                    strokeWidth={0.8}
+                    listening={false}
+                  />
+                  <Text
+                    x={metadataBand.x + 8}
+                    y={metadataBand.y + 4}
+                    text={`PARTS: ${selectedComponents.length}`}
+                    fontSize={10}
+                    fill="#475569"
+                    listening={false}
+                  />
 
-              <Text
-                x={drawingArea.x + 8}
-                y={drawingArea.y + drawingArea.h - 24}
-                text={`SELECTED: ${selectedComp.partCode || selectedComp.label}`}
-                fontSize={10}
-                fill="#475569"
-                listening={false}
-              />
+                  <Text
+                    x={metadataBand.x + 8}
+                    y={metadataBand.y + 22}
+                    text={`SELECTED: ${selectedComp.partCode || selectedComp.label}`}
+                    fontSize={10}
+                    fill="#475569"
+                    listening={false}
+                  />
 
-              <Text
-                x={drawingArea.x + drawingArea.w - 185}
-                y={drawingArea.y + drawingArea.h - 40}
-                text={`AXIS H: ${axisLabels[0]}`}
-                fontSize={10}
-                fill="#475569"
-                listening={false}
-              />
+                  <Text
+                    x={metadataBand.x + metadataBand.w - 185}
+                    y={metadataBand.y + 4}
+                    text={`AXIS H: ${axisLabels[0]}`}
+                    fontSize={10}
+                    fill="#475569"
+                    listening={false}
+                  />
 
-              <Text
-                x={drawingArea.x + drawingArea.w - 185}
-                y={drawingArea.y + drawingArea.h - 24}
-                text={`AXIS V: ${axisLabels[1]}`}
-                fontSize={10}
-                fill="#475569"
-                listening={false}
-              />
+                  <Text
+                    x={metadataBand.x + metadataBand.w - 185}
+                    y={metadataBand.y + 22}
+                    text={`AXIS V: ${axisLabels[1]}`}
+                    fontSize={10}
+                    fill="#475569"
+                    listening={false}
+                  />
+                </>
+              )}
             </>
           )}
 

@@ -12,6 +12,7 @@ import {
 } from "../data/utils";
 import { useReferenceImage } from "../data/initHelpers";
 import { VIEWS } from "../data/furnitureTypes";
+import { BLUEPRINT_METADATA_BAND_H } from "../data/technicalOutputUtils";
 import { getExplodedBox } from "../export/placementHelpers";
 import { resolveExplodedPreviewComponents } from "./explodedViewUtils";
 import {
@@ -45,6 +46,7 @@ export function useBlueprintCanvasModel({
   canvasH,
   referenceFile,
   unit,
+  showMetadataBand = false,
 }) {
   const drawingArea = useMemo(
     () => ({
@@ -55,9 +57,23 @@ export function useBlueprintCanvasModel({
         canvasH -
         PAPER_MARGIN * 2 -
         TITLE_BLOCK_H -
-        DRAWING_PADDING * 1.45,
+        DRAWING_PADDING * 1.45 -
+        (showMetadataBand ? BLUEPRINT_METADATA_BAND_H : 0),
     }),
-    [canvasW, canvasH],
+    [canvasW, canvasH, showMetadataBand],
+  );
+
+  const metadataBand = useMemo(
+    () =>
+      showMetadataBand
+        ? {
+            x: drawingArea.x,
+            y: drawingArea.y + drawingArea.h + 8,
+            w: drawingArea.w,
+            h: Math.max(1, BLUEPRINT_METADATA_BAND_H - 8),
+          }
+        : null,
+    [drawingArea, showMetadataBand],
   );
 
   const activeProjectionView = normalizeProjectionView(view);
@@ -138,16 +154,18 @@ export function useBlueprintCanvasModel({
   const scaledItems = useMemo(() => {
     if (!bounds2D) return [];
 
+    const inlineLabelClearance = view === "exploded" ? 0 : 18;
+    const usableDrawingH = Math.max(1, drawingArea.h - inlineLabelClearance);
     const scale = Math.min(
       drawingArea.w / Math.max(bounds2D.width, 1),
-      drawingArea.h / Math.max(bounds2D.height, 1),
+      usableDrawingH / Math.max(bounds2D.height, 1),
       view === "exploded" ? 0.96 : 1.1,
     );
 
     const offsetX =
       drawingArea.x + (drawingArea.w - bounds2D.width * scale) / 2;
     const offsetY =
-      drawingArea.y + (drawingArea.h - bounds2D.height * scale) / 2;
+      drawingArea.y + (usableDrawingH - bounds2D.height * scale) / 2;
 
     return rawItems.map((item) => ({
       ...item,
@@ -190,6 +208,7 @@ export function useBlueprintCanvasModel({
 
   return {
     drawingArea,
+    metadataBand,
     activeProjectionView,
     referenceImage,
     referenceImageBox,
