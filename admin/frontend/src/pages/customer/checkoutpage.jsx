@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import { useCart } from "./cartcontext";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, MapPin } from "lucide-react";
 import useAuthStore from "../../store/authStore";
 import LocationPicker from "../../components/LocationPicker";
 import {
@@ -1079,7 +1079,23 @@ export default function CheckoutPage() {
                                 paddingLeft: 26,
                               }}
                             >
-                              📍 {user?.address}
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "flex-start",
+                                  gap: 6,
+                                }}
+                              >
+                                <MapPin
+                                  size={16}
+                                  strokeWidth={1.8}
+                                  style={{
+                                    flexShrink: 0,
+                                    marginTop: 1,
+                                  }}
+                                />
+                                <span>{user?.address}</span>
+                              </span>
                             </div>
                           )}
 

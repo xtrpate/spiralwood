@@ -482,6 +482,31 @@ export default function ProductCatalog() {
     navigate("/checkout");
   };
 
+  const handleCategoryFilterChange = (categoryId) => {
+    const params = new URLSearchParams(location.search);
+
+    if (categoryId === "all") {
+      params.delete("category");
+      params.delete("category_id");
+      setCatFilter("all");
+    } else {
+      const selectedCategory = categories.find(
+        (cat) => String(cat.id) === String(categoryId),
+      );
+
+      setCatFilter(String(categoryId));
+
+      params.set("category", selectedCategory?.name || "");
+      params.set("category_id", String(categoryId));
+    }
+
+    const query = params.toString();
+
+    navigate(query ? `${location.pathname}?${query}` : location.pathname, {
+      replace: true,
+    });
+  };
+
   const clearFilters = () => {
     setSearch("");
     setCatFilter("all");
@@ -653,7 +678,7 @@ export default function ProductCatalog() {
               <button
                 type="button"
                 className={`filter-option ${catFilter === "all" ? "active" : ""}`}
-                onClick={() => setCatFilter("all")}
+                onClick={() => handleCategoryFilterChange("all")}
               >
                 <span>All Categories</span>
                 <span className="filter-count">{total}</span>
@@ -666,7 +691,7 @@ export default function ProductCatalog() {
                   className={`filter-option ${
                     catFilter === String(cat.id) ? "active" : ""
                   }`}
-                  onClick={() => setCatFilter(String(cat.id))}
+                  onClick={() => handleCategoryFilterChange(String(cat.id))}
                 >
                   <span>{cat.name}</span>
                   <span className="filter-count">
@@ -1060,7 +1085,7 @@ export default function ProductCatalog() {
                   <button
                     type="button"
                     className={`filter-option ${catFilter === "all" ? "active" : ""}`}
-                    onClick={() => setCatFilter("all")}
+                    onClick={() => handleCategoryFilterChange("all")}
                   >
                     <span>All Categories</span>
                     <span className="filter-count">{total}</span>
@@ -1072,7 +1097,7 @@ export default function ProductCatalog() {
                       className={`filter-option ${
                         catFilter === String(cat.id) ? "active" : ""
                       }`}
-                      onClick={() => setCatFilter(String(cat.id))}
+                      onClick={() => handleCategoryFilterChange(String(cat.id))}
                     >
                       <span>{cat.name}</span>
                       <span className="filter-count">

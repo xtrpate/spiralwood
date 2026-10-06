@@ -50,7 +50,7 @@ const HOME_FINISH_OPTIONS = [
 const HOME_READY_MADE_CATEGORIES = [
   {
     label: "Bedroom Furniture",
-    category: "Closet / Wardrobe",
+    category: "Wardrobe & Closet",
     img: "/images/closet.png",
   },
   {
@@ -80,7 +80,7 @@ const HOME_READY_MADE_CATEGORIES = [
   },
   {
     label: "Wardrobe & Closet",
-    category: "Closet / Wardrobe",
+    category: "Wardrobe & Closet",
     img: "/images/wardrobe-closet.png",
   },
   {
@@ -912,15 +912,44 @@ export default function LandingPage() {
     glideHomepageToTop();
   };
 
-  const handleHomeCategoryClick = (card) => {
-    const matchedCategory = resolveHomeReadyMadeCategory(
-      card,
-      catalogCategories,
-    );
+  const handleHomeCategoryClick = async (card) => {
+    let categories = catalogCategories;
+
+    // Make the first click reliable even when the homepage
+    // category request has not finished loading yet.
+    if (!categories.length) {
+      try {
+        const response = await api.get("/customer/products", {
+          params: {
+            type: "standard",
+            sort: "name_asc",
+            limit: 1,
+          },
+        });
+
+        categories = Array.isArray(response.data?.categories)
+          ? response.data.categories
+          : [];
+
+        if (categories.length) {
+          setCatalogCategories(categories);
+        }
+      } catch (error) {
+        console.error(
+          "Failed to load categories before homepage navigation",
+          error,
+        );
+      }
+    }
+
+    const matchedCategory = resolveHomeReadyMadeCategory(card, categories);
 
     const params = new URLSearchParams();
+
+    // Always use the canonical homepage category as the fallback.
     params.set("category", matchedCategory?.name || card?.category || "");
 
+    // Prefer the real database category ID when available.
     if (matchedCategory?.id != null) {
       params.set("category_id", String(matchedCategory.id));
     }
