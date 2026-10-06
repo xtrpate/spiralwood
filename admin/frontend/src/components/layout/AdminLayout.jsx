@@ -304,27 +304,17 @@ const NAV_ITEMS = [
   },
 
   {
-    label: "Sales Report",
+    label: "Sales & Profitability Report",
     reportGroup: true,
     permission: "sales_report.view",
     roles: ["admin", "staff"],
-    icon: BarChart3,
+    icon: TrendingUp,
     children: [
       {
         label: "Sales",
         path: "/admin/sales",
         icon: TrendingUp,
       },
-    ],
-  },
-
-  {
-    label: "Sales & Profitability",
-    reportGroup: true,
-    permission: "sales_report.view",
-    roles: ["admin", "staff"],
-    icon: TrendingUp,
-    children: [
       {
         label: "Profitability",
         path: "/admin/reports/sales-profitability",

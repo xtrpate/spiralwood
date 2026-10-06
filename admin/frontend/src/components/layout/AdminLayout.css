@@ -392,6 +392,7 @@ body,
 }
 
 .wisdom-sidebar-report-toggle {
+  margin-left: 12px;
   width: 100%;
   min-height: 36px;
   padding: 8px 10px;
