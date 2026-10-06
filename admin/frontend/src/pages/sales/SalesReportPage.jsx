@@ -443,28 +443,99 @@ export default function SalesReportPage() {
     "All Payments";
   const exportExcel = async () => {
     if (!data || !appliedFilters || loading || !canExport) return;
-    setExporting(true);
+
+    let saveHandle = null;
 
     try {
+      const scopeFilenamePart =
+        exportScope === "all" ? "all_sales" : "current_filters";
+
+      const channelFilenamePart =
+        exportScope === "all"
+          ? "all_channels"
+          : String(appliedChannel || "all")
+              .trim()
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "_")
+              .replace(/^_+|_+$/g, "") || "all_channels";
+
+      const paymentFilenamePart =
+        exportScope === "all"
+          ? "all_payments"
+          : String(appliedPayment || "all")
+              .trim()
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "_")
+              .replace(/^_+|_+$/g, "") || "all_payments";
+
+      const dateFilenamePart =
+        exportScope === "all"
+          ? "all_time"
+          : appliedPeriod === "custom"
+            ? `${appliedFrom || "start"}_to_${appliedTo || "end"}`
+            : appliedPeriod === "daily"
+              ? "today"
+              : appliedPeriod === "weekly"
+                ? "this_week"
+                : appliedPeriod === "monthly"
+                  ? "this_month"
+                  : appliedPeriod === "yearly"
+                    ? "this_year"
+                    : "report_period";
+
+      const exportTimestamp = new Date().getTime();
+
+      const fileName = `wisdom_sales_report_${scopeFilenamePart}_${channelFilenamePart}_${paymentFilenamePart}_${dateFilenamePart}_${exportTimestamp}.xlsx`;
+
+      /*
+       * IMPORTANT:
+       * Open Save As BEFORE any awaited API request so the browser
+       * still considers this a direct user action.
+       */
+      if (window.showSaveFilePicker) {
+        try {
+          saveHandle = await window.showSaveFilePicker({
+            suggestedName: fileName,
+            types: [
+              {
+                description: "Excel Document",
+                accept: {
+                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+                    [".xlsx"],
+                },
+              },
+            ],
+          });
+        } catch (err) {
+          if (err?.name === "AbortError") {
+            return;
+          }
+
+          throw err;
+        }
+      }
+
+      setExporting(true);
+
       const exportParams =
         exportScope === "all"
           ? { period: "all" }
           : buildSalesReportParams(appliedFilters);
+
       const response = await api.get("/sales/report/print", {
         params: exportParams,
       });
+
       const exportData = response.data;
-      const periodLabel =
-        exportScope === "all"
-          ? "All Time (Complete History)"
-          : reportDateRangeLabel;
-      // Isolate the data variables so we format the correct target data
+
       const exSummary = exportData?.summary || {};
       const exSalesByChannel = exportData?.sales_by_channel || [];
       const exPaymentMethods = exportData?.payment_methods || [];
+
       const exVisibleProducts = (exportData?.products || [])
         .filter((row) => Number(row?.gross_order_value || 0) > 0)
         .slice(0, 10);
+
       const exOutstandingOrders = (exportData?.orders || [])
         .filter((row) => Number(row?.remaining_balance || 0) > 0)
         .sort(
@@ -472,75 +543,168 @@ export default function SalesReportPage() {
             Number(b?.remaining_balance || 0) -
             Number(a?.remaining_balance || 0),
         );
+
       const exChannelTotal = exSalesByChannel.reduce(
         (sum, row) => sum + Number(row?.sales_revenue || 0),
         0,
       );
+
       const exCollectionTotal = Number(exSummary.actual_collected || 0);
 
-      // Create a new Excel workbook
-      const wb = XLSX.utils.book_new();
-      const excelData = [];
+      const periodLabel =
+        exportScope === "all"
+          ? "All Time (Complete History)"
+          : reportDateRangeLabel;
 
-      const titleStyle = { font: { bold: true, color: { rgb: "000000" } } };
+      const channelLabel =
+        CHANNELS.find((item) => item.key === appliedChannel)?.label ||
+        "All Channels";
+
+      const paymentLabel =
+        PAYMENT_TYPES.find((item) => item.key === appliedPayment)?.label ||
+        "All Payments";
+
+      const workbook = XLSX.utils.book_new();
+
+      const titleStyle = {
+        font: {
+          bold: true,
+          sz: 16,
+          color: { rgb: "111827" },
+        },
+        alignment: {
+          horizontal: "center",
+          vertical: "center",
+        },
+      };
+
+      const descStyle = {
+        font: {
+          italic: true,
+          sz: 11,
+          color: { rgb: "52525B" },
+        },
+        alignment: {
+          horizontal: "center",
+          vertical: "center",
+        },
+      };
+
+      const filterStyle = {
+        font: {
+          bold: true,
+          sz: 10,
+          color: { rgb: "374151" },
+        },
+        alignment: {
+          horizontal: "left",
+          vertical: "center",
+          wrapText: true,
+        },
+      };
 
       const tableHeaderStyle = {
-        font: { bold: true, color: { rgb: "FFFFFF" } },
-        fill: { fgColor: { rgb: "000000" } },
+        font: {
+          bold: true,
+          color: { rgb: "FFFFFF" },
+        },
+        fill: {
+          fgColor: { rgb: "18181B" },
+        },
         border: {
-          top: { style: "thin", color: { rgb: "000000" } },
-          bottom: { style: "thin", color: { rgb: "000000" } },
-          left: { style: "thin", color: { rgb: "000000" } },
-          right: { style: "thin", color: { rgb: "000000" } },
+          top: {
+            style: "thin",
+            color: { rgb: "D1D5DB" },
+          },
+          bottom: {
+            style: "thin",
+            color: { rgb: "D1D5DB" },
+          },
+          left: {
+            style: "thin",
+            color: { rgb: "D1D5DB" },
+          },
+          right: {
+            style: "thin",
+            color: { rgb: "D1D5DB" },
+          },
         },
       };
 
-      const cellStyleLight = {
+      const cellStyle = {
         border: {
-          top: { style: "thin", color: { rgb: "000000" } },
-          bottom: { style: "thin", color: { rgb: "000000" } },
-          left: { style: "thin", color: { rgb: "000000" } },
-          right: { style: "thin", color: { rgb: "000000" } },
+          top: {
+            style: "thin",
+            color: { rgb: "E5E7EB" },
+          },
+          bottom: {
+            style: "thin",
+            color: { rgb: "E5E7EB" },
+          },
+          left: {
+            style: "thin",
+            color: { rgb: "E5E7EB" },
+          },
+          right: {
+            style: "thin",
+            color: { rgb: "E5E7EB" },
+          },
         },
       };
 
-      const cellStyleDark = {
-        fill: { fgColor: { rgb: "F3F4F6" } },
-        border: {
-          top: { style: "thin", color: { rgb: "000000" } },
-          bottom: { style: "thin", color: { rgb: "000000" } },
-          left: { style: "thin", color: { rgb: "000000" } },
-          right: { style: "thin", color: { rgb: "000000" } },
+      const sectionTitleStyle = {
+        font: {
+          bold: true,
+          sz: 12,
+          color: { rgb: "111827" },
         },
       };
 
-      const t = (text) => ({ v: text, s: titleStyle });
-      const th = (text) => ({ v: text, s: tableHeaderStyle });
-      const c = (val, rowIndex) => ({
-        v: val ?? "",
-        s: rowIndex % 2 === 0 ? cellStyleLight : cellStyleDark,
+      const t = (value) => ({
+        v: value,
+        s: sectionTitleStyle,
       });
 
-      // 1. Report Metadata
-      excelData.push([t("SPIRAL WOOD SERVICES - SALES PERFORMANCE REPORT")]);
-      excelData.push([
-        { v: "Channel:", s: titleStyle },
-        exportScope === "all" ? "All Channels" : channelLabel,
-      ]);
-      excelData.push([
-        { v: "Payment:", s: titleStyle },
-        exportScope === "all" ? "All Payments" : paymentLabel,
-      ]);
-      excelData.push([{ v: "Period:", s: titleStyle }, periodLabel]);
-      excelData.push([
-        { v: "Generated:", s: titleStyle },
-        new Date().toLocaleString("en-PH", { timeZone: REPORT_TIME_ZONE }),
-      ]);
-      excelData.push([]);
+      const th = (value) => ({
+        v: value,
+        s: tableHeaderStyle,
+      });
 
-      // 2. Financial Overview
-      excelData.push([t("1. FINANCIAL OVERVIEW")]);
-      excelData.push(
+      const c = (value) => ({
+        v: value ?? "",
+        s: cellStyle,
+      });
+
+      const filterText = [
+        `Scope: ${exportScope === "all" ? "All Sales" : "Current Filters"}`,
+        `Channel: ${exportScope === "all" ? "All Channels" : channelLabel}`,
+        `Payment: ${exportScope === "all" ? "All Payments" : paymentLabel}`,
+        `Date Filter: ${periodLabel}`,
+      ].join("    |    ");
+
+      const excelData = [
+        [
+          {
+            v: "SPIRAL WOOD SERVICES - SALES PERFORMANCE REPORT",
+            s: titleStyle,
+          },
+        ],
+        [
+          {
+            v: "Review priced sales orders, verified collections, outstanding balances, and product performance.",
+            s: descStyle,
+          },
+        ],
+        [
+          {
+            v: filterText,
+            s: filterStyle,
+          },
+        ],
+        [],
+
+        // 1. Financial Overview
+        [t("1. FINANCIAL OVERVIEW")],
         [
           "Order Value",
           "Verified Collections",
@@ -548,77 +712,77 @@ export default function SalesReportPage() {
           "Sales Orders",
           "Avg. Order Value",
         ].map(th),
-      );
-      excelData.push(
         [
           Number(exSummary.gross_order_value || 0),
           Number(exSummary.actual_collected || 0),
           Number(exSummary.outstanding_balance || 0),
           Number(exSummary.total_orders || 0),
           Number(exSummary.avg_order_value || 0),
-        ].map((val) => c(val, 0)),
-      );
-      excelData.push([]);
+        ].map(c),
+        [],
 
-      // 3. Sales by Channel
-      excelData.push([t("2. SALES BY CHANNEL")]);
-      excelData.push(
+        // 2. Sales by Channel
+        [t("2. SALES BY CHANNEL")],
         ["Channel", "Sales Orders", "Order Value", "Share of Order Value"].map(
           th,
         ),
-      );
+      ];
+
       if (exSalesByChannel.length > 0) {
-        exSalesByChannel.forEach((row, idx) => {
+        exSalesByChannel.forEach((row) => {
           excelData.push(
             [
               salesChannelLabel(row.channel),
               Number(row.order_count || 0),
               Number(row.sales_revenue || 0),
               percentage(row.sales_revenue, exChannelTotal),
-            ].map((val) => c(val, idx)),
+            ].map(c),
           );
         });
       } else {
         excelData.push([
-          c("No channel data for this period", 0),
-          c("", 0),
-          c("", 0),
-          c("", 0),
+          c("No channel data for this period"),
+          c(""),
+          c(""),
+          c(""),
         ]);
       }
-      excelData.push([]);
 
-      // 4. Top Products
-      excelData.push([t("3. TOP PRODUCTS BY ORDER VALUE")]);
       excelData.push(
+        [],
+
+        // 3. Top Products
+        [t("3. TOP PRODUCTS BY ORDER VALUE")],
         ["Product", "Units Ordered", "Order Value", "Share of Order Value"].map(
           th,
         ),
       );
+
       if (exVisibleProducts.length > 0) {
-        exVisibleProducts.forEach((row, idx) => {
+        exVisibleProducts.forEach((row) => {
           excelData.push(
             [
               row.product_name || "—",
               Number(row.units_sold || 0),
               Number(row.gross_order_value || 0),
               percentage(row.gross_order_value, exSummary.gross_order_value),
-            ].map((val) => c(val, idx)),
+            ].map(c),
           );
         });
       } else {
         excelData.push([
-          c("No product data for this period", 0),
-          c("", 0),
-          c("", 0),
-          c("", 0),
+          c("No product data for this period"),
+          c(""),
+          c(""),
+          c(""),
         ]);
       }
-      excelData.push([]);
 
-      // 5. Payment Collections
-      excelData.push([t("4. PAYMENT COLLECTIONS")]);
       excelData.push(
+        [],
+
+        // 4. Payment Collections
+        [t("4. PAYMENT COLLECTIONS")],
         [
           "Payment Method",
           "Verified Payments",
@@ -626,30 +790,32 @@ export default function SalesReportPage() {
           "Share of Collections",
         ].map(th),
       );
+
       if (exPaymentMethods.length > 0) {
-        exPaymentMethods.forEach((row, idx) => {
+        exPaymentMethods.forEach((row) => {
           excelData.push(
             [
               paymentMethodLabel(row.payment_method),
               Number(row.transaction_count || 0),
               Number(row.total_amount || 0),
               percentage(row.total_amount, exCollectionTotal),
-            ].map((val) => c(val, idx)),
+            ].map(c),
           );
         });
       } else {
         excelData.push([
-          c("No payment data for this period", 0),
-          c("", 0),
-          c("", 0),
-          c("", 0),
+          c("No payment data for this period"),
+          c(""),
+          c(""),
+          c(""),
         ]);
       }
-      excelData.push([]);
 
-      // 6. Outstanding Balances
-      excelData.push([t("5. OUTSTANDING BALANCES")]);
       excelData.push(
+        [],
+
+        // 5. Outstanding Balances
+        [t("5. OUTSTANDING BALANCES")],
         [
           "Order Number",
           "Customer",
@@ -661,8 +827,9 @@ export default function SalesReportPage() {
           "Payment Status",
         ].map(th),
       );
+
       if (exOutstandingOrders.length > 0) {
-        exOutstandingOrders.forEach((row, idx) => {
+        exOutstandingOrders.forEach((row) => {
           excelData.push(
             [
               row.order_number || `#${row.id}`,
@@ -673,59 +840,85 @@ export default function SalesReportPage() {
               Number(row.lifetime_collected || 0),
               Number(row.remaining_balance || 0),
               humanize(row.payment_status),
-            ].map((val) => c(val, idx)),
+            ].map(c),
           );
         });
       } else {
         excelData.push([
-          c("No outstanding balances for this period", 0),
-          c("", 0),
-          c("", 0),
-          c("", 0),
-          c("", 0),
-          c("", 0),
-          c("", 0),
-          c("", 0),
+          c("No outstanding balances for this period"),
+          c(""),
+          c(""),
+          c(""),
+          c(""),
+          c(""),
+          c(""),
+          c(""),
         ]);
       }
 
-      const ws = XLSX.utils.aoa_to_sheet(excelData);
+      const sheet = XLSX.utils.aoa_to_sheet(excelData);
 
-      const colWidths = [];
-      excelData.forEach((row) => {
-        row.forEach((cell, colIndex) => {
-          const cellValue = cell && cell.v ? String(cell.v) : "";
-          const textLength = cellValue.length;
-          if (
-            !colWidths[colIndex] ||
-            colWidths[colIndex].wch < textLength + 3
-          ) {
-            colWidths[colIndex] = { wch: textLength + 3 };
-          }
-        });
-      });
+      sheet["!cols"] = [
+        { wch: 32 },
+        { wch: 20 },
+        { wch: 22 },
+        { wch: 22 },
+        { wch: 20 },
+        { wch: 20 },
+        { wch: 20 },
+        { wch: 22 },
+      ];
 
-      ws["!cols"] = colWidths.map((col) => ({
-        wch: Math.min(Math.max(col.wch, 12), 65),
-      }));
+      /*
+       * Merge only the common report header.
+       * Section titles remain normal rows so each section
+       * can retain its own table structure.
+       */
+      sheet["!merges"] = [
+        {
+          s: { r: 0, c: 0 },
+          e: { r: 0, c: 7 },
+        },
+        {
+          s: { r: 1, c: 0 },
+          e: { r: 1, c: 7 },
+        },
+        {
+          s: { r: 2, c: 0 },
+          e: { r: 2, c: 7 },
+        },
+      ];
 
-      XLSX.utils.book_append_sheet(wb, ws, "Sales Report");
+      XLSX.utils.book_append_sheet(workbook, sheet, "Sales Report");
 
-      const safeChannel =
-        exportScope === "all" ? "all" : appliedChannel || "all";
-      const safePeriod =
-        exportScope === "all" ? "lifetime" : appliedPeriod || "report";
-      XLSX.writeFile(
-        wb,
-        `wisdom_sales_report_${safeChannel}_${safePeriod}.xlsx`,
-      );
+      if (saveHandle) {
+        const writable = await saveHandle.createWritable();
+
+        try {
+          const buffer = XLSX.write(workbook, {
+            bookType: "xlsx",
+            type: "array",
+          });
+
+          await writable.write(buffer);
+        } finally {
+          await writable.close();
+        }
+      } else {
+        XLSX.writeFile(workbook, fileName);
+      }
 
       setExportOpen(false);
-      toast.success("Sales report downloaded successfully.");
+
+      toast.success("Sales report exported successfully.");
     } catch (err) {
-      toast.error(
-        err.response?.data?.message || "Failed to generate the export file.",
-      );
+      if (err?.name !== "AbortError") {
+        toast.error(
+          err?.response?.data?.message ||
+            err?.message ||
+            "Failed to generate the export file.",
+        );
+      }
     } finally {
       setExporting(false);
     }

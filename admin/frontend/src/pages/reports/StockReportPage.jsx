@@ -19,6 +19,162 @@ const humanize = (value) =>
     .replace(/_/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
 
+const formatExportDate = (date) => {
+  if (!date || Number.isNaN(new Date(date).getTime())) {
+    return "—";
+  }
+
+  return new Date(date).toLocaleDateString("en-PH", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
+};
+
+const getExportDateFilterLabel = (dateFilter, customStart, customEnd) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (dateFilter === "all") {
+    return "All dates";
+  }
+
+  if (dateFilter === "today") {
+    return formatExportDate(today);
+  }
+
+  if (dateFilter === "yesterday") {
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    return formatExportDate(yesterday);
+  }
+
+  if (dateFilter === "this_week") {
+    const start = new Date(today);
+    start.setDate(today.getDate() - today.getDay());
+
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+
+    return `${formatExportDate(start)} to ${formatExportDate(end)}`;
+  }
+
+  if (dateFilter === "this_month") {
+    const start = new Date(today.getFullYear(), today.getMonth(), 1);
+
+    const end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+    return `${formatExportDate(start)} to ${formatExportDate(end)}`;
+  }
+
+  if (dateFilter === "this_year") {
+    const start = new Date(today.getFullYear(), 0, 1);
+    const end = new Date(today.getFullYear(), 11, 31);
+
+    return `${formatExportDate(start)} to ${formatExportDate(end)}`;
+  }
+
+  if (dateFilter === "custom") {
+    if (customStart && customEnd) {
+      return `${formatExportDate(customStart)} to ${formatExportDate(
+        customEnd,
+      )}`;
+    }
+
+    if (customStart) {
+      return `From ${formatExportDate(customStart)}`;
+    }
+
+    if (customEnd) {
+      return `Up to ${formatExportDate(customEnd)}`;
+    }
+
+    return "Custom date";
+  }
+
+  return humanize(dateFilter);
+};
+
+const getExportFilenamePart = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "all";
+
+const getExportDateFilenamePart = (dateFilter, customStart, customEnd) => {
+  const now = new Date();
+
+  const formatFilenameDate = (date) => {
+    const parsed = new Date(date);
+
+    if (Number.isNaN(parsed.getTime())) {
+      return "";
+    }
+
+    return parsed.toLocaleDateString("en-CA", {
+      timeZone: "Asia/Manila",
+    });
+  };
+
+  if (dateFilter === "today") {
+    return `today_${formatFilenameDate(now)}`;
+  }
+
+  if (dateFilter === "yesterday") {
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    return `yesterday_${formatFilenameDate(yesterday)}`;
+  }
+
+  if (dateFilter === "this_week") {
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - start.getDay());
+
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+
+    return `${formatFilenameDate(start)}_to_${formatFilenameDate(end)}`;
+  }
+
+  if (dateFilter === "this_month") {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+    return `${formatFilenameDate(start)}_to_${formatFilenameDate(end)}`;
+  }
+
+  if (dateFilter === "this_year") {
+    const start = new Date(now.getFullYear(), 0, 1);
+    const end = new Date(now.getFullYear(), 11, 31);
+
+    return `${formatFilenameDate(start)}_to_${formatFilenameDate(end)}`;
+  }
+
+  if (dateFilter === "custom") {
+    if (customStart && customEnd) {
+      return `${formatFilenameDate(customStart)}_to_${formatFilenameDate(
+        customEnd,
+      )}`;
+    }
+
+    if (customStart) {
+      return `from_${formatFilenameDate(customStart)}`;
+    }
+
+    if (customEnd) {
+      return `to_${formatFilenameDate(customEnd)}`;
+    }
+  }
+
+  return "all_dates";
+};
+
 const pdfFormatDateTime = (value) => {
   if (!value) return "—";
 
@@ -1079,16 +1235,64 @@ export default function StockReportPage() {
       const reportLabel =
         reportType === "movements" ? "Stock Movements" : "Stock Transfers";
 
+      const inventoryLabel = inventoryType
+        ? humanize(inventoryType)
+        : "All Inventory";
+
+      const movementLabel = movementType
+        ? humanize(movementType)
+        : "All Movement Types";
+
+      const searchLabel = search.trim() || "None";
+
+      const dateFilterLabel = getExportDateFilterLabel(
+        dateFilter,
+        customStart,
+        customEnd,
+      );
+
+      const filterStyle = {
+        font: {
+          bold: true,
+          sz: 10,
+          color: { rgb: "374151" },
+        },
+        alignment: {
+          horizontal: "left",
+          vertical: "center",
+          wrapText: true,
+        },
+      };
+
+      const filterText = [
+        `Searched: ${searchLabel}`,
+        `Inventory Type: ${inventoryLabel}`,
+        `Movement Type: ${
+          reportType === "movements" ? movementLabel : "Not applicable"
+        }`,
+        `Date Filter: ${dateFilterLabel}`,
+      ].join("    |    ");
+
       const excelData = [
-        [{ v: `Stock Report - ${reportLabel}`, s: titleStyle }],
-        [], // Empty row to accommodate the vertical merge
+        [
+          {
+            v: `Stock Report - ${reportLabel}`,
+            s: titleStyle,
+          },
+        ],
         [
           {
             v: "Review comprehensive historical data for inventory adjustments, consumption, and internal warehouse transfers.",
             s: descStyle,
           },
         ],
-        [], // Empty spacer row before data
+        [
+          {
+            v: filterText,
+            s: filterStyle,
+          },
+        ],
+        [],
         headers.map(header),
         ...mappedData.map((row) => row.map(cell)),
       ];
@@ -1096,15 +1300,36 @@ export default function StockReportPage() {
       const sheet = XLSX.utils.aoa_to_sheet(excelData);
       sheet["!cols"] = headers.map(() => ({ wch: 25 }));
 
-      // Merge Title across rows 1-2 and all columns, Merge Description across row 3
       sheet["!merges"] = [
-        { s: { r: 0, c: 0 }, e: { r: 1, c: headers.length - 1 } },
-        { s: { r: 2, c: 0 }, e: { r: 2, c: headers.length - 1 } },
+        {
+          s: { r: 0, c: 0 },
+          e: { r: 0, c: headers.length - 1 },
+        },
+        {
+          s: { r: 1, c: 0 },
+          e: { r: 1, c: headers.length - 1 },
+        },
+        {
+          s: { r: 2, c: 0 },
+          e: { r: 2, c: headers.length - 1 },
+        },
       ];
 
       XLSX.utils.book_append_sheet(workbook, sheet, reportLabel);
 
-      const fileName = `stock_report_${reportType}_${new Date().getTime()}.xlsx`;
+      const inventoryFilenamePart = getExportFilenamePart(
+        inventoryType || "all_inventory",
+      );
+
+      const dateFilenamePart = getExportDateFilenamePart(
+        dateFilter,
+        customStart,
+        customEnd,
+      );
+
+      const exportTimestamp = new Date().getTime();
+
+      const fileName = `stock_report_${reportType}_${inventoryFilenamePart}_${dateFilenamePart}_${exportTimestamp}.xlsx`;
 
       if (window.showSaveFilePicker) {
         const handle = await window.showSaveFilePicker({

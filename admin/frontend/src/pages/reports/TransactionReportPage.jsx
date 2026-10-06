@@ -519,6 +519,8 @@ const buildOrderReportParams = ({
   page,
   limit,
   search,
+  status = "all",
+  channel = "all",
   dateFilter,
   customStart,
   customEnd,
@@ -534,6 +536,22 @@ const buildOrderReportParams = ({
   const normalizedSearch = String(search || "").trim();
   if (normalizedSearch) {
     params.search = normalizedSearch;
+  }
+
+  const normalizedStatus = String(status || "all")
+    .trim()
+    .toLowerCase();
+
+  if (normalizedStatus !== "all") {
+    params.status = normalizedStatus;
+  }
+
+  const normalizedChannel = String(channel || "all")
+    .trim()
+    .toLowerCase();
+
+  if (normalizedChannel !== "all") {
+    params.channel = normalizedChannel;
   }
 
   if (dateFilter === "custom") {
@@ -552,6 +570,7 @@ const buildCancellationReportParams = ({
   page,
   limit,
   search,
+  orderType = "all",
   dateFilter,
   customStart,
   customEnd,
@@ -565,8 +584,17 @@ const buildCancellationReportParams = ({
   };
 
   const normalizedSearch = String(search || "").trim();
+
   if (normalizedSearch) {
     params.search = normalizedSearch;
+  }
+
+  const normalizedOrderType = String(orderType || "all")
+    .trim()
+    .toLowerCase();
+
+  if (normalizedOrderType !== "all") {
+    params.record_type = normalizedOrderType;
   }
 
   if (dateFilter === "custom") {
@@ -585,6 +613,187 @@ const humanize = (value) =>
   String(value || "—")
     .replace(/_/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const formatExportDate = (date) => {
+  if (!date || Number.isNaN(new Date(date).getTime())) {
+    return "—";
+  }
+
+  return new Date(date).toLocaleDateString("en-PH", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
+};
+
+const getExportDateFilterLabel = (dateFilter, customStart, customEnd) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (dateFilter === "all") {
+    return "All dates";
+  }
+
+  if (dateFilter === "today") {
+    return formatExportDate(today);
+  }
+
+  if (dateFilter === "yesterday") {
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    return formatExportDate(yesterday);
+  }
+
+  if (dateFilter === "this_week") {
+    const start = new Date(today);
+    start.setDate(today.getDate() - today.getDay());
+
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+
+    return `${formatExportDate(start)} to ${formatExportDate(end)}`;
+  }
+
+  if (dateFilter === "this_month") {
+    const start = new Date(today.getFullYear(), today.getMonth(), 1);
+
+    const end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+    return `${formatExportDate(start)} to ${formatExportDate(end)}`;
+  }
+
+  if (dateFilter === "this_year") {
+    const start = new Date(today.getFullYear(), 0, 1);
+    const end = new Date(today.getFullYear(), 11, 31);
+
+    return `${formatExportDate(start)} to ${formatExportDate(end)}`;
+  }
+
+  if (dateFilter === "custom") {
+    if (customStart && customEnd) {
+      return `${formatExportDate(customStart)} to ${formatExportDate(
+        customEnd,
+      )}`;
+    }
+
+    if (customStart) {
+      return `From ${formatExportDate(customStart)}`;
+    }
+
+    if (customEnd) {
+      return `Up to ${formatExportDate(customEnd)}`;
+    }
+
+    return "Custom date";
+  }
+
+  return humanize(dateFilter);
+};
+
+const getExportFilenamePart = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "all";
+
+const getExportDateFilenamePart = (dateFilter, customStart, customEnd) => {
+  const now = new Date();
+
+  const formatFilenameDate = (date) => {
+    const parsed = new Date(date);
+
+    if (Number.isNaN(parsed.getTime())) {
+      return "";
+    }
+
+    return parsed.toLocaleDateString("en-CA", {
+      timeZone: "Asia/Manila",
+    });
+  };
+
+  if (dateFilter === "today") {
+    return `today_${formatFilenameDate(now)}`;
+  }
+
+  if (dateFilter === "yesterday") {
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    return `yesterday_${formatFilenameDate(yesterday)}`;
+  }
+
+  if (dateFilter === "this_week") {
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - start.getDay());
+
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+
+    return `${formatFilenameDate(start)}_to_${formatFilenameDate(end)}`;
+  }
+
+  if (dateFilter === "this_month") {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+    return `${formatFilenameDate(start)}_to_${formatFilenameDate(end)}`;
+  }
+
+  if (dateFilter === "this_year") {
+    const start = new Date(now.getFullYear(), 0, 1);
+    const end = new Date(now.getFullYear(), 11, 31);
+
+    return `${formatFilenameDate(start)}_to_${formatFilenameDate(end)}`;
+  }
+
+  if (dateFilter === "custom") {
+    if (customStart && customEnd) {
+      return `${formatFilenameDate(customStart)}_to_${formatFilenameDate(
+        customEnd,
+      )}`;
+    }
+
+    if (customStart) {
+      return `from_${formatFilenameDate(customStart)}`;
+    }
+
+    if (customEnd) {
+      return `to_${formatFilenameDate(customEnd)}`;
+    }
+  }
+
+  return "all_dates";
+};
+
+const ORDER_STATUS_FILTER_OPTIONS = [
+  { value: "all", label: "All Statuses" },
+  { value: "pending", label: "Pending" },
+  { value: "confirmed", label: "Confirmed" },
+  { value: "contract_released", label: "Contract Released" },
+  { value: "production", label: "Production" },
+  { value: "ready_for_pickup", label: "Ready for Pickup" },
+  { value: "shipping", label: "Shipping" },
+  { value: "delivered", label: "Delivered" },
+  { value: "completed", label: "Completed" },
+  { value: "cancelled", label: "Cancelled" },
+];
+
+const ORDER_CHANNEL_FILTER_OPTIONS = [
+  { value: "all", label: "All Channels" },
+  { value: "online", label: "Online" },
+  { value: "walkin", label: "Walk-in" },
+];
+
+const CANCELLATION_ORDER_TYPE_FILTER_OPTIONS = [
+  { value: "all", label: "All Order Types" },
+  { value: "ready_made", label: "Ready Made" },
+  { value: "custom_furniture", label: "Custom Furniture" },
+];
 
 function SummaryCard({ label, value, note }) {
   return (
@@ -624,12 +833,16 @@ export default function TransactionReportPage() {
         setReportType(tab);
         setSearch("");
         setDebouncedSearch("");
+        setStatusFilter("all");
+        setChannelFilter("all");
         setPage(1);
       }
     } else if (!tab && reportType !== "orders") {
       setReportType("orders");
       setSearch("");
       setDebouncedSearch("");
+      setStatusFilter("all");
+      setChannelFilter("all");
       setPage(1);
     }
   }, [searchParams, reportType]);
@@ -638,6 +851,10 @@ export default function TransactionReportPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dateFilter, setDateFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [channelFilter, setChannelFilter] = useState("all");
+  const [cancellationOrderTypeFilter, setCancellationOrderTypeFilter] =
+    useState("all");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
   const [page, setPage] = useState(1);
@@ -683,7 +900,15 @@ export default function TransactionReportPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [reportType, dateFilter, customStart, customEnd]);
+  }, [
+    reportType,
+    statusFilter,
+    channelFilter,
+    cancellationOrderTypeFilter,
+    dateFilter,
+    customStart,
+    customEnd,
+  ]);
 
   useEffect(() => {
     setPage(1);
@@ -698,6 +923,8 @@ export default function TransactionReportPage() {
           page,
           limit: PAGE_SIZE,
           search: debouncedSearch,
+          status: statusFilter,
+          channel: channelFilter,
           dateFilter,
           customStart,
           customEnd,
@@ -720,7 +947,15 @@ export default function TransactionReportPage() {
       setLoading(false);
       setInitialLoading(false);
     }
-  }, [page, debouncedSearch, dateFilter, customStart, customEnd]);
+  }, [
+    page,
+    debouncedSearch,
+    statusFilter,
+    channelFilter,
+    dateFilter,
+    customStart,
+    customEnd,
+  ]);
 
   const loadCancellations = useCallback(async () => {
     setLoading(true);
@@ -731,6 +966,7 @@ export default function TransactionReportPage() {
           page,
           limit: PAGE_SIZE,
           search: debouncedSearch,
+          orderType: cancellationOrderTypeFilter,
           dateFilter,
           customStart,
           customEnd,
@@ -755,7 +991,14 @@ export default function TransactionReportPage() {
       setLoading(false);
       setInitialLoading(false);
     }
-  }, [page, debouncedSearch, dateFilter, customStart, customEnd]);
+  }, [
+    page,
+    debouncedSearch,
+    cancellationOrderTypeFilter,
+    dateFilter,
+    customStart,
+    customEnd,
+  ]);
 
   useEffect(() => {
     if (dateFilter === "custom" && (!customStart || !customEnd)) {
@@ -765,7 +1008,15 @@ export default function TransactionReportPage() {
     if (reportType === "orders") {
       loadOrders();
     }
-  }, [reportType, dateFilter, customStart, customEnd, loadOrders]);
+  }, [
+    reportType,
+    statusFilter,
+    channelFilter,
+    dateFilter,
+    customStart,
+    customEnd,
+    loadOrders,
+  ]);
 
   useEffect(() => {
     if (dateFilter === "custom" && (!customStart || !customEnd)) {
@@ -820,6 +1071,68 @@ export default function TransactionReportPage() {
       return;
     }
 
+    const searchFilenamePart = getExportFilenamePart(search || "all_records");
+
+    const channelFilenamePart =
+      reportType === "orders"
+        ? getExportFilenamePart(channelFilter || "all_channels")
+        : "";
+
+    const statusFilenamePart =
+      reportType === "orders"
+        ? getExportFilenamePart(statusFilter || "all_statuses")
+        : "";
+
+    const cancellationOrderTypeFilenamePart =
+      reportType === "cancellations"
+        ? getExportFilenamePart(
+            cancellationOrderTypeFilter || "all_order_types",
+          )
+        : "";
+
+    const dateFilenamePart = getExportDateFilenamePart(
+      dateFilter,
+      customStart,
+      customEnd,
+    );
+
+    const exportTimestamp = new Date().getTime();
+
+    const fileName =
+      reportType === "orders"
+        ? `transaction_report_orders_${searchFilenamePart}_${channelFilenamePart}_${statusFilenamePart}_${dateFilenamePart}_${exportTimestamp}.xlsx`
+        : `transaction_report_cancellations_${searchFilenamePart}_${cancellationOrderTypeFilenamePart}_${dateFilenamePart}_${exportTimestamp}.xlsx`;
+
+    let saveHandle = null;
+
+    /*
+     * Open Save As immediately while the Export Excel
+     * button still has the browser's user gesture.
+     */
+    if (window.showSaveFilePicker) {
+      try {
+        saveHandle = await window.showSaveFilePicker({
+          suggestedName: fileName,
+          types: [
+            {
+              description: "Excel Document",
+              accept: {
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+                  [".xlsx"],
+              },
+            },
+          ],
+        });
+      } catch (err) {
+        if (err?.name === "AbortError") {
+          return;
+        }
+
+        toast.error("Unable to open the Save As dialog.");
+        return;
+      }
+    }
+
     setExporting(true);
 
     try {
@@ -831,9 +1144,12 @@ export default function TransactionReportPage() {
             page: 1,
             limit: EXPORT_PAGE_SIZE,
             search,
+            status: statusFilter,
+            channel: channelFilter,
             dateFilter,
             customStart,
             customEnd,
+            includeSummary: true,
           }),
         });
 
@@ -842,6 +1158,7 @@ export default function TransactionReportPage() {
           : [];
 
         const exportTotal = Number(firstResponse.data?.total || 0);
+
         const exportPages = Math.max(
           1,
           Math.ceil(exportTotal / EXPORT_PAGE_SIZE),
@@ -853,6 +1170,8 @@ export default function TransactionReportPage() {
               page: exportPage,
               limit: EXPORT_PAGE_SIZE,
               search,
+              status: statusFilter,
+              channel: channelFilter,
               dateFilter,
               customStart,
               customEnd,
@@ -861,6 +1180,7 @@ export default function TransactionReportPage() {
           });
 
           const batch = Array.isArray(data?.orders) ? data.orders : [];
+
           exportRows.push(...batch);
 
           if (batch.length === 0) break;
@@ -877,6 +1197,7 @@ export default function TransactionReportPage() {
             page: 1,
             limit: EXPORT_PAGE_SIZE,
             search,
+            orderType: cancellationOrderTypeFilter,
             dateFilter,
             customStart,
             customEnd,
@@ -887,7 +1208,19 @@ export default function TransactionReportPage() {
           ? [...firstResponse.data.records]
           : [];
 
-        const exportTotal = Number(firstResponse.data?.total || 0);
+        if (cancellationOrderTypeFilter !== "all") {
+          exportRows = exportRows.filter(
+            (record) =>
+              normalize(record.record_type) ===
+              normalize(cancellationOrderTypeFilter),
+          );
+        }
+
+        const exportTotal =
+          cancellationOrderTypeFilter === "all"
+            ? Number(firstResponse.data?.total || 0)
+            : exportRows.length;
+
         const exportPages = Math.max(
           1,
           Math.ceil(exportTotal / EXPORT_PAGE_SIZE),
@@ -899,6 +1232,7 @@ export default function TransactionReportPage() {
               page: exportPage,
               limit: EXPORT_PAGE_SIZE,
               search,
+              orderType: cancellationOrderTypeFilter,
               dateFilter,
               customStart,
               customEnd,
@@ -906,7 +1240,16 @@ export default function TransactionReportPage() {
             }),
           });
 
-          const batch = Array.isArray(data?.records) ? data.records : [];
+          let batch = Array.isArray(data?.records) ? data.records : [];
+
+          if (cancellationOrderTypeFilter !== "all") {
+            batch = batch.filter(
+              (record) =>
+                normalize(record.record_type) ===
+                normalize(cancellationOrderTypeFilter),
+            );
+          }
+
           exportRows.push(...batch);
 
           if (batch.length === 0) break;
@@ -927,27 +1270,63 @@ export default function TransactionReportPage() {
       const workbook = XLSX.utils.book_new();
 
       const headerStyle = {
-        font: { bold: true, color: { rgb: "FFFFFF" } },
-        fill: { fgColor: { rgb: "18181B" } },
+        font: {
+          bold: true,
+          color: { rgb: "FFFFFF" },
+        },
+        fill: {
+          fgColor: { rgb: "18181B" },
+        },
         border: {
-          top: { style: "thin", color: { rgb: "D1D5DB" } },
-          bottom: { style: "thin", color: { rgb: "D1D5DB" } },
-          left: { style: "thin", color: { rgb: "D1D5DB" } },
-          right: { style: "thin", color: { rgb: "D1D5DB" } },
+          top: {
+            style: "thin",
+            color: { rgb: "D1D5DB" },
+          },
+          bottom: {
+            style: "thin",
+            color: { rgb: "D1D5DB" },
+          },
+          left: {
+            style: "thin",
+            color: { rgb: "D1D5DB" },
+          },
+          right: {
+            style: "thin",
+            color: { rgb: "D1D5DB" },
+          },
         },
       };
 
       const cellStyle = {
         border: {
-          top: { style: "thin", color: { rgb: "E5E7EB" } },
-          bottom: { style: "thin", color: { rgb: "E5E7EB" } },
-          left: { style: "thin", color: { rgb: "E5E7EB" } },
-          right: { style: "thin", color: { rgb: "E5E7EB" } },
+          top: {
+            style: "thin",
+            color: { rgb: "E5E7EB" },
+          },
+          bottom: {
+            style: "thin",
+            color: { rgb: "E5E7EB" },
+          },
+          left: {
+            style: "thin",
+            color: { rgb: "E5E7EB" },
+          },
+          right: {
+            style: "thin",
+            color: { rgb: "E5E7EB" },
+          },
         },
       };
 
-      const header = (value) => ({ v: value, s: headerStyle });
-      const cell = (value) => ({ v: value ?? "", s: cellStyle });
+      const header = (value) => ({
+        v: value,
+        s: headerStyle,
+      });
+
+      const cell = (value) => ({
+        v: value ?? "",
+        s: cellStyle,
+      });
 
       let headers = [];
       let mappedData = [];
@@ -962,6 +1341,7 @@ export default function TransactionReportPage() {
           "Payment Status",
           "Order Status",
         ];
+
         mappedData = exportRows.map((r) => [
           formatDateTime(r.created_at),
           r.order_number || `#${r.id}`,
@@ -981,6 +1361,7 @@ export default function TransactionReportPage() {
           "Admin Note",
           "Status",
         ];
+
         mappedData = exportRows.map((r) => [
           formatDateTime(r.requested_at || r.created_at),
           r.order_number || `#${r.order_id}`,
@@ -993,71 +1374,157 @@ export default function TransactionReportPage() {
       }
 
       const titleStyle = {
-        font: { bold: true, sz: 16, color: { rgb: "111827" } },
-        alignment: { horizontal: "center", vertical: "center" },
+        font: {
+          bold: true,
+          sz: 16,
+          color: { rgb: "111827" },
+        },
+        alignment: {
+          horizontal: "center",
+          vertical: "center",
+        },
       };
 
       const descStyle = {
-        font: { italic: true, sz: 11, color: { rgb: "52525B" } },
-        alignment: { horizontal: "center", vertical: "center" },
+        font: {
+          italic: true,
+          sz: 11,
+          color: { rgb: "52525B" },
+        },
+        alignment: {
+          horizontal: "center",
+          vertical: "center",
+        },
       };
 
       const reportLabel = reportType === "orders" ? "Orders" : "Cancellations";
 
+      const channelLabel = channelFilter
+        ? humanize(channelFilter)
+        : "All Channels";
+
+      const statusLabel = statusFilter
+        ? humanize(statusFilter)
+        : "All Statuses";
+
+      const cancellationOrderTypeLabel =
+        cancellationOrderTypeFilter === "all"
+          ? "All Order Types"
+          : humanize(cancellationOrderTypeFilter);
+
+      const searchLabel = search.trim() || "None";
+
+      const dateFilterLabel = getExportDateFilterLabel(
+        dateFilter,
+        customStart,
+        customEnd,
+      );
+
+      const filterStyle = {
+        font: {
+          bold: true,
+          sz: 10,
+          color: { rgb: "374151" },
+        },
+        alignment: {
+          horizontal: "left",
+          vertical: "center",
+          wrapText: true,
+        },
+      };
+
+      const filterText =
+        reportType === "orders"
+          ? [
+              `Searched: ${searchLabel}`,
+              `Channel: ${channelLabel}`,
+              `Status: ${statusLabel}`,
+              `Date Filter: ${dateFilterLabel}`,
+            ].join("    |    ")
+          : [
+              `Searched: ${searchLabel}`,
+              `Order Type: ${cancellationOrderTypeLabel}`,
+              `Date Filter: ${dateFilterLabel}`,
+            ].join("    |    ");
+
       const excelData = [
-        [{ v: `Transaction Report - ${reportLabel}`, s: titleStyle }],
-        [], // Empty row for merge
+        [
+          {
+            v: `Transaction Report - ${reportLabel}`,
+            s: titleStyle,
+          },
+        ],
         [
           {
             v: "Review chronological history of order transactions and cancellation requests.",
             s: descStyle,
           },
         ],
-        [], // Spacer
+        [
+          {
+            v: filterText,
+            s: filterStyle,
+          },
+        ],
+        [],
         headers.map(header),
         ...mappedData.map((row) => row.map(cell)),
       ];
 
       const sheet = XLSX.utils.aoa_to_sheet(excelData);
-      sheet["!cols"] = headers.map(() => ({ wch: 22 }));
 
-      // Merge Title across rows 1-2 and all columns, Merge Description across row 3
+      sheet["!cols"] = headers.map(() => ({
+        wch: 25,
+      }));
+
       sheet["!merges"] = [
-        { s: { r: 0, c: 0 }, e: { r: 1, c: headers.length - 1 } },
-        { s: { r: 2, c: 0 }, e: { r: 2, c: headers.length - 1 } },
+        {
+          s: { r: 0, c: 0 },
+          e: {
+            r: 0,
+            c: headers.length - 1,
+          },
+        },
+        {
+          s: { r: 1, c: 0 },
+          e: {
+            r: 1,
+            c: headers.length - 1,
+          },
+        },
+        {
+          s: { r: 2, c: 0 },
+          e: {
+            r: 2,
+            c: headers.length - 1,
+          },
+        },
       ];
 
       XLSX.utils.book_append_sheet(workbook, sheet, reportLabel);
 
-      const fileName = `transaction_report_${reportType}_${new Date().getTime()}.xlsx`;
+      const buffer = XLSX.write(workbook, {
+        bookType: "xlsx",
+        type: "array",
+      });
 
-      if (window.showSaveFilePicker) {
-        const handle = await window.showSaveFilePicker({
-          suggestedName: fileName,
-          types: [
-            {
-              description: "Excel Document",
-              accept: {
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
-                  [".xlsx"],
-              },
-            },
-          ],
-        });
-        const writable = await handle.createWritable();
-        const buffer = XLSX.write(workbook, {
-          bookType: "xlsx",
-          type: "array",
-        });
-        await writable.write(buffer);
-        await writable.close();
+      if (saveHandle) {
+        const writable = await saveHandle.createWritable();
+
+        try {
+          await writable.write(buffer);
+        } finally {
+          await writable.close();
+        }
       } else {
         XLSX.writeFile(workbook, fileName);
       }
 
       toast.success(`${reportLabel} report exported.`);
     } catch (err) {
-      if (err.name !== "AbortError") toast.error("Failed to export report.");
+      if (err?.name !== "AbortError") {
+        toast.error(err?.message || "Failed to export report.");
+      }
     } finally {
       setExporting(false);
     }
@@ -1128,6 +1595,8 @@ export default function TransactionReportPage() {
             onClick={() => {
               setReportType(item.value);
               setSearch("");
+              setStatusFilter("all");
+              setChannelFilter("all");
               setSearchParams(
                 item.value === "orders" ? {} : { tab: item.value },
                 { replace: true },
@@ -1168,6 +1637,59 @@ export default function TransactionReportPage() {
             placeholder="Search references, customers, or amounts..."
           />
         </label>
+
+        {reportType === "orders" && (
+          <>
+            {/* STATUS FILTER */}
+            <label className="trx-filter-field" style={{ minWidth: 170 }}>
+              <span>Status Filter</span>
+
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                {ORDER_STATUS_FILTER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {/* CHANNEL FILTER */}
+            <label className="trx-filter-field" style={{ minWidth: 150 }}>
+              <span>Channel Filter</span>
+
+              <select
+                value={channelFilter}
+                onChange={(e) => setChannelFilter(e.target.value)}
+              >
+                {ORDER_CHANNEL_FILTER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        )}
+
+        {reportType === "cancellations" && (
+          <label className="trx-filter-field" style={{ minWidth: 170 }}>
+            <span>Order Type</span>
+
+            <select
+              value={cancellationOrderTypeFilter}
+              onChange={(e) => setCancellationOrderTypeFilter(e.target.value)}
+            >
+              {CANCELLATION_ORDER_TYPE_FILTER_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         {/* DATE RANGE FILTER */}
         <label className="trx-filter-field" style={{ minWidth: 160 }}>

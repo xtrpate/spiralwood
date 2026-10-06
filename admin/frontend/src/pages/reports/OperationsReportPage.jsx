@@ -480,6 +480,212 @@ const humanize = (value) =>
     .replace(/_/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
 
+const formatExportDateKey = (dateKey) => {
+  if (!dateKey) return "—";
+
+  const [year, month, day] = String(dateKey).split("-").map(Number);
+
+  if (!year || !month || !day) {
+    return "—";
+  }
+
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+
+  return date.toLocaleDateString("en-PH", {
+    timeZone: "UTC",
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
+};
+
+const getOperationsExportDateFilterLabel = (
+  dateFilter,
+  customStart,
+  customEnd,
+) => {
+  const normalizedFilter = String(dateFilter || "all")
+    .trim()
+    .toLowerCase();
+
+  if (normalizedFilter === "all") {
+    return "All dates";
+  }
+
+  if (normalizedFilter === "today") {
+    const todayKey = getPhilippineDateKey();
+
+    return formatExportDateKey(todayKey);
+  }
+
+  if (normalizedFilter === "yesterday") {
+    const todayKey = getPhilippineDateKey();
+    const yesterdayKey = shiftDateKey(todayKey, -1);
+
+    return formatExportDateKey(yesterdayKey);
+  }
+
+  if (normalizedFilter === "this_week") {
+    const todayKey = getPhilippineDateKey();
+
+    const [year, month, day] = todayKey.split("-").map(Number);
+
+    const dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+
+    const startOfWeek = shiftDateKey(todayKey, -dayOfWeek);
+
+    const endOfWeek = shiftDateKey(startOfWeek, 6);
+
+    return `${formatExportDateKey(
+      startOfWeek,
+    )} to ${formatExportDateKey(endOfWeek)}`;
+  }
+
+  if (normalizedFilter === "this_month") {
+    const todayKey = getPhilippineDateKey();
+
+    const [year, month] = todayKey.split("-").map(Number);
+
+    const startOfMonth = `${String(year).padStart(
+      4,
+      "0",
+    )}-${String(month).padStart(2, "0")}-01`;
+
+    const firstOfNextMonth = new Date(Date.UTC(year, month, 1));
+
+    const nextMonthKey = [
+      String(firstOfNextMonth.getUTCFullYear()).padStart(4, "0"),
+      String(firstOfNextMonth.getUTCMonth() + 1).padStart(2, "0"),
+      String(firstOfNextMonth.getUTCDate()).padStart(2, "0"),
+    ].join("-");
+
+    const endOfMonth = shiftDateKey(nextMonthKey, -1);
+
+    return `${formatExportDateKey(
+      startOfMonth,
+    )} to ${formatExportDateKey(endOfMonth)}`;
+  }
+
+  if (normalizedFilter === "this_year") {
+    const todayKey = getPhilippineDateKey();
+    const [year] = todayKey.split("-").map(Number);
+
+    return `${formatExportDateKey(
+      `${year}-01-01`,
+    )} to ${formatExportDateKey(`${year}-12-31`)}`;
+  }
+
+  if (normalizedFilter === "custom") {
+    if (customStart && customEnd) {
+      return `${formatExportDateKey(
+        customStart,
+      )} to ${formatExportDateKey(customEnd)}`;
+    }
+
+    if (customStart) {
+      return `From ${formatExportDateKey(customStart)}`;
+    }
+
+    if (customEnd) {
+      return `Up to ${formatExportDateKey(customEnd)}`;
+    }
+
+    return "Custom date";
+  }
+
+  return humanize(normalizedFilter);
+};
+
+const getExportFilenamePart = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "all";
+
+const getOperationsExportDateFilenamePart = (
+  dateFilter,
+  customStart,
+  customEnd,
+) => {
+  const normalizedFilter = String(dateFilter || "all")
+    .trim()
+    .toLowerCase();
+
+  const todayKey = getPhilippineDateKey();
+
+  if (normalizedFilter === "today") {
+    return `today_${todayKey}`;
+  }
+
+  if (normalizedFilter === "yesterday") {
+    const yesterdayKey = shiftDateKey(todayKey, -1);
+
+    return `yesterday_${yesterdayKey}`;
+  }
+
+  if (normalizedFilter === "this_week") {
+    const [year, month, day] = todayKey.split("-").map(Number);
+
+    const dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+
+    const startOfWeek = shiftDateKey(todayKey, -dayOfWeek);
+
+    const endOfWeek = shiftDateKey(startOfWeek, 6);
+
+    return `${startOfWeek}_to_${endOfWeek}`;
+  }
+
+  if (normalizedFilter === "this_month") {
+    const [year, month] = todayKey.split("-").map(Number);
+
+    const startOfMonth = `${String(year).padStart(
+      4,
+      "0",
+    )}-${String(month).padStart(2, "0")}-01`;
+
+    const firstOfNextMonth = new Date(Date.UTC(year, month, 1));
+
+    const nextMonthKey = [
+      String(firstOfNextMonth.getUTCFullYear()).padStart(4, "0"),
+      String(firstOfNextMonth.getUTCMonth() + 1).padStart(2, "0"),
+      String(firstOfNextMonth.getUTCDate()).padStart(2, "0"),
+    ].join("-");
+
+    const endOfMonth = shiftDateKey(nextMonthKey, -1);
+
+    return `${startOfMonth}_to_${endOfMonth}`;
+  }
+
+  if (normalizedFilter === "this_year") {
+    const [year] = todayKey.split("-").map(Number);
+
+    return `${year}-01-01_to_${year}-12-31`;
+  }
+
+  if (normalizedFilter === "custom") {
+    if (customStart && customEnd) {
+      return `${customStart}_to_${customEnd}`;
+    }
+
+    if (customStart) {
+      return `from_${customStart}`;
+    }
+
+    if (customEnd) {
+      return `to_${customEnd}`;
+    }
+
+    return "custom_date";
+  }
+
+  return "all_dates";
+};
+
 /*
  * ============================================================
  * OPERATIONS DETAIL RECORD PDF EXPORT
@@ -1909,41 +2115,120 @@ export default function OperationsReportPage({ fixedOperationType = null }) {
       }
 
       const titleStyle = {
-        font: { bold: true, sz: 16, color: { rgb: "111827" } },
-        alignment: { horizontal: "center", vertical: "center" },
+        font: {
+          bold: true,
+          sz: 16,
+          color: { rgb: "111827" },
+        },
+        alignment: {
+          horizontal: "center",
+          vertical: "center",
+        },
       };
 
       const descStyle = {
-        font: { italic: true, sz: 11, color: { rgb: "52525B" } },
-        alignment: { horizontal: "center", vertical: "center" },
+        font: {
+          italic: true,
+          sz: 11,
+          color: { rgb: "52525B" },
+        },
+        alignment: {
+          horizontal: "center",
+          vertical: "center",
+          wrapText: true,
+        },
       };
 
+      const filterStyle = {
+        font: {
+          bold: true,
+          sz: 10,
+          color: { rgb: "374151" },
+        },
+        alignment: {
+          horizontal: "left",
+          vertical: "center",
+          wrapText: true,
+        },
+      };
+
+      const searchLabel = String(debouncedSearch || "").trim() || "None";
+
+      const statusLabel =
+        statusFilter === "all" ? "All Statuses" : humanize(statusFilter);
+
+      const dateFilterLabel = getOperationsExportDateFilterLabel(
+        dateFilter,
+        customStart,
+        customEnd,
+      );
+
+      const filterText = [
+        `Searched: ${searchLabel}`,
+        `Status: ${statusLabel}`,
+        `Date Filter: ${dateFilterLabel}`,
+      ].join("    |    ");
+
       const excelData = [
-        [{ v: `Operations Report - ${activeOperation.label}`, s: titleStyle }],
-        [], // Empty row to accommodate the vertical merge
+        [
+          {
+            v: `Operations Report - ${activeOperation.label}`,
+            s: titleStyle,
+          },
+        ],
         [
           {
             v: "Review historical performance, assignments, and fulfillment metrics across all service and operational channels.",
             s: descStyle,
           },
         ],
-        [], // Empty spacer row before data
+        [
+          {
+            v: filterText,
+            s: filterStyle,
+          },
+        ],
+        [],
         headers.map(header),
         ...mappedData.map((row) => row.map(cell)),
       ];
 
       const sheet = XLSX.utils.aoa_to_sheet(excelData);
-      sheet["!cols"] = headers.map(() => ({ wch: 25 }));
 
-      // Merge Title across rows 1-2 and all columns, Merge Description across row 3
+      sheet["!cols"] = headers.map(() => ({
+        wch: 25,
+      }));
+
       sheet["!merges"] = [
-        { s: { r: 0, c: 0 }, e: { r: 1, c: headers.length - 1 } },
-        { s: { r: 2, c: 0 }, e: { r: 2, c: headers.length - 1 } },
+        {
+          s: { r: 0, c: 0 },
+          e: { r: 0, c: headers.length - 1 },
+        },
+        {
+          s: { r: 1, c: 0 },
+          e: { r: 1, c: headers.length - 1 },
+        },
+        {
+          s: { r: 2, c: 0 },
+          e: { r: 2, c: headers.length - 1 },
+        },
       ];
 
       XLSX.utils.book_append_sheet(workbook, sheet, activeOperation.label);
 
-      const fileName = `operations_report_${operationType}_${new Date().getTime()}.xlsx`;
+      const statusFilenamePart = getExportFilenamePart(
+        statusFilter === "all" ? "all_statuses" : statusFilter,
+      );
+
+      const dateFilenamePart = getOperationsExportDateFilenamePart(
+        dateFilter,
+        customStart,
+        customEnd,
+      );
+
+      const exportTimestamp = new Date().getTime();
+
+      const fileName = `operations_report_${operationType}_${statusFilenamePart}_${dateFilenamePart}_${exportTimestamp}.xlsx`;
 
       if (window.showSaveFilePicker) {
         const handle = await window.showSaveFilePicker({

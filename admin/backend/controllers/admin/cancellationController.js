@@ -77,11 +77,7 @@ const shiftDateKey = (dateKey, days) => {
   return formatUtcDateKey(new Date(Date.UTC(year, month - 1, day + days)));
 };
 
-const buildTransactionReportDateRange = ({
-  dateFilter,
-  from,
-  to,
-}) => {
+const buildTransactionReportDateRange = ({ dateFilter, from, to }) => {
   const normalizedFilter = String(dateFilter || "all")
     .trim()
     .toLowerCase();
@@ -108,12 +104,8 @@ const buildTransactionReportDateRange = ({
 
     try {
       return {
-        startUtc: fromKey
-          ? getPhilippineDateBoundsUtc(fromKey).startUtc
-          : null,
-        endUtc: toKey
-          ? getPhilippineDateBoundsUtc(toKey).nextStartUtc
-          : null,
+        startUtc: fromKey ? getPhilippineDateBoundsUtc(fromKey).startUtc : null,
+        endUtc: toKey ? getPhilippineDateBoundsUtc(toKey).nextStartUtc : null,
       };
     } catch {
       const error = new Error(
@@ -406,17 +398,36 @@ exports.listRequests = async (req, res) => {
       date_filter,
       from,
       to,
+      record_type,
       include_summary,
     } = req.query || {};
 
     const reportPage = parsePositiveInt(page) || 1;
     const reportLimit = Math.min(parsePositiveInt(limit) || 20, 500);
     const offset = (reportPage - 1) * reportLimit;
-    const includeSummary =
-      String(include_summary || "1").trim() !== "0";
+    const includeSummary = String(include_summary || "1").trim() !== "0";
 
     const where = [];
     const params = [];
+
+    const normalizedRecordType = normalize(record_type);
+
+    const allowedRecordTypes = new Set(["ready_made", "custom_furniture"]);
+
+    if (
+      normalizedRecordType &&
+      normalizedRecordType !== "all" &&
+      !allowedRecordTypes.has(normalizedRecordType)
+    ) {
+      return res.status(400).json({
+        message: "Invalid cancellation record type filter.",
+      });
+    }
+
+    if (normalizedRecordType && normalizedRecordType !== "all") {
+      where.push("records.record_type = ?");
+      params.push(normalizedRecordType);
+    }
 
     const { startUtc, endUtc } = buildTransactionReportDateRange({
       dateFilter: date_filter,
@@ -576,9 +587,7 @@ exports.listRequests = async (req, res) => {
       response.total = Number(summaryRow?.total_records || 0);
       response.summary = {
         pending_review: Number(summaryRow?.pending_review || 0),
-        approved_or_cancelled: Number(
-          summaryRow?.approved_or_cancelled || 0,
-        ),
+        approved_or_cancelled: Number(summaryRow?.approved_or_cancelled || 0),
       };
     }
 

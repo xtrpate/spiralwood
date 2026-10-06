@@ -89,6 +89,30 @@ const formatDateTime = (value) => {
   });
 };
 
+const getExportFilenamePart = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "all";
+
+const getExportDateFilenamePart = (dateFilter, customStart, customEnd) => {
+  if (dateFilter === "custom") {
+    return `${customStart || "start"}_to_${customEnd || "end"}`;
+  }
+
+  const labels = {
+    all: "all_time",
+    today: "today",
+    yesterday: "yesterday",
+    this_week: "this_week",
+    this_month: "this_month",
+    this_year: "this_year",
+  };
+
+  return labels[dateFilter] || getExportFilenamePart(dateFilter);
+};
+
 const getMarginColorClass = (margin) => {
   const num = Number(margin);
   if (num >= 35) return "sales-margin-high"; // Excellent margin
@@ -350,8 +374,41 @@ export default function SalesProfitabilityReportPage() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const exportExcel = async () => {
-    setExporting(true);
+    const orderTypeFilenamePart =
+      orderType === "all" ? "all_orders" : getExportFilenamePart(orderType);
+
+    const dateFilenamePart = getExportDateFilenamePart(
+      dateFilter,
+      customStart,
+      customEnd,
+    );
+
+    const exportTimestamp = new Date().getTime();
+
+    const fileName = `sales_profitability_report_${orderTypeFilenamePart}_${dateFilenamePart}_${exportTimestamp}.xlsx`;
+
+    let saveHandle = null;
+
     try {
+      // Open the Save As dialog immediately while the click
+      // still has a valid browser user gesture.
+      if (window.showSaveFilePicker) {
+        saveHandle = await window.showSaveFilePicker({
+          suggestedName: fileName,
+          types: [
+            {
+              description: "Excel Document",
+              accept: {
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+                  [".xlsx"],
+              },
+            },
+          ],
+        });
+      }
+
+      setExporting(true);
+
       const firstResponse = await api.get(SALES_PROFITABILITY_EXPORT_ENDPOINT, {
         params: buildReportParams({
           page: 1,
@@ -367,6 +424,7 @@ export default function SalesProfitabilityReportPage() {
       const exportRows = Array.isArray(firstResponse.data?.records)
         ? [...firstResponse.data.records]
         : [];
+
       const exportTotal = Number(firstResponse.data?.total || 0);
 
       if (exportRows.length === 0 || exportTotal === 0) {
@@ -394,12 +452,12 @@ export default function SalesProfitabilityReportPage() {
         });
 
         const batch = Array.isArray(data?.records) ? data.records : [];
+
         exportRows.push(...batch);
       }
 
-      // Verify that the export contains the complete dataset that was reported
-      // by the first request. A changing dataset must not silently produce a
-      // partial or duplicated financial export.
+      // Verify that the export contains the complete dataset
+      // reported by the first request.
       const uniqueExportOrderIds = new Set(
         exportRows
           .map((row) => row?.order_id)
@@ -418,32 +476,100 @@ export default function SalesProfitabilityReportPage() {
       const workbook = XLSX.utils.book_new();
 
       const headerStyle = {
-        font: { bold: true, color: { rgb: "FFFFFF" } },
-        fill: { fgColor: { rgb: "18181B" } },
+        font: {
+          bold: true,
+          color: { rgb: "FFFFFF" },
+        },
+        fill: {
+          fgColor: { rgb: "18181B" },
+        },
         border: {
-          top: { style: "thin", color: { rgb: "D1D5DB" } },
-          bottom: { style: "thin", color: { rgb: "D1D5DB" } },
-          left: { style: "thin", color: { rgb: "D1D5DB" } },
-          right: { style: "thin", color: { rgb: "D1D5DB" } },
+          top: {
+            style: "thin",
+            color: { rgb: "D1D5DB" },
+          },
+          bottom: {
+            style: "thin",
+            color: { rgb: "D1D5DB" },
+          },
+          left: {
+            style: "thin",
+            color: { rgb: "D1D5DB" },
+          },
+          right: {
+            style: "thin",
+            color: { rgb: "D1D5DB" },
+          },
         },
       };
 
       const cellStyle = {
         border: {
-          top: { style: "thin", color: { rgb: "E5E7EB" } },
-          bottom: { style: "thin", color: { rgb: "E5E7EB" } },
-          left: { style: "thin", color: { rgb: "E5E7EB" } },
-          right: { style: "thin", color: { rgb: "E5E7EB" } },
+          top: {
+            style: "thin",
+            color: { rgb: "E5E7EB" },
+          },
+          bottom: {
+            style: "thin",
+            color: { rgb: "E5E7EB" },
+          },
+          left: {
+            style: "thin",
+            color: { rgb: "E5E7EB" },
+          },
+          right: {
+            style: "thin",
+            color: { rgb: "E5E7EB" },
+          },
         },
       };
 
       const titleStyle = {
-        font: { bold: true, sz: 16, color: { rgb: "111827" } },
-        alignment: { horizontal: "center", vertical: "center" },
+        font: {
+          bold: true,
+          sz: 16,
+          color: { rgb: "111827" },
+        },
+        alignment: {
+          horizontal: "center",
+          vertical: "center",
+        },
       };
 
-      const header = (value) => ({ v: value, s: headerStyle });
-      const cell = (value) => ({ v: value ?? "", s: cellStyle });
+      const descStyle = {
+        font: {
+          italic: true,
+          sz: 11,
+          color: { rgb: "52525B" },
+        },
+        alignment: {
+          horizontal: "center",
+          vertical: "center",
+        },
+      };
+
+      const filterStyle = {
+        font: {
+          bold: true,
+          sz: 10,
+          color: { rgb: "374151" },
+        },
+        alignment: {
+          horizontal: "left",
+          vertical: "center",
+          wrapText: true,
+        },
+      };
+
+      const header = (value) => ({
+        v: value,
+        s: headerStyle,
+      });
+
+      const cell = (value) => ({
+        v: value ?? "",
+        s: cellStyle,
+      });
 
       const headers = [
         "Order Date",
@@ -467,13 +593,49 @@ export default function SalesProfitabilityReportPage() {
         Number(r.margin_percentage),
       ]);
 
+      const searchLabel = String(debouncedSearch || "").trim() || "None";
+
+      const orderTypeLabel =
+        orderType === "blueprint"
+          ? "Custom Blueprints"
+          : orderType === "standard"
+            ? "Ready-Made (Standard)"
+            : "All Orders";
+
+      const dateFilterLabel =
+        dateFilter === "today"
+          ? "Today"
+          : dateFilter === "this_week"
+            ? "This Week"
+            : dateFilter === "this_month"
+              ? "This Month"
+              : dateFilter === "custom"
+                ? `${customStart || "—"} to ${customEnd || "—"}`
+                : "All Time";
+
+      const filterText = [
+        `Searched: ${searchLabel}`,
+        `Order Type: ${orderTypeLabel}`,
+        `Date Filter: ${dateFilterLabel}`,
+      ].join("    |    ");
+
       const excelData = [
-        [{ v: "Sales & Profitability Report", s: titleStyle }],
-        [],
+        [
+          {
+            v: "Sales & Profitability Report",
+            s: titleStyle,
+          },
+        ],
         [
           {
             v: "Overview of revenue, cost of goods sold (COGS), and gross profit margins.",
-            s: { font: { italic: true, color: { rgb: "52525B" } } },
+            s: descStyle,
+          },
+        ],
+        [
+          {
+            v: filterText,
+            s: filterStyle,
           },
         ],
         [],
@@ -482,6 +644,7 @@ export default function SalesProfitabilityReportPage() {
       ];
 
       const sheet = XLSX.utils.aoa_to_sheet(excelData);
+
       sheet["!cols"] = [
         { wch: 22 },
         { wch: 20 },
@@ -492,19 +655,72 @@ export default function SalesProfitabilityReportPage() {
         { wch: 18 },
         { wch: 12 },
       ];
+
       sheet["!merges"] = [
-        { s: { r: 0, c: 0 }, e: { r: 1, c: headers.length - 1 } },
-        { s: { r: 2, c: 0 }, e: { r: 2, c: headers.length - 1 } },
+        {
+          s: { r: 0, c: 0 },
+          e: {
+            r: 0,
+            c: headers.length - 1,
+          },
+        },
+        {
+          s: { r: 1, c: 0 },
+          e: {
+            r: 1,
+            c: headers.length - 1,
+          },
+        },
+        {
+          s: { r: 2, c: 0 },
+          e: {
+            r: 2,
+            c: headers.length - 1,
+          },
+        },
       ];
 
       XLSX.utils.book_append_sheet(workbook, sheet, "Profitability");
 
-      const fileName = `sales_profitability_report_${new Date().getTime()}.xlsx`;
-      XLSX.writeFile(workbook, fileName);
+      const buffer = XLSX.write(workbook, {
+        bookType: "xlsx",
+        type: "array",
+      });
+
+      if (saveHandle) {
+        const writable = await saveHandle.createWritable();
+
+        try {
+          await writable.write(buffer);
+        } finally {
+          await writable.close();
+        }
+      } else {
+        const blob = new Blob([buffer], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        });
+
+        const url = URL.createObjectURL(blob);
+
+        const link = document.createElement("a");
+
+        link.href = url;
+        link.download = fileName;
+
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        setTimeout(() => {
+          URL.revokeObjectURL(url);
+        }, 1000);
+      }
 
       toast.success("Sales Profitability report exported.");
     } catch (err) {
-      toast.error(err?.message || "Failed to export report.");
+      if (err?.name !== "AbortError") {
+        toast.error(err?.message || "Failed to export report.");
+      }
     } finally {
       setExporting(false);
     }
@@ -694,7 +910,9 @@ export default function SalesProfitabilityReportPage() {
             <div className="sales-section-head">
               <div>
                 <h2>Sales Ledger</h2>
-                <p>Detailed financial breakdown of finalized completed orders.</p>
+                <p>
+                  Detailed financial breakdown of finalized completed orders.
+                </p>
               </div>
               <div className="sales-section-count">{total} record(s)</div>
             </div>
