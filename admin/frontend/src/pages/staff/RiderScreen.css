@@ -2705,3 +2705,79 @@
     font-weight: 650 !important;
   }
 }
+
+/* WISDOM DELIVERY PERSONNEL MOBILE HARDENING R2 */
+.rider-load-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #d8a3a3;
+  background: #ffffff;
+  color: #7f1d1d;
+  font-size: 11px;
+  font-weight: 600;
+}
+.rider-load-error > span { min-width: 0; }
+.rider-history-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.rider-history-error > span { min-width: 0; }
+.rider-proof-selected-file {
+  min-width: 0;
+  box-sizing: border-box;
+  gap: 10px;
+}
+.rider-proof-selected-preview {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+.rider-proof-selected-preview > div { min-width: 0; }
+.rider-proof-selected-name {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rider-proof-selected-remove { flex: 0 0 auto; }
+.rider-delivery-dialog-overlay {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.rider-delivery-dialog-card { box-sizing: border-box; }
+
+@media (max-width: 767px) {
+  .rider-load-error,
+  .rider-history-error {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .rider-load-error .rider-v2-btn,
+  .rider-history-error .rider-v2-btn {
+    width: 100%;
+    min-height: 40px;
+  }
+  .rider-proof-selected-file { padding: 10px !important; }
+  .rider-proof-selected-preview { gap: 8px !important; }
+  .rider-proof-selected-remove {
+    min-height: 40px;
+    padding: 8px 10px !important;
+  }
+  .rider-delivery-dialog-overlay {
+    align-items: flex-start !important;
+    padding: 12px !important;
+  }
+  .rider-delivery-dialog-card {
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 18px !important;
+  }
+}
