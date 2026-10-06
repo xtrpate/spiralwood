@@ -1992,13 +1992,17 @@ export default function BlueprintDesign() {
       exportViews: EXPORT_VIEWS,
     });
 
-  const { openExportSheets } = useBlueprintExport({
+  const {
+    previewExportSheets,
+    printExportSheets,
+    downloadExportPdf,
+    downloadingPdf,
+  } = useBlueprintExport({
     components,
-    selectedComp,
-    selectedComponents,
-    selectedLabel,
     blueprintTitle: blueprint?.title,
     unit,
+    hasUnsavedDesignChanges,
+    designValidationReport,
   });
 
   const selectedGroupParts = useMemo(() => {
@@ -2062,7 +2066,10 @@ export default function BlueprintDesign() {
         canUndo={editorMode === "editable" && canUndo}
         handleRedo={handleRedo}
         canRedo={editorMode === "editable" && canRedo}
-        openExportSheets={openExportSheets}
+        previewExportSheets={previewExportSheets}
+        downloadExportPdf={downloadExportPdf}
+        printExportSheets={printExportSheets}
+        downloadingPdf={downloadingPdf}
         openProjectEstimate={openProjectEstimate}
         saveDesign={saveDesign}
         saving={saving}

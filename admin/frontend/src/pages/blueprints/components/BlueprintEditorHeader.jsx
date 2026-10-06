@@ -17,7 +17,10 @@ export function BlueprintEditorHeader({
   canUndo = false,
   handleRedo,
   canRedo = false,
-  openExportSheets,
+  previewExportSheets,
+  downloadExportPdf,
+  printExportSheets,
+  downloadingPdf = false,
   openProjectEstimate,
   saveDesign,
   saving,
@@ -341,7 +344,9 @@ export function BlueprintEditorHeader({
             </span>
 
             <button
-              onClick={() => openExportSheets(false)}
+              type="button"
+              onClick={previewExportSheets}
+              title="Preview the full Blueprint sheet set"
               style={{
                 ...headerToolBtn,
                 background: "#ffffff",
@@ -349,11 +354,29 @@ export function BlueprintEditorHeader({
                 border: "1px solid #dfe3e8",
               }}
             >
-              Export Sheets
+              Preview Sheets
             </button>
 
             <button
-              onClick={() => openExportSheets(true)}
+              type="button"
+              onClick={downloadExportPdf}
+              disabled={downloadingPdf}
+              title="Download the full Blueprint sheet set as PDF"
+              style={{
+                ...headerToolBtn,
+                background: "#ffffff",
+                color: "#18181b",
+                border: "1px solid #dfe3e8",
+                opacity: downloadingPdf ? 0.55 : 1,
+              }}
+            >
+              {downloadingPdf ? "Preparing PDF…" : "Download PDF"}
+            </button>
+
+            <button
+              type="button"
+              onClick={printExportSheets}
+              title="Print the full Blueprint sheet set"
               style={{
                 ...headerToolBtn,
                 background: "#ffffff",

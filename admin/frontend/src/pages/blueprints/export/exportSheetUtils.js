@@ -212,31 +212,13 @@ function resolveExportProjectTitle({
   selectedComponents,
 }) {
   const projectText = compactText(blueprintTitle);
+  if (projectText) return projectText;
+
   const objectText = compactText(
     objectLabel || getCommonGroupLabel(selectedComponents),
   );
 
-  if (!projectText) return objectText || "Blueprint Design";
-  if (!objectText) return projectText;
-
-  const projectFamily = detectFurnitureFamily(projectText);
-  const objectFamily =
-    detectFurnitureFamily(objectText) ||
-    (detectDiningTableSelection(selectedComponents) ? "dining_table" : "");
-  const hasOverlap = hasMeaningfulTokenOverlap(projectText, objectText);
-  const looksTemplateLike = /\btemplate\b|\bmockup\b|\bdraft\b|\btest\b/i.test(
-    projectText,
-  );
-
-  if (projectFamily && objectFamily && projectFamily !== objectFamily) {
-    return objectText;
-  }
-
-  if (!hasOverlap && (looksTemplateLike || objectFamily)) {
-    return objectText;
-  }
-
-  return projectText;
+  return objectText || "Blueprint Design";
 }
 
 function get3DCalloutPlacement(

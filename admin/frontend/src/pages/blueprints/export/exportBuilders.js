@@ -79,6 +79,8 @@ const EXPORT_PAGE_W = 1200;
 const EXPORT_PAGE_H = 820;
 const PROFESSIONAL_DRAWING_STATUS = "FOR REVIEW";
 const PROFESSIONAL_DRAWING_NOTE = "DO NOT SCALE DRAWING";
+const ORTHOGRAPHIC_DIMENSION_GUTTER_X = 56;
+const TOP_VIEW_HEADER_GUTTER_Y = 50;
 
 function buildExplodedLabelMarkup({ comp, screenBox, idx, drawingArea }) {
   const labelText = String(idx + 1);
@@ -435,6 +437,76 @@ function getSafeVerticalDimOffset(
   return rightAllowance >= preferred + 20 ? preferred : -preferred;
 }
 
+function applyOrthographicDimensionGutters({
+  view,
+  drawingArea,
+  scaledItems,
+  overallScreenBounds,
+}) {
+  if (
+    view === "exploded" ||
+    !drawingArea ||
+    !overallScreenBounds ||
+    !Array.isArray(scaledItems) ||
+    scaledItems.length === 0
+  ) {
+    return { scaledItems, overallScreenBounds };
+  }
+
+  const horizontalGutter = Math.min(
+    ORTHOGRAPHIC_DIMENSION_GUTTER_X,
+    Math.max(0, drawingArea.w / 4),
+  );
+  const topGutter =
+    view === "top"
+      ? Math.min(TOP_VIEW_HEADER_GUTTER_Y, Math.max(0, drawingArea.h / 4))
+      : 0;
+
+  const targetW = Math.max(1, drawingArea.w - horizontalGutter * 2);
+  const targetH = Math.max(1, drawingArea.h - topGutter);
+  const sourceW = Math.max(
+    1,
+    overallScreenBounds.maxX - overallScreenBounds.minX,
+  );
+  const sourceH = Math.max(
+    1,
+    overallScreenBounds.maxY - overallScreenBounds.minY,
+  );
+
+  const layoutScale = Math.min(1, targetW / sourceW, targetH / sourceH);
+  const scaledW = sourceW * layoutScale;
+  const scaledH = sourceH * layoutScale;
+  const targetMinX =
+    drawingArea.x + horizontalGutter + (targetW - scaledW) / 2;
+  const targetMinY =
+    drawingArea.y + topGutter + (targetH - scaledH) / 2;
+
+  const nextItems = scaledItems.map((item) => ({
+    ...item,
+    screenBox: {
+      ...item.screenBox,
+      x:
+        targetMinX +
+        (item.screenBox.x - overallScreenBounds.minX) * layoutScale,
+      y:
+        targetMinY +
+        (item.screenBox.y - overallScreenBounds.minY) * layoutScale,
+      w: item.screenBox.w * layoutScale,
+      h: item.screenBox.h * layoutScale,
+    },
+  }));
+
+  return {
+    scaledItems: nextItems,
+    overallScreenBounds: {
+      minX: targetMinX,
+      minY: targetMinY,
+      maxX: targetMinX + scaledW,
+      maxY: targetMinY + scaledH,
+    },
+  };
+}
+
 function buildOrthographicTechnicalNotes({
   view,
   selectedComponents,
@@ -665,8 +737,20 @@ function build2DViewPageSvg({
   pageW = EXPORT_PAGE_W,
   pageH = EXPORT_PAGE_H,
 }) {
-  const { drawingArea, scaledItems, overallScreenBounds } =
-    getScaledExportItems(selectedComponents, view, pageW, pageH);
+  const baseLayout = getScaledExportItems(
+    selectedComponents,
+    view,
+    pageW,
+    pageH,
+  );
+  const { drawingArea } = baseLayout;
+  const { scaledItems, overallScreenBounds } =
+    applyOrthographicDimensionGutters({
+      view,
+      drawingArea,
+      scaledItems: baseLayout.scaledItems,
+      overallScreenBounds: baseLayout.overallScreenBounds,
+    });
 
   const rawViewLabel = VIEWS.find((v) => v.key === view)?.label || "View";
   const viewLabel = getSheetViewLabel(view, rawViewLabel);
@@ -1195,7 +1279,7 @@ function getMaterialsSummary(components) {
 
   const materialRows = [...byMaterial.values()].map((row) => ({
     ...row,
-    sharePct: grandTotal > 0 ? (row.estimatedCost / grandTotal) * 100 : 0,
+    sharePct: totalQty > 0 ? (row.qty / totalQty) * 100 : 0,
   }));
 
   return {
@@ -1231,7 +1315,7 @@ function buildMaterialsPageHtml({
         <tr>
           <th>Material</th>
           <th>Qty</th>
-          <th>Share</th>
+          <th>Parts Share</th>
         </tr>
       </thead>
       <tbody>
@@ -1690,16 +1774,30 @@ function buildBlueprintDocumentHtml(pages) {
             font-size: 8.8px;
           }
           @page {
-            size: ${EXPORT_PAGE_W}px ${EXPORT_PAGE_H}px;
+            size: A4 landscape;
             margin: 0;
           }
           @media print {
+            html,
             body {
+              width: 297mm;
+              min-height: 210mm;
               background: #fff;
             }
             .page {
+              width: 297mm;
+              min-height: 210mm;
               margin: 0;
               box-shadow: none;
+              overflow: hidden;
+            }
+            .page-inner {
+              min-height: 210mm;
+            }
+            .svg-page svg {
+              width: 297mm;
+              height: auto;
+              max-height: 210mm;
             }
           }
         </style>
@@ -1730,20 +1828,6 @@ function buildAllExportPages({
     blueprintTitle,
   });
 
-  pages.push(
-    buildSvgPageHtml(
-      build3DViewPageSvg({
-        selectedComponents: exportComponents,
-        selectedLabel: resolvedObjectLabel,
-        selectedMaterialText,
-        selectedBounds3D,
-        selectedDimsText,
-        blueprintTitle,
-        unit,
-      }),
-    ),
-  );
-
   ["front", "back", "left", "right", "top", "exploded"].forEach((view) => {
     pages.push(
       buildSvgPageHtml(
@@ -1770,6 +1854,20 @@ function buildAllExportPages({
       selectedMaterialText,
       blueprintTitle,
     }),
+  );
+
+  pages.push(
+    buildSvgPageHtml(
+      build3DViewPageSvg({
+        selectedComponents: exportComponents,
+        selectedLabel: resolvedObjectLabel,
+        selectedMaterialText,
+        selectedBounds3D,
+        selectedDimsText,
+        blueprintTitle,
+        unit,
+      }),
+    ),
   );
 
   pages.push(
