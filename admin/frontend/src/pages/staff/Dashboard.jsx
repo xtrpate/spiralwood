@@ -380,6 +380,13 @@ export default function Dashboard() {
   const [tasks, setTasks] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [inventoryAlerts, setInventoryAlerts] = useState([]);
+  const [inventoryAlertCount, setInventoryAlertCount] = useState(0);
+  const [loadErrors, setLoadErrors] = useState({
+    tasks: false,
+    appointments: false,
+    dashboard: false,
+  });
+  const [reloadToken, setReloadToken] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -387,6 +394,11 @@ export default function Dashboard() {
 
     const load = async () => {
       setLoading(true);
+      setLoadErrors({
+        tasks: false,
+        appointments: false,
+        dashboard: false,
+      });
 
       const [taskResult, appointmentResult, dashboardResult] =
         await Promise.allSettled([
@@ -397,30 +409,40 @@ export default function Dashboard() {
 
       if (!active) return;
 
-      setTasks(
+      const tasksOk =
         taskResult.status === "fulfilled" &&
-          Array.isArray(taskResult.value?.data)
-          ? taskResult.value.data
-          : [],
-      );
-
-      setAppointments(
+        Array.isArray(taskResult.value?.data);
+      const appointmentsOk =
         appointmentResult.status === "fulfilled" &&
-          Array.isArray(appointmentResult.value?.data)
-          ? appointmentResult.value.data
-          : [],
-      );
-
+        Array.isArray(appointmentResult.value?.data);
       const dashboardData =
         dashboardResult.status === "fulfilled"
           ? dashboardResult.value?.data
           : null;
-
-      setInventoryAlerts(
-        Array.isArray(dashboardData?.low_stock_alerts)
-          ? dashboardData.low_stock_alerts
-          : [],
+      const dashboardAlertCount = Number(
+        dashboardData?.inventory_alert_count,
       );
+      const dashboardOk =
+        dashboardResult.status === "fulfilled" &&
+        Array.isArray(dashboardData?.low_stock_alerts) &&
+        Number.isFinite(dashboardAlertCount) &&
+        dashboardAlertCount >= 0;
+
+      setTasks(tasksOk ? taskResult.value.data : []);
+      setAppointments(
+        appointmentsOk ? appointmentResult.value.data : [],
+      );
+      setInventoryAlerts(
+        dashboardOk ? dashboardData.low_stock_alerts : [],
+      );
+      setInventoryAlertCount(
+        dashboardOk ? dashboardAlertCount : 0,
+      );
+      setLoadErrors({
+        tasks: !tasksOk,
+        appointments: !appointmentsOk,
+        dashboard: !dashboardOk,
+      });
 
       setLoading(false);
     };
@@ -430,7 +452,7 @@ export default function Dashboard() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [reloadToken]);
 
   const work = useMemo(
     () => groupAssignedWork(tasks, user?.id),
@@ -469,6 +491,7 @@ export default function Dashboard() {
   const visibleWork = work.slice(0, 5);
   const visibleAppointments = todaysAppointments.slice(0, 4);
   const visibleInventoryAlerts = inventoryAlerts.slice(0, 5);
+  const hasLoadError = Object.values(loadErrors).some(Boolean);
 
   const todayLabel = new Date().toLocaleDateString("en-PH", {
     timeZone: "Asia/Manila",
@@ -537,26 +560,65 @@ export default function Dashboard() {
         </div>
       </header>
 
+      {!loading && hasLoadError ? (
+        <div
+          role="alert"
+          style={{
+            marginBottom: 12,
+            padding: "10px 12px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+            border: "1px solid #d8a3a3",
+            background: "#ffffff",
+            color: "#7f1d1d",
+            fontSize: 10.5,
+            fontWeight: 550,
+          }}
+        >
+          <span>Some dashboard data could not be loaded.</span>
+          <button
+            type="button"
+            style={{
+              ...secondaryButton,
+              minHeight: 30,
+              padding: "5px 10px",
+              flex: "0 0 auto",
+            }}
+            onClick={() => setReloadToken((value) => value + 1)}
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
+
       <section className="indoor-dashboard-summary">
         <SummaryCard
           icon={ClipboardCheck}
           label="Assigned Work"
-          value={loading ? "—" : work.length}
+          value={loading || loadErrors.tasks ? "—" : work.length}
         />
         <SummaryCard
           icon={Wrench}
           label="In Production"
-          value={loading ? "—" : inProductionCount}
+          value={loading || loadErrors.tasks ? "—" : inProductionCount}
         />
         <SummaryCard
           icon={CalendarCheck2}
           label="Appointments Today"
-          value={loading ? "—" : todaysAppointments.length}
+          value={
+            loading || loadErrors.appointments
+              ? "—"
+              : todaysAppointments.length
+          }
         />
         <SummaryCard
           icon={AlertTriangle}
           label="Inventory Alerts"
-          value={loading ? "—" : inventoryAlerts.length}
+          value={
+            loading || loadErrors.dashboard ? "—" : inventoryAlertCount
+          }
           danger
         />
       </section>
@@ -616,6 +678,17 @@ export default function Dashboard() {
             }}
           >
             Loading assigned work...
+          </div>
+        ) : loadErrors.tasks ? (
+          <div
+            style={{
+              padding: 28,
+              color: "#991b1b",
+              fontSize: 11.5,
+              textAlign: "center",
+            }}
+          >
+            Unable to load assigned work. Please retry.
           </div>
         ) : visibleWork.length === 0 ? (
           <div
@@ -812,6 +885,17 @@ export default function Dashboard() {
             >
               Loading appointments...
             </div>
+          ) : loadErrors.appointments ? (
+            <div
+              style={{
+                padding: 28,
+                color: "#991b1b",
+                fontSize: 11.5,
+                textAlign: "center",
+              }}
+            >
+              Unable to load appointments. Please retry.
+            </div>
           ) : visibleAppointments.length === 0 ? (
             <div
               style={{
@@ -956,6 +1040,17 @@ export default function Dashboard() {
               }}
             >
               Loading inventory alerts...
+            </div>
+          ) : loadErrors.dashboard ? (
+            <div
+              style={{
+                padding: 28,
+                color: "#991b1b",
+                fontSize: 11.5,
+                textAlign: "center",
+              }}
+            >
+              Unable to load inventory alerts. Please retry.
             </div>
           ) : visibleInventoryAlerts.length === 0 ? (
             <div

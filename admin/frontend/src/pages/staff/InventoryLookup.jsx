@@ -36,20 +36,33 @@ export default function InventoryLookup() {
   const [products, setProducts] = useState([]);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
+  const [error, setError] = useState("");
+  const [reloadToken, setReloadToken] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
 
+    setLoading(true);
+    setError("");
+
     api
       .get("/pos/products/all")
       .then((response) => {
-        if (active) {
-          setProducts(Array.isArray(response.data) ? response.data : []);
+        if (!active) return;
+
+        if (!Array.isArray(response.data)) {
+          setProducts([]);
+          setError("Unable to load inventory. Please try again.");
+          return;
         }
+
+        setProducts(response.data);
       })
       .catch(() => {
-        if (active) setProducts([]);
+        if (!active) return;
+        setProducts([]);
+        setError("Unable to load inventory. Please try again.");
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -58,7 +71,7 @@ export default function InventoryLookup() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [reloadToken]);
 
   const counts = useMemo(
     () => ({
@@ -100,21 +113,25 @@ export default function InventoryLookup() {
       <section className="indoor-inventory-summary">
         <SummaryCard
           icon={PackageCheck}
-          value={counts.in_stock}
+          value={loading || Boolean(error) ? "—" : counts.in_stock}
           label="In Stock"
         />
         <SummaryCard
           icon={PackageSearch}
-          value={counts.low_stock}
+          value={loading || Boolean(error) ? "—" : counts.low_stock}
           label="Low Stock"
         />
         <SummaryCard
           icon={AlertTriangle}
-          value={counts.out_of_stock}
+          value={loading || Boolean(error) ? "—" : counts.out_of_stock}
           label="Out of Stock"
-          danger={counts.out_of_stock > 0}
+          danger={!loading && !error && counts.out_of_stock > 0}
         />
-        <SummaryCard icon={Boxes} value={counts.total} label="Total Items" />
+        <SummaryCard
+          icon={Boxes}
+          value={loading || Boolean(error) ? "—" : counts.total}
+          label="Total Items"
+        />
       </section>
 
       <section className="indoor-inventory-toolbar">
@@ -144,7 +161,7 @@ export default function InventoryLookup() {
           ))}
         </div>
 
-        {!loading ? (
+        {!loading && !error ? (
           <div className="indoor-inventory-count">
             {filtered.length} {filtered.length === 1 ? "item" : "items"}
           </div>
@@ -154,6 +171,17 @@ export default function InventoryLookup() {
       <section className="indoor-inventory-table-panel">
         {loading ? (
           <div className="indoor-inventory-empty">Loading inventory...</div>
+        ) : error ? (
+          <div className="indoor-inventory-empty" role="alert">
+            <div>{error}</div>
+            <button
+              type="button"
+              className="indoor-inventory-retry"
+              onClick={() => setReloadToken((value) => value + 1)}
+            >
+              Retry
+            </button>
+          </div>
         ) : filtered.length === 0 ? (
           <div className="indoor-inventory-empty">
             No inventory items match this view.
@@ -494,6 +522,20 @@ export default function InventoryLookup() {
           font-size: 11.5px;
           font-weight: 500;
           text-align: center;
+        }
+
+        .indoor-inventory-retry {
+          min-height: 36px;
+          margin-top: 12px;
+          padding: 7px 14px;
+          border: 1px solid #18181b;
+          border-radius: 0;
+          background: #ffffff;
+          color: #18181b;
+          font: inherit;
+          font-size: 10.5px;
+          font-weight: 700;
+          cursor: pointer;
         }
 
         @media (max-width: 980px) {
