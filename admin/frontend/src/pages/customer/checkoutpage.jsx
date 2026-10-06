@@ -4,7 +4,6 @@ import api, { buildAssetUrl } from "../../services/api";
 import { useCart } from "./cartcontext";
 import { ChevronRight } from "lucide-react";
 import useAuthStore from "../../store/authStore";
-import toast from "react-hot-toast";
 import LocationPicker from "../../components/LocationPicker";
 import {
   MotionFeedbackOverlay,
@@ -12,6 +11,24 @@ import {
 } from "../../components/MotionFeedbackOverlay";
 import "./customizepage.css";
 import "./cart.css";
+
+const InlineFieldError = ({ id, message }) =>
+  message ? (
+    <span
+      id={id}
+      role="alert"
+      style={{
+        display: "block",
+        color: "#b91c1c",
+        fontSize: 11,
+        lineHeight: 1.2,
+        whiteSpace: "normal",
+        wordWrap: "break-word",
+      }}
+    >
+      {message}
+    </span>
+  ) : null;
 
 const PAYMENT_METHODS = [
   {
@@ -124,8 +141,8 @@ export default function CheckoutPage() {
   const [checkoutFeedbackStatus, setCheckoutFeedbackStatus] =
     useState("loading");
   const [checkoutError, setCheckoutError] = useState(null);
+  const [checkoutFieldErrors, setCheckoutFieldErrors] = useState({});
   const [assemblyChoice, setAssemblyChoice] = useState("");
-
   const [checkoutNote, setCheckoutNote] = useState("");
   const [paymentAvailability, setPaymentAvailability] = useState(
     DEFAULT_PAYMENT_AVAILABILITY,
@@ -222,9 +239,13 @@ export default function CheckoutPage() {
     if (!String(user?.address || "").trim() || !defaultPin) {
       setUseDefaultAddress(false);
       setDeliveryPin(null);
-      toast.error(
-        "Your saved address has no map pin yet. Please pin the delivery location below.",
-      );
+
+      setCheckoutFieldErrors((prev) => ({
+        ...prev,
+        delivery_pin:
+          "Your saved address does not have a map pin yet. Please pin the delivery location below.",
+      }));
+
       return;
     }
 
@@ -240,6 +261,13 @@ export default function CheckoutPage() {
     userToggledRef.current = true;
     setUseDefaultAddress(false);
     setField("delivery_address", text);
+
+    setCheckoutFieldErrors((prev) => ({
+      ...prev,
+      delivery_address: String(text || "").trim()
+        ? ""
+        : "Please enter your delivery address.",
+    }));
   };
 
   // Fired for every LocationPicker pin change: click-to-place, drag,
@@ -249,6 +277,13 @@ export default function CheckoutPage() {
     userToggledRef.current = true;
     setUseDefaultAddress(false);
     setDeliveryPin(next);
+
+    setCheckoutFieldErrors((prev) => ({
+      ...prev,
+      delivery_pin: isValidDeliveryPin(next)
+        ? ""
+        : "Please pin your delivery location on the map.",
+    }));
   };
 
   useEffect(() => {
@@ -293,11 +328,27 @@ export default function CheckoutPage() {
     }
   }, [cart, navigate]);
 
-  const setField = (key, value) =>
+  const setField = (key, value) => {
     setForm((prev) => ({
       ...prev,
       [key]: value,
     }));
+
+    setCheckoutFieldErrors((prev) => {
+      const next = {
+        ...prev,
+        [key]: "",
+      };
+
+      if (key === "payment_method" && value === "cop") {
+        next.assembly_choice = "";
+        next.delivery_address = "";
+        next.delivery_pin = "";
+      }
+
+      return next;
+    });
+  };
 
   const totalUnits = useMemo(
     () =>
@@ -347,64 +398,73 @@ export default function CheckoutPage() {
   const handleSubmit = async (e) => {
     if (e?.preventDefault) e.preventDefault();
 
-    // 👉 FIX 3: Replaced all setError calls with toast.error
     if (!checkoutItems.length) {
-      toast.error("No selected ready-made items found for checkout.");
-      return;
-    }
-
-    if (!String(form.name || "").trim()) {
-      toast.error("Please enter your full name.");
-      return;
-    }
-
-    if (!String(form.phone || "").trim()) {
-      toast.error("Please enter your phone number.");
+      setCheckoutError({
+        title: "Checkout Items Unavailable",
+        message:
+          "No selected ready-made items were found for checkout. Please return to your cart and try again.",
+      });
       return;
     }
 
     if (!availablePaymentMethods.length) {
-      toast.error(
-        "No payment methods are currently available. Please contact Spiral Wood Services.",
-      );
+      setCheckoutError({
+        title: "Payment Methods Unavailable",
+        message:
+          "No payment methods are currently available. Please contact Spiral Wood Services.",
+      });
       return;
+    }
+
+    const nextFieldErrors = {};
+
+    if (!String(form.name || "").trim()) {
+      nextFieldErrors.name = "Full name is required.";
+    }
+
+    if (!String(form.phone || "").trim()) {
+      nextFieldErrors.phone = "Phone number is required.";
     }
 
     if (!String(form.payment_method || "").trim()) {
-      toast.error("Please select a payment method.");
-      return;
-    }
-
-    if (
+      nextFieldErrors.payment_method = "Please select a payment method.";
+    } else if (
       !availablePaymentMethods.some(
         (method) => method.value === form.payment_method,
       )
     ) {
-      toast.error(
-        "The selected payment method is currently unavailable. Please choose another method.",
-      );
-      return;
-    }
-
-    if (form.payment_method !== "cop" && !assemblyChoice) {
-      toast.error(
-        "Please choose an assembly option before placing your order.",
-      );
-      return;
+      nextFieldErrors.payment_method =
+        "The selected payment method is currently unavailable. Please choose another method.";
     }
 
     if (
+      form.payment_method &&
+      form.payment_method !== "cop" &&
+      !assemblyChoice
+    ) {
+      nextFieldErrors.assembly_choice = "Please choose an assembly option.";
+    }
+
+    if (
+      form.payment_method &&
       form.payment_method !== "cop" &&
       !String(form.delivery_address || "").trim()
     ) {
-      toast.error("Please enter your delivery address.");
-      return;
+      nextFieldErrors.delivery_address = "Please enter your delivery address.";
     }
 
-    if (form.payment_method !== "cop" && !hasDeliveryPin) {
-      toast.error(
-        "Please pin your delivery location on the map before placing your order.",
-      );
+    if (
+      form.payment_method &&
+      form.payment_method !== "cop" &&
+      !hasDeliveryPin
+    ) {
+      nextFieldErrors.delivery_pin =
+        "Please pin your delivery location on the map before placing your order.";
+    }
+
+    setCheckoutFieldErrors(nextFieldErrors);
+
+    if (Object.keys(nextFieldErrors).length > 0) {
       return;
     }
 
@@ -833,24 +893,104 @@ export default function CheckoutPage() {
 
               <div className="checkout-section-body">
                 <div className="form-grid">
-                  <div className="form-field">
+                  <div
+                    className="form-field"
+                    style={{ position: "relative", paddingBottom: 24 }}
+                  >
                     <label>Full Name *</label>
+
                     <input
                       type="text"
                       placeholder="Juan dela Cruz"
                       value={form.name}
-                      onChange={(e) => setField("name", e.target.value)}
+                      aria-invalid={Boolean(checkoutFieldErrors.name)}
+                      aria-describedby={
+                        checkoutFieldErrors.name
+                          ? "checkout-name-error"
+                          : undefined
+                      }
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setField("name", value);
+                        setCheckoutFieldErrors((prev) => ({
+                          ...prev,
+                          name: value.trim() ? "" : "Full name is required.",
+                        }));
+                      }}
+                      style={{
+                        border: checkoutFieldErrors.name
+                          ? "1px solid #dc2626"
+                          : undefined,
+                        boxShadow: checkoutFieldErrors.name
+                          ? "0 0 0 1px #dc2626"
+                          : undefined,
+                      }}
                     />
+
+                    <div
+                      style={{
+                        position: "absolute",
+                        bottom: 0,
+                        left: 0,
+                        width: "100%",
+                      }}
+                    >
+                      <InlineFieldError
+                        id="checkout-name-error"
+                        message={checkoutFieldErrors.name}
+                      />
+                    </div>
                   </div>
 
-                  <div className="form-field">
+                  <div
+                    className="form-field"
+                    style={{ position: "relative", paddingBottom: 24 }}
+                  >
                     <label>Phone Number *</label>
+
                     <input
                       type="tel"
                       placeholder="09XXXXXXXXX"
                       value={form.phone}
-                      onChange={(e) => setField("phone", e.target.value)}
+                      aria-invalid={Boolean(checkoutFieldErrors.phone)}
+                      aria-describedby={
+                        checkoutFieldErrors.phone
+                          ? "checkout-phone-error"
+                          : undefined
+                      }
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setField("phone", value);
+                        setCheckoutFieldErrors((prev) => ({
+                          ...prev,
+                          phone: value.trim()
+                            ? ""
+                            : "Phone number is required.",
+                        }));
+                      }}
+                      style={{
+                        border: checkoutFieldErrors.phone
+                          ? "1px solid #dc2626"
+                          : undefined,
+                        boxShadow: checkoutFieldErrors.phone
+                          ? "0 0 0 1px #dc2626"
+                          : undefined,
+                      }}
                     />
+
+                    <div
+                      style={{
+                        position: "absolute",
+                        bottom: 0,
+                        left: 0,
+                        width: "100%",
+                      }}
+                    >
+                      <InlineFieldError
+                        id="checkout-phone-error"
+                        message={checkoutFieldErrors.phone}
+                      />
+                    </div>
                   </div>
 
                   {showAddressSection ? (
@@ -942,37 +1082,92 @@ export default function CheckoutPage() {
                               📍 {user?.address}
                             </div>
                           )}
+
+                          {checkoutFieldErrors.delivery_pin &&
+                          !useDefaultAddress ? (
+                            <span
+                              id="checkout-default-pin-error"
+                              role="alert"
+                              style={{
+                                display: "block",
+                                marginTop: 7,
+                                paddingLeft: 26,
+                                color: "#b91c1c",
+                                fontSize: 12,
+                                lineHeight: 1.35,
+                              }}
+                            >
+                              {checkoutFieldErrors.delivery_pin}
+                            </span>
+                          ) : null}
                         </div>
                       )}
 
                       {!useDefaultAddress && (
-                        <div className="form-field full">
-                          <LocationPicker
-                            label="Use a different delivery address"
-                            addressValue={form.delivery_address}
-                            onAddressChange={handleAddressInputChange}
-                            value={deliveryPin}
-                            onChange={handlePinChange}
-                          />
+                        <div
+                          className="form-field full"
+                          style={{ position: "relative", paddingBottom: 36 }}
+                        >
+                          <div
+                            style={{
+                              outline:
+                                checkoutFieldErrors.delivery_address ||
+                                checkoutFieldErrors.delivery_pin
+                                  ? "1px solid #dc2626"
+                                  : undefined,
+                              outlineOffset: 2,
+                              borderRadius: 4,
+                            }}
+                          >
+                            <LocationPicker
+                              label="Use a different delivery address"
+                              addressValue={form.delivery_address}
+                              onAddressChange={handleAddressInputChange}
+                              value={deliveryPin}
+                              onChange={handlePinChange}
+                            />
+                          </div>
 
-                          {!hasDeliveryPin && (
-                            <div
-                              role="alert"
-                              style={{
-                                marginTop: 10,
-                                padding: "10px 12px",
-                                border: "1px solid #d6b85c",
-                                background: "#fffdf4",
-                                color: "#5f4a12",
-                                fontSize: 12.5,
-                                lineHeight: 1.5,
-                              }}
-                            >
-                              <strong>Delivery pin required.</strong> Search for
-                              your address or click the map to mark the exact
-                              delivery location before placing your order.
-                            </div>
-                          )}
+                          <div
+                            style={{
+                              position: "absolute",
+                              bottom: 0,
+                              left: 0,
+                              width: "100%",
+                              display: "flex",
+                              flexDirection: "column",
+                            }}
+                          >
+                            <InlineFieldError
+                              id="checkout-delivery-address-error"
+                              message={checkoutFieldErrors.delivery_address}
+                            />
+                            <InlineFieldError
+                              id="checkout-delivery-pin-error"
+                              message={checkoutFieldErrors.delivery_pin}
+                            />
+                          </div>
+
+                          {!hasDeliveryPin &&
+                            !checkoutFieldErrors.delivery_pin && (
+                              <div
+                                role="alert"
+                                style={{
+                                  marginTop: 10,
+                                  padding: "10px 12px",
+                                  border: "1px solid #d6b85c",
+                                  background: "#fffdf4",
+                                  color: "#5f4a12",
+                                  fontSize: 12.5,
+                                  lineHeight: 1.5,
+                                }}
+                              >
+                                <strong>Delivery pin required.</strong> Search
+                                for your address or click the map to mark the
+                                exact delivery location before placing your
+                                order.
+                              </div>
+                            )}
                         </div>
                       )}
                     </>
@@ -999,8 +1194,21 @@ export default function CheckoutPage() {
                 <h3>Payment Method</h3>
               </div>
 
-              <div className="checkout-section-body">
-                <div className="payment-methods">
+              <div
+                className="checkout-section-body"
+                style={{ position: "relative", paddingBottom: 24 }}
+              >
+                <div
+                  className="payment-methods"
+                  style={{
+                    outline: checkoutFieldErrors.payment_method
+                      ? "1px solid #dc2626"
+                      : undefined,
+                    outlineOffset: 2,
+                    borderRadius: 4,
+                  }}
+                >
+                  {/* ... radio buttons inside payment-methods stay unchanged ... */}
                   {availablePaymentMethods.length === 0 && (
                     <div
                       style={{
@@ -1024,7 +1232,21 @@ export default function CheckoutPage() {
                       className={`payment-method-card ${
                         form.payment_method === method.value ? "selected" : ""
                       }`}
-                      onClick={() => setField("payment_method", method.value)}
+                      onClick={() => {
+                        setField("payment_method", method.value);
+
+                        setCheckoutFieldErrors((prev) => ({
+                          ...prev,
+                          payment_method: "",
+                          ...(method.value === "cop"
+                            ? {
+                                assembly_choice: "",
+                                delivery_address: "",
+                                delivery_pin: "",
+                              }
+                            : {}),
+                        }));
+                      }}
                     >
                       <div className="payment-method-icon">{method.icon}</div>
 
@@ -1045,13 +1267,27 @@ export default function CheckoutPage() {
                     </div>
                   ))}
                 </div>
+
+                <div
+                  style={{
+                    position: "absolute",
+                    bottom: 0,
+                    left: 20,
+                    width: "calc(100% - 40px)",
+                  }}
+                >
+                  <InlineFieldError
+                    id="checkout-payment-method-error"
+                    message={checkoutFieldErrors.payment_method}
+                  />
+                </div>
               </div>
             </div>
 
             <div className="checkout-section">
               <div className="checkout-section-header">
                 <h3>
-                  Additional Notes{" "}
+                  Additional Notes
                   <span className="checkout-optional-label">(Optional)</span>
                 </h3>
               </div>
@@ -1130,93 +1366,130 @@ export default function CheckoutPage() {
                     </strong>
                   </div>
 
-                  <div
-                    role="radiogroup"
-                    aria-label="Assembly preference"
-                    style={{ display: "grid", gap: 8 }}
-                  >
-                    <label
+                  <div style={{ position: "relative", paddingBottom: 24 }}>
+                    <div
+                      role="radiogroup"
+                      aria-label="Assembly preference"
                       style={{
-                        display: "flex",
-                        gap: 10,
-                        alignItems: "flex-start",
-                        padding: "11px 12px",
-                        border:
-                          assemblyChoice === "included"
-                            ? "1px solid #111"
-                            : "1px solid #d9d9d9",
-                        background:
-                          assemblyChoice === "included" ? "#fafafa" : "#fff",
-                        cursor: "pointer",
+                        display: "grid",
+                        gap: 8,
+                        outline: checkoutFieldErrors.assembly_choice
+                          ? "1px solid #dc2626"
+                          : undefined,
+                        outlineOffset: 2,
+                        borderRadius: 4,
                       }}
                     >
-                      <input
-                        type="radio"
-                        name="ready_made_assembly_choice"
-                        value="included"
-                        checked={assemblyChoice === "included"}
-                        onChange={() => setAssemblyChoice("included")}
-                        style={{ marginTop: 3 }}
-                      />
-                      <span>
-                        <strong style={{ display: "block", fontSize: 12.5 }}>
-                          Include free assembly
-                        </strong>
-                        <span
-                          style={{
-                            display: "block",
-                            marginTop: 2,
-                            fontSize: 11,
-                            color: "#666",
-                            lineHeight: 1.35,
+                      {/* ... unchanged radio buttons here ... */}
+                      <label
+                        style={{
+                          display: "flex",
+                          gap: 10,
+                          alignItems: "flex-start",
+                          padding: "11px 12px",
+                          border:
+                            assemblyChoice === "included"
+                              ? "1px solid #111"
+                              : "1px solid #d9d9d9",
+                          background:
+                            assemblyChoice === "included" ? "#fafafa" : "#fff",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="ready_made_assembly_choice"
+                          value="included"
+                          checked={assemblyChoice === "included"}
+                          onChange={() => {
+                            setAssemblyChoice("included");
+                            setCheckoutFieldErrors((prev) => ({
+                              ...prev,
+                              assembly_choice: "",
+                            }));
                           }}
-                        >
-                          Our delivery team will assemble your ready-made
-                          furniture at no additional cost.
+                          style={{ marginTop: 3 }}
+                        />
+                        <span>
+                          <strong style={{ display: "block", fontSize: 12.5 }}>
+                            Include free assembly
+                          </strong>
+                          <span
+                            style={{
+                              display: "block",
+                              marginTop: 2,
+                              fontSize: 11,
+                              color: "#666",
+                              lineHeight: 1.35,
+                            }}
+                          >
+                            Our delivery team will assemble your ready-made
+                            furniture at no additional cost.
+                          </span>
                         </span>
-                      </span>
-                    </label>
+                      </label>
 
-                    <label
+                      <label
+                        style={{
+                          display: "flex",
+                          gap: 10,
+                          alignItems: "flex-start",
+                          padding: "11px 12px",
+                          border:
+                            assemblyChoice === "none"
+                              ? "1px solid #111"
+                              : "1px solid #d9d9d9",
+                          background:
+                            assemblyChoice === "none" ? "#fafafa" : "#fff",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="ready_made_assembly_choice"
+                          value="none"
+                          checked={assemblyChoice === "none"}
+                          onChange={() => {
+                            setAssemblyChoice("none");
+                            setCheckoutFieldErrors((prev) => ({
+                              ...prev,
+                              assembly_choice: "",
+                            }));
+                          }}
+                          style={{ marginTop: 3 }}
+                        />
+                        <span>
+                          <strong style={{ display: "block", fontSize: 12.5 }}>
+                            No assembly needed
+                          </strong>
+                          <span
+                            style={{
+                              display: "block",
+                              marginTop: 2,
+                              fontSize: 11,
+                              color: "#666",
+                              lineHeight: 1.35,
+                            }}
+                          >
+                            I do not need assembly service for this order.
+                          </span>
+                        </span>
+                      </label>
+                    </div>
+
+                    <div
                       style={{
-                        display: "flex",
-                        gap: 10,
-                        alignItems: "flex-start",
-                        padding: "11px 12px",
-                        border:
-                          assemblyChoice === "none"
-                            ? "1px solid #111"
-                            : "1px solid #d9d9d9",
-                        background:
-                          assemblyChoice === "none" ? "#fafafa" : "#fff",
-                        cursor: "pointer",
+                        position: "absolute",
+                        bottom: 0,
+                        left: 0,
+                        width: "100%",
                       }}
                     >
-                      <input
-                        type="radio"
-                        name="ready_made_assembly_choice"
-                        value="none"
-                        checked={assemblyChoice === "none"}
-                        onChange={() => setAssemblyChoice("none")}
-                        style={{ marginTop: 3 }}
+                      <InlineFieldError
+                        id="checkout-assembly-error"
+                        message={checkoutFieldErrors.assembly_choice}
                       />
-                      <span>
-                        <strong style={{ display: "block", fontSize: 12.5 }}>
-                          No assembly needed
-                        </strong>
-                        <span
-                          style={{
-                            display: "block",
-                            marginTop: 2,
-                            fontSize: 11,
-                            color: "#666",
-                            lineHeight: 1.35,
-                          }}
-                        >
-                          I do not need assembly service for this order.
-                        </span>
-                      </span>
-                    </label>
+                    </div>
                   </div>
                 </div>
               )}

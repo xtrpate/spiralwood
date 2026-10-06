@@ -29,6 +29,33 @@ const MAX_WARRANTY_DESCRIPTION_LENGTH = 1000;
 const MAX_WARRANTY_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 const CUSTOMER_WARRANTY_PAGE_SIZE = 10;
 
+const getInlineErrorFieldStyle = (hasError, extra = {}) =>
+  hasError
+    ? {
+        ...extra,
+        border: "1px solid #dc2626",
+        boxShadow: "0 0 0 1px #dc2626",
+      }
+    : extra;
+
+const InlineFieldError = ({ id, message }) =>
+  message ? (
+    <span
+      id={id}
+      role="alert"
+      style={{
+        display: "block",
+        color: "#b91c1c",
+        fontSize: 11,
+        lineHeight: 1.2,
+        whiteSpace: "normal",
+        wordWrap: "break-word",
+      }}
+    >
+      {message}
+    </span>
+  ) : null;
+
 const DEFAULT_CLAIMS_PAGINATION = {
   page: 1,
   limit: CUSTOMER_WARRANTY_PAGE_SIZE,
@@ -89,44 +116,64 @@ const FileUpload = ({
   onClear,
   accept,
   typeHint,
+  error,
+  errorId,
 }) => (
-  <div className="w-upload-box">
-    <div className="w-upload-label">{label}</div>
-    {hint && <div className="w-upload-hint">{hint}</div>}
+  <div style={{ position: "relative", paddingBottom: 24, flex: 1 }}>
+    <div
+      className="w-upload-box"
+      style={
+        error
+          ? {
+              outline: "1px solid #dc2626",
+              outlineOffset: 2,
+            }
+          : undefined
+      }
+    >
+      <div className="w-upload-label">{label}</div>
+      {hint && <div className="w-upload-hint">{hint}</div>}
 
-    {file ? (
-      <div className="w-upload-preview">
-        {file.type?.startsWith("image/") ? (
-          <img
-            src={URL.createObjectURL(file)}
-            alt="preview"
-            className="w-upload-img"
+      {file ? (
+        <div className="w-upload-preview">
+          {file.type?.startsWith("image/") ? (
+            <img
+              src={URL.createObjectURL(file)}
+              alt="preview"
+              className="w-upload-img"
+            />
+          ) : (
+            <div className="w-upload-pdf">
+              <FileText size={28} />
+              <span>{file.name}</span>
+            </div>
+          )}
+
+          <button type="button" className="w-upload-clear" onClick={onClear}>
+            <X size={14} />
+          </button>
+        </div>
+      ) : (
+        <label className="w-upload-trigger">
+          <Upload size={20} />
+          <span>Click to upload</span>
+          <span className="w-upload-types">{typeHint}</span>
+          <input
+            type="file"
+            name={name}
+            accept={accept}
+            hidden
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? errorId : undefined}
+            onChange={onChange}
           />
-        ) : (
-          <div className="w-upload-pdf">
-            <FileText size={28} />
-            <span>{file.name}</span>
-          </div>
-        )}
+        </label>
+      )}
+    </div>
 
-        <button type="button" className="w-upload-clear" onClick={onClear}>
-          <X size={14} />
-        </button>
-      </div>
-    ) : (
-      <label className="w-upload-trigger">
-        <Upload size={20} />
-        <span>Click to upload</span>
-        <span className="w-upload-types">{typeHint}</span>
-        <input
-          type="file"
-          name={name}
-          accept={accept}
-          hidden
-          onChange={onChange}
-        />
-      </label>
-    )}
+    <div style={{ position: "absolute", bottom: 0, left: 0, width: "100%" }}>
+      <InlineFieldError id={errorId} message={error} />
+    </div>
   </div>
 );
 
@@ -178,6 +225,7 @@ export default function WarrantyPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [formError, setFormError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
   const [showForm, setShowForm] = useState(false);
   const [warrantyCenterTab, setWarrantyCenterTab] = useState(() =>
     initialFocusClaimParam ? "claims" : "file",
@@ -551,6 +599,13 @@ export default function WarrantyPage() {
     const val = e.target.value;
     setOrderId(val);
 
+    setFieldErrors((prev) => ({
+      ...prev,
+      orderId: "",
+      selectedOrderItemId: "",
+      claimQuantity: "",
+    }));
+
     const found = visibleOrders.find((order) => String(order.id) === val);
 
     setOrderNumber(found?.order_number || "");
@@ -567,43 +622,66 @@ export default function WarrantyPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError("");
+    setFieldErrors({});
 
     if (!orderId && !orderNumber.trim()) {
-      setFormError("Please select an eligible completed and paid order.");
+      setFieldErrors((prev) => ({
+        ...prev,
+        orderId: "Please select an eligible completed and paid order.",
+      }));
       return;
     }
 
     const selectedItem = products.find(
       (item) => String(item.order_item_id) === String(selectedOrderItemId),
     );
+
     if (!selectedItem) {
-      setFormError("Please select the exact affected item from the order.");
+      setFieldErrors((prev) => ({
+        ...prev,
+        selectedOrderItemId:
+          "Please select the exact affected item from the order.",
+      }));
       return;
     }
+
     const claimQty = Number(claimQuantity);
+
     if (
       !Number.isInteger(claimQty) ||
       claimQty < 1 ||
       claimQty > Number(selectedItem.quantity || 1)
     ) {
-      setFormError(
-        `Claim quantity must be between 1 and ${Number(selectedItem.quantity || 1)}.`,
-      );
+      setFieldErrors((prev) => ({
+        ...prev,
+        claimQuantity: `Claim quantity must be between 1 and ${Number(
+          selectedItem.quantity || 1,
+        )}.`,
+      }));
       return;
     }
 
     if (!description.trim()) {
-      setFormError("Please describe the issue.");
+      setFieldErrors((prev) => ({
+        ...prev,
+        description: "Please describe the issue.",
+      }));
       return;
     }
 
     if (!photoFile) {
-      setFormError("Please upload a photo of the defect.");
+      setFieldErrors((prev) => ({
+        ...prev,
+        photo: "Please upload a photo of the defect.",
+      }));
       return;
     }
 
     if (!proofFile) {
-      setFormError("Please upload your proof of purchase or receipt.");
+      setFieldErrors((prev) => ({
+        ...prev,
+        proof: "Please upload your proof of purchase or receipt.",
+      }));
       return;
     }
 
@@ -658,6 +736,7 @@ export default function WarrantyPage() {
     setProofFile(null);
     setSubmitted(false);
     setFormError("");
+    setFieldErrors({});
     setShowForm(true);
     setWarrantyCenterTab("file");
 
@@ -1056,25 +1135,42 @@ export default function WarrantyPage() {
                             </label>
 
                             {hasEligibleOrders ? (
-                              <div className="wselect-wrap">
-                                <select
-                                  className="winput wselect"
-                                  value={orderId}
-                                  onChange={handleOrderSelect}
-                                >
-                                  <option value="">
-                                    Select a completed and paid order
-                                  </option>
-                                  {visibleOrders.map((order) => (
-                                    <option key={order.id} value={order.id}>
-                                      {order.order_number} — valid until{" "}
-                                      {formatDate(order.warranty_expiry)}
+                              <div>
+                                <div className="wselect-wrap">
+                                  <select
+                                    className="winput wselect"
+                                    value={orderId}
+                                    onChange={handleOrderSelect}
+                                    aria-invalid={Boolean(fieldErrors.orderId)}
+                                    aria-describedby={
+                                      fieldErrors.orderId
+                                        ? "warranty-order-error"
+                                        : undefined
+                                    }
+                                    style={getInlineErrorFieldStyle(
+                                      Boolean(fieldErrors.orderId),
+                                    )}
+                                  >
+                                    <option value="">
+                                      Select a completed and paid order
                                     </option>
-                                  ))}
-                                </select>
-                                <ChevronDown
-                                  size={15}
-                                  className="wselect-icon"
+                                    {visibleOrders.map((order) => (
+                                      <option key={order.id} value={order.id}>
+                                        {order.order_number} — valid until{" "}
+                                        {formatDate(order.warranty_expiry)}
+                                      </option>
+                                    ))}
+                                  </select>
+
+                                  <ChevronDown
+                                    size={15}
+                                    className="wselect-icon"
+                                  />
+                                </div>
+
+                                <InlineFieldError
+                                  id="warranty-order-error"
+                                  message={fieldErrors.orderId}
                                 />
                               </div>
                             ) : (
@@ -1099,7 +1195,24 @@ export default function WarrantyPage() {
                                 onChange={(e) => {
                                   setSelectedOrderItemId(e.target.value);
                                   setClaimQuantity("1");
+
+                                  setFieldErrors((prev) => ({
+                                    ...prev,
+                                    selectedOrderItemId: "",
+                                    claimQuantity: "",
+                                  }));
                                 }}
+                                aria-invalid={Boolean(
+                                  fieldErrors.selectedOrderItemId,
+                                )}
+                                aria-describedby={
+                                  fieldErrors.selectedOrderItemId
+                                    ? "warranty-product-error"
+                                    : undefined
+                                }
+                                style={getInlineErrorFieldStyle(
+                                  Boolean(fieldErrors.selectedOrderItemId),
+                                )}
                               >
                                 <option value="">
                                   Select the affected product
@@ -1117,6 +1230,10 @@ export default function WarrantyPage() {
 
                               <ChevronDown size={15} className="wselect-icon" />
                             </div>
+                            <InlineFieldError
+                              id="warranty-product-error"
+                              message={fieldErrors.selectedOrderItemId}
+                            />
                           </div>
 
                           <div className="wfield">
@@ -1130,8 +1247,22 @@ export default function WarrantyPage() {
                               inputMode="numeric"
                               pattern="[0-9]*"
                               value={claimQuantity}
+                              aria-invalid={Boolean(fieldErrors.claimQuantity)}
+                              aria-describedby={
+                                fieldErrors.claimQuantity
+                                  ? "warranty-quantity-error"
+                                  : undefined
+                              }
+                              style={getInlineErrorFieldStyle(
+                                Boolean(fieldErrors.claimQuantity),
+                              )}
                               onChange={(e) => {
                                 const value = e.target.value.replace(/\D/g, "");
+
+                                setFieldErrors((prev) => ({
+                                  ...prev,
+                                  claimQuantity: "",
+                                }));
 
                                 if (!value) {
                                   setClaimQuantity("");
@@ -1164,6 +1295,10 @@ export default function WarrantyPage() {
                               }}
                               disabled={!selectedOrderItemId}
                             />
+                            <InlineFieldError
+                              id="warranty-quantity-error"
+                              message={fieldErrors.claimQuantity}
+                            />
                           </div>
 
                           <div className="wfield">
@@ -1175,14 +1310,34 @@ export default function WarrantyPage() {
                               className="winput wtextarea"
                               placeholder="Describe the defect clearly — what is affected, where it appears, and when you noticed it."
                               value={description}
-                              onChange={(e) => setDescription(e.target.value)}
+                              onChange={(e) => {
+                                setDescription(e.target.value);
+
+                                setFieldErrors((prev) => ({
+                                  ...prev,
+                                  description: "",
+                                }));
+                              }}
                               rows={4}
                               maxLength={MAX_WARRANTY_DESCRIPTION_LENGTH}
+                              aria-invalid={Boolean(fieldErrors.description)}
+                              aria-describedby={
+                                fieldErrors.description
+                                  ? "warranty-description-error"
+                                  : undefined
+                              }
+                              style={getInlineErrorFieldStyle(
+                                Boolean(fieldErrors.description),
+                              )}
                             />
                             <div className="wchar-count">
                               {description.length}/
                               {MAX_WARRANTY_DESCRIPTION_LENGTH}
                             </div>
+                            <InlineFieldError
+                              id="warranty-description-error"
+                              message={fieldErrors.description}
+                            />
                           </div>
 
                           <div className="wfield-row">
@@ -1196,6 +1351,8 @@ export default function WarrantyPage() {
                               hint="Required — upload a clear image of the issue"
                               name="photo"
                               file={photoFile}
+                              error={fieldErrors.photo}
+                              errorId="warranty-photo-error"
                               accept="image/jpeg,image/png,image/webp,.jfif"
                               typeHint="JPG, JPEG, PNG, WEBP, JFIF · max 5 MB"
                               onChange={(e) => {
@@ -1209,16 +1366,30 @@ export default function WarrantyPage() {
                                 if (file.size > MAX_WARRANTY_FILE_SIZE_BYTES) {
                                   e.target.value = "";
                                   setPhotoFile(null);
-                                  setFormError(
-                                    "Photo of the issue must be 5 MB or smaller.",
-                                  );
+
+                                  setFieldErrors((prev) => ({
+                                    ...prev,
+                                    photo:
+                                      "Photo of the issue must be 5 MB or smaller.",
+                                  }));
                                   return;
                                 }
 
                                 setFormError("");
+                                setFieldErrors((prev) => ({
+                                  ...prev,
+                                  photo: "",
+                                }));
                                 setPhotoFile(file);
                               }}
-                              onClear={() => setPhotoFile(null)}
+                              onClear={() => {
+                                setPhotoFile(null);
+
+                                setFieldErrors((prev) => ({
+                                  ...prev,
+                                  photo: "",
+                                }));
+                              }}
                             />
 
                             <FileUpload
@@ -1231,6 +1402,8 @@ export default function WarrantyPage() {
                               hint="Required — upload your receipt or confirmation"
                               name="proof"
                               file={proofFile}
+                              error={fieldErrors.proof}
+                              errorId="warranty-proof-error"
                               accept="image/jpeg,image/png,image/webp,.jfif,application/pdf"
                               typeHint="JPG, JPEG, PNG, WEBP, JFIF, PDF · max 5 MB"
                               onChange={(e) => {
@@ -1244,16 +1417,30 @@ export default function WarrantyPage() {
                                 if (file.size > MAX_WARRANTY_FILE_SIZE_BYTES) {
                                   e.target.value = "";
                                   setProofFile(null);
-                                  setFormError(
-                                    "Proof of purchase must be 5 MB or smaller.",
-                                  );
+
+                                  setFieldErrors((prev) => ({
+                                    ...prev,
+                                    proof:
+                                      "Proof of purchase must be 5 MB or smaller.",
+                                  }));
                                   return;
                                 }
 
                                 setFormError("");
+                                setFieldErrors((prev) => ({
+                                  ...prev,
+                                  proof: "",
+                                }));
                                 setProofFile(file);
                               }}
-                              onClear={() => setProofFile(null)}
+                              onClear={() => {
+                                setProofFile(null);
+
+                                setFieldErrors((prev) => ({
+                                  ...prev,
+                                  proof: "",
+                                }));
+                              }}
                             />
                           </div>
 

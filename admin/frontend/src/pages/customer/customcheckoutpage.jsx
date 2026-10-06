@@ -15,6 +15,24 @@ import {
 import { getCustomReferencePhotos } from "../../utils/customReferencePhotoStore";
 import { WOOD_FINISHES } from "../blueprints/data/furnitureTypes";
 
+const InlineFieldError = ({ id, message }) =>
+  message ? (
+    <span
+      id={id}
+      role="alert"
+      style={{
+        display: "block",
+        color: "#b91c1c",
+        fontSize: 11,
+        lineHeight: 1.2,
+        whiteSpace: "normal",
+        wordWrap: "break-word",
+      }}
+    >
+      {message}
+    </span>
+  ) : null;
+
 // Strict parsing prevents blank strings, whitespace, booleans, arrays,
 // and objects from being coerced into a fake numeric coordinate such as 0.
 const parseStrictCoordinate = (value) => {
@@ -323,6 +341,7 @@ export default function CustomCheckoutPage() {
   const [loading, setLoading] = useState(false);
   const [submitFeedbackStatus, setSubmitFeedbackStatus] = useState("loading");
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [assemblyChoice, setAssemblyChoice] = useState("");
   const [fulfillmentMethod, setFulfillmentMethod] = useState("delivery");
@@ -401,6 +420,13 @@ export default function CustomCheckoutPage() {
     userToggledRef.current = true;
     setUseDefaultAddress(false);
     set("delivery_address", text);
+
+    setFieldErrors((prev) => ({
+      ...prev,
+      delivery_address: String(text || "").trim()
+        ? ""
+        : "Please enter your delivery address.",
+    }));
   };
 
   // Fired for every LocationPicker pin change: click-to-place, drag,
@@ -410,6 +436,13 @@ export default function CustomCheckoutPage() {
     userToggledRef.current = true;
     setUseDefaultAddress(false);
     setDeliveryPin(next);
+
+    setFieldErrors((prev) => ({
+      ...prev,
+      delivery_pin: isValidCoordPair(next?.lat, next?.lng)
+        ? ""
+        : "Please select a valid delivery location on the map.",
+    }));
   };
 
   useEffect(() => {
@@ -511,7 +544,14 @@ export default function CustomCheckoutPage() {
     }
   }, [customCart, navigate]);
 
-  const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+  const set = (k, v) => {
+    setForm((p) => ({ ...p, [k]: v }));
+
+    setFieldErrors((prev) => ({
+      ...prev,
+      [k]: "",
+    }));
+  };
 
   const hasDefaultAddress = Boolean(String(user?.address || "").trim());
   const hasDefaultPin = isValidCoordPair(user?.address_lat, user?.address_lng);
@@ -544,45 +584,47 @@ export default function CustomCheckoutPage() {
       return;
     }
 
+    const nextFieldErrors = {};
+
     if (fulfillmentMethod === "delivery" && !assemblyChoice) {
-      setError("Please choose an assembly option before submitting.");
-      return;
+      nextFieldErrors.assembly_choice =
+        "Please choose an assembly option before submitting.";
     }
 
     if (!reviewConfirmed) {
-      setError(
-        "Please review and confirm the exact design, specifications, and quantity before submitting.",
-      );
-      return;
+      nextFieldErrors.review_confirmed =
+        "Please review and confirm the design, specifications, and quantity before submitting.";
     }
 
     if (!form.name.trim()) {
-      setError("Please enter your full name.");
-      return;
+      nextFieldErrors.name = "Full name is required.";
     }
 
     if (!form.phone.trim()) {
-      setError("Please enter your phone number.");
-      return;
+      nextFieldErrors.phone = "Phone number is required.";
     }
 
     let validDeliveryPin = null;
+
     if (fulfillmentMethod === "delivery") {
       if (!String(form.delivery_address || "").trim()) {
-        setError("Please enter your delivery address.");
-        return;
+        nextFieldErrors.delivery_address =
+          "Please enter your delivery address.";
       }
 
       validDeliveryPin = getValidCoordPair(deliveryPin?.lat, deliveryPin?.lng);
 
       if (!validDeliveryPin) {
-        setError(
-          useDefaultAddress
-            ? "Your default address has no saved map pin. Please select a location on the map before submitting."
-            : "Please select a valid delivery location on the map before submitting.",
-        );
-        return;
+        nextFieldErrors.delivery_pin = useDefaultAddress
+          ? "Your default address has no saved map pin. Please select a location on the map before submitting."
+          : "Please select a valid delivery location on the map before submitting.";
       }
+    }
+
+    setFieldErrors(nextFieldErrors);
+
+    if (Object.keys(nextFieldErrors).length > 0) {
+      return;
     }
 
     const feedbackDurations = getMotionFeedbackDurations();
@@ -979,24 +1021,102 @@ export default function CustomCheckoutPage() {
 
             <div className="checkout-section-body">
               <div className="form-grid">
-                <div className="form-field">
+                <div
+                  className="form-field"
+                  style={{ position: "relative", paddingBottom: 24 }}
+                >
                   <label>Full Name *</label>
+
                   <input
                     type="text"
                     placeholder="Juan dela Cruz"
                     value={form.name}
-                    onChange={(e) => set("name", e.target.value)}
+                    aria-invalid={Boolean(fieldErrors.name)}
+                    aria-describedby={
+                      fieldErrors.name
+                        ? "custom-checkout-name-error"
+                        : undefined
+                    }
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      set("name", value);
+                      setFieldErrors((prev) => ({
+                        ...prev,
+                        name: value.trim() ? "" : "Full name is required.",
+                      }));
+                    }}
+                    style={{
+                      border: fieldErrors.name
+                        ? "1px solid #dc2626"
+                        : undefined,
+                      boxShadow: fieldErrors.name
+                        ? "0 0 0 1px #dc2626"
+                        : undefined,
+                    }}
                   />
+
+                  <div
+                    style={{
+                      position: "absolute",
+                      bottom: 0,
+                      left: 0,
+                      width: "100%",
+                    }}
+                  >
+                    <InlineFieldError
+                      id="custom-checkout-name-error"
+                      message={fieldErrors.name}
+                    />
+                  </div>
                 </div>
 
-                <div className="form-field">
+                <div
+                  className="form-field"
+                  style={{ position: "relative", paddingBottom: 24 }}
+                >
                   <label>Phone Number *</label>
+
                   <input
                     type="tel"
                     placeholder="09XXXXXXXXX"
                     value={form.phone}
-                    onChange={(e) => set("phone", e.target.value)}
+                    aria-invalid={Boolean(fieldErrors.phone)}
+                    aria-describedby={
+                      fieldErrors.phone
+                        ? "custom-checkout-phone-error"
+                        : undefined
+                    }
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      set("phone", value);
+                      setFieldErrors((prev) => ({
+                        ...prev,
+                        phone: value.trim() ? "" : "Phone number is required.",
+                      }));
+                    }}
+                    style={{
+                      border: fieldErrors.phone
+                        ? "1px solid #dc2626"
+                        : undefined,
+                      boxShadow: fieldErrors.phone
+                        ? "0 0 0 1px #dc2626"
+                        : undefined,
+                    }}
                   />
+
+                  <div
+                    style={{
+                      position: "absolute",
+                      bottom: 0,
+                      left: 0,
+                      width: "100%",
+                    }}
+                  >
+                    <InlineFieldError
+                      id="custom-checkout-phone-error"
+                      message={fieldErrors.phone}
+                    />
+                  </div>
                 </div>
 
                 <div className="form-field full">
@@ -1017,6 +1137,7 @@ export default function CustomCheckoutPage() {
                       display: "grid",
                       gridTemplateColumns: "1fr 1fr",
                       gap: 10,
+                      borderRadius: 8,
                     }}
                   >
                     {[
@@ -1041,6 +1162,17 @@ export default function CustomCheckoutPage() {
                           onClick={() => {
                             setFulfillmentMethod(option.key);
                             setError("");
+
+                            setFieldErrors((prev) => ({
+                              ...prev,
+                              ...(option.key === "pickup"
+                                ? {
+                                    assembly_choice: "",
+                                    delivery_address: "",
+                                    delivery_pin: "",
+                                  }
+                                : {}),
+                            }));
                           }}
                           style={{
                             textAlign: "left",
@@ -1167,8 +1299,9 @@ export default function CustomCheckoutPage() {
                         }}
                       >
                         📍 {user?.address}
-                        {!hasDefaultPin && (
+                        {!hasDefaultPin ? (
                           <div
+                            role="alert"
                             style={{
                               marginTop: 6,
                               fontSize: 12.5,
@@ -1180,22 +1313,56 @@ export default function CustomCheckoutPage() {
                             pin unavailable — please select a location on the
                             map below to continue.
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     )}
                   </div>
                 )}
 
                 {fulfillmentMethod === "delivery" && !useDefaultAddress && (
-                  <div className="form-field full">
-                    <LocationPicker
-                      key={`custom-checkout-location-${locationPickerKey}`}
-                      label="Delivery Address"
-                      addressValue={form.delivery_address}
-                      onAddressChange={handleAddressInputChange}
-                      value={deliveryPin}
-                      onChange={handlePinChange}
-                    />
+                  <div
+                    className="form-field full"
+                    style={{ position: "relative", paddingBottom: 36 }}
+                  >
+                    <div
+                      style={{
+                        outline:
+                          fieldErrors.delivery_address ||
+                          fieldErrors.delivery_pin
+                            ? "1px solid #dc2626"
+                            : undefined,
+                        outlineOffset: 2,
+                        borderRadius: 4,
+                      }}
+                    >
+                      <LocationPicker
+                        key={`custom-checkout-location-${locationPickerKey}`}
+                        label="Delivery Address"
+                        addressValue={form.delivery_address}
+                        onAddressChange={handleAddressInputChange}
+                        value={deliveryPin}
+                        onChange={handlePinChange}
+                      />
+                    </div>
+                    <div
+                      style={{
+                        position: "absolute",
+                        bottom: 0,
+                        left: 0,
+                        width: "100%",
+                        display: "flex",
+                        flexDirection: "column",
+                      }}
+                    >
+                      <InlineFieldError
+                        id="custom-checkout-delivery-address-error"
+                        message={fieldErrors.delivery_address}
+                      />
+                      <InlineFieldError
+                        id="custom-checkout-delivery-pin-error"
+                        message={fieldErrors.delivery_pin}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
@@ -1289,99 +1456,132 @@ export default function CustomCheckoutPage() {
                     </strong>
                   </div>
 
-                  <div
-                    role="radiogroup"
-                    aria-label="Assembly preference"
-                    style={{ display: "grid", gap: 8 }}
-                  >
-                    <label
+                  <div style={{ position: "relative", paddingBottom: 24 }}>
+                    <div
+                      role="radiogroup"
+                      aria-label="Assembly preference"
                       style={{
-                        display: "flex",
-                        gap: 10,
-                        alignItems: "flex-start",
-                        padding: "11px 12px",
-                        border:
-                          assemblyChoice === "included"
-                            ? "1px solid #111"
-                            : "1px solid #d9d9d9",
-                        background:
-                          assemblyChoice === "included" ? "#fafafa" : "#fff",
-                        cursor: "pointer",
+                        display: "grid",
+                        gap: 8,
+                        outline: fieldErrors.assembly_choice
+                          ? "1px solid #dc2626"
+                          : undefined,
+                        outlineOffset: 2,
+                        borderRadius: 4,
                       }}
                     >
-                      <input
-                        type="radio"
-                        name="assembly_choice"
-                        value="included"
-                        checked={assemblyChoice === "included"}
-                        onChange={() => {
-                          setAssemblyChoice("included");
-                          setError("");
+                      {/* ... existing radio buttons stay unchanged here ... */}
+                      <label
+                        style={{
+                          display: "flex",
+                          gap: 10,
+                          alignItems: "flex-start",
+                          padding: "11px 12px",
+                          border:
+                            assemblyChoice === "included"
+                              ? "1px solid #111"
+                              : "1px solid #d9d9d9",
+                          background:
+                            assemblyChoice === "included" ? "#fafafa" : "#fff",
+                          cursor: "pointer",
                         }}
-                        style={{ marginTop: 3 }}
-                      />
-                      <span>
-                        <strong style={{ display: "block", fontSize: 12.5 }}>
-                          Include free assembly
-                        </strong>
-                        <span
-                          style={{
-                            display: "block",
-                            marginTop: 2,
-                            fontSize: 11,
-                            color: "#666",
-                            lineHeight: 1.35,
+                      >
+                        <input
+                          type="radio"
+                          name="assembly_choice"
+                          value="included"
+                          checked={assemblyChoice === "included"}
+                          onChange={() => {
+                            setAssemblyChoice("included");
+                            setError("");
+                            setFieldErrors((prev) => ({
+                              ...prev,
+                              assembly_choice: "",
+                            }));
                           }}
-                        >
-                          Our team will assemble your furniture at no additional
-                          cost.
+                          style={{ marginTop: 3 }}
+                        />
+                        <span>
+                          <strong style={{ display: "block", fontSize: 12.5 }}>
+                            Include free assembly
+                          </strong>
+                          <span
+                            style={{
+                              display: "block",
+                              marginTop: 2,
+                              fontSize: 11,
+                              color: "#666",
+                              lineHeight: 1.35,
+                            }}
+                          >
+                            Our team will assemble your furniture at no
+                            additional cost.
+                          </span>
                         </span>
-                      </span>
-                    </label>
+                      </label>
 
-                    <label
+                      <label
+                        style={{
+                          display: "flex",
+                          gap: 10,
+                          alignItems: "flex-start",
+                          padding: "11px 12px",
+                          border:
+                            assemblyChoice === "none"
+                              ? "1px solid #111"
+                              : "1px solid #d9d9d9",
+                          background:
+                            assemblyChoice === "none" ? "#fafafa" : "#fff",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="assembly_choice"
+                          value="none"
+                          checked={assemblyChoice === "none"}
+                          onChange={() => {
+                            setAssemblyChoice("none");
+                            setError("");
+                            setFieldErrors((prev) => ({
+                              ...prev,
+                              assembly_choice: "",
+                            }));
+                          }}
+                          style={{ marginTop: 3 }}
+                        />
+                        <span>
+                          <strong style={{ display: "block", fontSize: 12.5 }}>
+                            No assembly needed
+                          </strong>
+                          <span
+                            style={{
+                              display: "block",
+                              marginTop: 2,
+                              fontSize: 11,
+                              color: "#666",
+                              lineHeight: 1.35,
+                            }}
+                          >
+                            I do not need assembly service for this request.
+                          </span>
+                        </span>
+                      </label>
+                    </div>
+
+                    <div
                       style={{
-                        display: "flex",
-                        gap: 10,
-                        alignItems: "flex-start",
-                        padding: "11px 12px",
-                        border:
-                          assemblyChoice === "none"
-                            ? "1px solid #111"
-                            : "1px solid #d9d9d9",
-                        background:
-                          assemblyChoice === "none" ? "#fafafa" : "#fff",
-                        cursor: "pointer",
+                        position: "absolute",
+                        bottom: 0,
+                        left: 0,
+                        width: "100%",
                       }}
                     >
-                      <input
-                        type="radio"
-                        name="assembly_choice"
-                        value="none"
-                        checked={assemblyChoice === "none"}
-                        onChange={() => {
-                          setAssemblyChoice("none");
-                          setError("");
-                        }}
-                        style={{ marginTop: 3 }}
+                      <InlineFieldError
+                        id="custom-checkout-assembly-error"
+                        message={fieldErrors.assembly_choice}
                       />
-                      <span>
-                        <strong style={{ display: "block", fontSize: 12.5 }}>
-                          No assembly needed
-                        </strong>
-                        <span
-                          style={{
-                            display: "block",
-                            marginTop: 2,
-                            fontSize: 11,
-                            color: "#666",
-                            lineHeight: 1.35,
-                          }}
-                        >
-                          I do not need assembly service for this request.
-                        </span>
-                      </span>
-                    </label>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1393,27 +1593,64 @@ export default function CustomCheckoutPage() {
             </div>
 
             <div
-              className={`custom-final-review-confirm ${
-                reviewConfirmed ? "is-confirmed" : ""
-              }`}
+              style={{
+                position: "relative",
+                paddingBottom: 24,
+                margin: "0 20px 16px",
+              }}
             >
-              <label>
-                <input
-                  type="checkbox"
-                  checked={reviewConfirmed}
-                  onChange={(event) => {
-                    setReviewConfirmed(event.target.checked);
-                    if (event.target.checked) setError("");
-                  }}
+              <div
+                className={`custom-final-review-confirm ${
+                  reviewConfirmed ? "is-confirmed" : ""
+                }`}
+                style={{
+                  margin: 0, // Removed margin here since it moved to the wrapper
+                  outline: fieldErrors.review_confirmed
+                    ? "1px solid #dc2626"
+                    : undefined,
+                  outlineOffset: 2,
+                  borderRadius: 4,
+                }}
+              >
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={reviewConfirmed}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      setReviewConfirmed(checked);
+                      if (checked) {
+                        setError("");
+                        setFieldErrors((prev) => ({
+                          ...prev,
+                          review_confirmed: "",
+                        }));
+                      }
+                    }}
+                  />
+                  <span>
+                    <strong>I reviewed this design.</strong>
+                    <p>
+                      The design, specifications, and quantity shown above are
+                      correct for this custom request.
+                    </p>
+                  </span>
+                </label>
+              </div>
+
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: 0,
+                  left: 0,
+                  width: "100%",
+                }}
+              >
+                <InlineFieldError
+                  id="custom-checkout-review-error"
+                  message={fieldErrors.review_confirmed}
                 />
-                <span>
-                  <strong>I reviewed this design.</strong>
-                  <p>
-                    The design,specifications, and quantity shown above are
-                    correct for this custom request.
-                  </p>
-                </span>
-              </label>
+              </div>
             </div>
 
             {displayedCheckoutNote && (

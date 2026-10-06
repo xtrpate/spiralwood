@@ -1003,11 +1003,10 @@
   white-space: nowrap;
 }
 
-.summary-row:last-of-type {
-  margin-top: 8px;
-  padding-top: 12px;
-  border-top: 1px solid #e5e7eb;
-  font-weight: 800;
+.checkout-summary-totals > .summary-row:first-child {
+  margin-bottom: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 .summary-note {

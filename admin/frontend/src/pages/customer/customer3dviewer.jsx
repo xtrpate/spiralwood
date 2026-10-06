@@ -976,6 +976,21 @@ export default function Customer3DViewer({
     depth: "",
   });
 
+  const [overallDimensionErrors, setOverallDimensionErrors] = useState({
+    width: "",
+    height: "",
+    depth: "",
+  });
+
+  const [partDimensionErrors, setPartDimensionErrors] = useState({
+    width: "",
+    height: "",
+    depth: "",
+  });
+
+  const [personHeightDraft, setPersonHeightDraft] = useState("1700");
+  const [personHeightError, setPersonHeightError] = useState("");
+
   const rememberCustomizeGuide = useCallback(() => {
     // Skip only this current customize session. Opening Customize again
     // starts with the guide visible so first-time users are never stranded.
@@ -1276,14 +1291,31 @@ export default function Customer3DViewer({
       depth: convertMmToUnit(overallBounds.depth_mm, unit),
     });
 
+    setOverallDimensionErrors({
+      width: "",
+      height: "",
+      depth: "",
+    });
+
     if (sampleSelectedPart) {
       setPartDrafts({
         width: convertMmToUnit(sampleSelectedPart.width, unit),
         height: convertMmToUnit(sampleSelectedPart.height, unit),
         depth: convertMmToUnit(sampleSelectedPart.depth, unit),
       });
+
+      setPartDimensionErrors({
+        width: "",
+        height: "",
+        depth: "",
+      });
     }
   }, [overallBounds, sampleSelectedPart, unit, convertMmToUnit]);
+
+  useEffect(() => {
+    setPersonHeightDraft(convertMmToUnit(personHeightMm, unit));
+    setPersonHeightError("");
+  }, [personHeightMm, unit, convertMmToUnit]);
 
   useEffect(() => {
     if (!finishMenuOpen || typeof document === "undefined") return undefined;
@@ -3380,8 +3412,42 @@ export default function Customer3DViewer({
     return firstChoices;
   };
 
+  const getDimensionFieldError = useCallback(
+    (rawValue, { minMm = 1, maxMm = Infinity, label = "Size" } = {}) => {
+      const text = String(rawValue ?? "").trim();
+
+      if (!text) {
+        return `${label} is required.`;
+      }
+
+      const parsedMm = convertUnitToMm(text, unit);
+
+      if (!Number.isFinite(parsedMm)) {
+        return `${label} must be a valid number.`;
+      }
+
+      if (parsedMm < minMm) {
+        return minMm === 1
+          ? "Minimum size is 1 mm."
+          : `${label} must be at least ${minMm} mm.`;
+      }
+
+      if (Number.isFinite(maxMm) && parsedMm > maxMm) {
+        return `${label} must be ${maxMm} mm or less.`;
+      }
+
+      return "";
+    },
+    [convertUnitToMm, unit],
+  );
+
   const handleOverallDraftChange = (axis, value) => {
     setOverallDrafts((prev) => ({ ...prev, [axis]: value }));
+
+    setOverallDimensionErrors((prev) => ({
+      ...prev,
+      [axis]: getDimensionFieldError(value),
+    }));
   };
 
   const commitOverallDimension = (axis) => {
@@ -3400,18 +3466,25 @@ export default function Customer3DViewer({
 
     /* WISDOM INPUT VALIDATION BATCH 2 V1.0.0
        Never rebuild/deform the model from invalid overall dimensions. */
+    const validationMessage = getDimensionFieldError(rawUnitValue);
+
     if (
+      validationMessage ||
       !Number.isFinite(parsedMmValue) ||
-      parsedMmValue < 1 ||
       currentValueMm <= 0
     ) {
-      setOverallDrafts((prev) => ({
+      setOverallDimensionErrors((prev) => ({
         ...prev,
-        [axis]: String(convertMmToUnit(currentValueMm, unit)),
+        [axis]:
+          validationMessage || "The current furniture size is unavailable.",
       }));
-      showCustomizeFeedback("Minimum size is 1 mm.");
       return;
     }
+
+    setOverallDimensionErrors((prev) => ({
+      ...prev,
+      [axis]: "",
+    }));
 
     const nextValueMm = Math.max(1, Math.round(parsedMmValue));
     if (nextValueMm === currentValueMm) return;
@@ -3459,18 +3532,24 @@ export default function Customer3DViewer({
 
     /* Invalid part input must never reach commitComponents. Restore the
        selected part's last valid dimension and show one clear message. */
+    const validationMessage = getDimensionFieldError(rawUnitValue);
+
     if (
+      validationMessage ||
       !Number.isFinite(parsedMmValue) ||
-      parsedMmValue < 1 ||
       currentValueMm <= 0
     ) {
-      setPartDrafts((prev) => ({
+      setPartDimensionErrors((prev) => ({
         ...prev,
-        [axis]: String(convertMmToUnit(currentValueMm, unit)),
+        [axis]: validationMessage || "The selected part size is unavailable.",
       }));
-      showCustomizeFeedback("Minimum size is 1 mm.");
       return;
     }
+
+    setPartDimensionErrors((prev) => ({
+      ...prev,
+      [axis]: "",
+    }));
 
     const nextValueMm = Math.max(1, Math.round(parsedMmValue));
     if (nextValueMm === currentValueMm) return;
@@ -4753,12 +4832,19 @@ export default function Customer3DViewer({
                       <input
                         type="number"
                         value={partDrafts.width}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const value = e.target.value;
+
                           setPartDrafts((prev) => ({
                             ...prev,
-                            width: e.target.value,
-                          }))
-                        }
+                            width: value,
+                          }));
+
+                          setPartDimensionErrors((prev) => ({
+                            ...prev,
+                            width: getDimensionFieldError(value),
+                          }));
+                        }}
                         onBlur={(e) =>
                           commitPartDimension("width", e.target.value)
                         }
@@ -4767,8 +4853,29 @@ export default function Customer3DViewer({
                             commitPartDimension("width", e.target.value);
                           }
                         }}
-                        style={styles.input}
+                        aria-invalid={Boolean(partDimensionErrors.width)}
+                        aria-describedby={
+                          partDimensionErrors.width
+                            ? "customer-part-width-error"
+                            : undefined
+                        }
+                        style={{
+                          ...styles.input,
+                          ...(partDimensionErrors.width
+                            ? styles.inputError
+                            : {}),
+                        }}
                       />
+
+                      {partDimensionErrors.width ? (
+                        <span
+                          id="customer-part-width-error"
+                          role="alert"
+                          style={styles.fieldError}
+                        >
+                          {partDimensionErrors.width}
+                        </span>
+                      ) : null}
                     </div>
 
                     <div style={styles.inputGroup}>
@@ -4778,12 +4885,19 @@ export default function Customer3DViewer({
                       <input
                         type="number"
                         value={partDrafts.height}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const value = e.target.value;
+
                           setPartDrafts((prev) => ({
                             ...prev,
-                            height: e.target.value,
-                          }))
-                        }
+                            height: value,
+                          }));
+
+                          setPartDimensionErrors((prev) => ({
+                            ...prev,
+                            height: getDimensionFieldError(value),
+                          }));
+                        }}
                         onBlur={(e) =>
                           commitPartDimension("height", e.target.value)
                         }
@@ -4792,8 +4906,29 @@ export default function Customer3DViewer({
                             commitPartDimension("height", e.target.value);
                           }
                         }}
-                        style={styles.input}
+                        aria-invalid={Boolean(partDimensionErrors.height)}
+                        aria-describedby={
+                          partDimensionErrors.height
+                            ? "customer-part-height-error"
+                            : undefined
+                        }
+                        style={{
+                          ...styles.input,
+                          ...(partDimensionErrors.height
+                            ? styles.inputError
+                            : {}),
+                        }}
                       />
+
+                      {partDimensionErrors.height ? (
+                        <span
+                          id="customer-part-height-error"
+                          role="alert"
+                          style={styles.fieldError}
+                        >
+                          {partDimensionErrors.height}
+                        </span>
+                      ) : null}
                     </div>
 
                     <div style={styles.inputGroup}>
@@ -4803,12 +4938,19 @@ export default function Customer3DViewer({
                       <input
                         type="number"
                         value={partDrafts.depth}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const value = e.target.value;
+
                           setPartDrafts((prev) => ({
                             ...prev,
-                            depth: e.target.value,
-                          }))
-                        }
+                            depth: value,
+                          }));
+
+                          setPartDimensionErrors((prev) => ({
+                            ...prev,
+                            depth: getDimensionFieldError(value),
+                          }));
+                        }}
                         onBlur={(e) =>
                           commitPartDimension("depth", e.target.value)
                         }
@@ -4817,8 +4959,29 @@ export default function Customer3DViewer({
                             commitPartDimension("depth", e.target.value);
                           }
                         }}
-                        style={styles.input}
+                        aria-invalid={Boolean(partDimensionErrors.depth)}
+                        aria-describedby={
+                          partDimensionErrors.depth
+                            ? "customer-part-depth-error"
+                            : undefined
+                        }
+                        style={{
+                          ...styles.input,
+                          ...(partDimensionErrors.depth
+                            ? styles.inputError
+                            : {}),
+                        }}
                       />
+
+                      {partDimensionErrors.depth ? (
+                        <span
+                          id="customer-part-depth-error"
+                          role="alert"
+                          style={styles.fieldError}
+                        >
+                          {partDimensionErrors.depth}
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                 </section>
@@ -4858,8 +5021,29 @@ export default function Customer3DViewer({
                           if (e.key === "Enter")
                             commitOverallDimension("width");
                         }}
-                        style={styles.input}
+                        aria-invalid={Boolean(overallDimensionErrors.width)}
+                        aria-describedby={
+                          overallDimensionErrors.width
+                            ? "customer-overall-width-error"
+                            : undefined
+                        }
+                        style={{
+                          ...styles.input,
+                          ...(overallDimensionErrors.width
+                            ? styles.inputError
+                            : {}),
+                        }}
                       />
+
+                      {overallDimensionErrors.width ? (
+                        <span
+                          id="customer-overall-width-error"
+                          role="alert"
+                          style={styles.fieldError}
+                        >
+                          {overallDimensionErrors.width}
+                        </span>
+                      ) : null}
                     </div>
 
                     <div style={styles.inputGroup}>
@@ -4876,8 +5060,29 @@ export default function Customer3DViewer({
                           if (e.key === "Enter")
                             commitOverallDimension("height");
                         }}
-                        style={styles.input}
+                        aria-invalid={Boolean(overallDimensionErrors.height)}
+                        aria-describedby={
+                          overallDimensionErrors.height
+                            ? "customer-overall-height-error"
+                            : undefined
+                        }
+                        style={{
+                          ...styles.input,
+                          ...(overallDimensionErrors.height
+                            ? styles.inputError
+                            : {}),
+                        }}
                       />
+
+                      {overallDimensionErrors.height ? (
+                        <span
+                          id="customer-overall-height-error"
+                          role="alert"
+                          style={styles.fieldError}
+                        >
+                          {overallDimensionErrors.height}
+                        </span>
+                      ) : null}
                     </div>
 
                     <div style={styles.inputGroup}>
@@ -4894,8 +5099,29 @@ export default function Customer3DViewer({
                           if (e.key === "Enter")
                             commitOverallDimension("depth");
                         }}
-                        style={styles.input}
+                        aria-invalid={Boolean(overallDimensionErrors.depth)}
+                        aria-describedby={
+                          overallDimensionErrors.depth
+                            ? "customer-overall-depth-error"
+                            : undefined
+                        }
+                        style={{
+                          ...styles.input,
+                          ...(overallDimensionErrors.depth
+                            ? styles.inputError
+                            : {}),
+                        }}
                       />
+
+                      {overallDimensionErrors.depth ? (
+                        <span
+                          id="customer-overall-depth-error"
+                          role="alert"
+                          style={styles.fieldError}
+                        >
+                          {overallDimensionErrors.depth}
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                 </section>
@@ -5058,21 +5284,70 @@ export default function Customer3DViewer({
                       step="0.1"
                       min={convertMmToUnit(HUMAN_REFERENCE_MIN_HEIGHT_MM, unit)}
                       max={convertMmToUnit(HUMAN_REFERENCE_MAX_HEIGHT_MM, unit)}
-                      value={convertMmToUnit(personHeightMm, unit)}
-                      onChange={(e) =>
-                        setPersonHeightMm(convertUnitToMm(e.target.value, unit))
+                      value={personHeightDraft}
+                      aria-invalid={Boolean(personHeightError)}
+                      aria-describedby={
+                        personHeightError
+                          ? "customer-person-height-error"
+                          : undefined
                       }
-                      onBlur={() =>
-                        setPersonHeightMm((current) =>
-                          clampNumber(
-                            current,
-                            HUMAN_REFERENCE_MIN_HEIGHT_MM,
-                            HUMAN_REFERENCE_MAX_HEIGHT_MM,
-                          ),
-                        )
-                      }
-                      style={styles.input}
+                      onChange={(e) => {
+                        const value = e.target.value;
+
+                        setPersonHeightDraft(value);
+
+                        const errorMessage = getDimensionFieldError(value, {
+                          minMm: HUMAN_REFERENCE_MIN_HEIGHT_MM,
+                          maxMm: HUMAN_REFERENCE_MAX_HEIGHT_MM,
+                          label: "Height",
+                        });
+
+                        setPersonHeightError(errorMessage);
+
+                        if (!errorMessage) {
+                          setPersonHeightMm(convertUnitToMm(value, unit));
+                        }
+                      }}
+                      onBlur={() => {
+                        const errorMessage = getDimensionFieldError(
+                          personHeightDraft,
+                          {
+                            minMm: HUMAN_REFERENCE_MIN_HEIGHT_MM,
+                            maxMm: HUMAN_REFERENCE_MAX_HEIGHT_MM,
+                            label: "Height",
+                          },
+                        );
+
+                        if (errorMessage) {
+                          setPersonHeightError(errorMessage);
+                          return;
+                        }
+
+                        const normalized = clampNumber(
+                          convertUnitToMm(personHeightDraft, unit),
+                          HUMAN_REFERENCE_MIN_HEIGHT_MM,
+                          HUMAN_REFERENCE_MAX_HEIGHT_MM,
+                        );
+
+                        setPersonHeightMm(normalized);
+                        setPersonHeightDraft(convertMmToUnit(normalized, unit));
+                        setPersonHeightError("");
+                      }}
+                      style={{
+                        ...styles.input,
+                        ...(personHeightError ? styles.inputError : {}),
+                      }}
                     />
+
+                    {personHeightError ? (
+                      <span
+                        id="customer-person-height-error"
+                        role="alert"
+                        style={styles.fieldError}
+                      >
+                        {personHeightError}
+                      </span>
+                    ) : null}
                   </div>
                 ) : null}
               </section>
@@ -6316,11 +6591,14 @@ const styles = {
     display: "grid",
     gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
     gap: 5,
+    alignItems: "start",
   },
 
   inputGroup: {
     display: "grid",
     gap: 3,
+    position: "relative",
+    paddingBottom: 26, // Increased to safely fit up to two lines of wrapped text
   },
 
   dimLabel: {
@@ -6344,6 +6622,25 @@ const styles = {
     boxSizing: "border-box",
     background: "#ffffff",
     color: "#111111",
+  },
+
+  inputError: {
+    border: "1px solid #dc2626",
+    boxShadow: "0 0 0 1px #dc2626",
+  },
+
+  fieldError: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    width: "100%", // Keep it contained within its column
+    margin: 0,
+    fontSize: 10, // Slightly smaller to help it fit
+    lineHeight: 1.15,
+    fontWeight: 500,
+    color: "#b91c1c",
+    whiteSpace: "normal", // Allows the text to wrap
+    wordWrap: "break-word",
   },
 
   finishDropdown: {

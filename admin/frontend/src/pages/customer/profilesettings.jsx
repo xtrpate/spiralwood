@@ -66,6 +66,33 @@ const Alert = ({ type, msg }) =>
     </div>
   ) : null;
 
+const getInlineErrorInputStyle = (hasError, extra = {}) =>
+  hasError
+    ? {
+        ...extra,
+        border: "1px solid #dc2626",
+        boxShadow: "0 0 0 1px #dc2626",
+      }
+    : extra;
+
+const InlineFieldError = ({ id, message }) =>
+  message ? (
+    <span
+      id={id}
+      role="alert"
+      style={{
+        display: "block",
+        color: "#b91c1c",
+        fontSize: 11,
+        lineHeight: 1.2,
+        whiteSpace: "normal",
+        wordWrap: "break-word",
+      }}
+    >
+      {message}
+    </span>
+  ) : null;
+
 /* ── Avatar URL builder ──
    Backend currently stores only the bare filename, but this stays
    defensive in case a row ever holds "/uploads/avatars/filename" or
@@ -244,6 +271,8 @@ export default function ProfileSettings() {
   const [nameForm, setNameForm] = useState(parseName(user?.name));
   const [nameMsg, setNameMsg] = useState({ type: "", text: "" });
   const [nameLoading, setNameLoading] = useState(false);
+
+  const [fieldErrors, setFieldErrors] = useState({});
 
   /* Default Delivery Address (independent of name) */
   const [editAddress, setEditAddress] = useState(false);
@@ -440,29 +469,38 @@ export default function ProfileSettings() {
     const trimmedFirst = (nameForm.firstName || "").trim();
     const trimmedLast = (nameForm.lastName || "").trim();
 
+    setFieldErrors((prev) => ({
+      ...prev,
+      firstName: "",
+      lastName: "",
+    }));
+
     if (!trimmedFirst || !trimmedLast) {
-      setNameMsg({
-        type: "error",
-        text: "Both First Name and Last Name are required.",
-      });
+      setFieldErrors((prev) => ({
+        ...prev,
+        firstName: trimmedFirst ? "" : "First Name is required.",
+        lastName: trimmedLast ? "" : "Last Name is required.",
+      }));
       return;
     }
 
     const nameRegex = /^[\p{L}]+(?:[ '\-][\p{L}]+)*$/u;
 
     if (!nameRegex.test(trimmedFirst)) {
-      setNameMsg({
-        type: "error",
-        text: "First Name may contain letters, spaces, hyphens, and apostrophes only.",
-      });
+      setFieldErrors((prev) => ({
+        ...prev,
+        firstName:
+          "First Name may contain letters, spaces, hyphens, and apostrophes only.",
+      }));
       return;
     }
 
     if (!nameRegex.test(trimmedLast)) {
-      setNameMsg({
-        type: "error",
-        text: "Last Name may contain letters, spaces, hyphens, and apostrophes only.",
-      });
+      setFieldErrors((prev) => ({
+        ...prev,
+        lastName:
+          "Last Name may contain letters, spaces, hyphens, and apostrophes only.",
+      }));
       return;
     }
 
@@ -517,31 +555,54 @@ export default function ProfileSettings() {
       addressForm.address_lng !== undefined &&
       addressForm.address_lng !== "";
 
-    if (!trimmedAddress)
-      return setAddressMsg({ type: "error", text: "Address is required." });
-    if (hasLat !== hasLng)
-      return setAddressMsg({
-        type: "error",
-        text: "Both latitude and longitude must be set together.",
-      });
-    if (!hasLat || !hasLng)
-      return setAddressMsg({
-        type: "error",
-        text: "Please set a map pin for your default delivery address.",
-      });
+    setFieldErrors((prev) => ({
+      ...prev,
+      address: "",
+      address_pin: "",
+    }));
+
+    if (!trimmedAddress) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        address: "Address is required.",
+      }));
+      return;
+    }
+
+    if (hasLat !== hasLng) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        address_pin: "Both latitude and longitude must be set together.",
+      }));
+      return;
+    }
+
+    if (!hasLat || !hasLng) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        address_pin: "Please set a map pin for your default delivery address.",
+      }));
+      return;
+    }
 
     const latNum = Number(addressForm.address_lat);
     const lngNum = Number(addressForm.address_lng);
-    if (!Number.isFinite(latNum) || !Number.isFinite(lngNum))
-      return setAddressMsg({
-        type: "error",
-        text: "Invalid map pin. Please set the pin again.",
-      });
-    if (latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180)
-      return setAddressMsg({
-        type: "error",
-        text: "Invalid map pin coordinates. Please set the pin again.",
-      });
+
+    if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        address_pin: "Invalid map pin. Please set the pin again.",
+      }));
+      return;
+    }
+
+    if (latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        address_pin: "Invalid map pin coordinates. Please set the pin again.",
+      }));
+      return;
+    }
 
     setAddressLoading(true);
     setAddressMsg({ type: "", text: "" });
@@ -612,8 +673,18 @@ export default function ProfileSettings() {
 
   // STEP 2: Verify Identity OTP
   const verifyCurrentEmailAuth = async () => {
-    if (!currentEmailOtp.trim())
-      return setEmailMsg({ type: "error", text: "Enter the OTP." });
+    if (!currentEmailOtp.trim()) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        currentEmailOtp: "Enter the OTP.",
+      }));
+      return;
+    }
+
+    setFieldErrors((prev) => ({
+      ...prev,
+      currentEmailOtp: "",
+    }));
 
     setEmailLoading(true);
     try {
@@ -627,10 +698,10 @@ export default function ProfileSettings() {
       setEmailStep(3);
       setCurrentEmailOtp("");
     } catch (err) {
-      setEmailMsg({
-        type: "error",
-        text: err.response?.data?.message || "Invalid OTP.",
-      });
+      setFieldErrors((prev) => ({
+        ...prev,
+        currentEmailOtp: err.response?.data?.message || "Invalid OTP.",
+      }));
     } finally {
       setEmailLoading(false);
     }
@@ -640,27 +711,35 @@ export default function ProfileSettings() {
   const requestNewEmailOtp = async () => {
     const trimmedEmail = newEmail.trim().toLowerCase();
 
+    setFieldErrors((prev) => ({
+      ...prev,
+      newEmail: "",
+    }));
+
     if (!trimmedEmail) {
-      return setEmailMsg({
-        type: "error",
-        text: "Enter a new email address.",
-      });
+      setFieldErrors((prev) => ({
+        ...prev,
+        newEmail: "Enter a new email address.",
+      }));
+      return;
     }
 
     if (trimmedEmail.length > MAX_EMAIL_LENGTH) {
-      return setEmailMsg({
-        type: "error",
-        text: `Email address must not exceed ${MAX_EMAIL_LENGTH} characters.`,
-      });
+      setFieldErrors((prev) => ({
+        ...prev,
+        newEmail: `Email address must not exceed ${MAX_EMAIL_LENGTH} characters.`,
+      }));
+      return;
     }
 
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!emailPattern.test(trimmedEmail)) {
-      return setEmailMsg({
-        type: "error",
-        text: "Enter a valid email address.",
-      });
+      setFieldErrors((prev) => ({
+        ...prev,
+        newEmail: "Enter a valid email address.",
+      }));
+      return;
     }
 
     setEmailLoading(true);
@@ -692,11 +771,17 @@ export default function ProfileSettings() {
     const normalizedOtp = newEmailOtp.trim();
 
     if (!/^\d{6}$/.test(normalizedOtp)) {
-      return setEmailMsg({
-        type: "error",
-        text: `OTP must be exactly ${OTP_LENGTH} digits.`,
-      });
+      setFieldErrors((prev) => ({
+        ...prev,
+        newEmailOtp: `OTP must be exactly ${OTP_LENGTH} digits.`,
+      }));
+      return;
     }
+
+    setFieldErrors((prev) => ({
+      ...prev,
+      newEmailOtp: "",
+    }));
 
     setEmailLoading(true);
     setFeedbackOpen(true);
@@ -722,10 +807,10 @@ export default function ProfileSettings() {
       }, durations.success);
     } catch (err) {
       setFeedbackOpen(false);
-      setEmailMsg({
-        type: "error",
-        text: err.response?.data?.message || "Invalid OTP.",
-      });
+      setFieldErrors((prev) => ({
+        ...prev,
+        newEmailOtp: err.response?.data?.message || "Invalid OTP.",
+      }));
     } finally {
       setEmailLoading(false);
     }
@@ -758,8 +843,18 @@ export default function ProfileSettings() {
   };
 
   const verifyCurrentPhoneAuth = async () => {
-    if (!currentPhoneOtp.trim())
-      return setPhoneMsg({ type: "error", text: "Enter the OTP code." });
+    if (!currentPhoneOtp.trim()) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        currentPhoneOtp: "Enter the OTP code.",
+      }));
+      return;
+    }
+
+    setFieldErrors((prev) => ({
+      ...prev,
+      currentPhoneOtp: "",
+    }));
 
     setPhoneLoading(true);
     try {
@@ -773,10 +868,10 @@ export default function ProfileSettings() {
       });
       setCurrentPhoneOtp("");
     } catch (err) {
-      setPhoneMsg({
-        type: "error",
-        text: err.response?.data?.message || "Invalid OTP code.",
-      });
+      setFieldErrors((prev) => ({
+        ...prev,
+        currentPhoneOtp: err.response?.data?.message || "Invalid OTP code.",
+      }));
     } finally {
       setPhoneLoading(false);
     }
@@ -787,17 +882,26 @@ export default function ProfileSettings() {
     const phoneToSend =
       typeof formattedPhone === "string" ? formattedPhone : "0" + newPhone;
 
-    if (!phoneToSend || phoneToSend.length !== 11)
-      return setPhoneMsg({
-        type: "error",
-        text: "Enter a valid 10-digit phone number.",
-      });
+    setFieldErrors((prev) => ({
+      ...prev,
+      newPhone: "",
+    }));
+
+    if (!phoneToSend || phoneToSend.length !== 11) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        newPhone: "Enter a valid 10-digit phone number.",
+      }));
+      return;
+    }
 
     if (phoneToSend === user?.phone) {
-      return setPhoneMsg({
-        type: "error",
-        text: "New phone number must be different from your current number.",
-      });
+      setFieldErrors((prev) => ({
+        ...prev,
+        newPhone:
+          "New phone number must be different from your current number.",
+      }));
+      return;
     }
 
     setPhoneLoading(true);
@@ -829,11 +933,17 @@ export default function ProfileSettings() {
     const normalizedOtp = phoneOtp.trim();
 
     if (!/^\d{6}$/.test(normalizedOtp)) {
-      return setPhoneMsg({
-        type: "error",
-        text: `OTP must be exactly ${OTP_LENGTH} digits.`,
-      });
+      setFieldErrors((prev) => ({
+        ...prev,
+        phoneOtp: `OTP must be exactly ${OTP_LENGTH} digits.`,
+      }));
+      return;
     }
+
+    setFieldErrors((prev) => ({
+      ...prev,
+      phoneOtp: "",
+    }));
 
     const phoneToSend =
       typeof formattedPhone === "string" ? formattedPhone : "0" + newPhone;
@@ -862,10 +972,10 @@ export default function ProfileSettings() {
       }, durations.success);
     } catch (err) {
       setFeedbackOpen(false);
-      setPhoneMsg({
-        type: "error",
-        text: err.response?.data?.message || "Invalid OTP code.",
-      });
+      setFieldErrors((prev) => ({
+        ...prev,
+        phoneOtp: err.response?.data?.message || "Invalid OTP code.",
+      }));
     } finally {
       setPhoneLoading(false);
     }
@@ -874,11 +984,18 @@ export default function ProfileSettings() {
   /* ════ PASSWORD CHANGE ════ */
   const requestPassOtp = async () => {
     // STEP 1: Only check current password to trigger the email
-    if (!passForm.current)
-      return setPassMsg({
-        type: "error",
-        text: "Enter your current password to continue.",
-      });
+    if (!passForm.current) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        currentPassword: "Enter your current password to continue.",
+      }));
+      return;
+    }
+
+    setFieldErrors((prev) => ({
+      ...prev,
+      currentPassword: "",
+    }));
 
     setPassLoading(true);
     setPassMsg({ type: "", text: "" });
@@ -904,16 +1021,45 @@ export default function ProfileSettings() {
 
   const verifyPassOtp = async (e) => {
     if (e) e.preventDefault();
-    if (!passForm.newPass)
-      return setPassMsg({ type: "error", text: "Enter a new password." });
-    if (passForm.newPass !== passForm.confirm)
-      return setPassMsg({ type: "error", text: "New passwords do not match." });
+    setFieldErrors((prev) => ({
+      ...prev,
+      newPass: "",
+      confirmPassword: "",
+    }));
+
+    if (!passForm.newPass) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        newPass: "Enter a new password.",
+      }));
+    }
+
+    if (!passForm.confirm) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        confirmPassword: "Please confirm your new password.",
+      }));
+    }
+
+    if (!passForm.newPass || !passForm.confirm) {
+      return;
+    }
+
+    if (passForm.newPass !== passForm.confirm) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        confirmPassword: "New passwords do not match.",
+      }));
+      return;
+    }
 
     if (getStrength(passForm.newPass).score < 5) {
-      return setPassMsg({
-        type: "error",
-        text: "Password must be at least 8 characters and include uppercase, lowercase, a number, and a special character.",
-      });
+      setFieldErrors((prev) => ({
+        ...prev,
+        newPass:
+          "Password must be at least 8 characters and include uppercase, lowercase, a number, and a special character.",
+      }));
+      return;
     }
 
     setPassLoading(true);
@@ -958,6 +1104,7 @@ export default function ProfileSettings() {
       setCurrentEmailOtp("");
       setNewEmailOtp("");
       setEmailMsg({ type: "", text: "" });
+      setFieldErrors({});
     }
     if (section === "phone") {
       setEditPhone(false);
@@ -966,6 +1113,7 @@ export default function ProfileSettings() {
       setCurrentPhoneOtp("");
       setPhoneOtp("");
       setPhoneMsg({ type: "", text: "" });
+      setFieldErrors({});
     }
     if (section === "pass") {
       setEditPass(false);
@@ -973,6 +1121,7 @@ export default function ProfileSettings() {
       setPassForm({ current: "", newPass: "", confirm: "" });
       setPassOtp("");
       setPassMsg({ type: "", text: "" });
+      setFieldErrors({});
     }
   };
 
@@ -1085,14 +1234,35 @@ export default function ProfileSettings() {
                       <input
                         type="text"
                         value={nameForm.firstName}
-                        onChange={(e) =>
+                        aria-invalid={Boolean(fieldErrors.firstName)}
+                        aria-describedby={
+                          fieldErrors.firstName
+                            ? "profile-first-name-error"
+                            : undefined
+                        }
+                        onChange={(e) => {
+                          const value = e.target.value;
+
                           setNameForm((p) => ({
                             ...p,
-                            firstName: e.target.value,
-                          }))
-                        }
+                            firstName: value,
+                          }));
+
+                          setFieldErrors((prev) => ({
+                            ...prev,
+                            firstName: "",
+                          }));
+                        }}
                         placeholder="First Name"
                         maxLength={MAX_NAME_LENGTH}
+                        style={getInlineErrorInputStyle(
+                          Boolean(fieldErrors.firstName),
+                        )}
+                      />
+
+                      <InlineFieldError
+                        id="profile-first-name-error"
+                        message={fieldErrors.firstName}
                       />
                     </div>
                     <div className="form-field">
@@ -1100,14 +1270,35 @@ export default function ProfileSettings() {
                       <input
                         type="text"
                         value={nameForm.lastName}
-                        onChange={(e) =>
+                        aria-invalid={Boolean(fieldErrors.lastName)}
+                        aria-describedby={
+                          fieldErrors.lastName
+                            ? "profile-last-name-error"
+                            : undefined
+                        }
+                        onChange={(e) => {
+                          const value = e.target.value;
+
                           setNameForm((p) => ({
                             ...p,
-                            lastName: e.target.value,
-                          }))
-                        }
+                            lastName: value,
+                          }));
+
+                          setFieldErrors((prev) => ({
+                            ...prev,
+                            lastName: "",
+                          }));
+                        }}
                         placeholder="Last Name"
                         maxLength={MAX_NAME_LENGTH}
+                        style={getInlineErrorInputStyle(
+                          Boolean(fieldErrors.lastName),
+                        )}
+                      />
+
+                      <InlineFieldError
+                        id="profile-last-name-error"
+                        message={fieldErrors.lastName}
                       />
                     </div>
                   </div>
@@ -1143,6 +1334,7 @@ export default function ProfileSettings() {
                         setEditName(false);
                         setNameForm(parseName(user?.name));
                         setNameMsg({ type: "", text: "" });
+                        setFieldErrors({});
                       }}
                     >
                       Cancel
@@ -1207,14 +1399,29 @@ export default function ProfileSettings() {
                     This address and map pin will be used as your default
                     delivery address during checkout.
                   </p>
-                  <div className="form-field full">
+                  <div
+                    className="form-field full"
+                    style={{
+                      outline:
+                        fieldErrors.address || fieldErrors.address_pin
+                          ? "1px solid #dc2626"
+                          : undefined,
+                      outlineOffset: 2,
+                      borderRadius: 4,
+                    }}
+                  >
                     <LocationPicker
                       label="Address"
                       addressValue={addressForm.address}
                       maxLength={MAX_ADDRESS_LENGTH}
-                      onAddressChange={(text) =>
-                        setAddressForm((p) => ({ ...p, address: text }))
-                      }
+                      onAddressChange={(text) => {
+                        setAddressForm((p) => ({ ...p, address: text }));
+
+                        setFieldErrors((prev) => ({
+                          ...prev,
+                          address: text.trim() ? "" : "Address is required.",
+                        }));
+                      }}
                       value={
                         addressForm.address_lat != null &&
                         addressForm.address_lng != null
@@ -1224,13 +1431,30 @@ export default function ProfileSettings() {
                             }
                           : null
                       }
-                      onChange={(latlng) =>
+                      onChange={(latlng) => {
                         setAddressForm((p) => ({
                           ...p,
                           address_lat: latlng?.lat ?? null,
                           address_lng: latlng?.lng ?? null,
-                        }))
-                      }
+                        }));
+
+                        setFieldErrors((prev) => ({
+                          ...prev,
+                          address_pin: latlng
+                            ? ""
+                            : "Please set a map pin for your default delivery address.",
+                        }));
+                      }}
+                    />
+
+                    <InlineFieldError
+                      id="profile-address-error"
+                      message={fieldErrors.address}
+                    />
+
+                    <InlineFieldError
+                      id="profile-address-pin-error"
+                      message={fieldErrors.address_pin}
                     />
                   </div>
                   <div className="profile-form-actions">
@@ -1256,6 +1480,7 @@ export default function ProfileSettings() {
                           address_lng: user?.address_lng ?? null,
                         });
                         setAddressMsg({ type: "", text: "" });
+                        setFieldErrors({});
                       }}
                     >
                       Cancel
@@ -1398,15 +1623,37 @@ export default function ProfileSettings() {
                     className="otp-input-row"
                     style={{ marginBottom: "20px", maxWidth: "380px" }}
                   >
-                    <input
-                      type="text"
-                      maxLength={OTP_LENGTH}
-                      placeholder="000000"
-                      value={currentEmailOtp}
-                      onChange={(e) =>
-                        setCurrentEmailOtp(e.target.value.replace(/\D/g, ""))
-                      }
-                    />
+                    <div style={{ flex: 1, minWidth: 180 }}>
+                      <input
+                        type="text"
+                        maxLength={OTP_LENGTH}
+                        placeholder="000000"
+                        value={currentEmailOtp}
+                        aria-invalid={Boolean(fieldErrors.currentEmailOtp)}
+                        aria-describedby={
+                          fieldErrors.currentEmailOtp
+                            ? "profile-current-email-otp-error"
+                            : undefined
+                        }
+                        onChange={(e) => {
+                          setCurrentEmailOtp(e.target.value.replace(/\D/g, ""));
+
+                          setFieldErrors((prev) => ({
+                            ...prev,
+                            currentEmailOtp: "",
+                          }));
+                        }}
+                        style={getInlineErrorInputStyle(
+                          Boolean(fieldErrors.currentEmailOtp),
+                        )}
+                      />
+
+                      <InlineFieldError
+                        id="profile-current-email-otp-error"
+                        message={fieldErrors.currentEmailOtp}
+                      />
+                    </div>
+
                     <button
                       className="resend-btn"
                       onClick={() => {
@@ -1467,9 +1714,30 @@ export default function ProfileSettings() {
                     <input
                       type="email"
                       value={newEmail}
-                      onChange={(e) => setNewEmail(e.target.value)}
+                      onChange={(e) => {
+                        setNewEmail(e.target.value);
+
+                        setFieldErrors((prev) => ({
+                          ...prev,
+                          newEmail: "",
+                        }));
+                      }}
                       placeholder="newemail@example.com"
                       maxLength={MAX_EMAIL_LENGTH}
+                      aria-invalid={Boolean(fieldErrors.newEmail)}
+                      aria-describedby={
+                        fieldErrors.newEmail
+                          ? "profile-new-email-error"
+                          : undefined
+                      }
+                      style={getInlineErrorInputStyle(
+                        Boolean(fieldErrors.newEmail),
+                      )}
+                    />
+
+                    <InlineFieldError
+                      id="profile-new-email-error"
+                      message={fieldErrors.newEmail}
                     />
                   </div>
                   <div className="profile-form-actions">
@@ -1518,15 +1786,37 @@ export default function ProfileSettings() {
                     className="otp-input-row"
                     style={{ marginBottom: "20px" }}
                   >
-                    <input
-                      type="text"
-                      maxLength={OTP_LENGTH}
-                      placeholder="000000"
-                      value={newEmailOtp}
-                      onChange={(e) =>
-                        setNewEmailOtp(e.target.value.replace(/\D/g, ""))
-                      }
-                    />
+                    <div style={{ flex: 1, minWidth: 180 }}>
+                      <input
+                        type="text"
+                        maxLength={OTP_LENGTH}
+                        placeholder="000000"
+                        value={newEmailOtp}
+                        onChange={(e) => {
+                          setNewEmailOtp(e.target.value.replace(/\D/g, ""));
+
+                          setFieldErrors((prev) => ({
+                            ...prev,
+                            newEmailOtp: "",
+                          }));
+                        }}
+                        aria-invalid={Boolean(fieldErrors.newEmailOtp)}
+                        aria-describedby={
+                          fieldErrors.newEmailOtp
+                            ? "profile-new-email-otp-error"
+                            : undefined
+                        }
+                        style={getInlineErrorInputStyle(
+                          Boolean(fieldErrors.newEmailOtp),
+                        )}
+                      />
+
+                      <InlineFieldError
+                        id="profile-new-email-otp-error"
+                        message={fieldErrors.newEmailOtp}
+                      />
+                    </div>
+
                     <button
                       className="resend-btn"
                       onClick={() => {
@@ -1727,15 +2017,37 @@ export default function ProfileSettings() {
                     className="otp-input-row"
                     style={{ marginBottom: "20px", maxWidth: "380px" }}
                   >
-                    <input
-                      type="text"
-                      maxLength={OTP_LENGTH}
-                      placeholder="000000"
-                      value={currentPhoneOtp}
-                      onChange={(e) =>
-                        setCurrentPhoneOtp(e.target.value.replace(/\D/g, ""))
-                      }
-                    />
+                    <div style={{ flex: 1, minWidth: 180 }}>
+                      <input
+                        type="text"
+                        maxLength={OTP_LENGTH}
+                        placeholder="000000"
+                        value={currentPhoneOtp}
+                        onChange={(e) => {
+                          setCurrentPhoneOtp(e.target.value.replace(/\D/g, ""));
+
+                          setFieldErrors((prev) => ({
+                            ...prev,
+                            currentPhoneOtp: "",
+                          }));
+                        }}
+                        aria-invalid={Boolean(fieldErrors.currentPhoneOtp)}
+                        aria-describedby={
+                          fieldErrors.currentPhoneOtp
+                            ? "profile-current-phone-otp-error"
+                            : undefined
+                        }
+                        style={getInlineErrorInputStyle(
+                          Boolean(fieldErrors.currentPhoneOtp),
+                        )}
+                      />
+
+                      <InlineFieldError
+                        id="profile-current-phone-otp-error"
+                        message={fieldErrors.currentPhoneOtp}
+                      />
+                    </div>
+
                     <button
                       className="resend-btn"
                       onClick={() => {
@@ -1824,9 +2136,14 @@ export default function ProfileSettings() {
                           placeholder="9XXXXXXXXX"
                           maxLength={10}
                           style={{
-                            letterSpacing:
-                              showPhone || !newPhone ? "normal" : "2px",
-                            paddingRight: "40px",
+                            ...getInlineErrorInputStyle(
+                              Boolean(fieldErrors.newPhone),
+                              {
+                                letterSpacing:
+                                  showPhone || !newPhone ? "normal" : "2px",
+                                paddingRight: "40px",
+                              },
+                            ),
                           }}
                           onFocus={() => {
                             if (!newPhone) setShowPhone(true);
@@ -1841,7 +2158,22 @@ export default function ProfileSettings() {
                               val = val.slice(1);
                             if (val.length > 10) val = val.slice(0, 10);
                             setNewPhone(val);
+
+                            setFieldErrors((prev) => ({
+                              ...prev,
+                              newPhone: "",
+                            }));
                           }}
+                          aria-invalid={Boolean(fieldErrors.newPhone)}
+                          aria-describedby={
+                            fieldErrors.newPhone
+                              ? "profile-new-phone-error"
+                              : undefined
+                          }
+                        />
+                        <InlineFieldError
+                          id="profile-new-phone-error"
+                          message={fieldErrors.newPhone}
                         />
                         <button
                           type="button"
@@ -1906,15 +2238,37 @@ export default function ProfileSettings() {
                     className="otp-input-row"
                     style={{ marginBottom: "20px", maxWidth: "380px" }}
                   >
-                    <input
-                      type="text"
-                      maxLength={OTP_LENGTH}
-                      placeholder="000000"
-                      value={phoneOtp}
-                      onChange={(e) =>
-                        setPhoneOtp(e.target.value.replace(/\D/g, ""))
-                      }
-                    />
+                    <div style={{ flex: 1, minWidth: 180 }}>
+                      <input
+                        type="text"
+                        maxLength={OTP_LENGTH}
+                        placeholder="000000"
+                        value={phoneOtp}
+                        onChange={(e) => {
+                          setPhoneOtp(e.target.value.replace(/\D/g, ""));
+
+                          setFieldErrors((prev) => ({
+                            ...prev,
+                            phoneOtp: "",
+                          }));
+                        }}
+                        aria-invalid={Boolean(fieldErrors.phoneOtp)}
+                        aria-describedby={
+                          fieldErrors.phoneOtp
+                            ? "profile-phone-otp-error"
+                            : undefined
+                        }
+                        style={getInlineErrorInputStyle(
+                          Boolean(fieldErrors.phoneOtp),
+                        )}
+                      />
+
+                      <InlineFieldError
+                        id="profile-phone-otp-error"
+                        message={fieldErrors.phoneOtp}
+                      />
+                    </div>
+
                     <button
                       className="resend-btn"
                       onClick={() => {
@@ -2005,13 +2359,34 @@ export default function ProfileSettings() {
                         placeholder="Enter current password"
                         value={passForm.current}
                         maxLength={MAX_PASSWORD_LENGTH}
-                        onChange={(e) =>
+                        onChange={(e) => {
                           setPassForm((p) => ({
                             ...p,
                             current: e.target.value,
-                          }))
+                          }));
+
+                          setFieldErrors((prev) => ({
+                            ...prev,
+                            currentPassword: "",
+                          }));
+                        }}
+                        aria-invalid={Boolean(fieldErrors.currentPassword)}
+                        aria-describedby={
+                          fieldErrors.currentPassword
+                            ? "profile-current-password-error"
+                            : undefined
                         }
-                        style={{ width: "100%", paddingRight: 40 }}
+                        style={getInlineErrorInputStyle(
+                          Boolean(fieldErrors.currentPassword),
+                          {
+                            width: "100%",
+                            paddingRight: 40,
+                          },
+                        )}
+                      />
+                      <InlineFieldError
+                        id="profile-current-password-error"
+                        message={fieldErrors.currentPassword}
                       />
                       <button
                         type="button"
@@ -2084,15 +2459,37 @@ export default function ProfileSettings() {
                     className="otp-input-row"
                     style={{ marginBottom: "20px" }}
                   >
-                    <input
-                      type="text"
-                      maxLength={OTP_LENGTH}
-                      placeholder="000000"
-                      value={passOtp}
-                      onChange={(e) =>
-                        setPassOtp(e.target.value.replace(/\D/g, ""))
-                      }
-                    />
+                    <div style={{ flex: 1, minWidth: 180 }}>
+                      <input
+                        type="text"
+                        maxLength={OTP_LENGTH}
+                        placeholder="000000"
+                        value={passOtp}
+                        onChange={(e) => {
+                          setPassOtp(e.target.value.replace(/\D/g, ""));
+
+                          setFieldErrors((prev) => ({
+                            ...prev,
+                            passOtp: "",
+                          }));
+                        }}
+                        aria-invalid={Boolean(fieldErrors.passOtp)}
+                        aria-describedby={
+                          fieldErrors.passOtp
+                            ? "profile-password-otp-error"
+                            : undefined
+                        }
+                        style={getInlineErrorInputStyle(
+                          Boolean(fieldErrors.passOtp),
+                        )}
+                      />
+
+                      <InlineFieldError
+                        id="profile-password-otp-error"
+                        message={fieldErrors.passOtp}
+                      />
+                    </div>
+
                     <button
                       className="resend-btn"
                       onClick={() => {
@@ -2116,12 +2513,17 @@ export default function ProfileSettings() {
                       disabled={passLoading || !passOtp.trim()}
                       onClick={() => {
                         if (!passOtp.trim() || passOtp.length < OTP_LENGTH) {
-                          setPassMsg({
-                            type: "error",
-                            text: "Please enter the full 6-digit OTP.",
-                          });
+                          setFieldErrors((prev) => ({
+                            ...prev,
+                            passOtp: "Please enter the full 6-digit OTP.",
+                          }));
                           return;
                         }
+
+                        setFieldErrors((prev) => ({
+                          ...prev,
+                          passOtp: "",
+                        }));
                         setPassMsg({ type: "", text: "" });
                         setPassStep(3); // Moves to the New Password window!
                       }}
@@ -2166,13 +2568,44 @@ export default function ProfileSettings() {
                             placeholder={f.ph}
                             value={passForm[f.key]}
                             maxLength={MAX_PASSWORD_LENGTH}
-                            onChange={(e) =>
+                            aria-invalid={Boolean(
+                              f.key === "newPass"
+                                ? fieldErrors.newPass
+                                : fieldErrors.confirmPassword,
+                            )}
+                            aria-describedby={
+                              (
+                                f.key === "newPass"
+                                  ? fieldErrors.newPass
+                                  : fieldErrors.confirmPassword
+                              )
+                                ? `profile-${f.key}-error`
+                                : undefined
+                            }
+                            onChange={(e) => {
                               setPassForm((p) => ({
                                 ...p,
                                 [f.key]: e.target.value,
-                              }))
-                            }
-                            style={{ width: "100%", paddingRight: 40 }}
+                              }));
+
+                              setFieldErrors((prev) => ({
+                                ...prev,
+                                [f.key === "newPass"
+                                  ? "newPass"
+                                  : "confirmPassword"]: "",
+                              }));
+                            }}
+                            style={getInlineErrorInputStyle(
+                              Boolean(
+                                f.key === "newPass"
+                                  ? fieldErrors.newPass
+                                  : fieldErrors.confirmPassword,
+                              ),
+                              {
+                                width: "100%",
+                                paddingRight: 40,
+                              },
+                            )}
                           />
                           <button
                             type="button"
@@ -2200,6 +2633,15 @@ export default function ProfileSettings() {
                         {f.key === "newPass" && passForm.newPass && (
                           <StrengthBar password={passForm.newPass} />
                         )}
+
+                        <InlineFieldError
+                          id={`profile-${f.key}-error`}
+                          message={
+                            f.key === "newPass"
+                              ? fieldErrors.newPass
+                              : fieldErrors.confirmPassword
+                          }
+                        />
                       </div>
                     ))}
                   </div>

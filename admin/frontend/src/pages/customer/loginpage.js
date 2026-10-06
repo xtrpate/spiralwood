@@ -15,8 +15,73 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({
+    email: "",
+    password: "",
+  });
 
-  const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+  const getInlineErrorFieldStyle = (hasError, extra = {}) =>
+    hasError
+      ? {
+          ...extra,
+          border: "1px solid #dc2626",
+          boxShadow: "0 0 0 1px #dc2626",
+        }
+      : extra;
+
+  const InlineFieldError = ({ id, message }) =>
+    message ? (
+      <span
+        id={id}
+        role="alert"
+        style={{
+          display: "block",
+          marginTop: 5,
+          color: "#b91c1c",
+          fontSize: 12,
+          lineHeight: 1.35,
+          fontFamily: "'DM Sans', sans-serif",
+        }}
+      >
+        {message}
+      </span>
+    ) : null;
+
+  const validateField = (field, value) => {
+    let message = "";
+
+    if (field === "email") {
+      if (!value.trim()) {
+        message = "Email address is required.";
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) {
+        message = "Enter a valid email address.";
+      }
+    }
+
+    if (field === "password") {
+      if (!value) {
+        message = "Password is required.";
+      }
+    }
+
+    setFieldErrors((prev) => ({
+      ...prev,
+      [field]: message,
+    }));
+
+    return message;
+  };
+
+  const set = (k, v) => {
+    setForm((p) => ({ ...p, [k]: v }));
+
+    if (fieldErrors[k]) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        [k]: "",
+      }));
+    }
+  };
 
   useEffect(() => {
     if (location.state?.message) {
@@ -29,6 +94,14 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
     setInfo("");
+
+    const emailError = validateField("email", form.email);
+    const passwordError = validateField("password", form.password);
+
+    if (emailError || passwordError) {
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -123,30 +196,49 @@ export default function LoginPage() {
 
             <div className="field">
               <label>Email Address</label>
-              <div className="field-input-wrap">
+              <div
+                className="field-input-wrap"
+                style={getInlineErrorFieldStyle(Boolean(fieldErrors.email))}
+              >
                 <Mail size={15} />
                 <input
                   type="email"
                   placeholder="you@example.com"
                   value={form.email}
                   onChange={(e) => set("email", e.target.value)}
-                  required
+                  onBlur={(e) => validateField("email", e.target.value)}
                   autoFocus
+                  aria-invalid={Boolean(fieldErrors.email)}
+                  aria-describedby={
+                    fieldErrors.email ? "login-email-error" : undefined
+                  }
                 />
               </div>
+
+              <InlineFieldError
+                id="login-email-error"
+                message={fieldErrors.email}
+              />
             </div>
 
             <div className="field">
               <label>Password</label>
-              <div className="field-input-wrap">
+              <div
+                className="field-input-wrap"
+                style={getInlineErrorFieldStyle(Boolean(fieldErrors.password))}
+              >
                 <Lock size={15} />
                 <input
                   type={showPw ? "text" : "password"}
                   placeholder="••••••••"
                   value={form.password}
                   onChange={(e) => set("password", e.target.value)}
-                  required
+                  onBlur={(e) => validateField("password", e.target.value)}
                   style={{ paddingRight: 40 }}
+                  aria-invalid={Boolean(fieldErrors.password)}
+                  aria-describedby={
+                    fieldErrors.password ? "login-password-error" : undefined
+                  }
                 />
                 <button
                   type="button"
@@ -156,6 +248,11 @@ export default function LoginPage() {
                   {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
+
+              <InlineFieldError
+                id="login-password-error"
+                message={fieldErrors.password}
+              />
             </div>
 
             <div style={{ textAlign: "right", marginTop: -8 }}>

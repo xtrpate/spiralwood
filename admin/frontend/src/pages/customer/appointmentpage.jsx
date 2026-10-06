@@ -82,6 +82,32 @@ const MAX_PROJECT_DESCRIPTION_LENGTH = 500;
 const MAX_NOTES_LENGTH = 300;
 const MAX_ADDRESS_LENGTH = 300;
 
+const getInlineErrorFieldStyle = (hasError, extra = {}) =>
+  hasError
+    ? {
+        ...extra,
+        border: "1px solid #dc2626",
+        boxShadow: "0 0 0 1px #dc2626",
+      }
+    : extra;
+
+const InlineFieldError = ({ id, message }) =>
+  message ? (
+    <span
+      id={id}
+      role="alert"
+      style={{
+        display: "block",
+        marginTop: 5,
+        color: "#b91c1c",
+        fontSize: 12,
+        lineHeight: 1.35,
+      }}
+    >
+      {message}
+    </span>
+  ) : null;
+
 const isValidYMDDate = (value) => {
   const raw = String(value || "").trim();
 
@@ -422,6 +448,7 @@ export default function AppointmentPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackStatus, setFeedbackStatus] = useState("loading");
@@ -612,6 +639,7 @@ export default function AppointmentPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    setFieldErrors({});
 
     const cleanedProjectDescription = project_description.trim();
     const cleanedContact = contact_number.trim();
@@ -619,79 +647,127 @@ export default function AppointmentPage() {
     const cleanedNotes = notes.trim();
 
     if (!purpose) {
-      return setError("Please select an appointment type.");
+      setFieldErrors((prev) => ({
+        ...prev,
+        purpose: "Please select an appointment type.",
+      }));
+      return;
     }
 
     if (!cleanedProjectDescription) {
-      return setError("Please describe your project.");
+      setFieldErrors((prev) => ({
+        ...prev,
+        projectDescription: "Please describe your project.",
+      }));
+      return;
     }
 
     if (cleanedProjectDescription.length > MAX_PROJECT_DESCRIPTION_LENGTH) {
-      return setError(
-        `Project description must not exceed ${MAX_PROJECT_DESCRIPTION_LENGTH} characters.`,
-      );
+      setFieldErrors((prev) => ({
+        ...prev,
+        projectDescription: `Project description must not exceed ${MAX_PROJECT_DESCRIPTION_LENGTH} characters.`,
+      }));
+      return;
     }
 
     if (!preferred_date || !preferred_time) {
-      return setError("Please select an available schedule from the calendar.");
+      setFieldErrors((prev) => ({
+        ...prev,
+        schedule: "Please select an available schedule from the calendar.",
+      }));
+      return;
     }
 
     if (!isValidYMDDate(preferred_date)) {
-      return setError("Please select a valid appointment date.");
+      setFieldErrors((prev) => ({
+        ...prev,
+        schedule: "Please select a valid appointment date.",
+      }));
+      return;
     }
 
     if (!isTomorrowOrLater(preferred_date)) {
-      return setError(
-        "Appointments can only be requested for tomorrow or later.",
-      );
+      setFieldErrors((prev) => ({
+        ...prev,
+        schedule: "Appointments can only be requested for tomorrow or later.",
+      }));
+      return;
     }
 
     if (!TIME_SLOTS.includes(preferred_time)) {
-      return setError(
-        "Please select one of the available appointment time slots.",
-      );
+      setFieldErrors((prev) => ({
+        ...prev,
+        schedule: "Please select one of the available appointment time slots.",
+      }));
+      return;
     }
 
     const appointmentDay = getDayOfWeekFromYMD(preferred_date);
 
     if (appointmentDay === 0) {
-      return setError("Appointments are not available on Sundays.");
+      setFieldErrors((prev) => ({
+        ...prev,
+        schedule: "Appointments are not available on Sundays.",
+      }));
+      return;
     }
 
     if (appointmentDay === 6 && !["09:00", "11:00"].includes(preferred_time)) {
-      return setError(
-        "Saturday appointments are only available at 9:00 AM and 11:00 AM.",
-      );
+      setFieldErrors((prev) => ({
+        ...prev,
+        schedule:
+          "Saturday appointments are only available at 9:00 AM and 11:00 AM.",
+      }));
+      return;
     }
 
     if (!isAllowedTimeForDate(preferred_date, preferred_time)) {
-      return setError("The selected appointment schedule is not available.");
+      setFieldErrors((prev) => ({
+        ...prev,
+        schedule: "The selected appointment schedule is not available.",
+      }));
+      return;
     }
 
     if (!cleanedContact) {
-      return setError("Please enter a contact number.");
+      setFieldErrors((prev) => ({
+        ...prev,
+        contactNumber: "Please enter a contact number.",
+      }));
+      return;
     }
 
     if (!/^09\d{9}$/.test(cleanedContact)) {
-      return setError(
-        "Contact number must be exactly 11 digits and start with 09.",
-      );
+      setFieldErrors((prev) => ({
+        ...prev,
+        contactNumber:
+          "Contact number must be exactly 11 digits and start with 09.",
+      }));
+      return;
     }
 
     if (cleanedNotes.length > MAX_NOTES_LENGTH) {
-      return setError(
-        `Additional notes must not exceed ${MAX_NOTES_LENGTH} characters.`,
-      );
+      setFieldErrors((prev) => ({
+        ...prev,
+        notes: `Additional notes must not exceed ${MAX_NOTES_LENGTH} characters.`,
+      }));
+      return;
     }
 
     if (cleanedAddress.length > MAX_ADDRESS_LENGTH) {
-      return setError(
-        `Address must not exceed ${MAX_ADDRESS_LENGTH} characters.`,
-      );
+      setFieldErrors((prev) => ({
+        ...prev,
+        address: `Address must not exceed ${MAX_ADDRESS_LENGTH} characters.`,
+      }));
+      return;
     }
 
     if (purpose === "site_measurement" && !cleanedAddress) {
-      return setError("Please enter the full address for site measurement.");
+      setFieldErrors((prev) => ({
+        ...prev,
+        address: "Please enter the full address for site measurement.",
+      }));
+      return;
     }
 
     setSubmitting(true);
@@ -731,7 +807,14 @@ export default function AppointmentPage() {
         err.response?.data?.message ||
         "Something went wrong. Please try again.";
 
-      setError(message);
+      if (status === 409) {
+        setFieldErrors((prev) => ({
+          ...prev,
+          schedule: message,
+        }));
+      } else {
+        setError(message);
+      }
 
       /*
        * If the backend rejected the request because the selected slot
@@ -795,6 +878,7 @@ export default function AppointmentPage() {
     setNotes("");
     setSubmitted(false);
     setError("");
+    setFieldErrors({});
   };
 
   // Generate the 7 Date objects for the current viewed week
@@ -810,6 +894,11 @@ export default function AppointmentPage() {
     setWeekStart(next);
     setPreferredDate(""); // Reset selection if they change weeks
     setPreferredTime("");
+
+    setFieldErrors((prev) => ({
+      ...prev,
+      schedule: "",
+    }));
   };
 
   const prevWeek = () => {
@@ -824,6 +913,11 @@ export default function AppointmentPage() {
     setWeekStart(prev);
     setPreferredDate(""); // Reset selection if they change weeks
     setPreferredTime("");
+
+    setFieldErrors((prev) => ({
+      ...prev,
+      schedule: "",
+    }));
   };
 
   return (
@@ -1078,7 +1172,18 @@ export default function AppointmentPage() {
                         <p>Select one option.</p>
                       </div>
 
-                      <div className="appt-purpose-grid">
+                      <div
+                        className="appt-purpose-grid"
+                        style={
+                          fieldErrors.purpose
+                            ? {
+                                outline: "1px solid #dc2626",
+                                outlineOffset: 3,
+                                borderRadius: 8,
+                              }
+                            : undefined
+                        }
+                      >
                         {PURPOSE_OPTIONS.map((item) => {
                           const isActive = purpose === item.value;
                           const meta = PURPOSE_META[item.value];
@@ -1088,7 +1193,14 @@ export default function AppointmentPage() {
                               key={item.value}
                               type="button"
                               className={`appt-purpose-option ${isActive ? "active" : ""}`}
-                              onClick={() => setPurpose(item.value)}
+                              onClick={() => {
+                                setPurpose(item.value);
+
+                                setFieldErrors((prev) => ({
+                                  ...prev,
+                                  purpose: "",
+                                }));
+                              }}
                             >
                               <span className="appt-purpose-title">
                                 {meta?.title || item.label}
@@ -1100,6 +1212,11 @@ export default function AppointmentPage() {
                           );
                         })}
                       </div>
+
+                      <InlineFieldError
+                        id="appointment-purpose-error"
+                        message={fieldErrors.purpose}
+                      />
                     </section>
 
                     <section className="appt-form-section">
@@ -1120,16 +1237,34 @@ export default function AppointmentPage() {
                           className="appt-textarea appt-textarea-lg"
                           placeholder="e.g. 3-door wardrobe with mirror, kitchen cabinet set, floating shelves..."
                           value={project_description}
-                          onChange={(e) =>
-                            setProjectDescription(e.target.value)
-                          }
+                          onChange={(e) => {
+                            setProjectDescription(e.target.value);
+
+                            setFieldErrors((prev) => ({
+                              ...prev,
+                              projectDescription: "",
+                            }));
+                          }}
                           rows={4}
                           maxLength={MAX_PROJECT_DESCRIPTION_LENGTH}
+                          aria-invalid={Boolean(fieldErrors.projectDescription)}
+                          aria-describedby={
+                            fieldErrors.projectDescription
+                              ? "appointment-project-description-error"
+                              : undefined
+                          }
+                          style={getInlineErrorFieldStyle(
+                            Boolean(fieldErrors.projectDescription),
+                          )}
                         />
                         <div className="appt-char-count">
                           {project_description.length}/
                           {MAX_PROJECT_DESCRIPTION_LENGTH}
                         </div>
+                        <InlineFieldError
+                          id="appointment-project-description-error"
+                          message={fieldErrors.projectDescription}
+                        />
                       </div>
 
                       <div className="appt-field">
@@ -1141,13 +1276,33 @@ export default function AppointmentPage() {
                           className="appt-textarea"
                           placeholder="Any extra details, style preferences, dimensions, or questions..."
                           value={notes}
-                          onChange={(e) => setNotes(e.target.value)}
+                          onChange={(e) => {
+                            setNotes(e.target.value);
+
+                            setFieldErrors((prev) => ({
+                              ...prev,
+                              notes: "",
+                            }));
+                          }}
                           rows={3}
                           maxLength={MAX_NOTES_LENGTH}
+                          aria-invalid={Boolean(fieldErrors.notes)}
+                          aria-describedby={
+                            fieldErrors.notes
+                              ? "appointment-notes-error"
+                              : undefined
+                          }
+                          style={getInlineErrorFieldStyle(
+                            Boolean(fieldErrors.notes),
+                          )}
                         />
                         <div className="appt-char-count">
                           {notes.length}/{MAX_NOTES_LENGTH}
                         </div>
+                        <InlineFieldError
+                          id="appointment-notes-error"
+                          message={fieldErrors.notes}
+                        />
                       </div>
                     </section>
 
@@ -1187,7 +1342,18 @@ export default function AppointmentPage() {
                         </div>
                       </div>
 
-                      <div className="weekly-planner-wrapper">
+                      <div
+                        className="weekly-planner-wrapper"
+                        style={
+                          fieldErrors.schedule
+                            ? {
+                                outline: "1px solid #dc2626",
+                                outlineOffset: 3,
+                                borderRadius: 8,
+                              }
+                            : undefined
+                        }
+                      >
                         {loadingSlots && (
                           <div className="weekly-loading-overlay">
                             Loading calendar...
@@ -1244,6 +1410,11 @@ export default function AppointmentPage() {
                                         onClick={() => {
                                           setPreferredDate(dateStr);
                                           setPreferredTime(time);
+
+                                          setFieldErrors((prev) => ({
+                                            ...prev,
+                                            schedule: "",
+                                          }));
                                         }}
                                         className={`weekly-slot-box ${isUnavailable ? "unavailable" : "available"} ${isSelected ? "selected" : ""}`}
                                       >
@@ -1264,6 +1435,10 @@ export default function AppointmentPage() {
                           })}
                         </div>
                       </div>
+                      <InlineFieldError
+                        id="appointment-schedule-error"
+                        message={fieldErrors.schedule}
+                      />
                       {preferred_date && preferred_time && (
                         <div className="weekly-selection-feedback">
                           Selected:{" "}
@@ -1304,33 +1479,33 @@ export default function AppointmentPage() {
                               /[^0-9]/g,
                               "",
                             );
+
                             if (onlyNums.length <= 11) {
                               setContactNumber(onlyNums);
+
+                              setFieldErrors((prev) => ({
+                                ...prev,
+                                contactNumber: "",
+                              }));
                             }
                           }}
-                          style={{
-                            maxWidth: "320px",
-                            borderColor:
-                              contact_number &&
-                              !/^09\d{9}$/.test(contact_number)
-                                ? "#dc2626"
-                                : undefined,
-                          }}
-                        />
-                        {contact_number &&
-                          !/^09\d{9}$/.test(contact_number) && (
-                            <div
-                              style={{
-                                color: "#dc2626",
-                                fontSize: 12,
-                                marginTop: 2,
-                                fontWeight: 600,
-                              }}
-                            >
-                              Number must be exactly 11 digits and start with
-                              09.
-                            </div>
+                          aria-invalid={Boolean(fieldErrors.contactNumber)}
+                          aria-describedby={
+                            fieldErrors.contactNumber
+                              ? "appointment-contact-error"
+                              : undefined
+                          }
+                          style={getInlineErrorFieldStyle(
+                            true ? Boolean(fieldErrors.contactNumber) : false,
+                            {
+                              maxWidth: "320px",
+                            },
                           )}
+                        />
+                        <InlineFieldError
+                          id="appointment-contact-error"
+                          message={fieldErrors.contactNumber}
+                        />
                       </div>
 
                       {purpose === "site_measurement" && (
@@ -1344,9 +1519,31 @@ export default function AppointmentPage() {
                             className="appt-input"
                             placeholder="Enter the full address..."
                             value={address}
-                            onChange={(e) => setAddress(e.target.value)}
+                            onChange={(e) => {
+                              setAddress(e.target.value);
+
+                              setFieldErrors((prev) => ({
+                                ...prev,
+                                address: "",
+                              }));
+                            }}
                             maxLength={MAX_ADDRESS_LENGTH}
-                            style={{ maxWidth: "320px" }}
+                            aria-invalid={Boolean(fieldErrors.address)}
+                            aria-describedby={
+                              fieldErrors.address
+                                ? "appointment-address-error"
+                                : undefined
+                            }
+                            style={getInlineErrorFieldStyle(
+                              Boolean(fieldErrors.address),
+                              {
+                                maxWidth: "320px",
+                              },
+                            )}
+                          />
+                          <InlineFieldError
+                            id="appointment-address-error"
+                            message={fieldErrors.address}
                           />
                         </div>
                       )}

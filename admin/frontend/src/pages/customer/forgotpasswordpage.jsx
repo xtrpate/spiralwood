@@ -12,10 +12,80 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [captchaToken, setCaptchaToken] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({
+    identifier: "",
+  });
+
+  const getInlineErrorFieldStyle = (hasError, extra = {}) =>
+    hasError
+      ? {
+          ...extra,
+          border: "1px solid #dc2626",
+          boxShadow: "0 0 0 1px #dc2626",
+        }
+      : extra;
+
+  const InlineFieldError = ({ id, message }) =>
+    message ? (
+      <span
+        id={id}
+        role="alert"
+        style={{
+          display: "block",
+          marginTop: 5,
+          color: "#b91c1c",
+          fontSize: 12,
+          lineHeight: 1.35,
+          fontFamily: "'DM Sans', sans-serif",
+        }}
+      >
+        {message}
+      </span>
+    ) : null;
+
+  const validateIdentifier = (value) => {
+    const trimmed = value.trim();
+    let message = "";
+
+    if (!trimmed) {
+      message = "Email or mobile number is required.";
+    } else {
+      const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+      const isPhone = /^[0-9+\-\s()]{7,20}$/.test(trimmed);
+
+      if (!isEmail && !isPhone) {
+        message = "Enter a valid email address or mobile number.";
+      }
+    }
+
+    setFieldErrors((prev) => ({
+      ...prev,
+      identifier: message,
+    }));
+
+    return message;
+  };
+
+  const handleIdentifierChange = (value) => {
+    setIdentifier(value);
+
+    if (fieldErrors.identifier) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        identifier: "",
+      }));
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+
+    const identifierError = validateIdentifier(identifier);
+
+    if (identifierError) {
+      return;
+    }
 
     if (!captchaToken) {
       setError("Please complete the CAPTCHA verification.");
@@ -71,18 +141,34 @@ export default function ForgotPasswordPage() {
 
             <div className="field">
               <label>Email or Mobile Number</label>
-              <div className="field-input-wrap">
+              <div
+                className="field-input-wrap"
+                style={getInlineErrorFieldStyle(
+                  Boolean(fieldErrors.identifier),
+                )}
+              >
                 <input
                   type="text"
                   className="no-icon"
                   placeholder="Email or mobile number"
                   value={identifier}
-                  onChange={(e) => setIdentifier(e.target.value)}
-                  required
+                  onChange={(e) => handleIdentifierChange(e.target.value)}
+                  onBlur={(e) => validateIdentifier(e.target.value)}
                   autoFocus
                   autoComplete="username"
+                  aria-invalid={Boolean(fieldErrors.identifier)}
+                  aria-describedby={
+                    fieldErrors.identifier
+                      ? "forgot-password-identifier-error"
+                      : undefined
+                  }
                 />
               </div>
+
+              <InlineFieldError
+                id="forgot-password-identifier-error"
+                message={fieldErrors.identifier}
+              />
             </div>
 
             <div style={{ margin: "14px 0" }} className="recaptcha-wrap">
