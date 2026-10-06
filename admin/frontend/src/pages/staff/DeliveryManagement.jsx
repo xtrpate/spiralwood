@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Navigation, UploadCloud, FileText, X } from "lucide-react";
 import api, { buildAssetUrl } from "../../services/api";
+import { PH_TIME_ZONE, formatPHDateTime } from "../../utils/dateTime";
 import { getSocket, subscribeSocketReady } from "../../services/socket";
 import useAuthStore from "../../store/authStore";
 import DeliverySignaturePad from "./DeliverySignaturePad";
@@ -27,36 +28,61 @@ const parseMapCoordinate = (value) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const getGoogleMapsHref = (lat, lng) => {
+const getGoogleMapsHref = (lat, lng, address = "", orderType = "") => {
   const latitude = parseMapCoordinate(lat);
   const longitude = parseMapCoordinate(lng);
 
   if (
-    latitude === null ||
-    longitude === null ||
-    latitude < -90 ||
-    latitude > 90 ||
-    longitude < -180 ||
-    longitude > 180
+    latitude !== null &&
+    longitude !== null &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    longitude >= -180 &&
+    longitude <= 180
   ) {
-    return null;
+    return `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
   }
 
-  return `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+  if (normalize(orderType) === "blueprint") return null;
+
+  const savedAddress = String(address || "").trim();
+  return savedAddress
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(savedAddress)}`
+    : null;
+};
+
+const DELIVERY_PROOF_MIME_BY_EXTENSION = new Map([
+  [".jpg", "image/jpeg"],
+  [".jpeg", "image/jpeg"],
+  [".jfif", "image/jpeg"],
+  [".png", "image/png"],
+  [".webp", "image/webp"],
+  [".pdf", "application/pdf"],
+]);
+
+const validateDeliveryProofFile = (file) => {
+  if (!file) return null;
+
+  const name = String(file.name || "").trim().toLowerCase();
+  const extensionMatch = /(.[^.]+)$/.exec(name);
+  const extension = extensionMatch ? extensionMatch[1] : "";
+  const mime = String(file.type || "").trim().toLowerCase();
+  const expectedMime = DELIVERY_PROOF_MIME_BY_EXTENSION.get(extension);
+
+  if (!expectedMime || mime !== expectedMime) {
+    return "Proof of Delivery must be a JPG, JPEG, JFIF, PNG, WEBP, or PDF file.";
+  }
+
+  if (file.size > 5 * 1024 * 1024) {
+    return "Proof of Delivery file is too large. Maximum allowed size is 5 MB.";
+  }
+
+  return null;
 };
 
 const formatDateTime = (value) => {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-
-  return date.toLocaleString("en-PH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  const formatted = formatPHDateTime(value);
+  return formatted === "—" ? value || "—" : formatted;
 };
 
 const toDeliveryDateKey = (value) => {
@@ -92,19 +118,29 @@ const formatScheduledDateOnly = (value) => {
   return `${monthLabel} ${day}, ${year}`;
 };
 
-const getLocalTodayKey = () => {
-  const now = new Date();
-  return [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, "0"),
-    String(now.getDate()).padStart(2, "0"),
-  ].join("-");
+const getPHTodayKey = () => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: PH_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const byType = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+
+  return byType.year && byType.month && byType.day
+    ? `${byType.year}-${byType.month}-${byType.day}`
+    : "";
 };
 
 const isRiderActiveDelivery = (delivery) =>
   ["scheduled", "in_transit"].includes(normalize(delivery?.status));
 
-const isRiderOverdueDelivery = (delivery, todayKey = getLocalTodayKey()) => {
+const isRiderOverdueDelivery = (delivery, todayKey = getPHTodayKey()) => {
   if (!isRiderActiveDelivery(delivery)) return false;
   const scheduledKey = toDeliveryDateKey(delivery?.scheduled_date);
   return Boolean(scheduledKey && scheduledKey < todayKey);
@@ -143,6 +179,7 @@ export default function DeliveryManagement() {
 
   const [deliveries, setDeliveries] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [savingId, setSavingId] = useState(null);
@@ -159,33 +196,35 @@ export default function DeliveryManagement() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [focusedDeliveryId, setFocusedDeliveryId] = useState(null);
   const [expandedDeliveryId, setExpandedDeliveryId] = useState(null);
+  const actionErrorRef = useRef(null);
 
   const loadDeliveries = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
       setLoading(true);
-    }
-
-    setError("");
-
-    if (!silent) {
-      setSuccess("");
+      setLoadError("");
     }
 
     try {
       const res = await api.get("/pos/deliveries");
-      const list = Array.isArray(res.data) ? res.data : [];
-      setDeliveries(list);
+
+      if (!Array.isArray(res.data)) {
+        throw new Error("Invalid deliveries response.");
+      }
+
+      setDeliveries(res.data);
+      setLoadError("");
     } catch (err) {
       console.error("Delivery load error:", err?.response?.data || err);
 
       if (!silent) {
-        setError(
+        const statusSuffix = err?.response?.status
+          ? " (HTTP " + err.response.status + ")"
+          : "";
+
+        setLoadError(
           err?.response?.data?.message ||
-            `Failed to load deliveries.${
-              err?.response?.status ? ` (HTTP ${err.response.status})` : ""
-            }`,
+            "Failed to load deliveries." + statusSuffix,
         );
-        setDeliveries([]);
       }
     } finally {
       if (!silent) {
@@ -197,6 +236,19 @@ export default function DeliveryManagement() {
   useEffect(() => {
     loadDeliveries();
   }, [loadDeliveries]);
+
+  useEffect(() => {
+    if (!error) return undefined;
+
+    const frameId = window.requestAnimationFrame(() => {
+      actionErrorRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [error]);
 
   useEffect(() => {
     const handleOrderStatusUpdated = (payload) => {
@@ -401,8 +453,13 @@ export default function DeliveryManagement() {
 
     try {
       const res = await api.get("/pos/deliveries");
-      const list = Array.isArray(res.data) ? res.data : [];
-      setDeliveries(list);
+
+      if (!Array.isArray(res.data)) {
+        throw new Error("Invalid deliveries response.");
+      }
+
+      setDeliveries(res.data);
+      setLoadError("");
     } catch (err) {
       // Temporary failure: keep whatever is currently on screen and
       // simply try again on the next 5-second tick. Never surface this
@@ -427,10 +484,18 @@ export default function DeliveryManagement() {
   }, [needsAutoRefresh, silentRefreshDeliveries]);
 
   const handleReceiptChange = (id, file) => {
-    setReceiptFiles((prev) => ({
-      ...prev,
-      [id]: file || null,
-    }));
+    const fileError = validateDeliveryProofFile(file);
+
+    if (fileError) {
+      setError(fileError);
+      setSuccess("");
+      setReceiptFiles((prev) => ({ ...prev, [id]: null }));
+      return false;
+    }
+
+    setError("");
+    setReceiptFiles((prev) => ({ ...prev, [id]: file || null }));
+    return true;
   };
 
   const getCollectionForm = (delivery) => {
@@ -525,24 +590,6 @@ export default function DeliveryManagement() {
           : current,
       );
     }
-  };
-
-  const validateReceiptFile = (file) => {
-    if (!file) return null;
-
-    const isImage = String(file.type || "").startsWith("image/");
-    const isPdf = file.type === "application/pdf";
-
-    if (!isImage && !isPdf) {
-      return "Only image or PDF files are allowed for Proof of Delivery upload.";
-    }
-
-    const maxFileSize = 5 * 1024 * 1024;
-    if (file.size > maxFileSize) {
-      return "Proof of Delivery file is too large. Maximum allowed size is 5 MB.";
-    }
-
-    return null;
   };
 
   const validateCollectionForm = (
@@ -678,7 +725,7 @@ export default function DeliveryManagement() {
       return;
     }
 
-    const fileError = validateReceiptFile(selectedFile);
+    const fileError = validateDeliveryProofFile(selectedFile);
     if (fileError) {
       setError(fileError);
       setSuccess("");
@@ -968,11 +1015,31 @@ export default function DeliveryManagement() {
         )}
       </div>
 
-      {error ? <div style={alertError}>{error}</div> : null}
+      {loadError ? (
+        <div className="rider-load-error" role="alert">
+          <span>{loadError}</span>
+          <button
+            type="button"
+            className="rider-v2-btn rider-v2-btn-secondary"
+            onClick={() => loadDeliveries()}
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
+      {error ? (
+        <div ref={actionErrorRef} role="alert" style={alertError}>
+          {error}
+        </div>
+      ) : null}
       {success ? <div style={alertSuccess}>{success}</div> : null}
 
       {loading ? (
         <div style={emptyCard}>Loading deliveries...</div>
+      ) : loadError ? (
+        <div style={emptyCard}>
+          Delivery data is unavailable until retry succeeds.
+        </div>
       ) : filteredDeliveries.length === 0 ? (
         <div style={emptyCard}>No deliveries found.</div>
       ) : (
@@ -985,6 +1052,8 @@ export default function DeliveryManagement() {
             const deliveryMapHref = getGoogleMapsHref(
               delivery.delivery_lat,
               delivery.delivery_lng,
+              delivery.address,
+              delivery.order_type,
             );
 
             const canStartTransit = status === "scheduled";
@@ -1744,7 +1813,7 @@ export default function DeliveryManagement() {
                                 ? "Proof selected"
                                 : "Upload delivery proof"
                             }
-                            helper="JPG, PNG, or PDF up to 5 MB"
+                            helper="JPG, PNG, WEBP, or PDF up to 5 MB"
                           />
 
                           {!canUploadProof && (
@@ -2380,6 +2449,7 @@ export default function DeliveryManagement() {
 
       {failureModal && (
         <div
+          className="rider-delivery-dialog-overlay"
           style={{
             position: "fixed",
             inset: 0,
@@ -2398,6 +2468,7 @@ export default function DeliveryManagement() {
           }}
         >
           <div
+            className="rider-delivery-dialog-card"
             style={{
               background: "#ffffff",
               borderRadius: 0,
@@ -2522,6 +2593,7 @@ export default function DeliveryManagement() {
 
       {undoModal && (
         <div
+          className="rider-delivery-dialog-overlay"
           style={{
             position: "fixed",
             inset: 0,
@@ -2539,6 +2611,7 @@ export default function DeliveryManagement() {
           }}
         >
           <div
+            className="rider-delivery-dialog-card"
             style={{
               background: "#ffffff",
               borderRadius: 0,
@@ -2724,15 +2797,34 @@ function ProofUploadField({
   helper,
 }) {
   const [modalOpen, setModalOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState("");
 
-  const isImage = selectedFile && selectedFile.type.startsWith("image/");
-  const previewUrl = isImage ? URL.createObjectURL(selectedFile) : null;
+  const isImage =
+    Boolean(selectedFile) &&
+    ["image/jpeg", "image/png", "image/webp"].includes(
+      String(selectedFile.type || "").toLowerCase(),
+    );
+
+  useEffect(() => {
+    setModalOpen(false);
+
+    if (!selectedFile || !isImage) {
+      setPreviewUrl("");
+      return undefined;
+    }
+
+    const nextPreviewUrl = URL.createObjectURL(selectedFile);
+    setPreviewUrl(nextPreviewUrl);
+
+    return () => URL.revokeObjectURL(nextPreviewUrl);
+  }, [selectedFile, isImage]);
 
   return (
     <>
       <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         {selectedFile ? (
           <div
+            className="rider-proof-selected-file"
             style={{
               display: "flex",
               alignItems: "center",
@@ -2746,6 +2838,7 @@ function ProofUploadField({
             {isImage ? (
               <button
                 type="button"
+                className="rider-proof-selected-preview"
                 onClick={() => setModalOpen(true)}
                 style={{
                   display: "flex",
@@ -2772,6 +2865,7 @@ function ProofUploadField({
                 />
                 <div style={{ display: "flex", flexDirection: "column" }}>
                   <span
+                    className="rider-proof-selected-name"
                     style={{
                       fontSize: "13px",
                       fontWeight: 700,
@@ -2794,10 +2888,12 @@ function ProofUploadField({
               </button>
             ) : (
               <div
+                className="rider-proof-selected-preview is-document"
                 style={{ display: "flex", alignItems: "center", gap: "12px" }}
               >
                 <FileText size={32} color="#71717a" />
                 <span
+                  className="rider-proof-selected-name"
                   style={{
                     fontSize: "13px",
                     fontWeight: 700,
@@ -2811,6 +2907,7 @@ function ProofUploadField({
 
             <button
               type="button"
+              className="rider-proof-selected-remove"
               onClick={() => onSelect(null)}
               disabled={disabled}
               style={{
@@ -2837,10 +2934,13 @@ function ProofUploadField({
               id={inputId}
               className="rider-proof-upload-input"
               type="file"
-              accept="image/*,.pdf"
+              accept=".jpg,.jpeg,.jfif,.png,.webp,.pdf,image/jpeg,image/png,image/webp,application/pdf"
               capture="environment"
               disabled={disabled}
-              onChange={(event) => onSelect(event.target.files?.[0] || null)}
+              onChange={(event) => {
+                const accepted = onSelect(event.target.files?.[0] || null);
+                if (accepted === false) event.target.value = "";
+              }}
             />
 
             <div className="rider-proof-upload-icon">

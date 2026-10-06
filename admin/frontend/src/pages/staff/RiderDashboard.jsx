@@ -10,6 +10,7 @@ import {
   Truck,
 } from "lucide-react";
 import api from "../../services/api";
+import { PH_TIME_ZONE, parseSystemDateTime } from "../../utils/dateTime";
 import { getSocket, subscribeSocketReady } from "../../services/socket";
 import "./RiderScreen.css";
 
@@ -24,12 +25,26 @@ const toDateKey = (value) => {
   return match ? `${match[1]}-${match[2]}-${match[3]}` : "";
 };
 
-const getTodayKey = () => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+const getPHDateKey = (value = new Date()) => {
+  const date = value instanceof Date ? value : parseSystemDateTime(value);
+  if (!date || Number.isNaN(date.getTime())) return "";
+
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: PH_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const byType = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+
+  return byType.year && byType.month && byType.day
+    ? `${byType.year}-${byType.month}-${byType.day}`
+    : "";
 };
 
 const formatDateOnly = (value) => {
@@ -84,9 +99,18 @@ const getMapHref = (delivery = {}) => {
 };
 
 const safeTime = (value) => {
-  if (!value) return 0;
-  const time = new Date(value).getTime();
-  return Number.isFinite(time) ? time : 0;
+  const date = parseSystemDateTime(value);
+  return date ? date.getTime() : 0;
+};
+
+const isSuccessfulDeliveryOutcome = (delivery = {}) => {
+  const status = normalize(delivery.status);
+  if (status === "delivered") return true;
+
+  return (
+    status === "completed" &&
+    !normalize(delivery.notes).includes("failure reason:")
+  );
 };
 
 const currentDeliveryTime = (delivery = {}) =>
@@ -132,12 +156,13 @@ export default function RiderDashboard() {
   const navigate = useNavigate();
   const [deliveries, setDeliveries] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   const deliveriesRequestRef = useRef(0);
 
-  const todayKey = getTodayKey();
+  const todayKey = getPHDateKey();
   const todayLabel = new Date().toLocaleDateString("en-PH", {
-    timeZone: "Asia/Manila",
+    timeZone: PH_TIME_ZONE,
     weekday: "long",
     month: "long",
     day: "numeric",
@@ -149,25 +174,29 @@ export default function RiderDashboard() {
 
     if (!silent) {
       setLoading(true);
+      setLoadError("");
     }
 
     try {
       const res = await api.get("/pos/deliveries");
 
-      if (requestId !== deliveriesRequestRef.current) {
-        return;
+      if (requestId !== deliveriesRequestRef.current) return;
+      if (!Array.isArray(res.data)) {
+        throw new Error("Invalid rider deliveries response.");
       }
 
-      setDeliveries(Array.isArray(res.data) ? res.data : []);
+      setDeliveries(res.data);
+      setLoadError("");
     } catch (err) {
-      if (requestId !== deliveriesRequestRef.current) {
-        return;
-      }
+      if (requestId !== deliveriesRequestRef.current) return;
 
       console.error("Failed to load rider dashboard data", err);
 
       if (!silent) {
-        setDeliveries([]);
+        setLoadError(
+          err?.response?.data?.message ||
+            "Unable to load your deliveries. Please try again.",
+        );
       }
     } finally {
       if (requestId === deliveriesRequestRef.current && !silent) {
@@ -286,8 +315,8 @@ export default function RiderDashboard() {
 
   const deliveredToday = deliveries.filter(
     (delivery) =>
-      normalize(delivery.status) === "delivered" &&
-      toDateKey(delivery.delivered_date || delivery.updated_at) === todayKey,
+      isSuccessfulDeliveryOutcome(delivery) &&
+      getPHDateKey(delivery.delivered_date || delivery.updated_at) === todayKey,
   ).length;
 
   if (loading) {
@@ -312,11 +341,32 @@ export default function RiderDashboard() {
         <div className="rider-v2-date">{todayLabel}</div>
       </header>
 
+      {loadError ? (
+        <div className="rider-load-error" role="alert">
+          <span>{loadError}</span>
+          <button
+            type="button"
+            className="rider-v2-btn rider-v2-btn-secondary"
+            onClick={() => loadDeliveries()}
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
+
       <div className="rider-v2-hero-grid">
         <section className="rider-card rider-v2-current">
           <div className="rider-v2-section-kicker">Current Delivery</div>
 
-          {currentDelivery ? (
+          {loadError ? (
+            <div className="rider-v2-current-empty">
+              <Clock3 size={24} strokeWidth={1.8} />
+              <div>
+                <strong>Delivery data unavailable</strong>
+                <span>Retry to refresh your assigned deliveries.</span>
+              </div>
+            </div>
+          ) : currentDelivery ? (
             <>
               <div className="rider-v2-current-top">
                 <div>
@@ -414,17 +464,17 @@ export default function RiderDashboard() {
           <div className="rider-v2-today-row">
             <Truck size={17} strokeWidth={1.9} />
             <span>Active</span>
-            <strong>{activeCount}</strong>
+            <strong>{loadError ? "—" : activeCount}</strong>
           </div>
           <div className="rider-v2-today-row">
             <Clock3 size={17} strokeWidth={1.9} />
             <span>Due Today</span>
-            <strong>{dueToday}</strong>
+            <strong>{loadError ? "—" : dueToday}</strong>
           </div>
           <div className="rider-v2-today-row">
             <CheckCircle size={17} strokeWidth={1.9} />
             <span>Delivered</span>
-            <strong>{deliveredToday}</strong>
+            <strong>{loadError ? "—" : deliveredToday}</strong>
           </div>
         </aside>
       </div>
@@ -444,7 +494,11 @@ export default function RiderDashboard() {
           </button>
         </div>
 
-        {upNext.length === 0 ? (
+        {loadError ? (
+          <div className="rider-v2-queue-empty">
+            Delivery queue unavailable until retry succeeds.
+          </div>
+        ) : upNext.length === 0 ? (
           <div className="rider-v2-queue-empty">
             No newly assigned deliveries.
           </div>

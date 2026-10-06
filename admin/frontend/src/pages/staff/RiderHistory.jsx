@@ -86,6 +86,8 @@ export default function RiderHistory() {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [retryAvailable, setRetryAvailable] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [startDate, setStartDate] = useState("");
@@ -113,6 +115,7 @@ export default function RiderHistory() {
       setHistory([]);
       setPagination({ ...emptyPagination, page: 1 });
       setError("From date cannot be later than To date.");
+      setRetryAvailable(false);
       return undefined;
     }
 
@@ -120,6 +123,7 @@ export default function RiderHistory() {
     const timer = window.setTimeout(async () => {
       setLoading(true);
       setError("");
+      setRetryAvailable(false);
 
       try {
         const response = await api.get("/pos/deliveries/history", {
@@ -137,11 +141,18 @@ export default function RiderHistory() {
         if (!active) return;
 
         const payload = response.data;
-        const records = Array.isArray(payload)
-          ? payload
-          : Array.isArray(payload?.records)
-            ? payload.records
-            : [];
+        const legacyArrayResponse = Array.isArray(payload);
+        const pagedObjectResponse =
+          payload &&
+          typeof payload === "object" &&
+          !Array.isArray(payload) &&
+          Array.isArray(payload.records);
+
+        if (!legacyArrayResponse && !pagedObjectResponse) {
+          throw new Error("Invalid delivery history response.");
+        }
+
+        const records = legacyArrayResponse ? payload : payload.records;
         const serverPagination =
           payload && !Array.isArray(payload) && payload.pagination
             ? payload.pagination
@@ -167,6 +178,7 @@ export default function RiderHistory() {
         setError(
           err?.response?.data?.message || "Failed to load delivery history.",
         );
+        setRetryAvailable(true);
       } finally {
         if (active) setLoading(false);
       }
@@ -176,7 +188,7 @@ export default function RiderHistory() {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [search, statusFilter, startDate, endDate, page]);
+  }, [search, statusFilter, startDate, endDate, page, reloadToken]);
 
   useEffect(() => {
     const deliveryId = Number(selectedRecord?.delivery_id || 0);
@@ -403,12 +415,21 @@ export default function RiderHistory() {
             <h3>Records</h3>
             <p>Newest delivery records are shown first.</p>
           </div>
-          <span>{pagination.total} total</span>
+          <span>{error ? "—" : `${pagination.total} total`}</span>
         </div>
 
         {error ? (
           <div className="rider-history-error" role="alert">
-            {error}
+            <span>{error}</span>
+            {retryAvailable ? (
+              <button
+                type="button"
+                className="rider-v2-btn rider-v2-btn-secondary"
+                onClick={() => setReloadToken((value) => value + 1)}
+              >
+                Retry
+              </button>
+            ) : null}
           </div>
         ) : loading ? (
           <div className="rider-history-empty">Loading history...</div>
