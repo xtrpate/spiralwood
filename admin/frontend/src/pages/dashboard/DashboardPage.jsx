@@ -41,6 +41,8 @@ const PRESETS = [
   { key: "custom", label: "Custom Range" },
 ];
 
+const MAX_DASHBOARD_RANGE_DAYS = 366;
+
 const peso = new Intl.NumberFormat("en-PH", {
   style: "currency",
   currency: "PHP",
@@ -94,6 +96,15 @@ function parseDashboardDate(value) {
     : new Date(value);
 
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function getDashboardRangeDaysInclusive(fromValue, toValue) {
+  const start = parseDashboardDate(fromValue);
+  const end = parseDashboardDate(toValue);
+
+  if (!start || !end) return null;
+
+  return Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
 }
 
 function formatDashboardDateRange(fromValue, toValue) {
@@ -363,6 +374,14 @@ export default function DashboardPage() {
 
     if (from > to) {
       setRangeError("Start date must be before end date.");
+      return;
+    }
+
+    const rangeDays = getDashboardRangeDaysInclusive(from, to);
+    if (!rangeDays || rangeDays > MAX_DASHBOARD_RANGE_DAYS) {
+      setRangeError(
+        `Custom range cannot exceed ${MAX_DASHBOARD_RANGE_DAYS} days.`,
+      );
       return;
     }
 

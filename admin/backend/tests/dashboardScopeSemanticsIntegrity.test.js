@@ -63,10 +63,10 @@ assert.match(
 // in DATE(DATE_ADD(...)), preserving the same business-day meaning while
 // keeping the timestamp column directly range-filterable.
 const periodOrdersStart = controller.indexOf(
-  "const [[currentOpsDate]] = await pool.query",
+  "// ── 2. CURRENT OPS & ORDERS ──",
 );
 const currentOpsAllTimeStart = controller.indexOf(
-  "const [[currentOpsAllTime]] = await pool.query",
+  "// All-time Open Queue (Ignores date filter)",
   periodOrdersStart,
 );
 assert.ok(periodOrdersStart >= 0 && currentOpsAllTimeStart > periodOrdersStart);
@@ -99,7 +99,7 @@ assert.doesNotMatch(openQueueSection, /created_at\s*[<>]=?\s*\?/);
 
 // Backend semantics: Payment Reviews remains the current pending ledger queue.
 const paymentStart = controller.indexOf(
-  "const [[paymentRows]] = await pool.query",
+  "// ── 4. PAYMENTS QUEUE ──",
 );
 const blueprintStart = controller.indexOf(
   "// ── 5. BLUEPRINT PIPELINE",

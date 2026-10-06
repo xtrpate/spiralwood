@@ -4,6 +4,18 @@ const {
 } = require("../../utils/philippineTime");
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const DASHBOARD_PRESETS = new Set([
+  "today",
+  "yesterday",
+  "week",
+  "last7",
+  "month",
+  "last30",
+  "year",
+  "last12m",
+  "custom",
+]);
+const MAX_DASHBOARD_RANGE_DAYS = 366;
 
 function createHttpError(status, message) {
   const err = new Error(message);
@@ -21,6 +33,18 @@ function formatISODate(date) {
 
 function parseISODate(value) {
   if (!value || !ISO_DATE_RE.test(value)) return null;
+
+  const [year, month, day] = value.split("-").map(Number);
+  const validationDate = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    validationDate.getUTCFullYear() !== year ||
+    validationDate.getUTCMonth() + 1 !== month ||
+    validationDate.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
   const date = new Date(`${value}T00:00:00`);
   return Number.isNaN(date.getTime()) ? null : date;
 }
@@ -44,8 +68,22 @@ function getManilaToday() {
 
 function getDateRange(preset, rawFrom, rawTo) {
   const today = getManilaToday();
+  const normalizedPreset = String(preset || "")
+    .trim()
+    .toLowerCase();
+
+  if (normalizedPreset && !DASHBOARD_PRESETS.has(normalizedPreset)) {
+    throw createHttpError(400, "Invalid dashboard preset.");
+  }
 
   if (rawFrom || rawTo) {
+    if (normalizedPreset && normalizedPreset !== "custom") {
+      throw createHttpError(
+        400,
+        "Preset cannot be combined with custom dates.",
+      );
+    }
+
     if (!rawFrom || !rawTo) {
       throw createHttpError(
         400,
@@ -64,20 +102,29 @@ function getDateRange(preset, rawFrom, rawTo) {
       throw createHttpError(400, "Start date must be before end date.");
     }
 
-    return { from: rawFrom, to: rawTo };
+    return { from: rawFrom, to: rawTo, preset: "custom" };
   }
 
-  switch (preset) {
+  if (normalizedPreset === "custom") {
+    throw createHttpError(
+      400,
+      "Both from and to dates are required for custom range.",
+    );
+  }
+
+  const effectivePreset = normalizedPreset || "last30";
+
+  switch (effectivePreset) {
     case "today": {
       const t = formatISODate(today);
-      return { from: t, to: t };
+      return { from: t, to: t, preset: effectivePreset };
     }
 
     case "yesterday": {
       const d = new Date(today);
       d.setDate(d.getDate() - 1);
       const y = formatISODate(d);
-      return { from: y, to: y };
+      return { from: y, to: y, preset: effectivePreset };
     }
 
     case "week": {
@@ -85,43 +132,64 @@ function getDateRange(preset, rawFrom, rawTo) {
       const day = start.getDay();
       const diff = day === 0 ? 6 : day - 1; // Monday start
       start.setDate(start.getDate() - diff);
-      return { from: formatISODate(start), to: formatISODate(today) };
+      return {
+        from: formatISODate(start),
+        to: formatISODate(today),
+        preset: effectivePreset,
+      };
     }
 
     case "last7": {
       const start = new Date(today);
       start.setDate(start.getDate() - 6);
-      return { from: formatISODate(start), to: formatISODate(today) };
+      return {
+        from: formatISODate(start),
+        to: formatISODate(today),
+        preset: effectivePreset,
+      };
     }
 
     case "month": {
       const start = new Date(today.getFullYear(), today.getMonth(), 1);
-      return { from: formatISODate(start), to: formatISODate(today) };
+      return {
+        from: formatISODate(start),
+        to: formatISODate(today),
+        preset: effectivePreset,
+      };
     }
 
     case "last30": {
       const start = new Date(today);
       start.setDate(start.getDate() - 29);
-      return { from: formatISODate(start), to: formatISODate(today) };
+      return {
+        from: formatISODate(start),
+        to: formatISODate(today),
+        preset: effectivePreset,
+      };
     }
 
     case "year": {
       const start = new Date(today.getFullYear(), 0, 1);
-      return { from: formatISODate(start), to: formatISODate(today) };
+      return {
+        from: formatISODate(start),
+        to: formatISODate(today),
+        preset: effectivePreset,
+      };
     }
 
     case "last12m": {
       const start = new Date(today);
       start.setDate(1);
       start.setMonth(start.getMonth() - 11);
-      return { from: formatISODate(start), to: formatISODate(today) };
+      return {
+        from: formatISODate(start),
+        to: formatISODate(today),
+        preset: effectivePreset,
+      };
     }
 
-    default: {
-      const start = new Date(today);
-      start.setDate(start.getDate() - 29);
-      return { from: formatISODate(start), to: formatISODate(today) };
-    }
+    default:
+      throw createHttpError(400, "Invalid dashboard preset.");
   }
 }
 
@@ -207,19 +275,32 @@ function buildMonthlySeries(rows, from, to) {
 exports.getDashboard = async (req, res) => {
   try {
     const { preset, from: rawFrom, to: rawTo } = req.query;
-    const { from, to } = getDateRange(preset, rawFrom, rawTo);
+    const {
+      from,
+      to,
+      preset: effectivePreset,
+    } = getDateRange(preset, rawFrom, rawTo);
     const periodUtcParams = getPhilippineUtcRange(from, to);
     const salesUtcParams = periodUtcParams;
 
     const totalDays = diffInDaysInclusive(from, to);
+    if (totalDays > MAX_DASHBOARD_RANGE_DAYS) {
+      throw createHttpError(
+        400,
+        `Dashboard range cannot exceed ${MAX_DASHBOARD_RANGE_DAYS} days.`,
+      );
+    }
+
     const chartMode =
-      preset === "year" || preset === "last12m" || totalDays > 120
+      effectivePreset === "year" ||
+      effectivePreset === "last12m" ||
+      totalDays > 120
         ? "monthly"
         : "daily";
 
     // ── 1. INVENTORY ──
     // Compute current health from inventory facts instead of persisted labels.
-    const [[invStats]] = await pool.query(`
+    const invStatsPromise = pool.query(`
       SELECT
         COUNT(*) AS total_products,
         COALESCE(
@@ -256,7 +337,7 @@ exports.getDashboard = async (req, res) => {
         AND LOWER(COALESCE(p.type, 'standard')) = 'standard'
     `);
 
-    const [[rawStats]] = await pool.query(`
+    const rawStatsPromise = pool.query(`
       SELECT
         COUNT(*) AS total_raw_materials,
         COALESCE(
@@ -350,26 +431,14 @@ exports.getDashboard = async (req, res) => {
       ) raw_health
     `);
 
-    let stockMovements = { stock_in_total: 0, stock_out_total: 0 };
-    try {
-      const [[movements]] = await pool.query(
-        `
-        SELECT
-          COALESCE(SUM(CASE WHEN type = 'in' THEN quantity ELSE 0 END), 0) AS stock_in_total,
-          COALESCE(SUM(CASE WHEN type = 'out' THEN quantity ELSE 0 END), 0) AS stock_out_total
-        FROM stock_movements
-        WHERE created_at >= ?
-          AND created_at < ?
-      `,
-        periodUtcParams,
-      );
-      stockMovements = movements;
-    } catch (e) {}
+    const [
+      [[invStats]],
+      [[rawStats]],
+    ] = await Promise.all([invStatsPromise, rawStatsPromise]);
 
     const inventory = {
       ...invStats,
       ...rawStats,
-      ...stockMovements,
       alert_total:
         Number(invStats.low_stock_count) +
         Number(invStats.critical_stock_count) +
@@ -380,7 +449,7 @@ exports.getDashboard = async (req, res) => {
     };
 
     // ── 2. CURRENT OPS & ORDERS ──
-    const [[currentOpsDate]] = await pool.query(
+    const currentOpsDatePromise = pool.query(
       `
       SELECT
         COUNT(*) AS total_orders,
@@ -401,13 +470,21 @@ exports.getDashboard = async (req, res) => {
     );
 
     // All-time Open Queue (Ignores date filter)
-    const [[currentOpsAllTime]] = await pool.query(`
+    const currentOpsAllTimePromise = pool.query(`
       SELECT
         COALESCE(SUM(status NOT IN ('completed', 'cancelled')), 0) AS open_orders,
         COALESCE(SUM(status = 'pending'), 0) AS open_pending_orders,
         COALESCE(SUM(status = 'delivered' AND (payment_status IS NULL OR payment_status != 'paid')), 0) AS delivered_unpaid_orders
       FROM orders
     `);
+
+    const [
+      [[currentOpsDate]],
+      [[currentOpsAllTime]],
+    ] = await Promise.all([
+      currentOpsDatePromise,
+      currentOpsAllTimePromise,
+    ]);
 
     const currentOps = { ...currentOpsDate, ...currentOpsAllTime };
 
@@ -416,7 +493,7 @@ exports.getDashboard = async (req, res) => {
     // Keep non-cancelled order value as context, but the dashboard's primary
     // sales KPI follows the canonical Sales Report definition: only verified
     // payment_transactions recognized by payment verification date.
-    const [[orderValueTotals]] = await pool.query(
+    const orderValueTotalsPromise = pool.query(
       `
       SELECT
         COALESCE(SUM(o.total), 0) AS order_value,
@@ -431,7 +508,7 @@ exports.getDashboard = async (req, res) => {
       salesUtcParams,
     );
 
-    const [[collectionTotals]] = await pool.query(
+    const collectionTotalsPromise = pool.query(
       `
       SELECT
         COALESCE(SUM(pt.amount), 0) AS verified_collections,
@@ -444,6 +521,14 @@ exports.getDashboard = async (req, res) => {
       `,
       salesUtcParams,
     );
+
+    const [
+      [[orderValueTotals]],
+      [[collectionTotals]],
+    ] = await Promise.all([
+      orderValueTotalsPromise,
+      collectionTotalsPromise,
+    ]);
 
     const verifiedCollections = Number(
       collectionTotals.verified_collections || 0,
@@ -467,17 +552,14 @@ exports.getDashboard = async (req, res) => {
     // Pending review work is stored in payment_transactions. Do not swallow
     // database failures here: showing a fake zero could hide money awaiting
     // admin review.
-    const [[paymentRows]] = await pool.query(`
+    const paymentRowsPromise = pool.query(`
       SELECT COUNT(*) AS pending_reviews
       FROM payment_transactions
       WHERE status = 'pending'
     `);
-    const payments = {
-      pending_reviews: Number(paymentRows?.pending_reviews || 0),
-    };
 
     // ── 5. BLUEPRINT PIPELINE (Strictly using order_type and valid statuses) ──
-    const [[blueprintDbRows]] = await pool.query(
+    const blueprintDbRowsPromise = pool.query(
       `
       SELECT
         COUNT(*) AS total_blueprint_orders,
@@ -495,6 +577,15 @@ exports.getDashboard = async (req, res) => {
       `,
       periodUtcParams,
     );
+
+    const [
+      [[paymentRows]],
+      [[blueprintDbRows]],
+    ] = await Promise.all([paymentRowsPromise, blueprintDbRowsPromise]);
+
+    const payments = {
+      pending_reviews: Number(paymentRows?.pending_reviews || 0),
+    };
 
     const blueprint = {
       ...blueprintDbRows,
@@ -573,7 +664,7 @@ exports.getDashboard = async (req, res) => {
     // Rank actual standard catalog products when the order first becomes a
     // verified sale. This excludes unpaid/open noise and custom/blueprint
     // order-item names that are not backed by a catalog product_id.
-    const [topProducts] = await pool.query(
+    const topProductsPromise = pool.query(
       `
       SELECT
         oi.product_id,
@@ -616,7 +707,7 @@ exports.getDashboard = async (req, res) => {
       salesUtcParams,
     );
 
-    const [recentOrders] = await pool.query(
+    const recentOrdersPromise = pool.query(
       `
       SELECT
         o.id,
@@ -638,6 +729,11 @@ exports.getDashboard = async (req, res) => {
       periodUtcParams,
     );
 
+    const [
+      [topProducts],
+      [recentOrders],
+    ] = await Promise.all([topProductsPromise, recentOrdersPromise]);
+
     return res.json({
       inventory,
       orders: currentOpsDate,
@@ -652,14 +748,18 @@ exports.getDashboard = async (req, res) => {
       dateRange: {
         from,
         to,
-        preset: preset || (rawFrom && rawTo ? "custom" : "last30"),
+        preset: effectivePreset,
       },
     });
   } catch (err) {
-    console.error("[Dashboard]", err.message);
+    console.error("[Dashboard]", err);
 
-    return res.status(err.status || 500).json({
-      message: err.message || "Failed to load dashboard data.",
-    });
+    const status = Number.isInteger(err.status) ? err.status : 500;
+    const message =
+      status >= 500
+        ? "Failed to load dashboard data."
+        : err.message || "Invalid dashboard request.";
+
+    return res.status(status).json({ message });
   }
 };

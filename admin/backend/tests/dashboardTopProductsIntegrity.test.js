@@ -9,8 +9,13 @@ const controllerPath = path.resolve(
 
 const source = fs.readFileSync(controllerPath, "utf8");
 
-const start = source.indexOf("const [topProducts] = await pool.query");
-const end = source.indexOf("const [recentOrders] = await pool.query", start);
+const start = source.indexOf(
+  "// Rank actual standard catalog products when the order first becomes a",
+);
+const end = source.indexOf(
+  "COALESCE(u.name, o.walkin_customer_name, 'Walk-in') AS customer_name",
+  start,
+);
 
 assert.ok(start >= 0, "Dashboard Top Products query must exist.");
 assert.ok(end > start, "Dashboard Top Products query must have an end marker.");
