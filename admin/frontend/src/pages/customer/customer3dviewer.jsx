@@ -28,8 +28,6 @@ import { createFurnitureObject } from "../blueprints/3d/createFurnitureObjects";
 import { WOOD_FINISHES } from "../blueprints/data/furnitureTypes";
 import { applyWoodFinish } from "../blueprints/data/componentUtils";
 import "./customer3dviewer-roomle-complete.css";
-import ARSessionModal from "./ar/ARSessionModal";
-import useFurnitureAR from "./ar/useFurnitureAR";
 
 const WORLD_W = 6400;
 const WORLD_H = 3200;
@@ -1156,11 +1154,6 @@ export default function Customer3DViewer({
       return current;
     return normalizeDimensions(initialDimensions || {});
   }, [components, initialDimensions]);
-
-  const furnitureAR = useFurnitureAR({
-    components,
-    dimensionsMm: overallBounds,
-  });
 
   const viewMetadata = useMemo(() => {
     const firstComponent = Array.isArray(components)
@@ -3593,8 +3586,6 @@ export default function Customer3DViewer({
       }
       style={styles.root}
     >
-      <ARSessionModal {...furnitureAR.modalProps} />
-
       {!readOnly && customizeFeedback ? (
         <div
           className="wisdom-config-feedback-toast"
@@ -4135,18 +4126,6 @@ export default function Customer3DViewer({
                     </button>
                   </div>
 
-                  <div className="wisdom-roomle-toolbar-slot">
-                    <button
-                      type="button"
-                      className="wisdom-roomle-tool"
-                      data-tooltip="View in your room (AR)"
-                      onClick={furnitureAR.open}
-                      disabled={furnitureAR.busy}
-                      aria-label="View in your room (AR)"
-                    >
-                      <span className="wisdom-ar-tool-glyph">AR</span>
-                    </button>
-                  </div>
                 </div>
 
                 <button
