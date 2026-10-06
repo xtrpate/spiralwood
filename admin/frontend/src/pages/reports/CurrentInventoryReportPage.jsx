@@ -514,6 +514,11 @@ export default function CurrentInventoryReportPage() {
   const exportExcel = async () => {
     if (!generatedAt || loading) return;
 
+    if (filteredRaw.length === 0 && filteredReadyMade.length === 0) {
+      toast.error("No inventory records match the current filters.");
+      return;
+    }
+
     setExporting(true);
 
     try {

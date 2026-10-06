@@ -378,6 +378,11 @@ export default function DailyStockInReportPage() {
   const exportExcel = async () => {
     if (loading || !generatedAt) return;
 
+    if (filteredRows.length === 0) {
+      toast.error("No records match the current filters.");
+      return;
+    }
+
     setExporting(true);
 
     try {
@@ -763,16 +768,27 @@ export default function DailyStockInReportPage() {
                   {filteredRows.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="dsir-empty-cell">
-                        No Stock In transactions match the selected period and filters.
+                        No Stock In transactions match the selected period and
+                        filters.
                       </td>
                     </tr>
                   ) : (
                     filteredRows.map((row) => (
-                      <tr key={row.id} className="dsir-clickable-row" onDoubleClick={() => setSelectedTransaction(row)}>
+                      <tr
+                        key={row.id}
+                        className="dsir-clickable-row"
+                        onDoubleClick={() => setSelectedTransaction(row)}
+                      >
                         <td>{formatDateTime(row.created_at)}</td>
-                        <td><div className="dsir-primary-text">{row.item_name || "Unknown item"}</div></td>
                         <td>
-                          <span className={`dsir-type dsir-type-${row.inventory_type}`}>
+                          <div className="dsir-primary-text">
+                            {row.item_name || "Unknown item"}
+                          </div>
+                        </td>
+                        <td>
+                          <span
+                            className={`dsir-type dsir-type-${row.inventory_type}`}
+                          >
                             {inventoryTypeLabel(row.inventory_type)}
                           </span>
                         </td>
@@ -782,10 +798,18 @@ export default function DailyStockInReportPage() {
                         <td>{row.supplier_name || "—"}</td>
                         <td>
                           <div>{row.reference || "—"}</div>
-                          {row.order_number ? <div className="dsir-secondary-text">Order: {row.order_number}</div> : null}
+                          {row.order_number ? (
+                            <div className="dsir-secondary-text">
+                              Order: {row.order_number}
+                            </div>
+                          ) : null}
                         </td>
                         <td className="dsir-action-cell">
-                          <button type="button" className="dsir-row-action" onClick={() => setSelectedTransaction(row)}>
+                          <button
+                            type="button"
+                            className="dsir-row-action"
+                            onClick={() => setSelectedTransaction(row)}
+                          >
                             View Details
                           </button>
                         </td>
@@ -806,30 +830,61 @@ export default function DailyStockInReportPage() {
           aria-labelledby="dsir-detail-title"
           onClick={() => setSelectedTransaction(null)}
         >
-          <div className="dsir-detail-card" onClick={(event) => event.stopPropagation()}>
+          <div
+            className="dsir-detail-card"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="dsir-detail-head">
               <div>
                 <span>Stock-In Transaction</span>
-                <h2 id="dsir-detail-title">{selectedTransaction.item_name || "Inventory Item"}</h2>
+                <h2 id="dsir-detail-title">
+                  {selectedTransaction.item_name || "Inventory Item"}
+                </h2>
               </div>
-              <span className={`dsir-type dsir-type-${selectedTransaction.inventory_type}`}>
+              <span
+                className={`dsir-type dsir-type-${selectedTransaction.inventory_type}`}
+              >
                 {inventoryTypeLabel(selectedTransaction.inventory_type)}
               </span>
             </div>
             <div className="dsir-detail-grid">
-              <div><span>Transaction ID</span><strong>#{selectedTransaction.id}</strong></div>
-              <div><span>Date &amp; Time</span><strong>{formatDateTime(selectedTransaction.created_at)}</strong></div>
-              <div><span>Quantity</span><strong>{formatQuantity(selectedTransaction.quantity)} {selectedTransaction.unit || ""}</strong></div>
+              <div>
+                <span>Transaction ID</span>
+                <strong>#{selectedTransaction.id}</strong>
+              </div>
+              <div>
+                <span>Date &amp; Time</span>
+                <strong>
+                  {formatDateTime(selectedTransaction.created_at)}
+                </strong>
+              </div>
+              <div>
+                <span>Quantity</span>
+                <strong>
+                  {formatQuantity(selectedTransaction.quantity)}{" "}
+                  {selectedTransaction.unit || ""}
+                </strong>
+              </div>
               {selectedTransaction.product_barcode ? (
-                <div><span>Barcode</span><strong>{selectedTransaction.product_barcode}</strong></div>
+                <div>
+                  <span>Barcode</span>
+                  <strong>{selectedTransaction.product_barcode}</strong>
+                </div>
               ) : null}
               {selectedTransaction.supplier_name ? (
-                <div><span>Supplier</span><strong>{selectedTransaction.supplier_name}</strong></div>
+                <div>
+                  <span>Supplier</span>
+                  <strong>{selectedTransaction.supplier_name}</strong>
+                </div>
               ) : null}
               {selectedTransaction.reference ? (
-                <div><span>Reference</span><strong>{selectedTransaction.reference}</strong></div>
+                <div>
+                  <span>Reference</span>
+                  <strong>{selectedTransaction.reference}</strong>
+                </div>
               ) : null}
-              {selectedTransaction.order_number || selectedTransaction.order_id ? (
+              {selectedTransaction.order_number ||
+              selectedTransaction.order_id ? (
                 <div>
                   <span>Related Order</span>
                   <strong>
@@ -838,7 +893,12 @@ export default function DailyStockInReportPage() {
                   </strong>
                 </div>
               ) : null}
-              <div><span>Recorded By</span><strong>{selectedTransaction.created_by_name || "System"}</strong></div>
+              <div>
+                <span>Recorded By</span>
+                <strong>
+                  {selectedTransaction.created_by_name || "System"}
+                </strong>
+              </div>
             </div>
             {String(selectedTransaction.notes || "").trim() ? (
               <div className="dsir-detail-notes">
@@ -849,19 +909,29 @@ export default function DailyStockInReportPage() {
             <div className="dsir-detail-foot">
               <span>Period: {activePeriodLabel}</span>
               <div className="dsir-detail-actions">
-                <button type="button" className="dsir-button dsir-button-secondary" onClick={() => window.print()}>
+                <button
+                  type="button"
+                  className="dsir-button dsir-button-secondary"
+                  onClick={() => window.print()}
+                >
                   Print Record
                 </button>
                 {selectedTransaction.order_id ? (
                   <button
                     type="button"
                     className="dsir-button dsir-button-secondary"
-                    onClick={() => navigate(`/admin/orders/${selectedTransaction.order_id}`)}
+                    onClick={() =>
+                      navigate(`/admin/orders/${selectedTransaction.order_id}`)
+                    }
                   >
                     Open Order
                   </button>
                 ) : null}
-                <button type="button" className="dsir-button dsir-button-primary" onClick={() => setSelectedTransaction(null)}>
+                <button
+                  type="button"
+                  className="dsir-button dsir-button-primary"
+                  onClick={() => setSelectedTransaction(null)}
+                >
                   Close
                 </button>
               </div>
@@ -869,7 +939,6 @@ export default function DailyStockInReportPage() {
           </div>
         </div>
       ) : null}
-
     </div>
   );
 }

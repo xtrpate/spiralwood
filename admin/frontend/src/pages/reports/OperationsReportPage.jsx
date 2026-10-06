@@ -1903,6 +1903,11 @@ export default function OperationsReportPage({ fixedOperationType = null }) {
         ]);
       }
 
+      if (exportRows.length === 0) {
+        toast.error("No records match the current filters.");
+        return;
+      }
+
       const titleStyle = {
         font: { bold: true, sz: 16, color: { rgb: "111827" } },
         alignment: { horizontal: "center", vertical: "center" },

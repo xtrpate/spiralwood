@@ -339,6 +339,12 @@ export default function DeliveryReportPage() {
         params: buildParams({ export: 1, page: 1 }),
       });
       const exportRecords = Array.isArray(data?.records) ? data.records : [];
+
+      if (exportRecords.length === 0) {
+        setError("No delivery records match the current filters.");
+        return;
+      }
+
       exportDeliveryActivityReportPdf({
         deliveries: exportRecords,
         filters: {
