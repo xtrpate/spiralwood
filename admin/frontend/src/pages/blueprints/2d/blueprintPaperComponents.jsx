@@ -49,6 +49,8 @@ function DimensionLine({
   }
 
   const x = x1 + offset;
+  const isRightSide = offset >= 0;
+  const verticalTextWidth = 96;
   return (
     <Group listening={false}>
       <Line points={[x1, y1, x, y1]} stroke={extColor} strokeWidth={1} />
@@ -64,14 +66,27 @@ function DimensionLine({
         pointerAtEnding
       />
       <Text
-        x={x + 6}
+        x={isRightSide ? x + 6 : x - verticalTextWidth - 6}
         y={(y1 + y2) / 2 - 6}
+        width={verticalTextWidth}
+        align={isRightSide ? "left" : "right"}
         text={text}
         fontSize={10}
         fill={dimColor}
       />
     </Group>
   );
+}
+
+function compactTitleBlockDimensions(value = "") {
+  const cleaned = String(value || "").trim();
+  if (!cleaned || cleaned === "—") return "—";
+
+  return cleaned
+    .replace(/\s*(inches|inch|mm|cm|in)\b/gi, "")
+    .replace(/\s*×\s*/g, " × ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function BlueprintTitleBlock({
@@ -90,6 +105,9 @@ function BlueprintTitleBlock({
   const y = canvasH - PAPER_MARGIN - TITLE_BLOCK_H;
   const w = canvasW - PAPER_MARGIN * 2;
   const h = TITLE_BLOCK_H;
+  const dimensionValue = compactTitleBlockDimensions(dimsText);
+  const dimensionFontSize =
+    dimensionValue.length > 18 ? 8.5 : dimensionValue.length > 15 ? 9 : 10;
 
   return (
     <Group listening={false}>
@@ -205,8 +223,10 @@ function BlueprintTitleBlock({
       <Text
         x={x + w - 220}
         y={y + 80}
-        text={dimsText || "—"}
-        fontSize={10}
+        width={100}
+        wrap="none"
+        text={dimensionValue}
+        fontSize={dimensionFontSize}
         fill="#0f172a"
       />
       <Text

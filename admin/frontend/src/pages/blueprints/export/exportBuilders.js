@@ -65,6 +65,10 @@ import {
 import { buildWoodworkingDetailsPages } from "./woodworkingDetailsExport";
 import { buildWoodworkingVisualCallouts } from "./woodworkingVisualCallouts";
 import {
+  buildMaterialsPaginationPlan,
+  getSafeVerticalDimensionPlacement,
+} from "../data/technicalOutputUtils";
+import {
   EXPLODED_PARTS_SHEET_CODE,
   buildExplodedPartScheduleRows,
   buildExplodedPartsSchedulePages,
@@ -426,17 +430,6 @@ function getRoleComponentMap(components = []) {
   return map;
 }
 
-function getSafeVerticalDimOffset(
-  overallScreenBounds,
-  drawingArea,
-  preferred = 28,
-) {
-  if (!overallScreenBounds || !drawingArea) return preferred;
-  const rightAllowance =
-    drawingArea.x + drawingArea.w - overallScreenBounds.maxX;
-  return rightAllowance >= preferred + 20 ? preferred : -preferred;
-}
-
 function applyOrthographicDimensionGutters({
   view,
   drawingArea,
@@ -769,10 +762,15 @@ function build2DViewPageSvg({
   const dimSource =
     selectedBounds3D || getComponentsBounds3D(selectedComponents);
 
-  const verticalDimOffset =
+  const verticalDimensionPlacement =
     view !== "exploded"
-      ? getSafeVerticalDimOffset(overallScreenBounds, drawingArea, 28)
-      : 28;
+      ? getSafeVerticalDimensionPlacement(
+          overallScreenBounds,
+          drawingArea,
+          28,
+          20,
+        )
+      : { side: "right", anchorX: overallScreenBounds?.maxX || 0, offset: 28 };
 
   const itemsMarkup = scaledItems
     .map(({ comp, screenBox }, idx) => {
@@ -823,19 +821,15 @@ function build2DViewPageSvg({
           24,
         )}
         ${buildSvgDimensionLine(
-          verticalDimOffset >= 0
-            ? overallScreenBounds.maxX
-            : overallScreenBounds.minX,
+          verticalDimensionPlacement.anchorX,
           overallScreenBounds.minY,
-          verticalDimOffset >= 0
-            ? overallScreenBounds.maxX
-            : overallScreenBounds.minX,
+          verticalDimensionPlacement.anchorX,
           overallScreenBounds.maxY,
           view === "top"
             ? formatDim(dimSource.depth, unit)
             : formatDim(dimSource.height, unit),
           "vertical",
-          verticalDimOffset,
+          verticalDimensionPlacement.offset,
         )}
         ${svgLine(
           drawingArea.x,
@@ -1290,26 +1284,8 @@ function getMaterialsSummary(components) {
   };
 }
 
-function buildMaterialsPageHtml({
-  selectedComponents,
-  selectedLabel,
-  selectedDimsText,
-  selectedMaterialText,
-  blueprintTitle,
-  unit,
-}) {
-  const { materialRows, componentRows, totalQty } =
-    getMaterialsSummary(selectedComponents);
-
-  const materialTypes = materialRows.length;
-
-  const resolvedProjectTitle = resolveExportProjectTitle({
-    blueprintTitle,
-    objectLabel: selectedLabel,
-    selectedComponents,
-  });
-
-  const materialTable = `
+function buildMaterialsTableHtml(materialRows, totalQty, showTotal) {
+  return `
     <table class="bp-table">
       <thead>
         <tr>
@@ -1330,16 +1306,25 @@ function buildMaterialsPageHtml({
         `,
           )
           .join("")}
-        <tr class="table-total">
+        ${
+          showTotal
+            ? `<tr class="table-total">
           <td><b>Total</b></td>
           <td><b>${totalQty}</b></td>
           <td><b>100%</b></td>
-        </tr>
+        </tr>`
+            : ""
+        }
       </tbody>
     </table>
   `;
+}
 
-  const partTable = `
+function buildMaterialsPartTableHtml(
+  componentRows,
+  { startIndex = 0, totalQty = 0, showTotal = false } = {},
+) {
+  return `
     <table class="bp-table">
       <thead>
         <tr>
@@ -1357,7 +1342,7 @@ function buildMaterialsPageHtml({
           .map(
             (row, index) => `
         <tr>
-          <td>${index + 1}</td>
+          <td>${startIndex + index + 1}</td>
           <td><b>${escapeHtml(row.partCode)}</b></td>
           <td>${escapeHtml(row.label)}</td>
           <td>${row.qty}</td>
@@ -1368,67 +1353,194 @@ function buildMaterialsPageHtml({
       `,
           )
           .join("")}
-        <tr class="table-total">
+        ${
+          showTotal
+            ? `<tr class="table-total">
           <td colspan="3"><b>Total</b></td>
           <td><b>${totalQty}</b></td>
           <td colspan="3"></td>
-        </tr>
+        </tr>`
+            : ""
+        }
       </tbody>
     </table>
   `;
+}
+
+function buildMaterialsSheetHeader({
+  selectedLabel,
+  unit,
+  pageIndex,
+  totalPages,
+}) {
+  const baseSheetCode = getExportSheetCode("materials");
+  const sheetCode =
+    totalPages > 1 ? `${baseSheetCode}.${pageIndex + 1}` : baseSheetCode;
 
   return `
-    <div class="page">
-      <div class="page-inner">
-        <div class="sheet-header">
-          <div>
-            <div class="sheet-title">TECHNICAL BLUEPRINT — MATERIALS / CUT LIST</div>
-            <div class="sheet-subtitle">${escapeHtml(selectedLabel || "No Selection")}</div>
-          </div>
-          <div class="sheet-meta">
-            <div><b>Production Status:</b> ${PROFESSIONAL_DRAWING_STATUS}</div>
-            <div><b>Unit:</b> ${escapeHtml(unit.toUpperCase())}</div>
-            <div><b>Sheet:</b> ${getExportSheetCode("materials")}</div>
-            <div><b>Date:</b> ${escapeHtml(getNowStamp())}</div>
-          </div>
-        </div>
-
-        <div class="info-grid">
-          <div><b>Project:</b> ${escapeHtml(resolvedProjectTitle || "Blueprint Design")}</div>
-          <div><b>Object:</b> ${escapeHtml(selectedLabel || "No Selection")}</div>
-          <div><b>Overall Dimensions:</b> ${escapeHtml(selectedDimsText || "—")}</div>
-          <div><b>Material / Finish:</b> ${escapeHtml(selectedMaterialText || "—")}</div>
-        </div>
-
-        <div class="summary-strip">
-          <div class="summary-card">
-            <span class="summary-label">Production Parts</span>
-            <strong>${selectedComponents.length}</strong>
-          </div>
-          <div class="summary-card">
-            <span class="summary-label">Total Qty</span>
-            <strong>${totalQty}</strong>
-          </div>
-          <div class="summary-card">
-            <span class="summary-label">Material Types</span>
-            <strong>${materialTypes}</strong>
-          </div>
-        </div>
-
-        <div class="drawing-note">
-          <b>PRODUCTION NOTES</b>
-          <span>Verify written cut sizes and material specifications before production.</span>
-          <span>Written dimensions control. Do not scale the drawing from screen or print.</span>
-        </div>
-
-        <h3 class="section-head">Materials Summary</h3>
-        ${materialTable}
-
-        <h3 class="section-head">Parts and Cut List</h3>
-        ${partTable}
+    <div class="sheet-header">
+      <div>
+        <div class="sheet-title">TECHNICAL BLUEPRINT — MATERIALS / CUT LIST</div>
+        <div class="sheet-subtitle">${escapeHtml(selectedLabel || "No Selection")}</div>
+      </div>
+      <div class="sheet-meta">
+        <div><b>Production Status:</b> ${PROFESSIONAL_DRAWING_STATUS}</div>
+        <div><b>Unit:</b> ${escapeHtml(String(unit || "mm").toUpperCase())}</div>
+        <div><b>Sheet:</b> ${sheetCode}</div>
+        ${totalPages > 1 ? `<div><b>Page:</b> ${pageIndex + 1} / ${totalPages}</div>` : ""}
+        <div><b>Date:</b> ${escapeHtml(getNowStamp())}</div>
       </div>
     </div>
   `;
+}
+
+function buildMaterialsInfoGrid({
+  resolvedProjectTitle,
+  selectedLabel,
+  selectedDimsText,
+  selectedMaterialText,
+}) {
+  return `
+    <div class="info-grid">
+      <div><b>Project:</b> ${escapeHtml(resolvedProjectTitle || "Blueprint Design")}</div>
+      <div><b>Object:</b> ${escapeHtml(selectedLabel || "No Selection")}</div>
+      <div><b>Overall Dimensions:</b> ${escapeHtml(selectedDimsText || "—")}</div>
+      <div><b>Material / Finish:</b> ${escapeHtml(selectedMaterialText || "—")}</div>
+    </div>
+  `;
+}
+
+function buildMaterialsPagesHtml({
+  selectedComponents,
+  selectedLabel,
+  selectedDimsText,
+  selectedMaterialText,
+  blueprintTitle,
+  unit,
+}) {
+  const { materialRows, componentRows, totalQty } =
+    getMaterialsSummary(selectedComponents);
+  const materialTypes = materialRows.length;
+  const resolvedProjectTitle = resolveExportProjectTitle({
+    blueprintTitle,
+    objectLabel: selectedLabel,
+    selectedComponents,
+  });
+  const pagination = buildMaterialsPaginationPlan(componentRows, materialRows);
+  const commonHeaderData = {
+    selectedLabel,
+    unit,
+    totalPages: pagination.totalPages,
+  };
+  const infoGrid = buildMaterialsInfoGrid({
+    resolvedProjectTitle,
+    selectedLabel,
+    selectedDimsText,
+    selectedMaterialText,
+  });
+  const summaryStrip = `
+    <div class="summary-strip">
+      <div class="summary-card">
+        <span class="summary-label">Production Parts</span>
+        <strong>${selectedComponents.length}</strong>
+      </div>
+      <div class="summary-card">
+        <span class="summary-label">Total Qty</span>
+        <strong>${totalQty}</strong>
+      </div>
+      <div class="summary-card">
+        <span class="summary-label">Material Types</span>
+        <strong>${materialTypes}</strong>
+      </div>
+    </div>
+  `;
+  const productionNote = `
+    <div class="drawing-note">
+      <b>PRODUCTION NOTES</b>
+      <span>Verify written cut sizes and material specifications before production.</span>
+      <span>Written dimensions control. Do not scale the drawing from screen or print.</span>
+    </div>
+  `;
+
+  if (pagination.combined) {
+    return [
+      `
+        <div class="page">
+          <div class="page-inner">
+            ${buildMaterialsSheetHeader({ ...commonHeaderData, pageIndex: 0 })}
+            ${infoGrid}
+            ${summaryStrip}
+            ${productionNote}
+            <h3 class="section-head">Materials Summary</h3>
+            ${buildMaterialsTableHtml(materialRows, totalQty, true)}
+            <h3 class="section-head">Parts and Cut List</h3>
+            ${buildMaterialsPartTableHtml(componentRows, {
+              startIndex: 0,
+              totalQty,
+              showTotal: true,
+            })}
+          </div>
+        </div>
+      `,
+    ];
+  }
+
+  const pages = [];
+  let pageIndex = 0;
+
+  pagination.materialPages.forEach((rows, materialPageIndex) => {
+    const isLastMaterialPage =
+      materialPageIndex === pagination.materialPages.length - 1;
+    pages.push(`
+      <div class="page">
+        <div class="page-inner">
+          ${buildMaterialsSheetHeader({ ...commonHeaderData, pageIndex })}
+          ${infoGrid}
+          ${summaryStrip}
+          ${materialPageIndex === 0 ? productionNote : ""}
+          <h3 class="section-head">Materials Summary${materialPageIndex > 0 ? " — Continued" : ""}</h3>
+          ${buildMaterialsTableHtml(rows, totalQty, isLastMaterialPage)}
+          ${
+            isLastMaterialPage
+              ? `<div class="materials-continuation-note"><b>PARTS / CUT LIST CONTINUES</b><span>See the following Materials / Cut List sheet(s). Table headers repeat on every continuation page.</span></div>`
+              : ""
+          }
+        </div>
+      </div>
+    `);
+    pageIndex += 1;
+  });
+
+  let partStartIndex = 0;
+  pagination.partPages.forEach((rows, partPageIndex) => {
+    const isLastPartPage = partPageIndex === pagination.partPages.length - 1;
+    pages.push(`
+      <div class="page">
+        <div class="page-inner">
+          ${buildMaterialsSheetHeader({ ...commonHeaderData, pageIndex })}
+          ${infoGrid}
+          <div class="drawing-note materials-compact-note">
+            <b>PARTS / CUT LIST — CONTINUATION</b>
+            <span>Verify written cut sizes, material, grain, and quantity before production.</span>
+          </div>
+          <h3 class="section-head">Parts and Cut List${partPageIndex > 0 ? " — Continued" : ""}</h3>
+          ${buildMaterialsPartTableHtml(rows, {
+            startIndex: partStartIndex,
+            totalQty,
+            showTotal: isLastPartPage,
+          })}
+        </div>
+      </div>
+    `);
+    partStartIndex += rows.length;
+    pageIndex += 1;
+  });
+
+  return pages;
+}
+
+function buildMaterialsPageHtml(args) {
+  return buildMaterialsPagesHtml(args).join("");
 }
 function buildSvgPageHtml(svgMarkup) {
   return `
@@ -1440,7 +1552,14 @@ function buildSvgPageHtml(svgMarkup) {
   `;
 }
 
-function buildBlueprintDocumentHtml(pages) {
+function buildBlueprintDocumentHtml(
+  pages,
+  { previewWarning = "" } = {},
+) {
+  const previewWarningMarkup = previewWarning
+    ? `<div class="bp-preview-warning">${escapeHtml(previewWarning)}</div>`
+    : "";
+
   return `
     <!doctype html>
     <html>
@@ -1467,6 +1586,22 @@ function buildBlueprintDocumentHtml(pages) {
           .page:last-child {
             page-break-after: auto;
             break-after: auto;
+          }
+          .bp-preview-warning {
+            width: ${EXPORT_PAGE_W}px;
+            max-width: calc(100% - 24px);
+            margin: 12px auto 0;
+            padding: 10px 14px;
+            border: 1px solid #c2410c;
+            border-left: 5px solid #c2410c;
+            background: #fff7ed;
+            color: #9a3412;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.45;
+            position: sticky;
+            top: 0;
+            z-index: 20;
           }
           .page-inner {
             width: 100%;
@@ -1569,6 +1704,19 @@ function buildBlueprintDocumentHtml(pages) {
           }
           .bp-table .table-total td {
             background: #f8fafc;
+          }
+          .materials-continuation-note {
+            margin: 16px 34px 0;
+            padding: 10px 12px;
+            border: 1px dashed #64748b;
+            background: #f8fafc;
+            display: grid;
+            gap: 4px;
+            font-size: 11px;
+            line-height: 1.4;
+          }
+          .materials-compact-note {
+            margin-top: 12px;
           }
           .ww-summary-strip {
             display: grid;
@@ -1794,6 +1942,9 @@ function buildBlueprintDocumentHtml(pages) {
             .page-inner {
               min-height: 210mm;
             }
+            .bp-preview-warning {
+              display: none;
+            }
             .svg-page svg {
               width: 297mm;
               height: auto;
@@ -1803,6 +1954,7 @@ function buildBlueprintDocumentHtml(pages) {
         </style>
       </head>
       <body>
+        ${previewWarningMarkup}
         ${pages.join("")}
       </body>
     </html>
@@ -1871,7 +2023,7 @@ function buildAllExportPages({
   );
 
   pages.push(
-    buildMaterialsPageHtml({
+    ...buildMaterialsPagesHtml({
       selectedComponents: exportComponents,
       selectedLabel: resolvedObjectLabel,
       selectedDimsText,
@@ -1898,6 +2050,7 @@ export {
   build2DViewPageSvg,
   buildSvgPaperMarkup,
   buildMaterialsPageHtml,
+  buildMaterialsPagesHtml,
   buildBlueprintDocumentHtml,
   buildAllExportPages,
 };

@@ -8,6 +8,7 @@ import {
   buildBlueprintDocumentHtml,
 } from "../export/exportBuilders";
 import { downloadBlueprintPdf } from "../export/blueprintPdfDownload";
+import { getOfficialOutputFidelityIssues } from "../data/technicalOutputUtils";
 
 export function useBlueprintExport({
   components,
@@ -25,6 +26,20 @@ export function useBlueprintExport({
       ),
     [components],
   );
+
+  const outputFidelityIssues = useMemo(
+    () => getOfficialOutputFidelityIssues(exportTargetComponents),
+    [exportTargetComponents],
+  );
+
+  const outputFidelityMessage = useMemo(() => {
+    if (!outputFidelityIssues.length) return "";
+
+    const affected = outputFidelityIssues.length;
+    return `Official PDF/Print is blocked because ${affected} ${
+      affected === 1 ? "part uses" : "parts use"
+    } rotated or custom-profile geometry that the current technical-sheet renderer cannot represent faithfully yet. Preview remains available for review.`;
+  }, [outputFidelityIssues]);
 
   const exportTargetBounds = useMemo(
     () => getComponentsBounds3D(exportTargetComponents),
@@ -73,7 +88,7 @@ export function useBlueprintExport({
     );
   }, [exportTargetBounds, unit]);
 
-  const prepareExportDocument = useCallback(() => {
+  const prepareExportDocument = useCallback(({ previewOnly = false } = {}) => {
     if (!exportTargetComponents.length) {
       toast.error("No production parts are available for output.");
       return null;
@@ -97,7 +112,12 @@ export function useBlueprintExport({
 
       return {
         pages,
-        html: buildBlueprintDocumentHtml(pages),
+        html: buildBlueprintDocumentHtml(pages, {
+          previewWarning:
+            previewOnly && outputFidelityMessage
+              ? `PREVIEW ONLY — ${outputFidelityMessage}`
+              : "",
+        }),
       };
     } catch (error) {
       console.error("Blueprint output generation error:", error);
@@ -106,6 +126,7 @@ export function useBlueprintExport({
     }
   }, [
     exportTargetComponents,
+    outputFidelityMessage,
     exportTargetLabel,
     exportTargetMaterials,
     exportTargetBounds,
@@ -131,6 +152,11 @@ export function useBlueprintExport({
       return false;
     }
 
+    if (outputFidelityIssues.length) {
+      toast.error(outputFidelityMessage);
+      return false;
+    }
+
     const warnings = Array.isArray(designValidationReport?.warnings)
       ? designValidationReport.warnings.filter(
           (warning) => warning?.code !== "UNSAVED_CHANGES",
@@ -147,10 +173,15 @@ export function useBlueprintExport({
     }
 
     return true;
-  }, [designValidationReport, hasUnsavedDesignChanges]);
+  }, [
+    designValidationReport,
+    hasUnsavedDesignChanges,
+    outputFidelityIssues,
+    outputFidelityMessage,
+  ]);
 
   const previewExportSheets = useCallback(() => {
-    const prepared = prepareExportDocument();
+    const prepared = prepareExportDocument({ previewOnly: true });
     if (!prepared) return;
 
     if (openBlueprintWindow(prepared.html, false)) {
