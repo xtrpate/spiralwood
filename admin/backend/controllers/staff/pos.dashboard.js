@@ -89,13 +89,37 @@ exports.getDashboardMetrics = async (req, res) => {
       [periods.todayStart, periods.tomorrowStart],
     );
 
-    // Low stock alerts — ALL low/out products
-    // ── FIXED: Switched to .query ──
+    // Inventory alerts use the same canonical ready-made display stock as
+    // Furniture Specialist Inventory Lookup. The total is independent from
+    // the limited preview rows so the KPI never reports the LIMIT as a count.
+    const [inventoryAlertCountRows] = await db.query(`
+      SELECT COUNT(*) AS alert_count
+      FROM products p
+      LEFT JOIN ready_made_display_stock rmds ON rmds.product_id = p.id
+      WHERE p.type = 'standard'
+        AND COALESCE(p.is_active, 0) = 1
+        AND COALESCE(rmds.quantity, 0) <= COALESCE(p.reorder_point, 0)
+    `);
+
     const [lowStock] = await db.query(`
-      SELECT id, name, stock, reorder_point, stock_status
-      FROM products
-      WHERE stock_status IN ('low_stock','out_of_stock')
-      ORDER BY stock_status DESC, stock ASC
+      SELECT
+        p.id,
+        p.name,
+        COALESCE(rmds.quantity, 0) AS stock,
+        COALESCE(p.reorder_point, 0) AS reorder_point,
+        CASE
+          WHEN COALESCE(rmds.quantity, 0) <= 0 THEN 'out_of_stock'
+          ELSE 'low_stock'
+        END AS stock_status
+      FROM products p
+      LEFT JOIN ready_made_display_stock rmds ON rmds.product_id = p.id
+      WHERE p.type = 'standard'
+        AND COALESCE(p.is_active, 0) = 1
+        AND COALESCE(rmds.quantity, 0) <= COALESCE(p.reorder_point, 0)
+      ORDER BY
+        CASE WHEN COALESCE(rmds.quantity, 0) <= 0 THEN 0 ELSE 1 END,
+        COALESCE(rmds.quantity, 0) ASC,
+        p.name ASC
       LIMIT 8
     `);
 
@@ -105,6 +129,9 @@ exports.getDashboardMetrics = async (req, res) => {
       monthly_sales: salesMonth[0].monthly_sales,
       recent_orders: recentOrders,
       top_products: topProducts,
+      inventory_alert_count: Number(
+        inventoryAlertCountRows[0]?.alert_count || 0,
+      ),
       low_stock_alerts: lowStock,
     });
   } catch (err) {

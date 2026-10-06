@@ -143,7 +143,6 @@ const PrivacyPolicyPage = lazy(
 const CustomerStaticPage = lazy(
   () => import("./pages/customer/customerstaticpage"),
 );
-const ARViewPage = lazy(() => import("./pages/customer/ar/ARViewPage"));
 const POSLayout = lazy(() => import("./pages/staff/POSLayout.jsx"));
 const POSDashboard = lazy(() => import("./pages/staff/Dashboard"));
 const POSProductSearch = lazy(() => import("./pages/staff/ProductSearch"));
@@ -376,8 +375,6 @@ export default function App() {
 
             <Suspense fallback={<RouteLoadingFallback />}>
               <Routes>
-                <Route path="/ar/:sessionId" element={<ARViewPage />} />
-
                 <Route
                   path="/change-temporary-password"
                   element={

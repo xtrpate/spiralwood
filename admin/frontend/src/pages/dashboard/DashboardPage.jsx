@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Line, Bar, Doughnut } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -41,6 +41,8 @@ const PRESETS = [
   { key: "custom", label: "Custom Range" },
 ];
 
+const MAX_DASHBOARD_RANGE_DAYS = 366;
+
 const peso = new Intl.NumberFormat("en-PH", {
   style: "currency",
   currency: "PHP",
@@ -77,6 +79,7 @@ function formatDateTime(value) {
   if (Number.isNaN(date.getTime())) return value;
 
   return date.toLocaleString("en-PH", {
+    timeZone: "Asia/Manila",
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -93,6 +96,15 @@ function parseDashboardDate(value) {
     : new Date(value);
 
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function getDashboardRangeDaysInclusive(fromValue, toValue) {
+  const start = parseDashboardDate(fromValue);
+  const end = parseDashboardDate(toValue);
+
+  if (!start || !end) return null;
+
+  return Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
 }
 
 function formatDashboardDateRange(fromValue, toValue) {
@@ -203,7 +215,9 @@ function StatusBadge({ status }) {
     confirmed: ["#eff6ff", "#1d4ed8", "#bfdbfe"],
     contract_released: ["#eff6ff", "#1d4ed8", "#bfdbfe"],
     production: ["#f5f3ff", "#6d28d9", "#ddd6fe"],
+    ready_for_pickup: ["#fff7ed", "#c2410c", "#fed7aa"],
     shipping: ["#fff7ed", "#c2410c", "#fed7aa"],
+    rejected: ["#fef2f2", "#b91c1c", "#fecaca"],
     cancelled: ["#fef2f2", "#b91c1c", "#fecaca"],
   }[normalized] || ["#f4f4f5", "#52525b", "#e4e4e7"];
 
@@ -268,6 +282,12 @@ export default function DashboardPage() {
   const [preset, setPreset] = useState("last30");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [appliedRange, setAppliedRange] = useState({
+    preset: "last30",
+    from: "",
+    to: "",
+  });
+  const requestSequenceRef = useRef(0);
 
   const loadDashboard = useCallback(
     async ({
@@ -276,6 +296,8 @@ export default function DashboardPage() {
       toArg = "",
       silent = false,
     } = {}) => {
+      const requestId = ++requestSequenceRef.current;
+
       try {
         setFetchError("");
 
@@ -291,15 +313,29 @@ export default function DashboardPage() {
             : { preset: presetArg };
 
         const res = await api.get("/dashboard", { params });
+
+        if (requestId !== requestSequenceRef.current) return;
+
+        const responseRange = res.data?.dateRange || {};
         setData(res.data);
+        setAppliedRange({
+          preset: responseRange.preset || presetArg,
+          from:
+            responseRange.from || (presetArg === "custom" ? fromArg : ""),
+          to: responseRange.to || (presetArg === "custom" ? toArg : ""),
+        });
       } catch (err) {
+        if (requestId !== requestSequenceRef.current) return;
+
         const message =
           err.response?.data?.message ||
           "Failed to load dashboard. Check your server connection.";
         setFetchError(message);
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (requestId === requestSequenceRef.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     },
     [],
@@ -307,6 +343,10 @@ export default function DashboardPage() {
 
   useEffect(() => {
     loadDashboard({ presetArg: "last30" });
+
+    return () => {
+      requestSequenceRef.current += 1;
+    };
   }, [loadDashboard]);
 
   const handlePresetChange = (key) => {
@@ -337,6 +377,14 @@ export default function DashboardPage() {
       return;
     }
 
+    const rangeDays = getDashboardRangeDaysInclusive(from, to);
+    if (!rangeDays || rangeDays > MAX_DASHBOARD_RANGE_DAYS) {
+      setRangeError(
+        `Custom range cannot exceed ${MAX_DASHBOARD_RANGE_DAYS} days.`,
+      );
+      return;
+    }
+
     setRangeError("");
     setPreset("custom");
 
@@ -350,15 +398,16 @@ export default function DashboardPage() {
 
   const handleRefresh = () => {
     loadDashboard({
-      presetArg: preset,
-      fromArg: from,
-      toArg: to,
+      presetArg: appliedRange.preset,
+      fromArg: appliedRange.from,
+      toArg: appliedRange.to,
       silent: true,
     });
   };
 
   const activeLabel =
-    PRESETS.find((item) => item.key === preset)?.label || "Custom Range";
+    PRESETS.find((item) => item.key === appliedRange.preset)?.label ||
+    "Custom Range";
 
   const inventory = data?.inventory || {};
   const orders = data?.orders || {};
@@ -781,7 +830,11 @@ export default function DashboardPage() {
           <button
             className="dash-btn dash-btn-primary"
             onClick={() =>
-              loadDashboard({ presetArg: preset, fromArg: from, toArg: to })
+              loadDashboard({
+                presetArg: appliedRange.preset,
+                fromArg: appliedRange.from,
+                toArg: appliedRange.to,
+              })
             }
           >
             Retry
@@ -871,6 +924,11 @@ export default function DashboardPage() {
         </div>
       </section>
 
+      <div className="dash-period-scope-note">
+        Period filters sales and order activity. Open orders, payment reviews,
+        and inventory show current state.
+      </div>
+
       {rangeError ? (
         <div className="dash-inline-error">{rangeError}</div>
       ) : null}
@@ -887,28 +945,30 @@ export default function DashboardPage() {
           value={peso.format(
             Number(sales.verified_collections ?? sales.total_revenue ?? 0),
           )}
-          meta={`Order value ${peso.format(Number(sales.order_value || 0))}`}
+          meta={`Selected period • Order value of orders created ${peso.format(
+            Number(sales.order_value || 0),
+          )}`}
           onClick={() => navigate("/admin/sales")}
         />
 
         <MetricCard
           title="Orders"
           value={num.format(totalOrders)}
-          meta={`${num.format(periodCompleted)} completed`}
+          meta={`Selected period • ${num.format(periodCompleted)} currently completed`}
           onClick={() => navigate("/admin/orders")}
         />
 
         <MetricCard
           title="Open orders"
           value={num.format(currentOpenOrders)}
-          meta={`${num.format(currentOpenPending)} pending`}
+          meta={`Current queue • ${num.format(currentOpenPending)} pending`}
           onClick={() => navigate("/admin/orders")}
         />
 
         <MetricCard
           title="Payment reviews"
           value={num.format(pendingReviews)}
-          meta={`${num.format(deliveredUnpaid)} delivered unpaid`}
+          meta={`Current queue • ${num.format(deliveredUnpaid)} delivered unpaid`}
           tone={
             pendingReviews > 0 || deliveredUnpaid > 0 ? "warning" : "neutral"
           }
@@ -920,6 +980,8 @@ export default function DashboardPage() {
           value={num.format(stockAlerts)}
           meta={
             <>
+              <span>Current stock</span>
+              <span className="metric-card__separator">•</span>
               <span>{num.format(lowStockTotal)} low</span>
               <span className="metric-card__separator">•</span>
               <span>{num.format(criticalStockTotal)} critical</span>
@@ -978,7 +1040,7 @@ export default function DashboardPage() {
             <div>
               <h2 className="card-title">Order status</h2>
               <p className="card-description">
-                Orders created in the selected period.
+                Current status of orders created in the selected period.
               </p>
             </div>
 
@@ -1168,7 +1230,7 @@ export default function DashboardPage() {
             <div>
               <h2 className="card-title">Custom orders</h2>
               <p className="card-description">
-                Blueprint orders created in the selected period.
+                Current status of blueprint orders created in the selected period.
               </p>
             </div>
 
@@ -1245,7 +1307,7 @@ export default function DashboardPage() {
             <div>
               <h2 className="card-title">Top products</h2>
               <p className="card-description">
-                Best-selling products by units sold.
+                Best-selling standard products from verified sales in the selected period.
               </p>
             </div>
           </div>
@@ -1311,7 +1373,7 @@ export default function DashboardPage() {
               <tbody>
                 {recentOrders.slice(0, 8).map((order) => (
                   <tr key={order.id}>
-                    <td className="dash-strong">#{order.id}</td>
+                    <td className="dash-strong">{order.order_number || `#${order.id}`}</td>
                     <td>{order.customer_name || "Walk-in"}</td>
                     <td className="dash-amount">
                       {peso.format(Number(order.total_amount || 0))}
@@ -1384,6 +1446,13 @@ const dashboardCss = `
     display: flex;
     align-items: flex-end;
     gap: 10px;
+  }
+
+  .dash-period-scope-note {
+    margin-top: -4px;
+    color: #71717a;
+    font-size: 11.5px;
+    line-height: 1.45;
   }
 
   .dash-field {

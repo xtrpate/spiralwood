@@ -11,23 +11,20 @@ exports.getAllInventory = async (req, res) => {
         p.id,
         p.barcode,
         p.name,
-        p.description,
-        p.image_url,
-        p.walkin_price,
-        p.online_price,
-        p.production_cost,
         COALESCE(rmds.quantity, 0) AS stock,
         CASE
           WHEN COALESCE(rmds.quantity, 0) <= 0 THEN 'out_of_stock'
           WHEN COALESCE(rmds.quantity, 0) <= COALESCE(p.reorder_point, 0) THEN 'low_stock'
           ELSE 'in_stock'
         END AS stock_status,
-        p.reorder_point,
+        COALESCE(p.reorder_point, 0) AS reorder_point,
         p.type,
         c.name AS category
       FROM products p
       LEFT JOIN categories c ON c.id = p.category_id
       LEFT JOIN ready_made_display_stock rmds ON rmds.product_id = p.id
+      WHERE p.type = 'standard'
+        AND COALESCE(p.is_active, 0) = 1
       ORDER BY
         CASE
           WHEN COALESCE(rmds.quantity, 0) <= 0 THEN 3

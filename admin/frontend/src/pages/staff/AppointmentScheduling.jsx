@@ -743,6 +743,7 @@ export default function AppointmentScheduling() {
 
   const [loading, setLoading] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState(null);
+  const [appointmentsLoadError, setAppointmentsLoadError] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -804,9 +805,16 @@ export default function AppointmentScheduling() {
   );
 
   const fetchAppointments = useCallback(async () => {
+    setAppointmentsLoadError("");
+
     try {
       const res = await api.get("/pos/appointments");
-      const list = Array.isArray(res.data) ? res.data : [];
+
+      if (!Array.isArray(res.data)) {
+        throw new Error("Invalid appointments response.");
+      }
+
+      const list = res.data;
 
       setAppointments(list);
       setAssignmentDrafts((prev) => {
@@ -825,6 +833,9 @@ export default function AppointmentScheduling() {
     } catch (err) {
       console.error("Failed to fetch appointments:", err);
       setAppointments([]);
+      setAppointmentsLoadError(
+        "Unable to load appointments. Please try again.",
+      );
     }
   }, []);
 
@@ -1141,6 +1152,15 @@ export default function AppointmentScheduling() {
       hint: "Completed and cancelled records",
     },
   ];
+
+  const staffEmptyMessage =
+    {
+      assigned: "No assigned appointments.",
+      in_progress: "No appointments in progress.",
+      completed: "No completed appointments.",
+      cancelled: "No cancelled appointments.",
+      all: "No appointments found.",
+    }[staffAppointmentTab] || "No appointments found.";
 
   const weekDays = Array.from({ length: 7 }).map((_, i) => {
     const d = new Date(weekStart);
@@ -3028,6 +3048,40 @@ export default function AppointmentScheduling() {
             })}
           </div>
 
+          {appointmentsLoadError ? (
+            <div
+              role="alert"
+              style={{
+                marginBottom: 14,
+                padding: "10px 12px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                border: "1px solid #d8a3a3",
+                borderRadius: 0,
+                background: "#ffffff",
+                color: "#991b1b",
+                fontSize: 10.5,
+                fontWeight: 550,
+              }}
+            >
+              <span>{appointmentsLoadError}</span>
+              <button
+                type="button"
+                style={{
+                  ...btnGhost,
+                  minHeight: 30,
+                  padding: "5px 10px",
+                  flex: "0 0 auto",
+                }}
+                onClick={fetchAppointments}
+              >
+                Retry
+              </button>
+            </div>
+          ) : null}
+
           {error ? (
             <div
               style={{
@@ -3086,8 +3140,12 @@ export default function AppointmentScheduling() {
                       : "All appointments assigned to you."
             }
           >
-            {staffFilteredAppointments.length === 0 ? (
-              <div style={indoorEmptyStyle}>No active appointments.</div>
+            {appointmentsLoadError ? (
+              <div style={indoorEmptyStyle}>
+                Appointment data is unavailable until retry succeeds.
+              </div>
+            ) : staffFilteredAppointments.length === 0 ? (
+              <div style={indoorEmptyStyle}>{staffEmptyMessage}</div>
             ) : (
               <div style={indoorAppointmentListStyle}>
                 {staffFilteredAppointments.map((a) => {
