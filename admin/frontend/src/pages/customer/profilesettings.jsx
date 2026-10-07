@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from "react";
-// 👉 FIX: Removed raw axios, imported your authenticated api
 import api, { buildAssetUrl } from "../../services/api";
 import {
   User,
@@ -1220,7 +1219,7 @@ export default function ProfileSettings() {
                   className="edit-toggle"
                   onClick={() => setEditName(true)}
                 >
-                  <Pencil size={13} /> Edit
+                  Edit
                 </button>
               )}
             </div>
@@ -1381,7 +1380,7 @@ export default function ProfileSettings() {
                   className="edit-toggle"
                   onClick={() => setEditAddress(true)}
                 >
-                  <Pencil size={13} /> Edit
+                  Edit
                 </button>
               )}
             </div>
@@ -1525,7 +1524,7 @@ export default function ProfileSettings() {
                   className="edit-toggle"
                   onClick={() => setEditEmail(true)}
                 >
-                  <Pencil size={13} /> Change
+                  Change
                 </button>
               )}
             </div>
@@ -1777,7 +1776,7 @@ export default function ProfileSettings() {
                 </div>
               ) : (
                 <div className="verify-step">
-                  <h4>📧 Verify New Email</h4>
+                  <h4>Verify New Email</h4>
                   <p>
                     We sent a 6-digit OTP to <strong>{newEmail}</strong>. Enter
                     it below to confirm and save.
@@ -1843,13 +1842,7 @@ export default function ProfileSettings() {
                         emailLoading || newEmailOtp.length !== OTP_LENGTH
                       }
                     >
-                      {emailLoading ? (
-                        "Verifying…"
-                      ) : (
-                        <>
-                          <ShieldCheck size={14} /> Verify & Save
-                        </>
-                      )}
+                      {emailLoading ? "Verifying…" : <>Verify & Save</>}
                     </button>
                     <button
                       className="btn btn-secondary"
@@ -2223,7 +2216,7 @@ export default function ProfileSettings() {
               ) : (
                 /* STEP 4: VERIFY NEW NUMBER */
                 <div className="verify-step">
-                  <h4>📱 Verify New Phone Number</h4>
+                  <h4>Verify New Phone Number</h4>
                   <p>
                     We sent a 6-digit verification code to{" "}
                     <strong>
@@ -2296,10 +2289,7 @@ export default function ProfileSettings() {
                       {phoneLoading ? (
                         "Verifying…"
                       ) : (
-                        <>
-                          {" "}
-                          <ShieldCheck size={14} /> Verify & Update Phone{" "}
-                        </>
+                        <> Verify & Update Phone </>
                       )}
                     </button>
                     <button
@@ -2326,7 +2316,7 @@ export default function ProfileSettings() {
                   className="edit-toggle"
                   onClick={() => setEditPass(true)}
                 >
-                  <Pencil size={13} /> Change
+                  Change
                 </button>
               )}
             </div>
@@ -2449,7 +2439,7 @@ export default function ProfileSettings() {
                 </div>
               ) : passStep === 2 ? (
                 <div className="verify-step">
-                  <h4>📧 Verify Email OTP</h4>
+                  <h4>Verify Email OTP</h4>
                   <p>
                     We sent a 6-digit OTP to <strong>{user?.email}</strong>.
                     Enter it below to proceed.
@@ -2540,7 +2530,7 @@ export default function ProfileSettings() {
                 </div>
               ) : (
                 <div className="verify-step">
-                  <h4>🔒 Create New Password</h4>
+                  <h4>Create New Password</h4>
                   <p>Enter and confirm your new password below.</p>
 
                   <div className="profile-form" style={{ marginTop: "16px" }}>
@@ -2659,13 +2649,7 @@ export default function ProfileSettings() {
                         passLoading || !passForm.newPass || !passForm.confirm
                       }
                     >
-                      {passLoading ? (
-                        "Saving…"
-                      ) : (
-                        <>
-                          <ShieldCheck size={14} /> Save New Password
-                        </>
-                      )}
+                      {passLoading ? "Saving…" : <>Save New Password</>}
                     </button>
                     <button
                       className="btn btn-secondary"
