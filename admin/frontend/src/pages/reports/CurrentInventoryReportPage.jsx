@@ -265,6 +265,8 @@ function EmptyRow({ colSpan, text }) {
 
 export default function CurrentInventoryReportPage() {
   const { user } = useAuthStore();
+  const hasPermission = useAuthStore((state) => state.hasPermission);
+  const canExport = hasPermission("stock_movements.export");
   const [searchParams, setSearchParams] = useSearchParams();
   const todayManila = getManilaDateInput();
 
@@ -282,9 +284,7 @@ export default function CurrentInventoryReportPage() {
   const reportRequestIdRef = useRef(0);
   const hasLoadedReportRef = useRef(false);
 
-  const [dateFilter, setDateFilter] = useState("all");
-  const [customStart, setCustomStart] = useState("");
-  const [customEnd, setCustomEnd] = useState("");
+  const [reportDate, setReportDate] = useState(todayManila);
   const [search, setSearch] = useState("");
   const [stockStatus, setStockStatus] = useState("");
 
@@ -313,28 +313,26 @@ export default function CurrentInventoryReportPage() {
 
     setError("");
 
-    if (dateFilter === "custom") {
-      const validationError = validateCustomDateRange(
-        customStart,
-        customEnd,
-        todayManila,
-      );
+    const validationError = validateReportDate(
+      reportDate,
+      todayManila,
+      "Report date",
+    );
 
-      if (validationError) {
-        setError(validationError);
+    if (validationError) {
+      setError(validationError);
 
-        if (!hasLoadedReportRef.current) {
-          setRawMaterials([]);
-          setReadyMade([]);
-          setGeneratedAt("");
-          setWarnings([]);
-          setReportMeta(null);
-        }
-
-        setLoading(false);
-        setSilentLoading(false);
-        return;
+      if (!hasLoadedReportRef.current) {
+        setRawMaterials([]);
+        setReadyMade([]);
+        setGeneratedAt("");
+        setWarnings([]);
+        setReportMeta(null);
       }
+
+      setLoading(false);
+      setSilentLoading(false);
+      return;
     }
 
     if (isSilentReload) {
@@ -344,14 +342,11 @@ export default function CurrentInventoryReportPage() {
     }
 
     try {
-      const params = { date_filter: dateFilter };
-
-      if (dateFilter === "custom") {
-        params.from = customStart;
-        params.to = customEnd;
-      }
-
-      const response = await api.get("/inventory/report", { params });
+      const response = await api.get("/inventory/report", {
+        params: {
+          date: reportDate,
+        },
+      });
 
       if (requestId !== reportRequestIdRef.current) {
         return;
@@ -378,10 +373,11 @@ export default function CurrentInventoryReportPage() {
         as_of_at: response.data?.as_of_at || "",
         is_current_date: Boolean(response.data?.is_current_date),
         history_complete: response.data?.history_complete !== false,
-        scope: response.data?.scope || "Currently active inventory records.",
+        scope:
+          response.data?.scope ||
+          "Inventory records that existed by the selected report date.",
       });
 
-      // Only mark the report as loaded after a successful request.
       hasLoadedReportRef.current = true;
     } catch (err) {
       if (requestId !== reportRequestIdRef.current) {
@@ -394,7 +390,6 @@ export default function CurrentInventoryReportPage() {
           "Failed to load the Inventory report.",
       );
 
-      // Preserve the previously loaded report during silent refresh failures.
       if (!hasLoadedReportRef.current) {
         setRawMaterials([]);
         setReadyMade([]);
@@ -410,18 +405,15 @@ export default function CurrentInventoryReportPage() {
       setLoading(false);
       setSilentLoading(false);
     }
-  }, [dateFilter, customStart, customEnd, todayManila]);
+  }, [reportDate, todayManila]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
 
   useEffect(() => {
-    if (dateFilter === "custom" && (!customStart || !customEnd)) {
-      return;
-    }
     loadReport();
-  }, [dateFilter, customStart, customEnd, loadReport]);
+  }, [reportDate, loadReport]);
 
   const normalizedSearch = normalize(search);
 
@@ -506,12 +498,15 @@ export default function CurrentInventoryReportPage() {
   const clearFilters = () => {
     setSearch("");
     setStockStatus("");
-    setDateFilter("all");
-    setCustomStart("");
-    setCustomEnd("");
+    setReportDate(todayManila);
   };
 
   const exportExcel = async () => {
+    if (!canExport) {
+      toast.error("You do not have permission to export the Inventory report.");
+      return;
+    }
+
     if (!generatedAt || loading) return;
 
     if (filteredRaw.length === 0 && filteredReadyMade.length === 0) {
@@ -594,40 +589,25 @@ export default function CurrentInventoryReportPage() {
 
       const searchLabel = search.trim() || "None";
 
-      const dateFilterLabel =
-        dateFilter === "all"
-          ? "All Time"
-          : dateFilter === "today"
-            ? "Today"
-            : dateFilter === "yesterday"
-              ? "Yesterday"
-              : dateFilter === "this_week"
-                ? "This Week"
-                : dateFilter === "this_month"
-                  ? "This Month"
-                  : dateFilter === "this_year"
-                    ? "This Year"
-                    : dateFilter === "custom"
-                      ? `${customStart || "—"} to ${customEnd || "—"}`
-                      : humanize(dateFilter);
+      const reportDateLabel = formatReportDate(reportDate);
 
       const filterText = [
         `Inventory Type: ${typeLabel}`,
         `Stock Health: ${healthLabel}`,
         `Search: ${searchLabel}`,
-        `Date Filter: ${dateFilterLabel}`,
+        `Report Date: ${reportDateLabel}`,
       ].join("    |    ");
 
       const rawData = [
         [
           {
-            v: "Inventory Report - Raw Materials",
+            v: `Inventory Report - Raw Materials - As of ${reportDateLabel}`,
             s: titleStyle,
           },
         ],
         [
           {
-            v: "Stock position of raw materials based on the current inventory data.",
+            v: `Historical stock position of raw materials as of ${reportDateLabel}.`,
             s: descStyle,
           },
         ],
@@ -686,13 +666,13 @@ export default function CurrentInventoryReportPage() {
       const readyData = [
         [
           {
-            v: "Inventory Report - Ready-made Products",
+            v: `Inventory Report - Ready-made Products - As of ${reportDateLabel}`,
             s: titleStyle,
           },
         ],
         [
           {
-            v: "Stock position of ready-made products based on the current inventory data.",
+            v: `Historical stock position of ready-made products as of ${reportDateLabel}.`,
             s: descStyle,
           },
         ],
@@ -768,25 +748,7 @@ export default function CurrentInventoryReportPage() {
               .replace(/[^a-z0-9]+/g, "_")
               .replace(/^_+|_+$/g, "");
 
-      const dateFilenamePart =
-        dateFilter === "all"
-          ? "all_time"
-          : dateFilter === "today"
-            ? "today"
-            : dateFilter === "yesterday"
-              ? "yesterday"
-              : dateFilter === "this_week"
-                ? "this_week"
-                : dateFilter === "this_month"
-                  ? "this_month"
-                  : dateFilter === "this_year"
-                    ? "this_year"
-                    : dateFilter === "custom"
-                      ? `${customStart || "start"}_to_${customEnd || "end"}`
-                      : humanize(dateFilter)
-                          .toLowerCase()
-                          .replace(/[^a-z0-9]+/g, "_")
-                          .replace(/^_+|_+$/g, "");
+      const dateFilenamePart = `as_of_${reportDate}`;
 
       const exportTimestamp = new Date().getTime();
 
@@ -852,7 +814,13 @@ export default function CurrentInventoryReportPage() {
             type="button"
             className="cir-button cir-button-primary"
             onClick={exportExcel}
-            disabled={loading || silentLoading || !generatedAt || exporting}
+            disabled={
+              loading ||
+              silentLoading ||
+              !generatedAt ||
+              exporting ||
+              !canExport
+            }
           >
             {exporting ? "Exporting..." : "Export Excel"}
           </button>
@@ -861,6 +829,9 @@ export default function CurrentInventoryReportPage() {
 
       <div className="cir-report-meta">
         <span>
+          <strong>Report Date:</strong> {formatReportDate(reportDate)}
+        </span>
+        <span>
           <strong>Generated:</strong> {formatDateTime(generatedAt)}
         </span>
         <span>
@@ -868,7 +839,8 @@ export default function CurrentInventoryReportPage() {
         </span>
         <span>
           <strong>Scope:</strong>{" "}
-          {reportMeta?.scope || "Active inventory records"}
+          {reportMeta?.scope ||
+            "Inventory records that existed by the selected report date."}
         </span>
       </div>
 
@@ -1012,63 +984,16 @@ export default function CurrentInventoryReportPage() {
           </select>
         </label>
 
-        <label className="cir-filter-field" style={{ minWidth: 160 }}>
-          <span>Date Filter</span>
-          <select
-            value={dateFilter}
-            onChange={(e) => {
-              setDateFilter(e.target.value);
-              setCustomStart("");
-              setCustomEnd("");
-            }}
-          >
-            <option value="all">All Time</option>
-            <option value="today">Today</option>
-            <option value="yesterday">Yesterday</option>
-            <option value="this_week">This Week</option>
-            <option value="this_month">This Month</option>
-            <option value="this_year">This Year</option>
-            <option value="custom">Custom Range</option>
-          </select>
+        <label className="cir-filter-field" style={{ minWidth: 170 }}>
+          <span>Report Date</span>
+          <input
+            type="date"
+            value={reportDate}
+            max={todayManila}
+            onChange={(event) => setReportDate(event.target.value)}
+            aria-label="Inventory report date"
+          />
         </label>
-
-        {dateFilter === "custom" && (
-          <>
-            <label
-              className="cir-filter-field"
-              style={{ minWidth: 130, flex: "0 0 auto" }}
-            >
-              <span>Start Date</span>
-              <input
-                type="date"
-                value={customStart}
-                max={todayManila}
-                onChange={(e) => {
-                  const nextStart = e.target.value;
-
-                  setCustomStart(nextStart);
-
-                  if (customEnd && nextStart && nextStart > customEnd) {
-                    setCustomEnd("");
-                  }
-                }}
-              />
-            </label>
-            <label
-              className="cir-filter-field"
-              style={{ minWidth: 130, flex: "0 0 auto" }}
-            >
-              <span>End Date</span>
-              <input
-                type="date"
-                value={customEnd}
-                min={customStart || undefined}
-                max={todayManila}
-                onChange={(e) => setCustomEnd(e.target.value)}
-              />
-            </label>
-          </>
-        )}
       </div>
 
       {error ? <div className="cir-error">{error}</div> : null}
@@ -1090,7 +1015,7 @@ export default function CurrentInventoryReportPage() {
             <SummaryCard
               label="Ready-made Units"
               value={formatQuantity(summary.readyUnits, 0)}
-              note="Finished-product units in the current filtered view"
+              note="Finished-product units as of the selected report date"
             />
             <SummaryCard
               label="Stock Alerts"
@@ -1114,9 +1039,10 @@ export default function CurrentInventoryReportPage() {
                 <div>
                   <h2>Raw Materials</h2>
                   <p>
-                    On Hand is reconstructed physical system stock. Reserved and
-                    Pending Need use recorded Blueprint reservation lifecycle
-                    timestamps. Available is On Hand minus Reserved.
+                    On Hand is reconstructed physical system stock as of the
+                    selected report date. Reserved and Pending Need use recorded
+                    Blueprint reservation lifecycle timestamps. Available is On
+                    Hand minus Reserved.
                   </p>
                 </div>
                 <div className="cir-section-count">
@@ -1209,9 +1135,9 @@ export default function CurrentInventoryReportPage() {
                 <div>
                   <h2>Ready-made Products</h2>
                   <p>
-                    Total Stock is reconstructed company-wide inventory.
-                    Warehouse and Display use recorded internal Stock Transfer
-                    before/after snapshots.
+                    Total Stock is reconstructed company-wide inventory as of
+                    the selected report date. Warehouse and Display use recorded
+                    internal Stock Transfer before/after snapshots.
                   </p>
                 </div>
                 <div className="cir-section-count">

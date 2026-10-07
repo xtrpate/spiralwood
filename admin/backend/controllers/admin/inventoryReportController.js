@@ -209,12 +209,7 @@ async function loadAdjustmentPreviousQuantities(adjustmentIds) {
   return previousByMovement;
 }
 
-async function reconstructOnHand({
-  rows,
-  entityType,
-  cutoffSql,
-  warnings,
-}) {
+async function reconstructOnHand({ rows, entityType, cutoffSql, warnings }) {
   const idField = entityType === "raw" ? "material_id" : "product_id";
   const ids = rows.map((row) => Number(row.id)).filter((id) => id > 0);
   const currentById = new Map(
@@ -251,7 +246,9 @@ async function reconstructOnHand({
     const entityId = Number(movement[idField]);
     if (!currentById.has(entityId) || !completeById.get(entityId)) continue;
 
-    const type = String(movement.type || "").trim().toLowerCase();
+    const type = String(movement.type || "")
+      .trim()
+      .toLowerCase();
     const quantity = normalizeQuantity(movement.quantity);
     const current = currentById.get(entityId);
 
@@ -306,16 +303,25 @@ async function reconstructOnHand({
 
 async function reconstructDisplayStock({ products, cutoffSql, warnings }) {
   const ids = products.map((row) => Number(row.id)).filter((id) => id > 0);
+
   const displayById = new Map(
     products.map((row) => [
       Number(row.id),
-      normalizeQuantity(row.display_stock) ?? 0,
+      normalizeQuantity(row.display_stock),
     ]),
   );
 
-  if (ids.length === 0) return displayById;
+  const completeById = new Map(ids.map((id) => [id, true]));
+
+  if (ids.length === 0) {
+    return {
+      displayById,
+      completeById,
+    };
+  }
 
   const inClause = placeholders(ids);
+
   const [transferRows] = await pool.query(
     `SELECT
        sti.id,
@@ -335,26 +341,34 @@ async function reconstructDisplayStock({ products, cutoffSql, warnings }) {
     const productId = Number(row.product_id);
     const before = normalizeQuantity(row.display_before);
 
-    if (!displayById.has(productId) || before === null) {
+    if (!displayById.has(productId)) {
+      continue;
+    }
+
+    if (before === null) {
+      completeById.set(productId, false);
+      displayById.set(productId, null);
+
       warnings.push(
-        `Display allocation history is incomplete for ready-made product #${productId}.`,
+        `Display allocation history is incomplete for ready-made product #${productId}. Historical Display and Warehouse stock cannot be reconstructed safely.`,
       );
+
       continue;
     }
 
     displayById.set(productId, Math.max(0, before));
   }
 
-  return displayById;
+  return {
+    displayById,
+    completeById,
+  };
 }
 
 async function getHistoricalReservationSummary(materialIds, cutoffSql) {
   const ids = materialIds.map(Number).filter((id) => id > 0);
   const summaryByMaterial = new Map(
-    ids.map((id) => [
-      id,
-      { reserved_quantity: 0, pending_need_quantity: 0 },
-    ]),
+    ids.map((id) => [id, { reserved_quantity: 0, pending_need_quantity: 0 }]),
   );
 
   if (ids.length === 0) return summaryByMaterial;
@@ -465,8 +479,7 @@ exports.getInventoryReport = async (req, res) => {
        FROM raw_materials rm
        LEFT JOIN suppliers s ON s.id = rm.supplier_id
        LEFT JOIN categories c ON c.id = rm.category_id
-       WHERE rm.is_active = 1
-         AND rm.created_at < ?
+              WHERE rm.created_at < ?
        ORDER BY rm.created_at ASC, rm.id ASC`,
       [clock.cutoffSql],
     );
@@ -483,8 +496,7 @@ exports.getInventoryReport = async (req, res) => {
          COALESCE(ds.quantity, 0) AS display_stock
        FROM products p
        LEFT JOIN ready_made_display_stock ds ON ds.product_id = p.id
-       WHERE LOWER(COALESCE(p.type, 'standard')) = 'standard'
-         AND p.is_active = 1
+            WHERE LOWER(COALESCE(p.type, 'standard')) = 'standard'
          AND p.created_at < ?
        ORDER BY p.name ASC, p.id ASC`,
       [clock.cutoffSql],
@@ -502,21 +514,21 @@ exports.getInventoryReport = async (req, res) => {
       cutoffSql: clock.cutoffSql,
       warnings,
     });
-    const displayByProduct = await reconstructDisplayStock({
+    const displayReconstruction = await reconstructDisplayStock({
       products: productRows,
       cutoffSql: clock.cutoffSql,
       warnings,
     });
+
+    const displayByProduct = displayReconstruction.displayById;
+    const displayCompleteByProduct = displayReconstruction.completeById;
 
     const rawIds = rawRows.map((row) => Number(row.id));
     const reservationByMaterial = await getHistoricalReservationSummary(
       rawIds,
       clock.cutoffSql,
     );
-    const usageByMaterial = await getRawUsage30Days(
-      rawIds,
-      clock.cutoffSql,
-    );
+    const usageByMaterial = await getRawUsage30Days(rawIds, clock.cutoffSql);
 
     const raw_materials = rawRows.map((row) => {
       const materialId = Number(row.id);
@@ -564,20 +576,31 @@ exports.getInventoryReport = async (req, res) => {
     const ready_made = productRows.map((row) => {
       const productId = Number(row.id);
       const total = productReconstruction.quantityById.get(productId);
-      let display = displayByProduct.get(productId) ?? 0;
+      let display = displayByProduct.get(productId);
 
-      if (total !== null && display > total + EPSILON) {
+      const displayHistoryComplete =
+        displayCompleteByProduct.get(productId) !== false;
+
+      if (!displayHistoryComplete) {
+        display = null;
+      }
+
+      if (total !== null && display !== null && display > total + EPSILON) {
         warnings.push(
           `Ready-made product #${productId} has historical Display stock above historical Total stock. The location allocation needs review.`,
         );
+
+        display = null;
       }
 
-      if (total !== null) {
+      if (total !== null && display !== null) {
         display = Math.min(Math.max(0, display), Math.max(0, total));
       }
 
       const warehouse =
-        total === null ? null : Math.max(0, normalizeQuantity(total - display));
+        total === null || display === null
+          ? null
+          : Math.max(0, normalizeQuantity(total - display));
 
       return {
         id: row.id,
@@ -585,11 +608,12 @@ exports.getInventoryReport = async (req, res) => {
         barcode: row.barcode,
         reorder_point: row.reorder_point,
         total_stock: total,
-        display_stock: total === null ? null : display,
+        display_stock: display,
         warehouse_stock: warehouse,
         stock_status: computeReadyHealth(total, row.reorder_point),
         history_complete:
-          productReconstruction.completeById.get(productId) !== false,
+          productReconstruction.completeById.get(productId) !== false &&
+          displayHistoryComplete,
       };
     });
 
@@ -603,7 +627,7 @@ exports.getInventoryReport = async (req, res) => {
       history_complete: dedupedWarnings.length === 0,
       warnings: dedupedWarnings,
       scope:
-        "Currently active inventory records that already existed by the selected report date.",
+        "Inventory records that already existed by the selected report date. Historical stock quantities are reconstructed from recorded inventory movement, adjustment, reservation, and transfer history.",
       raw_materials,
       ready_made,
     });
