@@ -285,6 +285,13 @@ const toCustomerPartTitle = (value = "") =>
     .replace(/\b\w/g, (match) => match.toUpperCase());
 
 const getCustomerPartGroupLabel = (component = {}) => {
+  const type = String(component?.type || "")
+    .trim()
+    .toLowerCase();
+  const role = String(component?.partRole ?? component?.part_role ?? "")
+    .trim()
+    .toLowerCase();
+
   const text = [
     component?.type,
     component?.label,
@@ -301,9 +308,22 @@ const getCustomerPartGroupLabel = (component = {}) => {
     .trim()
     .toLowerCase();
 
-  if (!text) return "Other Parts";
+  if (!text && !type && !role) return "Other Parts";
+
+  // Strong structural metadata wins over descriptive labels. A fixed shelf
+  // named "Drawer Chest Top" must remain a shelf in Customer Customize.
+  const isHardware =
+    role.includes("handle") ||
+    role.includes("hardware") ||
+    role.includes("knob") ||
+    role.includes("pull") ||
+    type.includes("handle") ||
+    type.includes("hardware") ||
+    type.includes("knob") ||
+    type.includes("pull");
 
   if (
+    isHardware ||
     text.includes("handle") ||
     text.includes("knob") ||
     text.includes("hardware") ||
@@ -312,6 +332,32 @@ const getCustomerPartGroupLabel = (component = {}) => {
     return "Handles & Hardware";
   }
 
+  const isShelf =
+    role === "shelf" ||
+    role.endsWith("_shelf") ||
+    type === "wr_shelf" ||
+    type === "wr_top_shelf" ||
+    type.endsWith("_shelf");
+
+  if (isShelf) return "Shelves";
+
+  const isDrawer =
+    role.startsWith("drawer_") ||
+    type === "drawer_front_panel" ||
+    type.startsWith("wr_drawer_") ||
+    type.startsWith("drawer_");
+
+  if (isDrawer) return "Drawers";
+
+  const isDoor =
+    role.startsWith("door_") ||
+    role === "door" ||
+    type === "wr_door" ||
+    type.startsWith("door_");
+
+  if (isDoor) return "Doors";
+
+  // Legacy fallback for older parts that do not have reliable role/type metadata.
   if (/(^|[\s_-])drawer([\s_-]|$)/.test(text) || text.includes("drw")) {
     return "Drawers";
   }
@@ -844,6 +890,89 @@ const buildCustomerDrawerPreviewSets = (items = []) => {
     .filter((set) => set.movableMembers.length > 0 && set.reference);
 };
 
+const isCustomerEditHardwareComponent = (component = {}) => {
+  const text = [
+    component?.type,
+    component?.label,
+    component?.name,
+    component?.partRole,
+    component?.part_role,
+    component?.partCode,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim()
+    .toLowerCase();
+
+  return /(^|[\s_-])(handle|knob|hardware|pull|slide|runner)([\s_-]|$)/.test(
+    text,
+  );
+};
+
+const getCustomerDrawerEditLabel = (reference = {}) => {
+  const rawLabel = String(reference?.label || reference?.name || "").trim();
+  const cleaned = rawLabel
+    .replace(
+      /\s+(front|left\s+side|right\s+side|side|back|bottom|handle)$/i,
+      "",
+    )
+    .trim();
+
+  return cleaned || "Drawer";
+};
+
+const buildCustomerEditGroups = (items = []) => {
+  const source = Array.isArray(items) ? items.filter(Boolean) : [];
+  const drawerGroupByMemberId = new Map();
+
+  buildCustomerDrawerPreviewSets(source).forEach((set) => {
+    const editableMembers = (set?.movableMembers || []).filter(
+      (item) => !isCustomerEditHardwareComponent(item),
+    );
+
+    if (editableMembers.length < 2) return;
+
+    const group = {
+      key: `drawer:${set.key}`,
+      label: getCustomerDrawerEditLabel(set.reference),
+      ids: editableMembers.map((item) => item.id),
+      kind: "drawer",
+    };
+
+    editableMembers.forEach((item) => {
+      drawerGroupByMemberId.set(item.id, group);
+    });
+  });
+
+  const emittedGroups = new Set();
+  const groups = [];
+
+  source.forEach((component) => {
+    if (!component?.id) return;
+
+    const drawerGroup = drawerGroupByMemberId.get(component.id);
+
+    if (drawerGroup) {
+      if (!emittedGroups.has(drawerGroup.key)) {
+        emittedGroups.add(drawerGroup.key);
+        groups.push(drawerGroup);
+      }
+      return;
+    }
+
+    groups.push({
+      key: `part:${component.id}`,
+      label:
+        String(component?.label || component?.name || "").trim() ||
+        getCustomerPartGroupLabel(component),
+      ids: [component.id],
+      kind: "part",
+    });
+  });
+
+  return groups;
+};
+
 const MAX_CUSTOM_QUANTITY = 100;
 
 export default function Customer3DViewer({
@@ -1085,6 +1214,11 @@ export default function Customer3DViewer({
     });
   }, [components]);
 
+  const editGroups = useMemo(
+    () => buildCustomerEditGroups(components),
+    [components],
+  );
+
   const pushHistorySnapshot = useCallback((snapshot) => {
     historyRef.current.past.push(cloneDeep(snapshot));
     if (historyRef.current.past.length > MAX_HISTORY) {
@@ -1239,6 +1373,19 @@ export default function Customer3DViewer({
   }, [components, selectedCompIds]);
 
   const sampleSelectedPart = selectedGroup[0] || null;
+  const selectedEditGroup = useMemo(
+    () =>
+      editGroups.find((group) =>
+        group.ids.some((id) => selectedCompIds.includes(id)),
+      ) || null,
+    [editGroups, selectedCompIds],
+  );
+  const canResizeSelectedPart =
+    selectedGroup.length === 1 &&
+    Boolean(sampleSelectedPart) &&
+    !Boolean(sampleSelectedPart?.locked) &&
+    !isCustomerEditHardwareComponent(sampleSelectedPart);
+
   const selectedPartGroup = useMemo(
     () =>
       partGroups.find((group) =>
@@ -1616,7 +1763,7 @@ export default function Customer3DViewer({
       startY = e.clientY;
     };
     const onPointerUp = (event) => {
-      if (readOnly) return;
+      if (readOnly || !selectionMode) return;
 
       const dragDist = Math.hypot(
         event.clientX - startX,
@@ -1641,11 +1788,11 @@ export default function Customer3DViewer({
           const clickedId = obj.userData.id;
           const target = components.find((c) => c.id === clickedId);
           if (target) {
-            const semanticGroup = partGroups.find((group) =>
+            const editGroup = editGroups.find((group) =>
               group.ids.includes(clickedId),
             );
             setSelectedCompIds(
-              semanticGroup?.ids?.length ? semanticGroup.ids : [clickedId],
+              editGroup?.ids?.length ? editGroup.ids : [clickedId],
             );
           }
         }
@@ -1665,7 +1812,7 @@ export default function Customer3DViewer({
     selectionMode,
     readOnly,
     components,
-    partGroups,
+    editGroups,
     doorsPreviewOpen,
     drawersPreviewOpen,
   ]);
@@ -3518,7 +3665,14 @@ export default function Customer3DViewer({
   };
 
   const commitPartDimension = (axis, rawUnitValue) => {
-    if (!isCustomizable || readOnly || !selectedGroup.length) return;
+    if (
+      !isCustomizable ||
+      readOnly ||
+      !selectedGroup.length ||
+      !canResizeSelectedPart
+    ) {
+      return;
+    }
 
     const parsedMmValue = convertUnitToMm(rawUnitValue, unit);
     const currentValueMm = Number(sampleSelectedPart?.[axis] || 0);
@@ -4738,7 +4892,7 @@ export default function Customer3DViewer({
                       value={
                         selectedCompIds.length
                           ? String(
-                              partGroups.findIndex((group) =>
+                              editGroups.findIndex((group) =>
                                 group.ids.some((id) =>
                                   selectedCompIds.includes(id),
                                 ),
@@ -4753,7 +4907,7 @@ export default function Customer3DViewer({
                           return;
                         }
 
-                        const group = partGroups[index];
+                        const group = editGroups[index];
                         setSelectedCompIds(group?.ids || []);
                         if (group?.ids?.length) {
                           showCustomizeFeedback("Furniture part selected.");
@@ -4762,7 +4916,7 @@ export default function Customer3DViewer({
                       style={styles.partGroupSelect}
                     >
                       <option value="">Choose a furniture part</option>
-                      {partGroups.map((group, index) => (
+                      {editGroups.map((group, index) => (
                         <option key={`${group.label}_${index}`} value={index}>
                           {group.label} ({group.ids.length})
                         </option>
@@ -4788,7 +4942,12 @@ export default function Customer3DViewer({
                 >
                   <div style={styles.sectionRow}>
                     <label style={styles.label}>
-                      Selected Parts: {selectedGroup.length}
+                      {selectedEditGroup?.label ||
+                        sampleSelectedPart?.label ||
+                        "Selected Part"}
+                      {selectedGroup.length > 1
+                        ? ` (${selectedGroup.length} parts)`
+                        : ""}
                     </label>
 
                     <button
@@ -4800,6 +4959,16 @@ export default function Customer3DViewer({
                     </button>
                   </div>
 
+                  {!canResizeSelectedPart ? (
+                    <div style={styles.helperTextMuted}>
+                      {selectedEditGroup?.kind === "drawer"
+                        ? "Drawer selected. Raw board dimensions are protected until drawer opening limits are applied."
+                        : sampleSelectedPart?.locked
+                          ? "This part is locked and cannot be resized."
+                          : "This selection cannot be resized as one raw group."}
+                    </div>
+                  ) : null}
+
                   <div
                     className="wisdom-size-grid"
                     style={styles.dimensionGrid}
@@ -4810,6 +4979,7 @@ export default function Customer3DViewer({
                       </span>
                       <input
                         type="number"
+                        disabled={!canResizeSelectedPart}
                         value={partDrafts.width}
                         onChange={(e) => {
                           const value = e.target.value;
@@ -4863,6 +5033,7 @@ export default function Customer3DViewer({
                       </span>
                       <input
                         type="number"
+                        disabled={!canResizeSelectedPart}
                         value={partDrafts.height}
                         onChange={(e) => {
                           const value = e.target.value;
@@ -4916,6 +5087,7 @@ export default function Customer3DViewer({
                       </span>
                       <input
                         type="number"
+                        disabled={!canResizeSelectedPart}
                         value={partDrafts.depth}
                         onChange={(e) => {
                           const value = e.target.value;
