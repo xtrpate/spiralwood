@@ -2,6 +2,9 @@
 
 const crypto = require("crypto");
 const db = require("../../config/db");
+const {
+  retrieveCheckoutSession,
+} = require("../../services/paymongoService");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const {
   emitOrderStatusUpdate,
@@ -31,6 +34,10 @@ const {
   parseDecimalToCentsStrict,
   centsToDecimalString,
 } = require("../../utils/paymentAmounts");
+const {
+  resolvePaymongoReceiptMethod,
+  resolvePaymongoReceiptMethodFromSession,
+} = require("../../utils/paymongoReceiptChannel");
 
 const WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = 5 * 60;
 
@@ -337,6 +344,8 @@ const extractBlueprintWebhookPaidAmount = (session) => {
     ok: true,
     reason: null,
     paidCents,
+    paymentMethodSnapshot:
+      resolvePaymongoReceiptMethod(successfulPayment),
   };
 };
 
@@ -636,6 +645,7 @@ const processBlueprintPayMongoWebhook = async (
   const paymentPurpose = purposeResult.purpose;
 
   let paymentAmountCents = null;
+  let paymentMethodSnapshot = "paymongo";
 
   if (paymentPurpose === "initial_payment") {
     /*
@@ -724,6 +734,8 @@ const processBlueprintPayMongoWebhook = async (
     }
 
     paymentAmountCents = analysis.paidCents;
+    paymentMethodSnapshot =
+      analysis.paymentMethodSnapshot || "paymongo";
   } else {
     /*
      * Remaining balance:
@@ -772,6 +784,8 @@ const processBlueprintPayMongoWebhook = async (
     }
 
     paymentAmountCents = remainingCents;
+    paymentMethodSnapshot =
+      providerResult.paymentMethodSnapshot || "paymongo";
   }
 
   if (!Number.isSafeInteger(paymentAmountCents) || paymentAmountCents <= 0) {
@@ -890,11 +904,17 @@ const processBlueprintPayMongoWebhook = async (
     oldOrderStatus,
     amountCents: paymentAmountCents,
     paymentPurpose,
+    paymentMethodSnapshot,
     providerSessionPresent: true,
   };
 };
 
-const createReceiptIfNeeded = async (conn, order, paymentTransactionId) => {
+const createReceiptIfNeeded = async (
+  conn,
+  order,
+  paymentTransactionId,
+  paymentMethodSnapshot = "paymongo",
+) => {
   const [[existingReceipt]] = await conn.query(
     `SELECT id
      FROM receipts
@@ -927,6 +947,7 @@ const createReceiptIfNeeded = async (conn, order, paymentTransactionId) => {
     issuedBy: order.customer_id,
     totalAmount: Number(order.total || 0),
     providerReference: order.paymongo_session_id || null,
+    paymentMethodSnapshot,
     itemsSnapshot: JSON.stringify(items || []),
   });
 
@@ -1029,6 +1050,51 @@ exports.handlePaymongoWebhook = async (req, res) => {
     const metadata = session?.attributes?.metadata || {};
 
     const metadataOrderId = Number(metadata?.order_id);
+
+    /*
+     * Receipt-channel enrichment only.
+     *
+     * PayMongo's authenticated Checkout Session retrieval includes the
+     * payments array, including each paid Payment's source.type. Webhook
+     * payloads can arrive without enough source detail for a customer-facing
+     * receipt label, which previously caused a confirmed GCash checkout to be
+     * stored as generic "paymongo" / displayed as "Online Payment".
+     *
+     * IMPORTANT:
+     * - The original signed webhook payload remains the source for the
+     *   existing amount/status/payment verification logic below.
+     * - Retrieval failure does NOT reject or roll back a legitimate payment.
+     * - Unknown/missing channel safely stays "paymongo".
+     */
+    let receiptPaymentMethodSnapshot =
+      resolvePaymongoReceiptMethodFromSession(session);
+
+    if (
+      eventType === "checkout_session.payment.paid" &&
+      /^cs_[A-Za-z0-9]+$/.test(sessionId)
+    ) {
+      try {
+        const retrievedSession = await retrieveCheckoutSession(
+          sessionId,
+          { timeoutMs: 10000 },
+        );
+
+        if (
+          String(retrievedSession?.id || "").trim() === sessionId
+        ) {
+          const retrievedMethod =
+            resolvePaymongoReceiptMethodFromSession(retrievedSession);
+
+          if (retrievedMethod !== "paymongo") {
+            receiptPaymentMethodSnapshot = retrievedMethod;
+          }
+        }
+      } catch {
+        console.warn(
+          "[PayMongo Webhook] Receipt channel enrichment unavailable; using safe fallback.",
+        );
+      }
+    }
 
     if (!sessionId && !metadataOrderId) {
       console.warn(
@@ -1239,6 +1305,10 @@ exports.handlePaymongoWebhook = async (req, res) => {
             orderId: order.id,
             paymentTransactionId: blueprintWebhookResult.paymentTransactionId,
             issuedByUserId: null,
+            paymentMethodSnapshot:
+              receiptPaymentMethodSnapshot !== "paymongo"
+                ? receiptPaymentMethodSnapshot
+                : blueprintWebhookResult.paymentMethodSnapshot || "paymongo",
           },
         );
 
@@ -1348,14 +1418,21 @@ exports.handlePaymongoWebhook = async (req, res) => {
 
       const providerAmountCents = getPaymongoAmountCents(session);
 
-      const providerPaymentId = Array.isArray(session?.attributes?.payments)
-        ? String(
-            session.attributes.payments.find(
+      const successfulProviderPayment =
+        Array.isArray(session?.attributes?.payments)
+          ? session.attributes.payments.find(
               (payment) =>
                 normalizeWebhookValue(payment?.attributes?.status) === "paid",
-            )?.id || "",
-          ).trim() || null
-        : null;
+            ) || null
+          : null;
+
+      const providerPaymentId =
+        String(successfulProviderPayment?.id || "").trim() || null;
+
+      const paymentMethodSnapshot =
+        receiptPaymentMethodSnapshot !== "paymongo"
+          ? receiptPaymentMethodSnapshot
+          : resolvePaymongoReceiptMethod(successfulProviderPayment);
 
       if (!amountsMatchOrderTotal(providerAmountCents, order.total)) {
         await conn.rollback();
@@ -1435,6 +1512,7 @@ exports.handlePaymongoWebhook = async (req, res) => {
         conn,
         order,
         paymentTransaction.id,
+        paymentMethodSnapshot,
       );
 
       await markPaymongoWebhookEventProcessed(conn, eventId);

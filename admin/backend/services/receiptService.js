@@ -40,8 +40,18 @@ const {
   centsToDecimalString,
   centsToAmount,
 } = require("../utils/paymentAmounts");
+const {
+  normalizePaymongoReceiptMethodSnapshot,
+} = require("../utils/paymongoReceiptChannel");
 
-const ALLOWED_PAYMENT_METHOD_SNAPSHOTS = new Set(["cash", "paymongo"]);
+const ALLOWED_PAYMENT_METHOD_SNAPSHOTS = new Set([
+  "cash",
+  "paymongo",
+  "card",
+  "gcash",
+  "paymaya",
+  "qrph",
+]);
 
 const createPosSaleReceipt = async (
   conn,
@@ -54,6 +64,7 @@ const createPosSaleReceipt = async (
     totalAmount,
     cashReceived = null,
     changeAmount = null,
+    providerReference = null,
     itemsSnapshot,
     paymentMethodSnapshot = "cash",
   },
@@ -77,7 +88,11 @@ const createPosSaleReceipt = async (
   if (!itemsSnapshot) {
     throw new Error("createPosSaleReceipt: itemsSnapshot is required.");
   }
-  if (!ALLOWED_PAYMENT_METHOD_SNAPSHOTS.has(paymentMethodSnapshot)) {
+  const normalizedPaymentMethodSnapshot = String(paymentMethodSnapshot || "")
+    .trim()
+    .toLowerCase();
+
+  if (!ALLOWED_PAYMENT_METHOD_SNAPSHOTS.has(normalizedPaymentMethodSnapshot)) {
     throw new Error(
       `createPosSaleReceipt: unsupported paymentMethodSnapshot "${paymentMethodSnapshot}".`,
     );
@@ -88,8 +103,8 @@ const createPosSaleReceipt = async (
     INSERT INTO receipts
       (order_id, payment_transaction_id, receipt_type, receipt_number,
        issued_to, issued_by, total_amount, cash_received, change_amount,
-       payment_method_snapshot, items_snapshot, printed_at)
-    VALUES (?, ?, 'pos_sale', ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+       payment_method_snapshot, provider_reference, items_snapshot, printed_at)
+    VALUES (?, ?, 'pos_sale', ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
     `,
     [
       orderId,
@@ -100,7 +115,8 @@ const createPosSaleReceipt = async (
       totalAmount,
       cashReceived,
       changeAmount,
-      paymentMethodSnapshot,
+      normalizedPaymentMethodSnapshot,
+      providerReference,
       itemsSnapshot,
     ],
   );
@@ -127,6 +143,7 @@ const createStandardOnlineReceipt = async (
     totalAmount,
     itemsSnapshot,
     providerReference = null,
+    paymentMethodSnapshot = "paymongo",
     issuedBy,
   },
 ) => {
@@ -146,6 +163,9 @@ const createStandardOnlineReceipt = async (
     );
   }
 
+  const normalizedPaymentMethodSnapshot =
+    normalizePaymongoReceiptMethodSnapshot(paymentMethodSnapshot);
+
   const [result] = await conn.query(
     `
     INSERT INTO receipts
@@ -155,7 +175,7 @@ const createStandardOnlineReceipt = async (
        amount_paid, total_paid_after, remaining_balance_after,
        provider_reference, items_snapshot, printed_at)
     VALUES (?, ?, 'pos_sale', ?, ?, ?, ?, NULL, NULL,
-            'paymongo', 'full_payment', 0, ?, ?, 0, ?, ?, NOW())
+            ?, 'full_payment', 0, ?, ?, 0, ?, ?, NOW())
     `,
     [
       orderId,
@@ -164,6 +184,7 @@ const createStandardOnlineReceipt = async (
       issuedTo || "Customer",
       issuedBy,
       totalAmount,
+      normalizedPaymentMethodSnapshot,
       totalAmount,
       totalAmount,
       providerReference,

@@ -16,6 +16,9 @@ const {
   centsToDecimalString,
   centsToAmount,
 } = require("../utils/paymentAmounts");
+const {
+  resolvePaymongoReceiptMethod,
+} = require("../utils/paymongoReceiptChannel");
 
 const INITIAL_PAYMENT_REASON = Object.freeze({
   INVALID_TOTAL: "INVALID_TOTAL",
@@ -278,6 +281,7 @@ const readPaymentAttemptState = (attributes) => {
     hasSuccessfulPayment:
       Boolean(successfulPayment) || Boolean(intentSucceeded),
     paidCents,
+    paymentMethodSnapshot: resolvePaymongoReceiptMethod(successfulPayment),
     hasFailedPaymentAttempt,
   };
 };
@@ -450,6 +454,8 @@ const analyzeInitialPayMongoSession = (
     reason: null,
     expectedCents,
     paidCents: paymentAttempt.paidCents,
+    paymentMethodSnapshot:
+      paymentAttempt.paymentMethodSnapshot || "paymongo",
     hasSuccessfulPayment: paymentAttempt.hasSuccessfulPayment,
     hasFailedPaymentAttempt: paymentAttempt.hasFailedPaymentAttempt,
     sessionStatus,

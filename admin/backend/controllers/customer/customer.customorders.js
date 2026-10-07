@@ -4774,6 +4774,8 @@ exports.verifyPayment = async (req, res) => {
       orderId: lockedOrder.id,
       paymentTransactionId: paymentInsertResult.insertId,
       issuedByUserId: req.user.id,
+      paymentMethodSnapshot:
+        providerAnalysis.paymentMethodSnapshot || "paymongo",
     });
 
     await conn.commit();
@@ -7470,6 +7472,8 @@ exports.verifyRemainingBalancePayment = async (req, res) => {
       orderId: order.id,
       paymentTransactionId: insertResult.insertId,
       issuedByUserId: req.user.id,
+      paymentMethodSnapshot:
+        finalProviderAnalysis.paymentMethodSnapshot || "paymongo",
     });
 
     await insertNotificationSafe(conn, order.customer_id, {

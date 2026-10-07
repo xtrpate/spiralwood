@@ -12,6 +12,9 @@ const {
   isNonEmptyString,
 } = require("../utils/validators");
 const { computeSnapshotHash } = require("../utils/posQrRecoveryToken");
+const {
+  resolvePaymongoReceiptMethod,
+} = require("../utils/paymongoReceiptChannel");
 
 const MAX_DECIMAL_10_2_CENTS = 9999999999;
 const MIN_REASONABLE_EPOCH_SECONDS = 946684800;
@@ -278,6 +281,7 @@ const analyzeCheckoutSession = ({
       currency: attrs.currency,
       paidAtDate,
       sessionId: session.id,
+      paymentMethodSnapshot: resolvePaymongoReceiptMethod(payment),
     });
   }
 
@@ -562,7 +566,9 @@ const finalizePaidAttempt = async ({
           quantity: item.quantity,
         })),
       ),
-      paymentMethodSnapshot: "paymongo",
+      paymentMethodSnapshot:
+        matchedPayment.paymentMethodSnapshot || "paymongo",
+      providerReference: attempt.provider_session_id || null,
     });
 
     const [reservationUpdateResult] = await conn.query(

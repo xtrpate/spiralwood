@@ -30,6 +30,9 @@ const {
   createStandardOnlineReceipt,
 } = require("../../services/receiptService");
 const { bindOrderWarrantyPolicy } = require("../../utils/warrantyPolicy");
+const {
+  resolvePaymongoReceiptMethod,
+} = require("../../utils/paymongoReceiptChannel");
 
 /* ── Standard checkout constants ── */
 const ALLOWED_PAYMENT_METHODS = ["cod", "cop", "paymongo"];
@@ -105,6 +108,7 @@ const ensureStandardPaymongoReceipt = async (
   conn,
   order,
   paymentTransactionId,
+  paymentMethodSnapshot = "paymongo",
 ) => {
   const [[existing]] = await conn.query(
     `SELECT id, receipt_number
@@ -139,6 +143,7 @@ const ensureStandardPaymongoReceipt = async (
     issuedBy: order.customer_id,
     totalAmount: Number(order.total || 0),
     providerReference: order.paymongo_session_id || null,
+    paymentMethodSnapshot,
     itemsSnapshot: JSON.stringify(items || []),
   });
 
@@ -1969,6 +1974,9 @@ exports.verifyPayment = async (req, res) => {
       });
     }
 
+    const paymentMethodSnapshot =
+      resolvePaymongoReceiptMethod(successfulPayment);
+
     const providerPaymentId =
       String(successfulPayment?.id || "").trim() || null;
 
@@ -2060,6 +2068,7 @@ exports.verifyPayment = async (req, res) => {
         conn,
         lockedOrder,
         verifiedPayment.id,
+        paymentMethodSnapshot,
       );
 
       await conn.commit();
@@ -2624,6 +2633,7 @@ exports.autoCancelExpiredOrders = async (io = null) => {
     // 2. Loop through and audit each order ONE BY ONE
     for (const order of expiredOrders) {
       let isActuallyPaid = false;
+      let successfulPayment = null;
       let realtimeStatusChanged = false;
       let realtimeStatus = null;
 
@@ -2635,7 +2645,9 @@ exports.autoCancelExpiredOrders = async (io = null) => {
           );
 
           const payments = session.attributes.payments || [];
-          isActuallyPaid = payments.some((p) => p.attributes.status === "paid");
+          successfulPayment =
+            payments.find((p) => p?.attributes?.status === "paid") || null;
+          isActuallyPaid = Boolean(successfulPayment);
         } catch (pmErr) {
           console.error(
             `[Cron] PayMongo check failed for order ${order.order_number}:`,
@@ -2729,6 +2741,7 @@ exports.autoCancelExpiredOrders = async (io = null) => {
             conn,
             lockedOrder,
             verifiedPayment.id,
+            resolvePaymongoReceiptMethod(successfulPayment),
           );
 
           realtimeStatusChanged = true;

@@ -10,6 +10,9 @@ const PAYMENT_METHOD_LABELS = {
   cash: "Cash",
   paymongo: "Online Payment",
   gcash: "GCash",
+  paymaya: "Maya",
+  card: "Card",
+  qrph: "QR Ph",
   bank_transfer: "Bank Transfer",
 };
 
@@ -254,6 +257,11 @@ export default function CustomerBlueprintReceiptPage() {
             <div className="meta-row">
               <span>Payment status</span>
               <span>{receipt.payment_status || "—"}</span>
+            </div>
+
+            <div className="meta-row">
+              <span>Processed by</span>
+              <span>{receipt.processor_display || "—"}</span>
             </div>
 
             {receipt.provider_reference && (

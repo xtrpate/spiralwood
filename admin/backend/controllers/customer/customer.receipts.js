@@ -36,11 +36,20 @@ const normalize = (value) => String(value || "").trim().toLowerCase();
 // Same rules as the staff/cashier payment-history display (Phase 2B) —
 // kept as an independent copy here rather than a shared import, since
 // this file must not create a dependency on staff-only controllers.
-const buildProcessorDisplay = ({ paymentMethod, status, verifierName }) => {
+const buildProcessorDisplay = ({
+  paymentMethod,
+  status,
+  verifierName,
+  providerReference = null,
+}) => {
   const method = normalize(paymentMethod);
   const normalizedStatus = normalize(status);
+  const hasProviderReference =
+    providerReference !== undefined &&
+    providerReference !== null &&
+    String(providerReference).trim() !== "";
 
-  if (method === "paymongo") return "PayMongo / Online Payment";
+  if (method === "paymongo" || hasProviderReference) return "PayMongo";
   if (normalizedStatus === "verified" && verifierName) return verifierName;
   if (normalizedStatus === "pending" && !verifierName) return "Pending verification";
   if (normalizedStatus === "verified" && !verifierName) return "System";
@@ -232,6 +241,7 @@ exports.getReceiptById = async (req, res) => {
       paymentMethod: receipt.payment_method_snapshot,
       status: receipt.payment_status,
       verifierName: receipt.verifier_name,
+      providerReference: receipt.provider_reference,
     });
 
     const remainingBalance = Number(receipt.remaining_balance_after || 0);

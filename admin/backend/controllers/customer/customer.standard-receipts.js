@@ -8,6 +8,102 @@
 
 const db = require("../../config/db");
 const { parseStrictPositiveInt } = require("../../utils/validators");
+const {
+  parseDecimalToCentsStrict,
+  centsToAmount,
+} = require("../../utils/paymentAmounts");
+const {
+  READY_MADE_VAT_RATE,
+  computeReadyMadeVatInclusiveBreakdown,
+} = require("../../utils/readyMadeVat");
+
+const parseImmutableStandardItems = (rawSnapshot) => {
+  try {
+    const parsed = JSON.parse(rawSnapshot || "[]");
+
+    if (Array.isArray(parsed)) return parsed;
+
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      parsed.snapshot_version === 2 &&
+      Array.isArray(parsed.items)
+    ) {
+      return parsed.items;
+    }
+
+    return [];
+  } catch {
+    return [];
+  }
+};
+
+const buildImmutableStandardFinancialSummary = (
+  items,
+  receiptTotalAmount,
+) => {
+  if (!Array.isArray(items) || items.length === 0) return null;
+
+  let subtotalCents = 0;
+
+  for (const item of items) {
+    if (
+      typeof item?.product_name !== "string" ||
+      item.product_name.trim() === ""
+    ) {
+      return null;
+    }
+
+    const quantity = Number(item.quantity);
+    const unitPriceCents = parseDecimalToCentsStrict(item.unit_price);
+
+    if (
+      !Number.isSafeInteger(quantity) ||
+      quantity <= 0 ||
+      unitPriceCents === null
+    ) {
+      return null;
+    }
+
+    const lineCents = unitPriceCents * quantity;
+    if (!Number.isSafeInteger(lineCents)) return null;
+
+    subtotalCents += lineCents;
+    if (!Number.isSafeInteger(subtotalCents)) return null;
+  }
+
+  const totalCents = parseDecimalToCentsStrict(receiptTotalAmount);
+
+  // Standard customer checkout currently has no receipt-level discount or
+  // delivery fee. If immutable item math does not equal immutable receipt
+  // total, do not guess adjustments and do not fabricate a tax breakdown.
+  if (totalCents === null || subtotalCents !== totalCents) {
+    return null;
+  }
+
+  const breakdown = computeReadyMadeVatInclusiveBreakdown({
+    subtotalCents,
+    discountCents: 0,
+    deliveryFeeCents: 0,
+  });
+
+  if (!breakdown || breakdown.totalCents !== totalCents) {
+    return null;
+  }
+
+  return {
+    pricing_mode: "vat_inclusive",
+    vat_rate: READY_MADE_VAT_RATE,
+    subtotal: centsToAmount(breakdown.subtotalCents),
+    discount: 0,
+    delivery_fee: 0,
+    vatable_sales: centsToAmount(breakdown.vatableSalesCents),
+    vat_exempt_sales: 0,
+    zero_rated_sales: 0,
+    tax: centsToAmount(breakdown.taxCents),
+    total: centsToAmount(breakdown.totalCents),
+  };
+};
 
 exports.getReceiptById = async (req, res) => {
   const orderId = parseStrictPositiveInt(req.params.id);
@@ -36,7 +132,9 @@ exports.getReceiptById = async (req, res) => {
         r.printed_at,
         r.created_at,
         o.order_number,
-        pt.status AS payment_status
+        pt.status AS payment_status,
+        verifier.name AS verifier_name,
+        issuer.name AS issuer_name
       FROM receipts r
       INNER JOIN orders o
         ON o.id = r.order_id
@@ -46,6 +144,10 @@ exports.getReceiptById = async (req, res) => {
         ON pt.id = r.payment_transaction_id
         AND pt.order_id = o.id
         AND LOWER(pt.status) = 'verified'
+      LEFT JOIN users verifier
+        ON verifier.id = pt.verified_by
+      LEFT JOIN users issuer
+        ON issuer.id = r.issued_by
       WHERE r.id = ?
         AND r.order_id = ?
         AND r.receipt_type = 'pos_sale'
@@ -60,13 +162,11 @@ exports.getReceiptById = async (req, res) => {
 
     const receipt = rows[0];
 
-    let items = [];
-    try {
-      const parsed = JSON.parse(receipt.items_snapshot || "[]");
-      items = Array.isArray(parsed) ? parsed : [];
-    } catch {
-      items = [];
-    }
+    const items = parseImmutableStandardItems(receipt.items_snapshot);
+    const financialSummary = buildImmutableStandardFinancialSummary(
+      items,
+      receipt.total_amount,
+    );
 
     const [settings] = await db.query(
       `
@@ -92,6 +192,28 @@ exports.getReceiptById = async (req, res) => {
       receipt.remaining_balance_after || 0,
     );
 
+    const snapshotPaymentMethod = String(
+      receipt.payment_method_snapshot || "",
+    )
+      .trim()
+      .toLowerCase();
+
+    const hasProviderReference =
+      receipt.provider_reference !== undefined &&
+      receipt.provider_reference !== null &&
+      String(receipt.provider_reference).trim() !== "";
+
+    const isPaymongoProvider =
+      snapshotPaymentMethod === "paymongo" || hasProviderReference;
+
+    const processorDisplay = isPaymongoProvider
+      ? "PayMongo"
+      : String(
+          receipt.verifier_name ||
+            receipt.issuer_name ||
+            "",
+        ).trim() || "Staff";
+
     return res.json({
       id: receipt.id,
       order_id: orderId,
@@ -114,7 +236,9 @@ exports.getReceiptById = async (req, res) => {
       created_at: receipt.created_at,
       payment_status:
         remainingBalance <= 0 ? "Fully Paid" : "Partially Paid",
+      processor_display: processorDisplay,
       items,
+      financial_summary: financialSummary,
       business: {
         business_name:
           business.site_name || "Spiral Wood Services",

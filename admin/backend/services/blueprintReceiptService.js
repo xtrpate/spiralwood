@@ -35,6 +35,9 @@ const {
   centsToDecimalString,
   centsToAmount,
 } = require("../utils/paymentAmounts");
+const {
+  normalizePaymongoReceiptMethodSnapshot,
+} = require("../utils/paymongoReceiptChannel");
 const { resolveLifecycleByOrder } = require("./blueprintLifecycleService");
 const {
   ensureBlueprintMaterialReservations,
@@ -90,7 +93,12 @@ const validateExistingReceiptRow = (existing, orderIdNum) => {
 
 async function ensureReceiptForVerifiedPayment(
   conn,
-  { orderId, paymentTransactionId, issuedByUserId },
+  {
+    orderId,
+    paymentTransactionId,
+    issuedByUserId,
+    paymentMethodSnapshot = null,
+  },
 ) {
   const orderIdNum = Number(orderId);
   const paymentTransactionIdNum = Number(paymentTransactionId);
@@ -296,6 +304,11 @@ async function ensureReceiptForVerifiedPayment(
   // proof-upload file path (gcash/bank/rider-cash all store a path in
   // proof_url, which must never be copied here). ───────────────────────
   const paymentMethod = normalize(targetRow.payment_method);
+  const receiptPaymentMethod =
+    paymentMethod === "paymongo"
+      ? normalizePaymongoReceiptMethodSnapshot(paymentMethodSnapshot)
+      : paymentMethod;
+
   let providerReference = null;
   if (paymentMethod === "paymongo") {
     const proof = String(targetRow.proof_url || "").trim();
@@ -348,7 +361,7 @@ async function ensureReceiptForVerifiedPayment(
       [
         orderIdNum,
         paymentTransactionIdNum,
-        paymentMethod,
+        receiptPaymentMethod,
         paymentLabel,
         previousPaidAmountStr,
         amountPaidStr,
