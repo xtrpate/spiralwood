@@ -675,6 +675,33 @@ export default function SalesReportPage() {
         s: cellStyle,
       });
 
+      const excelMoney = (value) => ({
+        v: `₱${Number(value || 0).toLocaleString("en-PH", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}`,
+        s: cellStyle,
+      });
+
+      const excelNumber = (value) => ({
+        v: Number(value || 0).toLocaleString("en-PH", {
+          maximumFractionDigits: 0,
+        }),
+        s: cellStyle,
+      });
+
+      const excelPercent = (value, total) => {
+        const numerator = Number(value || 0);
+        const denominator = Number(total || 0);
+
+        const percent = denominator > 0 ? (numerator / denominator) * 100 : 0;
+
+        return {
+          v: `${percent.toFixed(2)}%`,
+          s: cellStyle,
+        };
+      };
+
       const filterText = [
         `Scope: ${exportScope === "all" ? "All Sales" : "Current Filters"}`,
         `Channel: ${exportScope === "all" ? "All Channels" : channelLabel}`,
@@ -710,15 +737,15 @@ export default function SalesReportPage() {
           "Verified Collections",
           "Balance Due",
           "Sales Orders",
-          "Avg. Order Value",
+          "Average Order Value",
         ].map(th),
         [
-          Number(exSummary.gross_order_value || 0),
-          Number(exSummary.actual_collected || 0),
-          Number(exSummary.outstanding_balance || 0),
-          Number(exSummary.total_orders || 0),
-          Number(exSummary.avg_order_value || 0),
-        ].map(c),
+          excelMoney(exSummary.gross_order_value),
+          excelMoney(exSummary.actual_collected),
+          excelMoney(exSummary.outstanding_balance),
+          excelNumber(exSummary.total_orders),
+          excelMoney(exSummary.avg_order_value),
+        ],
         [],
 
         // 2. Sales by Channel
@@ -730,14 +757,12 @@ export default function SalesReportPage() {
 
       if (exSalesByChannel.length > 0) {
         exSalesByChannel.forEach((row) => {
-          excelData.push(
-            [
-              salesChannelLabel(row.channel),
-              Number(row.order_count || 0),
-              Number(row.sales_revenue || 0),
-              percentage(row.sales_revenue, exChannelTotal),
-            ].map(c),
-          );
+          excelData.push([
+            c(salesChannelLabel(row.channel)),
+            excelNumber(row.order_count),
+            excelMoney(row.sales_revenue),
+            excelPercent(row.sales_revenue, exChannelTotal),
+          ]);
         });
       } else {
         excelData.push([
@@ -760,14 +785,12 @@ export default function SalesReportPage() {
 
       if (exVisibleProducts.length > 0) {
         exVisibleProducts.forEach((row) => {
-          excelData.push(
-            [
-              row.product_name || "—",
-              Number(row.units_sold || 0),
-              Number(row.gross_order_value || 0),
-              percentage(row.gross_order_value, exSummary.gross_order_value),
-            ].map(c),
-          );
+          excelData.push([
+            c(row.product_name || "—"),
+            excelNumber(row.units_sold),
+            excelMoney(row.gross_order_value),
+            excelPercent(row.gross_order_value, exSummary.gross_order_value),
+          ]);
         });
       } else {
         excelData.push([
@@ -793,14 +816,12 @@ export default function SalesReportPage() {
 
       if (exPaymentMethods.length > 0) {
         exPaymentMethods.forEach((row) => {
-          excelData.push(
-            [
-              paymentMethodLabel(row.payment_method),
-              Number(row.transaction_count || 0),
-              Number(row.total_amount || 0),
-              percentage(row.total_amount, exCollectionTotal),
-            ].map(c),
-          );
+          excelData.push([
+            c(paymentMethodLabel(row.payment_method)),
+            excelNumber(row.transaction_count),
+            excelMoney(row.total_amount),
+            excelPercent(row.total_amount, exCollectionTotal),
+          ]);
         });
       } else {
         excelData.push([
@@ -830,18 +851,16 @@ export default function SalesReportPage() {
 
       if (exOutstandingOrders.length > 0) {
         exOutstandingOrders.forEach((row) => {
-          excelData.push(
-            [
-              row.order_number || `#${row.id}`,
-              row.customer_name || "—",
-              salesChannelLabel(row.channel),
-              humanize(row.order_type),
-              Number(row.total_amount || 0),
-              Number(row.lifetime_collected || 0),
-              Number(row.remaining_balance || 0),
-              humanize(row.payment_status),
-            ].map(c),
-          );
+          excelData.push([
+            c(row.order_number || `#${row.id}`),
+            c(row.customer_name || "—"),
+            c(salesChannelLabel(row.channel)),
+            c(humanize(row.order_type)),
+            excelMoney(row.total_amount),
+            excelMoney(row.lifetime_collected),
+            excelMoney(row.remaining_balance),
+            c(humanize(row.payment_status)),
+          ]);
         });
       } else {
         excelData.push([

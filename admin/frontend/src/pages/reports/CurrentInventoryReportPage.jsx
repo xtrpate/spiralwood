@@ -748,12 +748,49 @@ export default function CurrentInventoryReportPage() {
       ];
       XLSX.utils.book_append_sheet(workbook, readySheet, "Ready-Made");
 
-      const stamp = new Date(generatedAt)
-        .toISOString()
-        .replace(/[:.]/g, "-")
-        .slice(0, 19);
+      const inventoryFilenamePart =
+        inventoryType === ""
+          ? "all_inventory"
+          : inventoryType === "raw"
+            ? "raw_materials"
+            : inventoryType === "ready_made"
+              ? "ready_made"
+              : humanize(inventoryType)
+                  .toLowerCase()
+                  .replace(/[^a-z0-9]+/g, "_")
+                  .replace(/^_+|_+$/g, "");
 
-      const fileName = `wisdom_inventory_report_${stamp}.xlsx`;
+      const stockHealthFilenamePart =
+        stockStatus === ""
+          ? "all_stock_health"
+          : humanize(stockStatus)
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "_")
+              .replace(/^_+|_+$/g, "");
+
+      const dateFilenamePart =
+        dateFilter === "all"
+          ? "all_time"
+          : dateFilter === "today"
+            ? "today"
+            : dateFilter === "yesterday"
+              ? "yesterday"
+              : dateFilter === "this_week"
+                ? "this_week"
+                : dateFilter === "this_month"
+                  ? "this_month"
+                  : dateFilter === "this_year"
+                    ? "this_year"
+                    : dateFilter === "custom"
+                      ? `${customStart || "start"}_to_${customEnd || "end"}`
+                      : humanize(dateFilter)
+                          .toLowerCase()
+                          .replace(/[^a-z0-9]+/g, "_")
+                          .replace(/^_+|_+$/g, "");
+
+      const exportTimestamp = new Date().getTime();
+
+      const fileName = `wisdom_inventory_report_${inventoryFilenamePart}_${stockHealthFilenamePart}_${dateFilenamePart}_${exportTimestamp}.xlsx`;
 
       if (window.showSaveFilePicker) {
         const handle = await window.showSaveFilePicker({

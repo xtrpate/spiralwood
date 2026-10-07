@@ -113,6 +113,95 @@ const getExportDateFilenamePart = (dateFilter, customStart, customEnd) => {
   return labels[dateFilter] || getExportFilenamePart(dateFilter);
 };
 
+const getExportDateRangeLabel = (dateFilter, customStart, customEnd) => {
+  const formatDate = (date) =>
+    new Intl.DateTimeFormat("en-PH", {
+      timeZone: "UTC",
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+    }).format(date);
+
+  const formatDateString = (value) => {
+    if (!value) return "—";
+
+    const parsed = new Date(`${value}T00:00:00Z`);
+
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+
+    return formatDate(parsed);
+  };
+
+  if (dateFilter === "custom") {
+    return `${formatDateString(customStart)} – ${formatDateString(customEnd)}`;
+  }
+
+  if (dateFilter === "all") {
+    return "All Time";
+  }
+
+  const now = new Date();
+
+  const parts = new Intl.DateTimeFormat("en-PH", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+
+  const year = Number(parts.find((part) => part.type === "year")?.value);
+
+  const month = Number(parts.find((part) => part.type === "month")?.value);
+
+  const day = Number(parts.find((part) => part.type === "day")?.value);
+
+  const currentDate = new Date(Date.UTC(year, month - 1, day));
+
+  if (dateFilter === "today") {
+    return formatDate(currentDate);
+  }
+
+  if (dateFilter === "yesterday") {
+    const yesterday = new Date(currentDate);
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+
+    return formatDate(yesterday);
+  }
+
+  if (dateFilter === "this_week") {
+    const dayOfWeek = currentDate.getUTCDay();
+
+    // Monday = start of week
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+
+    const startDate = new Date(currentDate);
+    startDate.setUTCDate(currentDate.getUTCDate() + mondayOffset);
+
+    const endDate = new Date(startDate);
+    endDate.setUTCDate(startDate.getUTCDate() + 6);
+
+    return `${formatDate(startDate)} – ${formatDate(endDate)}`;
+  }
+
+  if (dateFilter === "this_month") {
+    const startDate = new Date(Date.UTC(year, month - 1, 1));
+    const endDate = new Date(Date.UTC(year, month, 0));
+
+    return `${formatDate(startDate)} – ${formatDate(endDate)}`;
+  }
+
+  if (dateFilter === "this_year") {
+    const startDate = new Date(Date.UTC(year, 0, 1));
+    const endDate = new Date(Date.UTC(year, 11, 31));
+
+    return `${formatDate(startDate)} – ${formatDate(endDate)}`;
+  }
+
+  return getExportFilenamePart(dateFilter);
+};
+
 const getMarginColorClass = (margin) => {
   const num = Number(margin);
   if (num >= 35) return "sales-margin-high"; // Excellent margin
@@ -390,25 +479,40 @@ export default function SalesProfitabilityReportPage() {
     let saveHandle = null;
 
     try {
-      // Open the Save As dialog immediately while the click
-      // still has a valid browser user gesture.
+      /*
+       * IMPORTANT:
+       * Open Save As immediately while the browser still has
+       * the original user click gesture.
+       */
       if (window.showSaveFilePicker) {
-        saveHandle = await window.showSaveFilePicker({
-          suggestedName: fileName,
-          types: [
-            {
-              description: "Excel Document",
-              accept: {
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
-                  [".xlsx"],
+        try {
+          saveHandle = await window.showSaveFilePicker({
+            suggestedName: fileName,
+            types: [
+              {
+                description: "Excel Document",
+                accept: {
+                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+                    [".xlsx"],
+                },
               },
-            },
-          ],
-        });
+            ],
+          });
+        } catch (err) {
+          if (err?.name === "AbortError") {
+            return;
+          }
+
+          throw err;
+        }
       }
 
       setExporting(true);
 
+      /*
+       * First request:
+       * Gets the complete filtered dataset count and summary.
+       */
       const firstResponse = await api.get(SALES_PROFITABILITY_EXPORT_ENDPOINT, {
         params: buildReportParams({
           page: 1,
@@ -427,11 +531,19 @@ export default function SalesProfitabilityReportPage() {
 
       const exportTotal = Number(firstResponse.data?.total || 0);
 
+      const exportSummary = {
+        ...EMPTY_SUMMARY,
+        ...(firstResponse.data?.summary || {}),
+      };
+
       if (exportRows.length === 0 || exportTotal === 0) {
         toast.error("No records match the current filters.");
         return;
       }
 
+      /*
+       * Retrieve every filtered record, not just the current page.
+       */
       const exportPages = Math.max(
         1,
         Math.ceil(exportTotal / EXPORT_PAGE_SIZE),
@@ -456,8 +568,10 @@ export default function SalesProfitabilityReportPage() {
         exportRows.push(...batch);
       }
 
-      // Verify that the export contains the complete dataset
-      // reported by the first request.
+      /*
+       * Verify that the export still represents the complete
+       * filtered dataset.
+       */
       const uniqueExportOrderIds = new Set(
         exportRows
           .map((row) => row?.order_id)
@@ -474,6 +588,10 @@ export default function SalesProfitabilityReportPage() {
       }
 
       const workbook = XLSX.utils.book_new();
+
+      /* ============================================================
+       * STYLES
+       * ========================================================== */
 
       const headerStyle = {
         font: {
@@ -545,6 +663,7 @@ export default function SalesProfitabilityReportPage() {
         alignment: {
           horizontal: "center",
           vertical: "center",
+          wrapText: true,
         },
       };
 
@@ -561,15 +680,453 @@ export default function SalesProfitabilityReportPage() {
         },
       };
 
+      const sectionTitleStyle = {
+        font: {
+          bold: true,
+          sz: 12,
+          color: { rgb: "111827" },
+        },
+      };
+
+      const subHeaderStyle = {
+        font: {
+          bold: true,
+          color: { rgb: "FFFFFF" },
+        },
+        fill: {
+          fgColor: { rgb: "18181B" },
+        },
+        border: {
+          top: {
+            style: "thin",
+            color: { rgb: "D1D5DB" },
+          },
+          bottom: {
+            style: "thin",
+            color: { rgb: "D1D5DB" },
+          },
+          left: {
+            style: "thin",
+            color: { rgb: "D1D5DB" },
+          },
+          right: {
+            style: "thin",
+            color: { rgb: "D1D5DB" },
+          },
+        },
+      };
+
+      const totalStyle = {
+        font: {
+          bold: true,
+          color: { rgb: "111827" },
+        },
+        fill: {
+          fgColor: { rgb: "F4F4F5" },
+        },
+        border: {
+          top: {
+            style: "thin",
+            color: { rgb: "A1A1AA" },
+          },
+          bottom: {
+            style: "thin",
+            color: { rgb: "A1A1AA" },
+          },
+          left: {
+            style: "thin",
+            color: { rgb: "D4D4D8" },
+          },
+          right: {
+            style: "thin",
+            color: { rgb: "D4D4D8" },
+          },
+        },
+      };
+
+      const moneyNumberFormat = '"₱"#,##0.00';
+      const percentNumberFormat = '0.00"%"';
+
+      const roundToTwo = (value) =>
+        Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+
+      const formatExcelMoney = (value) =>
+        `₱${roundToTwo(value).toLocaleString("en-PH", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}`;
+
+      const formatExcelPercent = (value) =>
+        `${roundToTwo(value).toLocaleString("en-PH", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}%`;
+
       const header = (value) => ({
         v: value,
         s: headerStyle,
       });
 
-      const cell = (value) => ({
-        v: value ?? "",
-        s: cellStyle,
+      const subHeader = (value) => ({
+        v: value,
+        s: subHeaderStyle,
       });
+
+      const cell = (value, numFmt = null) => {
+        let formattedValue = value ?? "";
+
+        if (
+          numFmt === moneyNumberFormat &&
+          typeof value === "number" &&
+          Number.isFinite(value)
+        ) {
+          formattedValue = formatExcelMoney(value);
+        } else if (
+          numFmt === percentNumberFormat &&
+          typeof value === "number" &&
+          Number.isFinite(value)
+        ) {
+          formattedValue = formatExcelPercent(value);
+        } else if (typeof value === "number" && Number.isFinite(value)) {
+          formattedValue = roundToTwo(value);
+        }
+
+        return {
+          v: formattedValue,
+          s: {
+            ...cellStyle,
+          },
+        };
+      };
+
+      const totalCell = (value, numFmt = null) => {
+        let formattedValue = value ?? "";
+
+        if (
+          numFmt === moneyNumberFormat &&
+          typeof value === "number" &&
+          Number.isFinite(value)
+        ) {
+          formattedValue = formatExcelMoney(value);
+        } else if (
+          numFmt === percentNumberFormat &&
+          typeof value === "number" &&
+          Number.isFinite(value)
+        ) {
+          formattedValue = formatExcelPercent(value);
+        } else if (typeof value === "number" && Number.isFinite(value)) {
+          formattedValue = roundToTwo(value);
+        }
+
+        return {
+          v: formattedValue,
+          s: {
+            ...totalStyle,
+          },
+        };
+      };
+
+      const sectionTitle = (value) => ({
+        v: value,
+        s: sectionTitleStyle,
+      });
+
+      /* ============================================================
+       * FILTER INFORMATION
+       * ========================================================== */
+
+      const searchLabel = String(debouncedSearch || "").trim() || "None";
+
+      const orderTypeLabel =
+        orderType === "blueprint"
+          ? "Custom Blueprints"
+          : orderType === "standard"
+            ? "Ready-Made (Standard)"
+            : "All Orders";
+
+      const dateFilterLabel = getExportDateRangeLabel(
+        dateFilter,
+        customStart,
+        customEnd,
+      );
+
+      const filterText = [
+        `Searched: ${searchLabel}`,
+        `Order Type: ${orderTypeLabel}`,
+        `Date Filter: ${dateFilterLabel}`,
+      ].join("    |    ");
+
+      /* ============================================================
+       * SUMMARY CALCULATIONS
+       * ========================================================== */
+
+      const totalOrders = exportTotal;
+
+      const totalRevenue = Number(exportSummary.total_revenue || 0);
+
+      const totalCogs = Number(exportSummary.total_cogs || 0);
+
+      const totalGrossProfit = Number(
+        exportSummary.total_gross_profit ?? totalRevenue - totalCogs,
+      );
+
+      const overallMargin = Number(
+        exportSummary.overall_margin_percentage ??
+          (totalRevenue > 0 ? (totalGrossProfit / totalRevenue) * 100 : 0),
+      );
+
+      const averageOrderValue =
+        totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+      const cogsPercentage =
+        totalRevenue > 0 ? (totalCogs / totalRevenue) * 100 : 0;
+
+      const averageGrossProfit =
+        totalOrders > 0 ? totalGrossProfit / totalOrders : 0;
+
+      /*
+       * Build profitability by order type from the COMPLETE
+       * filtered export dataset.
+       */
+      const orderTypeStats = {
+        standard: {
+          orders: 0,
+          revenue: 0,
+          cogs: 0,
+          grossProfit: 0,
+        },
+        blueprint: {
+          orders: 0,
+          revenue: 0,
+          cogs: 0,
+          grossProfit: 0,
+        },
+      };
+
+      exportRows.forEach((row) => {
+        const type =
+          normalize(row?.order_type) === "blueprint" ? "blueprint" : "standard";
+
+        const revenue = Number(row?.revenue || 0);
+        const cogs = Number(row?.cogs || 0);
+        const grossProfit = Number(row?.gross_profit ?? revenue - cogs);
+
+        orderTypeStats[type].orders += 1;
+        orderTypeStats[type].revenue += revenue;
+        orderTypeStats[type].cogs += cogs;
+        orderTypeStats[type].grossProfit += grossProfit;
+      });
+
+      const getRevenueShare = (revenue) =>
+        totalRevenue > 0 ? (Number(revenue || 0) / totalRevenue) * 100 : 0;
+
+      const getProfitShare = (profit) =>
+        totalGrossProfit !== 0
+          ? (Number(profit || 0) / totalGrossProfit) * 100
+          : 0;
+
+      const getMargin = (revenue, profit) =>
+        Number(revenue || 0) > 0
+          ? (Number(profit || 0) / Number(revenue)) * 100
+          : 0;
+
+      /* ============================================================
+       * SHEET 1 — SUMMARY
+       * ========================================================== */
+
+      const summaryData = [
+        [
+          {
+            v: "SPIRAL WOOD SERVICES - SALES & PROFITABILITY REPORT",
+            s: titleStyle,
+          },
+        ],
+        [
+          {
+            v: "Completed-order revenue and gross profitability analysis based on the selected filters.",
+            s: descStyle,
+          },
+        ],
+        [
+          {
+            v: filterText,
+            s: filterStyle,
+          },
+        ],
+        [],
+
+        [sectionTitle("1. SALES OVERVIEW")],
+        [
+          subHeader("Completed Orders"),
+          subHeader("Total Revenue"),
+          subHeader("Average Order Value"),
+        ],
+        [
+          cell(totalOrders),
+          cell(totalRevenue, moneyNumberFormat),
+          cell(averageOrderValue, moneyNumberFormat),
+        ],
+        [],
+
+        [sectionTitle("2. PROFITABILITY OVERVIEW")],
+        [
+          subHeader("Total COGS"),
+          subHeader("COGS % of Revenue"),
+          subHeader("Gross Profit"),
+          subHeader("Gross Margin"),
+          subHeader("Average Gross Profit per Order"),
+        ],
+        [
+          cell(totalCogs, moneyNumberFormat),
+          cell(cogsPercentage, percentNumberFormat),
+          cell(totalGrossProfit, moneyNumberFormat),
+          cell(overallMargin, percentNumberFormat),
+          cell(averageGrossProfit, moneyNumberFormat),
+        ],
+        [],
+
+        [sectionTitle("3. PROFITABILITY BY ORDER TYPE")],
+        [
+          subHeader("Order Type"),
+          subHeader("Orders"),
+          subHeader("Revenue"),
+          subHeader("Revenue Share %"),
+          subHeader("COGS"),
+          subHeader("Gross Profit"),
+          subHeader("Profit Share %"),
+          subHeader("Margin %"),
+        ],
+      ];
+
+      const standard = orderTypeStats.standard;
+      const blueprint = orderTypeStats.blueprint;
+
+      summaryData.push(
+        [
+          cell("Standard"),
+          cell(standard.orders),
+          cell(standard.revenue, moneyNumberFormat),
+          cell(getRevenueShare(standard.revenue), percentNumberFormat),
+          cell(standard.cogs, moneyNumberFormat),
+          cell(standard.grossProfit, moneyNumberFormat),
+          cell(getProfitShare(standard.grossProfit), percentNumberFormat),
+          cell(
+            getMargin(standard.revenue, standard.grossProfit),
+            percentNumberFormat,
+          ),
+        ],
+        [
+          cell("Blueprint"),
+          cell(blueprint.orders),
+          cell(blueprint.revenue, moneyNumberFormat),
+          cell(getRevenueShare(blueprint.revenue), percentNumberFormat),
+          cell(blueprint.cogs, moneyNumberFormat),
+          cell(blueprint.grossProfit, moneyNumberFormat),
+          cell(getProfitShare(blueprint.grossProfit), percentNumberFormat),
+          cell(
+            getMargin(blueprint.revenue, blueprint.grossProfit),
+            percentNumberFormat,
+          ),
+        ],
+        [
+          totalCell("TOTAL"),
+          totalCell(totalOrders),
+          totalCell(totalRevenue, moneyNumberFormat),
+          totalCell(100, percentNumberFormat),
+          totalCell(totalCogs, moneyNumberFormat),
+          totalCell(totalGrossProfit, moneyNumberFormat),
+          totalCell(totalGrossProfit !== 0 ? 100 : 0, percentNumberFormat),
+          totalCell(overallMargin, percentNumberFormat),
+        ],
+        [],
+        [sectionTitle("4. HOW TO READ THIS REPORT")],
+
+        [subHeader("Metric"), subHeader("Definition")],
+
+        [
+          cell("Revenue"),
+          cell("The completed-order selling value before deducting COGS."),
+        ],
+
+        [
+          cell("COGS"),
+          cell(
+            "The direct or estimated production cost assigned to completed orders.",
+          ),
+        ],
+
+        [
+          cell("COGS % of Revenue"),
+          cell("The percentage of completed-order revenue consumed by COGS."),
+        ],
+
+        [cell("Gross Profit"), cell("Revenue minus COGS.")],
+
+        [
+          cell("Gross Margin"),
+          cell("Gross Profit divided by Revenue, expressed as a percentage."),
+        ],
+
+        [
+          cell("Average Order Value"),
+          cell("Total Revenue divided by the number of completed orders."),
+        ],
+
+        [
+          cell("Average Gross Profit per Order"),
+          cell("Gross Profit divided by the number of completed orders."),
+        ],
+
+        [
+          cell("Revenue Share"),
+          cell(
+            "The percentage of total revenue contributed by each order type.",
+          ),
+        ],
+
+        [
+          cell("Profit Share"),
+          cell(
+            "The percentage of total gross profit contributed by each order type.",
+          ),
+        ],
+      );
+
+      const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+
+      summarySheet["!cols"] = [
+        { wch: 30 },
+        { wch: 32 },
+        { wch: 18 },
+        { wch: 18 },
+        { wch: 18 },
+        { wch: 20 },
+        { wch: 18 },
+        { wch: 30 },
+      ];
+
+      summarySheet["!rows"] = [{ hpt: 26 }, { hpt: 32 }, { hpt: 28 }];
+
+      summarySheet["!merges"] = [
+        {
+          s: { r: 0, c: 0 },
+          e: { r: 0, c: 7 },
+        },
+        {
+          s: { r: 1, c: 0 },
+          e: { r: 1, c: 7 },
+        },
+        {
+          s: { r: 2, c: 0 },
+          e: { r: 2, c: 7 },
+        },
+      ];
+
+      XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
+
+      /* ============================================================
+       * SHEET 2 — PROFITABILITY DETAILS
+       * ========================================================== */
 
       const headers = [
         "Order Date",
@@ -582,53 +1139,30 @@ export default function SalesProfitabilityReportPage() {
         "Margin (%)",
       ];
 
-      const mappedData = exportRows.map((r) => [
-        formatDateTime(r.order_date),
-        r.order_number,
-        r.customer_name,
-        r.order_type === "blueprint" ? "Blueprint" : "Standard",
-        Number(r.revenue),
-        Number(r.cogs),
-        Number(r.gross_profit),
-        Number(r.margin_percentage),
+      const mappedData = exportRows.map((row) => [
+        formatDateTime(row?.order_date),
+        row?.order_number || "—",
+        row?.customer_name || "—",
+        normalize(row?.order_type) === "blueprint" ? "Blueprint" : "Standard",
+        Number(row?.revenue || 0),
+        Number(row?.cogs || 0),
+        Number(
+          row?.gross_profit ??
+            Number(row?.revenue || 0) - Number(row?.cogs || 0),
+        ),
+        Number(row?.margin_percentage || 0),
       ]);
 
-      const searchLabel = String(debouncedSearch || "").trim() || "None";
-
-      const orderTypeLabel =
-        orderType === "blueprint"
-          ? "Custom Blueprints"
-          : orderType === "standard"
-            ? "Ready-Made (Standard)"
-            : "All Orders";
-
-      const dateFilterLabel =
-        dateFilter === "today"
-          ? "Today"
-          : dateFilter === "this_week"
-            ? "This Week"
-            : dateFilter === "this_month"
-              ? "This Month"
-              : dateFilter === "custom"
-                ? `${customStart || "—"} to ${customEnd || "—"}`
-                : "All Time";
-
-      const filterText = [
-        `Searched: ${searchLabel}`,
-        `Order Type: ${orderTypeLabel}`,
-        `Date Filter: ${dateFilterLabel}`,
-      ].join("    |    ");
-
-      const excelData = [
+      const detailData = [
         [
           {
-            v: "Sales & Profitability Report",
+            v: "Profitability Details",
             s: titleStyle,
           },
         ],
         [
           {
-            v: "Overview of revenue, cost of goods sold (COGS), and gross profit margins.",
+            v: "Detailed completed-order revenue, COGS, gross profit, and margin records.",
             s: descStyle,
           },
         ],
@@ -640,47 +1174,55 @@ export default function SalesProfitabilityReportPage() {
         ],
         [],
         headers.map(header),
-        ...mappedData.map((row) => row.map(cell)),
+        ...mappedData.map((row) => [
+          cell(row[0]),
+          cell(row[1]),
+          cell(row[2]),
+          cell(row[3]),
+          cell(row[4], moneyNumberFormat),
+          cell(row[5], moneyNumberFormat),
+          cell(row[6], moneyNumberFormat),
+          cell(row[7], percentNumberFormat),
+        ]),
       ];
 
-      const sheet = XLSX.utils.aoa_to_sheet(excelData);
+      const detailSheet = XLSX.utils.aoa_to_sheet(detailData);
 
-      sheet["!cols"] = [
+      detailSheet["!cols"] = [
         { wch: 22 },
         { wch: 20 },
         { wch: 25 },
         { wch: 15 },
         { wch: 18 },
         { wch: 18 },
-        { wch: 18 },
+        { wch: 20 },
         { wch: 12 },
       ];
 
-      sheet["!merges"] = [
+      detailSheet["!merges"] = [
         {
           s: { r: 0, c: 0 },
-          e: {
-            r: 0,
-            c: headers.length - 1,
-          },
+          e: { r: 0, c: headers.length - 1 },
         },
         {
           s: { r: 1, c: 0 },
-          e: {
-            r: 1,
-            c: headers.length - 1,
-          },
+          e: { r: 1, c: headers.length - 1 },
         },
         {
           s: { r: 2, c: 0 },
-          e: {
-            r: 2,
-            c: headers.length - 1,
-          },
+          e: { r: 2, c: headers.length - 1 },
         },
       ];
 
-      XLSX.utils.book_append_sheet(workbook, sheet, "Profitability");
+      XLSX.utils.book_append_sheet(
+        workbook,
+        detailSheet,
+        "Profitability Details",
+      );
+
+      /* ============================================================
+       * WRITE FILE
+       * ========================================================== */
 
       const buffer = XLSX.write(workbook, {
         bookType: "xlsx",
@@ -716,10 +1258,12 @@ export default function SalesProfitabilityReportPage() {
         }, 1000);
       }
 
-      toast.success("Sales Profitability report exported.");
+      toast.success("Sales & Profitability report exported successfully.");
     } catch (err) {
       if (err?.name !== "AbortError") {
-        toast.error(err?.message || "Failed to export report.");
+        toast.error(
+          err?.message || "Failed to export Sales & Profitability report.",
+        );
       }
     } finally {
       setExporting(false);
