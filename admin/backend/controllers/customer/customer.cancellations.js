@@ -210,8 +210,8 @@ exports.requestCancellation = async (req, res) => {
         type: "cancellation_request",
         title: "Cancellation Request Received",
         message: `A customer requested cancellation for ${order.order_number || `Order #${order.id}`}. Review it before changing the order status.`,
-        targetType: "order",
-        targetId: order.id,
+        targetType: "cancellation_request",
+        targetId: requestId,
         targetOrderId: order.id,
       });
     }

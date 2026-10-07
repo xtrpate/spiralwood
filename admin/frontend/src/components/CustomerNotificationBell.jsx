@@ -288,6 +288,7 @@ export default function CustomerNotificationBell() {
 
   const handleNotificationClick = async (n) => {
     // First click on an unread notification only marks it as read.
+    // Once it is already read, the next click opens the exact target.
     if (!n.is_read) {
       await markOneRead(n.id);
       return;

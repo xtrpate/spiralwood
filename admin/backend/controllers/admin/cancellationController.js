@@ -896,22 +896,17 @@ exports.approveRequest = async (req, res) => {
       });
     }
 
-    const riderIds = [
-      ...new Set(
-        scheduledDeliveries
-          .map((row) => Number(row.driver_id))
-          .filter((id) => Number.isInteger(id) && id > 0),
-      ),
-    ];
+    for (const delivery of scheduledDeliveries) {
+      const riderId = Number(delivery.driver_id);
+      if (!Number.isInteger(riderId) || riderId <= 0) continue;
 
-    for (const riderId of riderIds) {
       await createNotificationSafe(conn, {
         userId: riderId,
         type: "delivery_update",
         title: "Scheduled Delivery Cancelled",
         message: `${order.order_number || `Order #${order.id}`} was cancelled before transit. Do not start this delivery.`,
-        targetType: "order",
-        targetId: order.id,
+        targetType: "delivery",
+        targetId: delivery.id,
         targetOrderId: order.id,
       });
     }
@@ -930,8 +925,8 @@ exports.approveRequest = async (req, res) => {
         type: "delivery_update",
         title: "Withdrawal Approved - Delivery Closed",
         message: `${order.order_number || `Order #${order.id}`} was approved for customer withdrawal after the failed/refused delivery. No further delivery action is required.`,
-        targetType: "order",
-        targetId: order.id,
+        targetType: "delivery",
+        targetId: latestDeliveryForClosure.id,
         targetOrderId: order.id,
       });
     }

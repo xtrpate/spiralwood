@@ -101,6 +101,51 @@ function resolveNotificationRoute(
     return "/admin/dashboard";
   };
 
+  const notificationType = String(n?.type || "")
+    .trim()
+    .toLowerCase();
+
+  // Cancellation review is a workflow destination, not just an order detail.
+  // New notifications carry the exact cancellation request id. Older rows
+  // created before this fix only have the related order id, so they still
+  // receive a safe order-scoped focus without guessing from message text.
+  if (isAdmin && notificationType === "cancellation_request") {
+    if (targetType === "cancellation_request" && targetId != null) {
+      return `/admin/orders/cancellations?focus_cancellation_id=${targetId}`;
+    }
+
+    const cancellationOrderId =
+      targetOrderId ?? (targetType === "order" ? targetId : null);
+
+    if (cancellationOrderId != null) {
+      return `/admin/orders/cancellations?focus_order_id=${cancellationOrderId}`;
+    }
+  }
+
+  // Payment-review alerts should open the exact order directly on Payment.
+  if (
+    isAdmin &&
+    notificationType === "payment_review" &&
+    ["order", "custom_request"].includes(targetType) &&
+    targetId != null
+  ) {
+    return `/admin/orders/${targetId}?tab=payment`;
+  }
+
+  // Legacy rider cancellation notifications were stored against the order
+  // rather than the delivery. Keep those old rows useful by resolving the
+  // rider's own latest delivery for that order on the destination page.
+  if (
+    isDeliveryRider &&
+    notificationType === "delivery_update" &&
+    ["order", "custom_request"].includes(targetType)
+  ) {
+    const deliveryOrderId = targetOrderId ?? targetId;
+    if (deliveryOrderId != null) {
+      return `/staff/deliveries?focus_order_id=${deliveryOrderId}`;
+    }
+  }
+
   if (!targetType || targetId == null) {
     return safeFallback();
   }
@@ -414,6 +459,7 @@ export default function NotificationBell({
 
   const handleNotificationClick = async (n) => {
     // First click on an unread notification only marks it as read.
+    // Once it is already read, the next click opens the exact target.
     if (!n.is_read) {
       await markOneRead(n.id);
       return;

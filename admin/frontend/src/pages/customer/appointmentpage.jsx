@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
+import toast from "react-hot-toast";
 import {
   Calendar,
   Clock,
@@ -356,13 +358,28 @@ function ExpandableText({ text = "", limit = 120 }) {
   );
 }
 
-function AppointmentCard({ appt, onCancel }) {
+function AppointmentCard({ appt, onCancel, focused = false }) {
   const [open, setOpen] = useState(false);
   const details = parseNotes(appt.notes);
   const isPending = String(appt.status || "").toLowerCase() === "pending";
 
+  useEffect(() => {
+    if (focused) setOpen(true);
+  }, [focused]);
+
   return (
-    <div className={`appt-item ${open ? "open" : ""}`}>
+    <div
+      id={`appointment-card-${appt.id}`}
+      className={`appt-item ${open ? "open" : ""}`}
+      style={
+        focused
+          ? {
+              outline: "2px solid #18181b",
+              outlineOffset: "2px",
+            }
+          : undefined
+      }
+    >
       <button
         type="button"
         className="appt-item-top"
@@ -430,6 +447,7 @@ function AppointmentCard({ appt, onCancel }) {
 
 export default function AppointmentPage() {
   const { user } = useAuthStore();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -459,6 +477,7 @@ export default function AppointmentPage() {
 
   const [appointments, setAppointments] = useState([]);
   const [appointmentView, setAppointmentView] = useState("book");
+  const [focusedAppointmentId, setFocusedAppointmentId] = useState(null);
   const [loadingAppts, setLoadingAppts] = useState(true);
   const [initialLoad, setInitialLoad] = useState(true);
 
@@ -555,6 +574,63 @@ export default function AppointmentPage() {
       setInitialLoad(false);
     }
   };
+
+  useEffect(() => {
+    const rawFocusId = searchParams.get("focus_appointment_id");
+    if (!rawFocusId || loadingAppts) return undefined;
+
+    const clearFocusParam = () => {
+      const next = new URLSearchParams(searchParams);
+      next.delete("focus_appointment_id");
+      setSearchParams(next, { replace: true });
+    };
+
+    if (!/^\d+$/.test(rawFocusId)) {
+      toast.error("Invalid appointment notification link.");
+      clearFocusParam();
+      return undefined;
+    }
+
+    const focusId = Number(rawFocusId);
+    if (!Number.isSafeInteger(focusId) || focusId <= 0) {
+      toast.error("Invalid appointment notification link.");
+      clearFocusParam();
+      return undefined;
+    }
+
+    const match = appointments.find(
+      (appointment) => Number(appointment.id) === focusId,
+    );
+
+    if (!match) {
+      toast.error(
+        "That appointment could not be found. It may no longer be available.",
+      );
+      clearFocusParam();
+      return undefined;
+    }
+
+    setAppointmentView("history");
+    setFocusedAppointmentId(focusId);
+
+    const scrollTimer = setTimeout(() => {
+      document
+        .getElementById(`appointment-card-${focusId}`)
+        ?.scrollIntoView({ behavior: "auto", block: "center" });
+    }, 50);
+
+    const highlightTimer = setTimeout(
+      () => setFocusedAppointmentId(null),
+      4000,
+    );
+
+    clearFocusParam();
+
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(highlightTimer);
+    };
+  }, [searchParams, loadingAppts, appointments, setSearchParams]);
 
   useEffect(() => {
     if (!user?.id) return undefined;
@@ -1660,6 +1736,7 @@ export default function AppointmentPage() {
                       key={a.id}
                       appt={a}
                       onCancel={handleCancel}
+                      focused={Number(a.id) === focusedAppointmentId}
                     />
                   ))}
                 </div>

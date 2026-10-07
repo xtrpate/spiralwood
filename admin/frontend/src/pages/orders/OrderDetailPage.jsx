@@ -1,6 +1,6 @@
 // src/pages/orders/OrderDetailPage.jsx – compact polished detail view (Admin)
 import React, { useEffect, useRef, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import { getSocket, subscribeSocketReady } from "../../services/socket";
 import toast from "react-hot-toast";
@@ -477,6 +477,7 @@ export default function OrderDetailPage() {
   }, []);
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, hasPermission } = useAuthStore();
 
   const isStaffOrdersView = user?.role === "staff";
@@ -532,6 +533,26 @@ export default function OrderDetailPage() {
     useState("");
   const [activeTab, setActiveTab] = useState("overview");
   const canUseDiscussion = normalize(order?.order_type) === "blueprint";
+
+  useEffect(() => {
+    const requestedTab = normalize(searchParams.get("tab"));
+    if (!requestedTab) return;
+
+    const isDeepLinkable = DETAIL_TABS.some(
+      (tab) => tab.key === requestedTab && tab.key !== "discussion",
+    );
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("tab");
+
+    if (!isDeepLinkable) {
+      setSearchParams(next, { replace: true });
+      return;
+    }
+
+    setActiveTab(requestedTab);
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const [reassignModal, setReassignModal] = useState(false);
   const [reassignableStaff, setReassignableStaff] = useState([]);
