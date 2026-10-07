@@ -192,10 +192,6 @@ function buildExplodedPartsSchedulePages({
             </tbody>
           </table>
 
-          <div class="drawing-note" style="margin-top:8px;">
-            <b>INVENTORY NOTE</b>
-            <span>Inventory selection remains manual in Project Estimate. This sheet does not reserve or deduct stock.</span>
-          </div>
         </div>
       </div>
     `;

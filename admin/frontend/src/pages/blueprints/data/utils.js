@@ -1,7 +1,6 @@
 const GRID_SIZE = 20;
 const DIMENSION_PRECISION_MM = 1;
 const MM_PER_INCH = 25.4;
-const REFERENCE_VIEWS = ["front", "back", "left", "right", "top"];
 
 function cloneComponents(list = []) {
   return JSON.parse(JSON.stringify(list || []));
@@ -95,137 +94,6 @@ function getNowStamp() {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
-function resolveAssetUrl(url) {
-  if (!url) return "";
-  if (/^https?:\/\//i.test(url)) return url;
-
-  const normalizedPath = String(url).startsWith("/") ? String(url) : `/${url}`;
-  return normalizedPath;
-}
-
-function isImageReferenceFile(referenceFile) {
-  const type = String(
-    referenceFile?.type || referenceFile?.file_type || "",
-  ).toLowerCase();
-  return ["png", "jpg", "jpeg", "svg", "webp"].includes(type);
-}
-
-function createEmptyReferenceFiles() {
-  return {
-    front: null,
-    back: null,
-    left: null,
-    right: null,
-    top: null,
-  };
-}
-
-function normalizeReferenceMeta(value, fallbackName = "Reference File") {
-  const url = value?.url || value?.file_url || null;
-  const type = String(value?.type || value?.file_type || "")
-    .trim()
-    .toLowerCase();
-
-  if (!url || !type) return null;
-
-  return {
-    url,
-    type,
-    name: value?.name || fallbackName,
-    source: value?.source || "imported",
-  };
-}
-
-function getReferenceFilesFromBlueprint(savedData = {}, blueprintData = {}) {
-  const next = createEmptyReferenceFiles();
-
-  const savedReferenceFiles =
-    savedData?.reference_files || savedData?.referenceFiles || {};
-
-  REFERENCE_VIEWS.forEach((view) => {
-    const normalized = normalizeReferenceMeta(
-      savedReferenceFiles?.[view],
-      `${blueprintData?.title || "Reference"} ${view}`,
-    );
-
-    if (normalized) {
-      next[view] = normalized;
-    }
-  });
-
-  const savedReference = normalizeReferenceMeta(
-    savedData?.reference_file || savedData?.referenceFile,
-    blueprintData?.title || "Reference File",
-  );
-
-  const blueprintReference =
-    blueprintData?.file_url && blueprintData?.file_type
-      ? normalizeReferenceMeta(
-          {
-            url: blueprintData.file_url,
-            type: blueprintData.file_type,
-            name: blueprintData.title || "Reference File",
-            source: blueprintData.source || "imported",
-          },
-          blueprintData?.title || "Reference File",
-        )
-      : null;
-
-  if (!next.front) {
-    next.front = savedReference || blueprintReference || null;
-  }
-
-  return next;
-}
-
-function getReferenceFileFromBlueprint(
-  savedData = {},
-  blueprintData = {},
-  preferredView = "front",
-) {
-  const referenceFiles = getReferenceFilesFromBlueprint(
-    savedData,
-    blueprintData,
-  );
-
-  return (
-    referenceFiles?.[preferredView] ||
-    referenceFiles?.front ||
-    referenceFiles?.back ||
-    referenceFiles?.left ||
-    referenceFiles?.right ||
-    referenceFiles?.top ||
-    null
-  );
-}
-
-function getEditorMode(savedData = {}, referenceSource = null) {
-  if (
-    savedData?.editorMode === "reference" ||
-    savedData?.editorMode === "editable"
-  ) {
-    return savedData.editorMode;
-  }
-
-  if (Array.isArray(savedData?.components) && savedData.components.length > 0) {
-    return "editable";
-  }
-
-  if (referenceSource?.url) {
-    return "reference";
-  }
-
-  if (
-    referenceSource &&
-    typeof referenceSource === "object" &&
-    Object.values(referenceSource).some((item) => item?.url)
-  ) {
-    return "reference";
-  }
-
-  return "editable";
-}
-
 export {
   cloneComponents,
   escapeHtml,
@@ -240,10 +108,4 @@ export {
   formatDim,
   formatDims,
   getNowStamp,
-  resolveAssetUrl,
-  isImageReferenceFile,
-  createEmptyReferenceFiles,
-  getReferenceFilesFromBlueprint,
-  getReferenceFileFromBlueprint,
-  getEditorMode,
 };

@@ -160,6 +160,7 @@ export function BlueprintPublishModal({
             </label>
             <input
               required
+              maxLength={200}
               value={publishForm.name}
               onChange={(e) =>
                 setPublishForm({ ...publishForm, name: e.target.value })

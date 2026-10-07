@@ -1184,6 +1184,15 @@ exports.remove = async (req, res) => {
       return res.status(404).json({ message: "Product not found." });
     }
 
+    if (p.type === "blueprint") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message:
+          "Blueprint products are managed from Blueprint Management and cannot be permanently deleted here.",
+      });
+    }
+
     const [[references]] = await conn.query(
       `SELECT
          (SELECT COUNT(*) FROM stock_movements WHERE product_id = ?) AS stock_movements_count,
@@ -1417,11 +1426,35 @@ exports.bulkPublish = async (req, res) => {
       return res.status(400).json({ message: "No product IDs provided." });
     }
 
+    const normalizedIds = [
+      ...new Set(
+        ids
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value > 0),
+      ),
+    ];
+
+    if (normalizedIds.length !== ids.length) {
+      return res.status(400).json({ message: "Invalid product IDs provided." });
+    }
+
+    const [targets] = await pool.query(
+      "SELECT id, type FROM products WHERE id IN (?)",
+      [normalizedIds],
+    );
+
+    if (targets.some((product) => product.type === "blueprint")) {
+      return res.status(409).json({
+        message:
+          "Blueprint publication is managed from Blueprint Management. Remove Blueprint products from this selection.",
+      });
+    }
+
     const publishValue = is_published ? 1 : 0;
 
     const [result] = await pool.query(
-      "UPDATE products SET is_published = ? WHERE id IN (?)",
-      [publishValue, ids],
+      "UPDATE products SET is_published = ? WHERE id IN (?) AND type <> 'blueprint'",
+      [publishValue, normalizedIds],
     );
 
     await writeAuditLogSafe({
@@ -1433,7 +1466,7 @@ exports.bulkPublish = async (req, res) => {
       newValues: {
         is_published: Boolean(publishValue),
         product_count: Number(result.affectedRows || 0),
-        product_ids: ids.slice(0, 100),
+        product_ids: normalizedIds.slice(0, 100),
       },
       ipAddress: req.ip || null,
     });
@@ -1452,29 +1485,41 @@ exports.togglePublish = async (req, res) => {
     const publishValue = is_published ? 1 : 0;
     const productId = parseInt(req.params.id);
 
-    await pool.query("UPDATE products SET is_published = ? WHERE id = ?", [
-      publishValue,
-      productId,
-    ]);
+    if (!Number.isInteger(productId) || productId <= 0) {
+      return res.status(400).json({ message: "Invalid product ID." });
+    }
 
     const [[product]] = await pool.query(
-      "SELECT name FROM products WHERE id = ? LIMIT 1",
+      "SELECT id, name, type FROM products WHERE id = ? LIMIT 1",
       [productId],
     );
 
-    if (product) {
-      await writeAuditLogSafe({
-        userId: req.user?.id || null,
-        action: publishValue ? "publish_product" : "unpublish_product",
-        tableName: "products",
-        recordId: productId,
-        newValues: {
-          name: product.name,
-          is_published: Boolean(publishValue),
-        },
-        ipAddress: req.ip || null,
+    if (!product) {
+      return res.status(404).json({ message: "Product not found." });
+    }
+
+    if (product.type === "blueprint") {
+      return res.status(409).json({
+        message: "Blueprint publication is managed from Blueprint Management.",
       });
     }
+
+    await pool.query(
+      "UPDATE products SET is_published = ? WHERE id = ? AND type <> 'blueprint'",
+      [publishValue, productId],
+    );
+
+    await writeAuditLogSafe({
+      userId: req.user?.id || null,
+      action: publishValue ? "publish_product" : "unpublish_product",
+      tableName: "products",
+      recordId: productId,
+      newValues: {
+        name: product.name,
+        is_published: Boolean(publishValue),
+      },
+      ipAddress: req.ip || null,
+    });
 
     res.json({ is_published: !!publishValue });
   } catch (err) {
@@ -1507,6 +1552,13 @@ exports.publishByBlueprint = async (req, res) => {
       return res.status(400).json({ message: "Product name is required." });
     }
 
+    if (productName.length > 200) {
+      await conn.rollback();
+      return res.status(400).json({
+        message: "Product name must be 200 characters or fewer.",
+      });
+    }
+
     if (!Number.isInteger(categoryId) || categoryId <= 0) {
       await conn.rollback();
       return res.status(400).json({
@@ -1517,7 +1569,7 @@ exports.publishByBlueprint = async (req, res) => {
     // Lock the Blueprint row so two publish requests for the same Blueprint
     // cannot create two Products at the same time.
     const [[blueprint]] = await conn.query(
-      `SELECT id, is_deleted
+      `SELECT id, is_deleted, design_data, view_3d_data
        FROM blueprints
        WHERE id = ?
        LIMIT 1
@@ -1529,6 +1581,44 @@ exports.publishByBlueprint = async (req, res) => {
       await conn.rollback();
       return res.status(404).json({
         message: "The Blueprint could not be found or is archived.",
+      });
+    }
+
+    const parseSceneComponents = (value) => {
+      if (!value) return [];
+      try {
+        const parsed = typeof value === "string" ? JSON.parse(value) : value;
+        return Array.isArray(parsed?.components) ? parsed.components : [];
+      } catch {
+        return [];
+      }
+    };
+
+    const persistedComponents = [
+      ...parseSceneComponents(blueprint.design_data),
+      ...parseSceneComponents(blueprint.view_3d_data),
+    ];
+
+    let hasRealComponent = persistedComponents.some(
+      (component) => component && component.type !== "reference_proxy",
+    );
+
+    if (!hasRealComponent) {
+      const [[legacyComponents]] = await conn.query(
+        `SELECT COUNT(*) AS component_count
+         FROM blueprint_components
+         WHERE blueprint_id = ?`,
+        [blueprintId],
+      );
+      hasRealComponent = Number(legacyComponents?.component_count || 0) > 0;
+    }
+
+    if (!hasRealComponent) {
+      await conn.rollback();
+      return res.status(409).json({
+        code: "BLUEPRINT_EMPTY_DESIGN",
+        message:
+          "Add or convert at least one real furniture part before publishing this Blueprint.",
       });
     }
 
@@ -1657,6 +1747,7 @@ exports.publishByBlueprint = async (req, res) => {
         is_template: 1,
         is_gallery: 1,
         base_price: 0,
+        has_published_product: 1,
       },
     });
   } catch (err) {
@@ -1675,36 +1766,108 @@ exports.publishByBlueprint = async (req, res) => {
 
 // ── PATCH /api/products/blueprint/:blueprint_id/unpublish ─────────────────
 exports.unpublishByBlueprint = async (req, res) => {
-  try {
-    const blueprintId = parseInt(req.params.blueprint_id);
+  const blueprintId = parseInt(req.params.blueprint_id);
 
-    const [result] = await pool.query(
-      "UPDATE products SET is_published = 0 WHERE blueprint_id = ?",
+  if (!Number.isInteger(blueprintId) || blueprintId <= 0) {
+    return res.status(400).json({ message: "Invalid Blueprint ID." });
+  }
+
+  const conn = await pool.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    const [[blueprint]] = await conn.query(
+      `SELECT id, is_deleted, is_template, is_gallery, base_price
+       FROM blueprints
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
       [blueprintId],
     );
 
-    if (result.affectedRows === 0) {
-      return res
-        .status(404)
-        .json({ message: "No live products found for this blueprint." });
+    if (!blueprint) {
+      await conn.rollback();
+      return res.status(404).json({ message: "Blueprint not found." });
     }
+
+    const [linkedProducts] = await conn.query(
+      `SELECT id, is_published, is_active
+       FROM products
+       WHERE blueprint_id = ?
+         AND type = 'blueprint'
+       ORDER BY id ASC
+       FOR UPDATE`,
+      [blueprintId],
+    );
+
+    const [productResult] = await conn.query(
+      `UPDATE products
+       SET is_published = 0
+       WHERE blueprint_id = ?
+         AND type = 'blueprint'
+         AND is_published <> 0`,
+      [blueprintId],
+    );
+
+    await conn.query(
+      `UPDATE blueprints
+       SET is_template = 0,
+           is_gallery = 0,
+           base_price = 0
+       WHERE id = ?`,
+      [blueprintId],
+    );
+
+    await conn.commit();
 
     await writeAuditLogSafe({
       userId: req.user?.id || null,
       action: "unpublish_blueprint_products",
       tableName: "products",
+      recordId: linkedProducts[0]?.id || null,
+      oldValues: {
+        blueprint_id: blueprintId,
+        blueprint_is_template: Boolean(Number(blueprint.is_template)),
+        blueprint_is_gallery: Boolean(Number(blueprint.is_gallery)),
+        blueprint_base_price: Number(blueprint.base_price || 0),
+        published_products: linkedProducts.filter(
+          (product) => Number(product.is_published) === 1,
+        ).length,
+      },
       newValues: {
         blueprint_id: blueprintId,
-        affected_products: Number(result.affectedRows || 0),
+        affected_products: Number(productResult.affectedRows || 0),
         is_published: false,
+        blueprint_is_template: false,
+        blueprint_is_gallery: false,
+        blueprint_base_price: 0,
       },
       ipAddress: req.ip || null,
     });
 
-    res.json({ message: "Blueprint product unpublished successfully." });
+    return res.json({
+      message: "Blueprint product unpublished successfully.",
+      affected_products: Number(productResult.affectedRows || 0),
+      blueprint: {
+        id: blueprintId,
+        is_template: 0,
+        is_gallery: 0,
+        base_price: 0,
+        has_published_product: 0,
+      },
+    });
   } catch (err) {
+    try {
+      await conn.rollback();
+    } catch {
+      // Keep the original error.
+    }
+
     console.error("[unpublishByBlueprint Error]:", err);
-    res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: err.message });
+  } finally {
+    conn.release();
   }
 };
 

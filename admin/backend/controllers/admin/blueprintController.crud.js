@@ -1,8 +1,7 @@
 // controllers/blueprintController.js
 // Route-facing Blueprint handlers. Shared imports, validators, normalizers,
-// and estimation/reference helpers live in blueprintController.helpers.js.
+// and estimation helpers live in blueprintController.helpers.js.
 const {
-  path,
   pool,
   resolveLifecycleByBlueprint,
   resolveLifecycleByOrder,
@@ -19,15 +18,7 @@ const {
   findRawMaterialMatch,
   computeEstimationTotals,
   buildAutoEstimationDraft,
-  getBlueprintFileMeta,
-  REFERENCE_VIEWS,
-  createEmptyReferenceFiles,
-  normalizeReferenceFilesMap,
-  buildUploadedReferenceFiles,
-  hasAnyReferenceFiles,
-  normalizeReferenceFile,
   mergeDesignData,
-  normalizeSource,
   backfillLegacyArchivedDates,
   deleteBlueprintCascade,
   purgeExpiredArchivedBlueprints,
@@ -271,6 +262,13 @@ exports.getOne = async (req, res) => {
                 WHERE active_order.blueprint_id = b.id
                   AND LOWER(COALESCE(active_order.status, '')) NOT IN ('completed', 'cancelled')
               ) AS has_active_linked_order,
+              EXISTS (
+                SELECT 1
+                FROM products published_product
+                WHERE published_product.blueprint_id = b.id
+                  AND published_product.type = 'blueprint'
+                  AND published_product.is_published = 1
+              ) AS has_published_product,
               CASE
                 WHEN b.is_deleted = 0
                   AND (b.is_template = 1 OR b.is_gallery = 1)
@@ -406,7 +404,6 @@ exports.create = async (req, res) => {
       is_template,
       is_gallery,
       stage,
-      source,
       thumbnail_url,
       design_data,
     } = req.body;
@@ -416,32 +413,9 @@ exports.create = async (req, res) => {
     }
 
     const finalTitle = String(title).trim();
-    const uploadedReferenceFiles = buildUploadedReferenceFiles(
-      req.referenceFiles,
-      finalTitle,
-    );
-    const primaryReference = uploadedReferenceFiles.front || null;
-    const fileMeta = getBlueprintFileMeta(req.file);
-    const normalizedSource = normalizeSource(
-      source,
-      !!req.file || hasAnyReferenceFiles(uploadedReferenceFiles),
-    );
     const finalStage = String(stage || "").trim() || "design";
-    const finalThumbnail =
-      thumbnail_url ||
-      primaryReference?.url ||
-      fileMeta.default_thumbnail_url ||
-      null;
-
-    const finalDesignData = mergeDesignData(
-      design_data,
-      {
-        file_url: primaryReference?.url || fileMeta.file_url,
-        file_type: primaryReference?.type || fileMeta.file_type,
-        reference_files: uploadedReferenceFiles,
-      },
-      finalTitle,
-    );
+    const finalThumbnail = thumbnail_url || null;
+    const finalDesignData = mergeDesignData(design_data);
 
     const [r] = await pool.query(
       `INSERT INTO blueprints
@@ -452,10 +426,10 @@ exports.create = async (req, res) => {
         description || null,
         parseInt(req.user.id),
         client_id ? parseInt(client_id) : null,
-        fileMeta.source || normalizedSource,
+        "created",
         finalStage,
-        fileMeta.file_url,
-        fileMeta.file_type,
+        null,
+        null,
         finalThumbnail,
         finalDesignData,
         Number(is_template) ? 1 : 0,
@@ -476,11 +450,9 @@ exports.create = async (req, res) => {
       id: r.insertId,
       new: {
         stage: finalStage,
-        source: fileMeta.source || normalizedSource,
+        source: "created",
         is_template: Boolean(Number(is_template)),
         is_gallery: Boolean(Number(is_gallery)),
-        file_uploaded: Boolean(req.file),
-        reference_files_uploaded: hasAnyReferenceFiles(uploadedReferenceFiles),
       },
     };
 
@@ -490,10 +462,10 @@ exports.create = async (req, res) => {
       blueprint: {
         id: r.insertId,
         title: finalTitle,
-        source: fileMeta.source || normalizedSource,
+        source: "created",
         stage: finalStage,
-        file_url: primaryReference?.url || fileMeta.file_url,
-        file_type: primaryReference?.type || fileMeta.file_type,
+        file_url: null,
+        file_type: null,
         thumbnail_url: finalThumbnail,
         design_data: finalDesignData,
       },
@@ -527,14 +499,6 @@ exports.update = async (req, res) => {
 
     const locked = safeJsonParse(bp.locked_fields, []);
     const updates = { ...req.body };
-    const uploadedReferenceFiles = buildUploadedReferenceFiles(
-      req.referenceFiles,
-      bp.title || "",
-    );
-    const hasUploadedReferenceFiles = hasAnyReferenceFiles(
-      uploadedReferenceFiles,
-    );
-    const fileMeta = getBlueprintFileMeta(req.file);
 
     locked.forEach((field) => delete updates[field]);
 
@@ -549,9 +513,6 @@ exports.update = async (req, res) => {
       "is_template",
       "is_gallery",
       "client_id",
-      "source",
-      "file_url",
-      "file_type",
       "base_price",
     ];
 
@@ -564,23 +525,6 @@ exports.update = async (req, res) => {
       "design_data",
     );
 
-    if (req.file) {
-      filtered.source = fileMeta.source;
-      filtered.file_url = fileMeta.file_url;
-      filtered.file_type = fileMeta.file_type;
-
-      if (!filtered.thumbnail_url) {
-        filtered.thumbnail_url = fileMeta.default_thumbnail_url;
-      }
-    }
-
-    if (filtered.source) {
-      filtered.source = normalizeSource(
-        filtered.source,
-        !!req.file || hasUploadedReferenceFiles,
-      );
-    }
-
     if (filtered.title != null && !String(filtered.title).trim()) {
       await conn.rollback();
       return res
@@ -592,16 +536,8 @@ exports.update = async (req, res) => {
       filtered.title = String(filtered.title).trim();
     }
 
-    if (incomingHasDesignData || req.file || hasUploadedReferenceFiles) {
-      filtered.design_data = mergeDesignData(
-        incomingHasDesignData ? filtered.design_data : bp.design_data,
-        {
-          file_url: filtered.file_url || bp.file_url,
-          file_type: filtered.file_type || bp.file_type,
-          reference_files: uploadedReferenceFiles,
-        },
-        filtered.title || bp.title,
-      );
+    if (incomingHasDesignData) {
+      filtered.design_data = mergeDesignData(filtered.design_data);
     }
 
     if (!Object.keys(filtered).length) {
@@ -700,8 +636,6 @@ exports.update = async (req, res) => {
           fields_changed: actualChangedFields,
           stage_changed: actualChangedFields.includes("stage"),
           design_data_changed: actualChangedFields.includes("design_data"),
-          file_uploaded: Boolean(req.file),
-          reference_files_uploaded: hasUploadedReferenceFiles,
           revision_created: revisionCreated,
         },
       };

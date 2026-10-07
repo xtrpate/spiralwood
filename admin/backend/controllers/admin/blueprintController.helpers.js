@@ -1,7 +1,5 @@
 // controllers/blueprintController.js
-const path = require("path");
 const pool = require("../../config/db");
-const { v2: cloudinary } = require("cloudinary");
 const {
   resolveLifecycleByBlueprint,
   resolveLifecycleByOrder,
@@ -764,119 +762,7 @@ async function buildAutoEstimationDraft(conn, blueprintId) {
   return null;
 }
 
-function getBlueprintFileMeta(file) {
-  if (!file) {
-    return {
-      source: null,
-      file_url: null,
-      file_type: null,
-      default_thumbnail_url: null,
-    };
-  }
-
-  const ext = path
-    .extname(file.originalname || "")
-    .replace(".", "")
-    .toLowerCase();
-
-  const allowed = new Set(["pdf", "png", "jpg", "jpeg", "svg"]);
-
-  if (!allowed.has(ext)) {
-    const err = new Error(
-      "Only PDF, PNG, JPG, JPEG, and SVG blueprint files are allowed.",
-    );
-    err.statusCode = 400;
-    throw err;
-  }
-
-  const file_url = file.path; // Grab the live Cloudinary URL!
-  const default_thumbnail_url = ["png", "jpg", "jpeg", "svg"].includes(ext)
-    ? file_url
-    : null;
-
-  return {
-    source: "imported",
-    file_url,
-    file_type: ext,
-    default_thumbnail_url,
-  };
-}
-
-const REFERENCE_VIEWS = ["front", "back", "left", "right", "top"];
-
-function createEmptyReferenceFiles() {
-  return {
-    front: null,
-    back: null,
-    left: null,
-    right: null,
-    top: null,
-  };
-}
-
-function normalizeReferenceFilesMap(value = {}, fallbackTitle = "") {
-  const next = createEmptyReferenceFiles();
-
-  REFERENCE_VIEWS.forEach((view) => {
-    const normalized = normalizeReferenceFile(
-      value?.[view],
-      fallbackTitle ? `${fallbackTitle} ${view}` : `${view} reference`,
-    );
-
-    if (normalized) {
-      next[view] = normalized;
-    }
-  });
-
-  return next;
-}
-
-function buildUploadedReferenceFiles(uploadedFiles = {}, fallbackTitle = "") {
-  const next = createEmptyReferenceFiles();
-
-  REFERENCE_VIEWS.forEach((view) => {
-    const file = uploadedFiles?.[view];
-    if (!file) return;
-
-    const meta = getBlueprintFileMeta(file);
-
-    next[view] = normalizeReferenceFile(
-      {
-        url: meta.file_url,
-        type: meta.file_type,
-        name: file.originalname || `${fallbackTitle || "Reference"} ${view}`,
-        source: "imported",
-      },
-      fallbackTitle ? `${fallbackTitle} ${view}` : `${view} reference`,
-    );
-  });
-
-  return next;
-}
-
-function hasAnyReferenceFiles(referenceFiles = {}) {
-  return REFERENCE_VIEWS.some((view) => referenceFiles?.[view]?.url);
-}
-
-function normalizeReferenceFile(value, fallbackTitle = "") {
-  const url = value?.url || value?.file_url || null;
-  const type = String(value?.type || value?.file_type || "")
-    .trim()
-    .toLowerCase();
-
-  if (!url || !type) return null;
-
-  return {
-    url,
-    type,
-    name:
-      value?.name ||
-      (fallbackTitle ? `${fallbackTitle}.${type}` : path.basename(url)),
-    source: "imported",
-  };
-}
-
-function mergeDesignData(value, blueprintLike = {}, fallbackTitle = "") {
+function mergeDesignData(value) {
   const base = safeJsonParse(value, {});
   const designData =
     base && typeof base === "object" && !Array.isArray(base) ? { ...base } : {};
@@ -884,63 +770,38 @@ function mergeDesignData(value, blueprintLike = {}, fallbackTitle = "") {
   if (!Array.isArray(designData.components)) designData.components = [];
   if (!designData.unit) designData.unit = "mm";
 
-  const existingReferenceFiles = normalizeReferenceFilesMap(
-    designData.reference_files || designData.referenceFiles,
-    fallbackTitle,
-  );
+  [
+    "editorMode",
+    "reference_files",
+    "referenceFiles",
+    "reference_file",
+    "referenceFile",
+    "referenceCalibrationByView",
+    "reference_calibration_by_view",
+    "referenceCalibration",
+    "traceObjectsByView",
+    "trace_objects_by_view",
+    "traceObjects",
+    "importComments",
+    "conversionSummary",
+    "conversionCutListRows",
+  ].forEach((key) => delete designData[key]);
 
-  const incomingReferenceFiles = normalizeReferenceFilesMap(
-    blueprintLike.reference_files || blueprintLike.referenceFiles,
-    fallbackTitle,
-  );
-
-  const existingReference = normalizeReferenceFile(
-    designData.reference_file || designData.referenceFile,
-    fallbackTitle,
-  );
-
-  const blueprintReference = normalizeReferenceFile(
-    blueprintLike,
-    fallbackTitle,
-  );
-
-  const finalReferenceFiles = createEmptyReferenceFiles();
-
-  REFERENCE_VIEWS.forEach((view) => {
-    finalReferenceFiles[view] =
-      incomingReferenceFiles[view] || existingReferenceFiles[view] || null;
-  });
-
-  if (!finalReferenceFiles.front) {
-    finalReferenceFiles.front = blueprintReference || existingReference || null;
+  if (designData.startMode === "reference") {
+    designData.startMode = "scratch";
+  }
+  if (designData?.blueprintSetup?.startMode === "reference") {
+    designData.blueprintSetup = {
+      ...designData.blueprintSetup,
+      startMode: "scratch",
+    };
   }
 
-  if (hasAnyReferenceFiles(finalReferenceFiles)) {
-    designData.reference_files = finalReferenceFiles;
-    designData.reference_file = finalReferenceFiles.front || null;
-  } else {
-    delete designData.reference_files;
-    delete designData.reference_file;
-  }
-
-  delete designData.referenceFiles;
-  delete designData.referenceFile;
+  designData.components = designData.components.filter(
+    (component) => component?.type !== "reference_proxy",
+  );
 
   return JSON.stringify(designData);
-}
-
-function normalizeSource(sourceValue, hasFile = false) {
-  if (hasFile) return "imported";
-
-  const value = String(sourceValue || "")
-    .trim()
-    .toLowerCase();
-
-  if (value === "imported") return "imported";
-  if (value === "manual") return "created";
-  if (value === "created") return "created";
-
-  return "created";
 }
 
 async function backfillLegacyArchivedDates() {
@@ -1170,7 +1031,6 @@ async function purgeExpiredArchivedBlueprints() {
 // ── GET /api/blueprints ───────────────────────────────────────────────────────
 
 module.exports = {
-  path,
   pool,
   resolveLifecycleByBlueprint,
   resolveLifecycleByOrder,
@@ -1187,15 +1047,7 @@ module.exports = {
   findRawMaterialMatch,
   computeEstimationTotals,
   buildAutoEstimationDraft,
-  getBlueprintFileMeta,
-  REFERENCE_VIEWS,
-  createEmptyReferenceFiles,
-  normalizeReferenceFilesMap,
-  buildUploadedReferenceFiles,
-  hasAnyReferenceFiles,
-  normalizeReferenceFile,
   mergeDesignData,
-  normalizeSource,
   backfillLegacyArchivedDates,
   deleteBlueprintCascade,
   purgeExpiredArchivedBlueprints,

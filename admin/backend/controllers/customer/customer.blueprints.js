@@ -468,7 +468,7 @@ const enrichBlueprintForCustomer = (row = {}) => {
     // normalized preview/meta
     title: row.title || "",
     description: row.description || "",
-    base_price: Number(row.base_price) || 0,
+    base_price: 0,
     category: resolveCategoryLabel(previewTemplateType, row.category),
     category_label: resolveCategoryLabel(previewTemplateType, row.category),
 
@@ -684,7 +684,7 @@ exports.getAllBlueprints = async (req, res) => {
           id: row.id,
           title: row.title || "",
           description: row.description || "",
-          base_price: Number(row.base_price) || 0,
+          base_price: 0,
           wood_type: row.wood_type || "",
           thumbnail_url: row.thumbnail_url || "",
           preview_image_url: row.thumbnail_url || "",
@@ -891,7 +891,7 @@ exports.getBlueprintById = async (req, res) => {
       catalog_category_name: String(
         blueprint.catalog_category_name || "",
       ).trim(),
-      base_price: Number(blueprint.base_price) || 0,
+      base_price: 0,
       dimensions: blueprint.dimensions || {
         width_mm: blueprint.width_mm,
         height_mm: blueprint.height_mm,

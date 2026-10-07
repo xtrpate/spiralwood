@@ -62,7 +62,6 @@ import {
   resolveExportFocusLabel,
   formatDimsForTitleBlock,
 } from "./exportSheetUtils";
-import { buildWoodworkingDetailsPages } from "./woodworkingDetailsExport";
 import { buildWoodworkingVisualCallouts } from "./woodworkingVisualCallouts";
 import {
   buildMaterialsPaginationPlan,
@@ -2030,14 +2029,6 @@ function buildAllExportPages({
       selectedMaterialText,
       blueprintTitle,
       unit,
-    }),
-  );
-
-  pages.push(
-    ...buildWoodworkingDetailsPages({
-      selectedComponents: exportComponents,
-      selectedLabel: resolvedObjectLabel,
-      blueprintTitle,
     }),
   );
 
