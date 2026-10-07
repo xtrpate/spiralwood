@@ -99,6 +99,36 @@ const isDraftSameAsSaved = (draft = {}, saved = {}) => {
 const getDraftStorageKey = (blueprintId) =>
   `wisdom_oversized_delivery_draft:${blueprintId}`;
 
+const readStoredDraftDecision = (blueprintId) => {
+  try {
+    const raw = window.sessionStorage.getItem(
+      getDraftStorageKey(blueprintId),
+    );
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const hasMeaningfulStoredDraft = (draft = null) => {
+  if (!draft || typeof draft !== "object") return false;
+
+  const decision = String(draft.decision || "")
+    .trim()
+    .toLowerCase();
+  const reason = String(draft.reason || "").trim();
+
+  return (
+    (decision && decision !== "pending") ||
+    Boolean(reason) ||
+    (decision === "fee_required" &&
+      Number.isFinite(Number(draft.additional_delivery_fee)))
+  );
+};
+
 export default function OversizedDeliveryEstimatorPanel({
   blueprintId,
   onGateChange,
@@ -126,18 +156,41 @@ export default function OversizedDeliveryEstimatorPanel({
       );
       const nextPayload = response.data || null;
       const savedDecision = nextPayload?.estimation?.decision || {};
+      const latestAssessmentStatus = String(
+        nextPayload?.assessment?.status || "",
+      )
+        .trim()
+        .toLowerCase();
+      const storedDraft = readStoredDraftDecision(blueprintId);
+      const storedAssessmentStatus = String(
+        storedDraft?.assessment_status || "",
+      )
+        .trim()
+        .toLowerCase();
+      const canRestoreStoredDraft =
+        hasMeaningfulStoredDraft(storedDraft) &&
+        storedAssessmentStatus === latestAssessmentStatus;
+      const decisionSource = canRestoreStoredDraft
+        ? storedDraft
+        : savedDecision;
+      const nextDecision =
+        String(decisionSource?.decision || "").trim() || "pending";
+      const rawFee = decisionSource?.additional_delivery_fee;
+      const feeText =
+        nextDecision === "fee_required" &&
+        rawFee !== null &&
+        rawFee !== undefined &&
+        String(rawFee).trim() !== ""
+          ? String(rawFee)
+          : "";
 
       setNotApplicable(false);
       setPayload(nextPayload);
       setForm({
-        decision:
-          String(savedDecision.decision || "").trim() || "pending",
-        additional_delivery_fee:
-          Number(savedDecision.additional_delivery_fee || 0) > 0
-            ? String(savedDecision.additional_delivery_fee)
-            : "",
+        decision: nextDecision,
+        additional_delivery_fee: feeText,
         reason: String(
-          savedDecision.reason || savedDecision.truck_type || "",
+          decisionSource?.reason || decisionSource?.truck_type || "",
         ),
       });
     } catch (requestError) {
@@ -229,7 +282,9 @@ export default function OversizedDeliveryEstimatorPanel({
   );
 
   useEffect(() => {
-    if (!blueprintId || notApplicable) return;
+    // Do not overwrite an existing unsaved session draft with the panel's
+    // initial blank/pending form while assessment data is still loading.
+    if (!blueprintId || notApplicable || loading || !assessment) return;
 
     const detail = {
       blueprintId: String(blueprintId),
@@ -250,7 +305,13 @@ export default function OversizedDeliveryEstimatorPanel({
         detail,
       }),
     );
-  }, [blueprintId, draftDecision, notApplicable]);
+  }, [
+    assessment,
+    blueprintId,
+    draftDecision,
+    loading,
+    notApplicable,
+  ]);
 
   useEffect(() => {
     const handleEstimationSaved = (event) => {

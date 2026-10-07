@@ -13,18 +13,29 @@ const normalizeUnit = (value = "pc") =>
   normalizeText(value || "pc").toLowerCase() || "pc";
 
 const normalizeIdentityName = (value = "") => {
-  let result = normalizeText(value)
-    .replace(/\s*\([^)]*\)\s*$/g, "")
-    .replace(/\s+#?\d+\s*$/g, "")
-    .toLowerCase();
+  let result = normalizeText(value).toLowerCase();
 
-  if (/ies$/i.test(result)) {
-    result = result.replace(/ies$/i, "y");
-  } else if (/s$/i.test(result) && !/ss$/i.test(result)) {
-    result = result.replace(/s$/i, "");
+  // Normalize display decoration only. Quantity validation remains strict.
+  // Two passes handle legacy names such as:
+  //   "Shelfs (Oak Natural)" -> "shelf"
+  //   "Shelf (Oak Natural)s" -> "shelf"
+  for (let pass = 0; pass < 2; pass += 1) {
+    result = result
+      .replace(/\s*\([^)]*\)\s*$/g, "")
+      .replace(/\s+#?\d+\s*$/g, "")
+      .trim();
+
+    if (/ies$/i.test(result)) {
+      result = result.replace(/ies$/i, "y");
+    } else if (/s$/i.test(result) && !/ss$/i.test(result)) {
+      result = result.replace(/s$/i, "");
+    }
   }
 
-  return result;
+  return result
+    .replace(/\s*\([^)]*\)\s*$/g, "")
+    .replace(/\s+#?\d+\s*$/g, "")
+    .trim();
 };
 
 const getDimensionIdentity = (value = "") => {

@@ -425,13 +425,10 @@ const condenseAutoItems = (rows = []) => {
     grouped.get(key).quantity += Number(row.quantity || 0);
   });
 
-  return output.map((row) => ({
-    ...row,
-    name:
-      Number(row.quantity || 0) > 1 && !/s$/i.test(row.name)
-        ? `${row.name}s`
-        : row.name,
-  }));
+  // Quantity is already represented by the dedicated Qty field. Keep the
+  // canonical structural label unchanged. Appending a plural after finish
+  // metadata (for example "Shelf (Oak Natural)s") changes structural identity.
+  return output;
 };
 
 const buildAutoItemsFromComponents = (
@@ -516,14 +513,28 @@ const buildPreferredAutoItems = (design = {}, orderQuantity = 1) => {
 };
 
 const normalizeIdentityName = (value = "") => {
-  let result = normalizeText(value)
-    .replace(/\s*\([^)]*\)\s*$/g, "")
-    .toLowerCase();
-  if (/ies$/i.test(result)) result = result.replace(/ies$/i, "y");
-  else if (/s$/i.test(result) && !/ss$/i.test(result)) {
-    result = result.replace(/s$/i, "");
+  let result = normalizeText(value).toLowerCase();
+
+  // Legacy rows may carry a plural suffix before or after finish metadata.
+  // Two passes normalize both "Shelfs (Oak Natural)" and
+  // "Shelf (Oak Natural)s" to the same canonical "shelf" identity.
+  for (let pass = 0; pass < 2; pass += 1) {
+    result = result
+      .replace(/\s*\([^)]*\)\s*$/g, "")
+      .replace(/\s+#?\d+\s*$/g, "")
+      .trim();
+
+    if (/ies$/i.test(result)) {
+      result = result.replace(/ies$/i, "y");
+    } else if (/s$/i.test(result) && !/ss$/i.test(result)) {
+      result = result.replace(/s$/i, "");
+    }
   }
-  return result;
+
+  return result
+    .replace(/\s*\([^)]*\)\s*$/g, "")
+    .replace(/\s+#?\d+\s*$/g, "")
+    .trim();
 };
 
 const getDimensionIdentity = (note = "") => {
@@ -1912,6 +1923,7 @@ export default function EstimationPage() {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [refreshingItems, setRefreshingItems] = useState(false);
   const [approving, setApproving] = useState(false);
   const [savedDraftSignature, setSavedDraftSignature] = useState(null);
   const [activeEstimateTab, setActiveEstimateTab] = useState("estimate");
@@ -2606,23 +2618,56 @@ export default function EstimationPage() {
     ]);
   };
 
-  const handleRegenerate = () => {
+  const handleRegenerate = async () => {
     if (isReadOnly) {
       toast.error("Sent or approved estimates cannot be refreshed.");
       return;
     }
-    if (!preferredAutoItems.length) {
-      toast.error("No blueprint design data is available to refresh.");
-      return;
-    }
+    if (refreshingItems) return;
+
     const shouldReplace = window.confirm(
       "Refresh furniture parts from the latest Blueprint? Existing matching rates will be preserved.",
     );
     if (!shouldReplace) return;
 
-    const mergedAuto = mergeAutoRows(preferredAutoItems, blueprintItems, []);
-    setItems([...mergedAuto, ...inventoryItems]);
-    toast.success("Furniture parts refreshed. Existing rates were preserved.");
+    setRefreshingItems(true);
+
+    try {
+      // Refresh must use the authoritative server-side Blueprint/order state.
+      // Reusing the current browser snapshot can regenerate the same stale
+      // quantities and make the backend integrity guard fail forever.
+      const blueprintResponse = await api.get(`/blueprints/${id}`);
+      const latestBlueprint = blueprintResponse.data;
+      const latestAutoItems = buildPreferredAutoItems(
+        parseBlueprintDesignData(latestBlueprint),
+        getBlueprintOrderQuantity(latestBlueprint),
+      );
+
+      if (!latestAutoItems.length) {
+        toast.error("No blueprint design data is available to refresh.");
+        return;
+      }
+
+      const mergedAuto = mergeAutoRows(
+        latestAutoItems,
+        blueprintItems,
+        [],
+      );
+
+      setBlueprint(latestBlueprint);
+      setItems([...mergedAuto, ...inventoryItems]);
+      toast.success(
+        "Furniture parts refreshed from the latest Blueprint. Existing rates were preserved.",
+      );
+    } catch (error) {
+      console.error("Failed to refresh latest Blueprint estimate items:", error);
+      toast.error(
+        error?.response?.data?.message ||
+          "Unable to refresh the latest Blueprint items. Please try again.",
+      );
+    } finally {
+      setRefreshingItems(false);
+    }
   };
 
   const buildPayload = (deliveryDraft = oversizedDeliveryDraft) => {
@@ -2783,6 +2828,16 @@ export default function EstimationPage() {
         setBlueprint((current) =>
           current ? { ...current, stage: "estimation" } : current,
         );
+      }
+
+      if (isDelivery) {
+        try {
+          window.sessionStorage.removeItem(
+            getOversizedDeliveryDraftStorageKey(id),
+          );
+        } catch {
+          // Persisted backend delivery state is authoritative after save.
+        }
       }
 
       window.dispatchEvent(
@@ -3084,14 +3139,14 @@ export default function EstimationPage() {
           <button
             type="button"
             onClick={handleRegenerate}
-            disabled={isReadOnly || !preferredAutoItems.length}
+            disabled={isReadOnly || refreshingItems}
             style={
-              isReadOnly || !preferredAutoItems.length
+              isReadOnly || refreshingItems
                 ? { ...btnGhost, ...btnDisabled }
                 : btnGhost
             }
           >
-            Refresh Items
+            {refreshingItems ? "Refreshing..." : "Refresh Items"}
           </button>
           <button type="button" onClick={exportPDF} style={btnGhost}>
             Export PDF
