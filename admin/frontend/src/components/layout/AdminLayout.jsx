@@ -702,6 +702,7 @@ export default function AdminLayout() {
           style={{
             flex: 1,
             overflowY: "auto",
+            overflowX: "hidden",
             padding: "8px 0",
           }}
         >

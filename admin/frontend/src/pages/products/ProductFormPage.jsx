@@ -11,7 +11,6 @@ import CustomerBlueprintViewer from "../customer/CustomerBlueprintViewer";
 // WISDOM PRODUCT COST LABEL AND SUMMARY NUMBER FIX V1
 const DEFAULT = {
   name: "",
-  barcode: "",
   description: "",
   category_id: "",
   type: "standard",
@@ -25,6 +24,8 @@ const DEFAULT = {
 };
 
 const MAX_PRODUCT_IMAGES = 6;
+const MAX_PRODUCT_NAME_LENGTH = 200;
+const MAX_PRODUCT_DESCRIPTION_LENGTH = 500;
 
 export default function ProductFormPage() {
   useEffect(() => {
@@ -227,6 +228,35 @@ export default function ProductFormPage() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+
+    const productName = String(form.name ?? "").trim();
+    const description = String(form.description ?? "").trim();
+    const categoryId = Number(form.category_id);
+
+    if (!productName) {
+      toast.error("Product name is required.");
+      return;
+    }
+
+    if (productName.length > MAX_PRODUCT_NAME_LENGTH) {
+      toast.error(
+        `Product name cannot exceed ${MAX_PRODUCT_NAME_LENGTH} characters.`,
+      );
+      return;
+    }
+
+    if (description.length > MAX_PRODUCT_DESCRIPTION_LENGTH) {
+      toast.error(
+        `Description cannot exceed ${MAX_PRODUCT_DESCRIPTION_LENGTH} characters.`,
+      );
+      return;
+    }
+
+    if (!Number.isInteger(categoryId) || categoryId <= 0) {
+      toast.error("Please select a valid product category.");
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -234,7 +264,6 @@ export default function ProductFormPage() {
 
       const allowedFields = [
         "name",
-        "barcode",
         "description",
         "category_id",
         "type",
@@ -249,6 +278,9 @@ export default function ProductFormPage() {
       const normalizedForm = isBlueprint
         ? {
             ...form,
+            name: productName,
+            description,
+            category_id: categoryId,
             online_price: 0,
             walkin_price: 0,
             production_cost: 0,
@@ -258,6 +290,9 @@ export default function ProductFormPage() {
           }
         : {
             ...form,
+            name: productName,
+            description,
+            category_id: categoryId,
             walkin_price: form.online_price,
           };
 
@@ -356,19 +391,11 @@ export default function ProductFormPage() {
             <Field label="Product name" required>
               <input
                 required
+                maxLength={MAX_PRODUCT_NAME_LENGTH}
                 value={form.name}
                 onChange={(event) => set("name", event.target.value)}
                 style={input}
                 placeholder="Example: Modern Oak Dining Table"
-              />
-            </Field>
-
-            <Field label="Barcode">
-              <input
-                value={form.barcode || ""}
-                onChange={(event) => set("barcode", event.target.value)}
-                style={input}
-                placeholder="Optional"
               />
             </Field>
           </Row>
@@ -433,6 +460,7 @@ export default function ProductFormPage() {
 
           <Field label="Description">
             <textarea
+              maxLength={MAX_PRODUCT_DESCRIPTION_LENGTH}
               value={form.description || ""}
               onChange={(event) => set("description", event.target.value)}
               rows={3}
@@ -644,9 +672,10 @@ export default function ProductFormPage() {
               <div style={{ ...infoBox, marginBottom: 14 }}>
                 <div style={infoTitle}>Managed in Build Materials</div>
                 <div style={infoText}>
-                  Catalog pricing and costs remain managed with the ready-made item.
-                  Stock on hand is read-only here and changes only through traceable
-                  Inventory transactions such as Stock Movement and Internal Stock Transfer.
+                  Catalog pricing and costs remain managed with the ready-made
+                  item. Stock on hand is read-only here and changes only through
+                  traceable Inventory transactions such as Stock Movement and
+                  Internal Stock Transfer.
                 </div>
               </div>
 

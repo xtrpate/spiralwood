@@ -8,9 +8,153 @@ const {
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const MAX_HOMEPAGE_NEW_PRODUCTS = 4;
 const NEW_PRODUCT_LIMIT_MESSAGE =
-  "You can show up to 4 new products on the homepage. Unmark one product first.";
+  "You can show up to 4 new products on the homepage.";
 
 const MAX_PRODUCT_IMAGES = 6;
+
+// Product field limits must match the database schema.
+const MAX_PRODUCT_NAME_LENGTH = 200;
+const MAX_PRODUCT_BARCODE_LENGTH = 100;
+const MAX_PRODUCT_DESCRIPTION_LENGTH = 5000;
+
+// products.*_price are DECIMAL(10,2).
+const MAX_PRODUCT_PRICE = 99999999.99;
+
+// bill_of_materials.quantity is DECIMAL(10,2).
+const MAX_BOM_QUANTITY = 99999999.99;
+
+function parseBOMQuantity(value) {
+  if (value === undefined || value === null || value === "") {
+    return 0;
+  }
+
+  const raw = String(value).trim();
+
+  // BOM quantities must be non-negative numbers with at most 2 decimals.
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(raw)) {
+    throw new Error(
+      "Bill of materials quantity must be a valid non-negative number with up to 2 decimal places.",
+    );
+  }
+
+  const number = Number(raw);
+
+  if (!Number.isFinite(number) || number < 0) {
+    throw new Error(
+      "Bill of materials quantity must be a valid non-negative number.",
+    );
+  }
+
+  if (number > MAX_BOM_QUANTITY) {
+    throw new Error("Bill of materials quantity cannot exceed 99,999,999.99.");
+  }
+
+  return number;
+}
+
+function normalizeProductName(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim().replace(/\s+/g, " ");
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized.length > MAX_PRODUCT_NAME_LENGTH) {
+    return null;
+  }
+
+  return normalized;
+}
+
+function normalizeProductBarcode(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized.length > MAX_PRODUCT_BARCODE_LENGTH) {
+    return null;
+  }
+
+  // Barcode/SKU values should not contain whitespace or control characters.
+  if (/[\s\u0000-\u001F\u007F]/.test(normalized)) {
+    return null;
+  }
+
+  return normalized;
+}
+
+function normalizeProductDescription(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  if (value.length > MAX_PRODUCT_DESCRIPTION_LENGTH) {
+    return null;
+  }
+
+  return value;
+}
+
+function parseStrictBoolean(value, fieldName) {
+  if (value === true || value === 1 || value === "1" || value === "true") {
+    return 1;
+  }
+
+  if (value === false || value === 0 || value === "0" || value === "false") {
+    return 0;
+  }
+
+  throw new Error(`${fieldName} must be true or false.`);
+}
+
+function parseProductPrice(value, fieldName, { required = false } = {}) {
+  if (value === undefined || value === null || value === "") {
+    if (required) {
+      throw new Error(`${fieldName} is required.`);
+    }
+
+    return 0;
+  }
+
+  const raw = String(value).trim();
+
+  // Product prices use at most two decimal places.
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(raw)) {
+    throw new Error(
+      `${fieldName} must be a valid non-negative amount with up to 2 decimal places.`,
+    );
+  }
+
+  const number = Number(raw);
+
+  if (!Number.isFinite(number) || number < 0) {
+    throw new Error(`${fieldName} must be a valid non-negative amount.`);
+  }
+
+  if (number > MAX_PRODUCT_PRICE) {
+    throw new Error(`${fieldName} cannot exceed ₱99,999,999.99.`);
+  }
+
+  return number;
+}
 
 function parseGalleryOrder(rawValue) {
   if (rawValue === undefined || rawValue === null || rawValue === "") {
@@ -323,11 +467,10 @@ async function getHomepageNewProductCount(conn, excludeProductId = null) {
   return rows.length;
 }
 
-// Shared helper: rolls back the transaction, releases the connection,
-// and sends a clear 400 error. Used by both create and update below.
+// Shared helper: rolls back the transaction and sends a clear 400 error.
+// The caller's finally block is responsible for releasing the connection.
 async function respondInvalid(conn, res, message) {
   await conn.rollback();
-  conn.release();
   return res.status(400).json({ message });
 }
 
@@ -411,8 +554,7 @@ exports.getAll = async (req, res) => {
            END ASC,
            p.created_at DESC`;
 
-    const isAdminProductManagement =
-      sort === "admin_product_management";
+    const isAdminProductManagement = sort === "admin_product_management";
 
     const blueprintSelectSql = isAdminProductManagement
       ? `COALESCE(b.title, pbs.title) AS blueprint_title,
@@ -645,7 +787,7 @@ exports.create = async (req, res) => {
       bill_of_materials = "[]",
     } = req.body;
 
-    const normalizedType = String(type || "standard")
+    const normalizedType = String(type === undefined ? "standard" : type)
       .trim()
       .toLowerCase();
 
@@ -654,49 +796,76 @@ exports.create = async (req, res) => {
     }
 
     // ── Input validation ──────────────────────────────────────────────
-    if (!isNonEmptyString(name)) {
-      return respondInvalid(conn, res, "Product name is required.");
+
+    const normalizedName = normalizeProductName(name);
+
+    if (!normalizedName) {
+      if (typeof name !== "string" || !name.trim()) {
+        return respondInvalid(conn, res, "Product name is required.");
+      }
+
+      return respondInvalid(
+        conn,
+        res,
+        `Product name must be ${MAX_PRODUCT_NAME_LENGTH} characters or fewer.`,
+      );
     }
+
+    const normalizedBarcode = normalizeProductBarcode(barcode);
+
     if (
-      online_price === undefined ||
-      online_price === null ||
-      online_price === ""
+      barcode !== undefined &&
+      barcode !== null &&
+      barcode !== "" &&
+      !normalizedBarcode
     ) {
-      return respondInvalid(conn, res, "Online price is required.");
-    }
-    if (!isValidNonNegativeNumber(online_price)) {
       return respondInvalid(
         conn,
         res,
-        "Online price must be a valid non-negative number.",
+        `Barcode must be a non-empty value without spaces or control characters and must be ${MAX_PRODUCT_BARCODE_LENGTH} characters or fewer.`,
       );
     }
+
+    const normalizedDescription = normalizeProductDescription(description);
+
     if (
-      walkin_price === undefined ||
-      walkin_price === null ||
-      walkin_price === ""
+      description !== undefined &&
+      description !== null &&
+      description !== "" &&
+      normalizedDescription === null
     ) {
-      return respondInvalid(conn, res, "Walk-in price is required.");
-    }
-    if (!isValidNonNegativeNumber(walkin_price)) {
       return respondInvalid(
         conn,
         res,
-        "Walk-in price must be a valid non-negative number.",
+        `Description must be ${MAX_PRODUCT_DESCRIPTION_LENGTH} characters or fewer.`,
       );
     }
-    if (!isValidNonNegativeNumber(production_cost)) {
-      return respondInvalid(
-        conn,
-        res,
-        "Production cost must be a valid non-negative number.",
-      );
+
+    let numOnlinePrice;
+    let numWalkinPrice;
+    let numProdCost;
+
+    try {
+      numOnlinePrice = parseProductPrice(online_price, "Online price", {
+        required: true,
+      });
+
+      numWalkinPrice = parseProductPrice(walkin_price, "Walk-in price", {
+        required: true,
+      });
+
+      numProdCost = parseProductPrice(production_cost, "Production cost", {
+        required: true,
+      });
+    } catch (priceError) {
+      return respondInvalid(conn, res, priceError.message);
     }
+
     if (
       stock !== undefined &&
       stock !== null &&
       stock !== "" &&
-      Number(stock) !== 0
+      (!isValidNonNegativeInteger(stock) || Number(stock) !== 0)
     ) {
       return respondInvalid(
         conn,
@@ -704,12 +873,54 @@ exports.create = async (req, res) => {
         "New ready-made products start at 0 stock. Record physical stock through Stock Movement after creating the product.",
       );
     }
+
     if (!isValidNonNegativeInteger(reorder_point)) {
       return respondInvalid(
         conn,
         res,
         "Reorder point must be a valid non-negative whole number.",
       );
+    }
+
+    let normalizedFeatured;
+    let normalizedPublished;
+
+    try {
+      normalizedFeatured = parseStrictBoolean(is_featured, "is_featured");
+
+      normalizedPublished = parseStrictBoolean(is_published, "is_published");
+    } catch (booleanError) {
+      return respondInvalid(conn, res, booleanError.message);
+    }
+
+    if (
+      category_id === undefined ||
+      category_id === null ||
+      category_id === "" ||
+      !/^\d+$/.test(String(category_id).trim()) ||
+      Number(category_id) <= 0
+    ) {
+      return respondInvalid(
+        conn,
+        res,
+        "A valid furniture category is required.",
+      );
+    }
+
+    const catId = Number(category_id);
+
+    const [[validCategory]] = await conn.query(
+      `SELECT id
+   FROM categories
+   WHERE id = ?
+     AND type = 'build'
+   LIMIT 1
+   FOR UPDATE`,
+      [catId],
+    );
+
+    if (!validCategory) {
+      return respondInvalid(conn, res, "Select a valid furniture category.");
     }
 
     let galleryOrder;
@@ -724,22 +935,23 @@ exports.create = async (req, res) => {
 
     const image_url = createGalleryUrls[0] || null;
 
-    const numOnlinePrice = online_price ? parseFloat(online_price) : 0;
-    const numWalkinPrice = walkin_price ? parseFloat(walkin_price) : 0;
-    const numProdCost = production_cost ? parseFloat(production_cost) : 0;
     const numStock = 0;
-    const numReorder = reorder_point ? parseInt(reorder_point) : 0;
-    const wantsFeatured =
-      is_featured === "true" || is_featured === 1 || is_featured === true;
-    const boolFeatured = normalizedType === "standard" && wantsFeatured ? 1 : 0;
-    const catId =
-      category_id && !isNaN(parseInt(category_id))
-        ? parseInt(category_id)
-        : null;
+    const numReorder =
+      reorder_point === undefined ||
+      reorder_point === null ||
+      reorder_point === ""
+        ? 0
+        : Number(reorder_point);
+
+    const boolFeatured =
+      normalizedType === "standard" && normalizedFeatured === 1 ? 1 : 0;
+
     const bpId =
-      blueprint_id && !isNaN(parseInt(blueprint_id))
-        ? parseInt(blueprint_id)
-        : null;
+      blueprint_id === undefined || blueprint_id === null || blueprint_id === ""
+        ? null
+        : /^\d+$/.test(String(blueprint_id).trim())
+          ? Number(blueprint_id)
+          : null;
 
     if (normalizedType === "blueprint") {
       if (!bpId) {
@@ -785,14 +997,14 @@ exports.create = async (req, res) => {
     online_price, walkin_price, production_cost, stock, reorder_point)
  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
-        barcode || null,
-        name,
-        description || null,
+        normalizedBarcode,
+        normalizedName,
+        normalizedDescription,
         catId,
         normalizedType,
         image_url,
         boolFeatured,
-        is_published,
+        normalizedPublished,
         bpId,
         numOnlinePrice,
         numWalkinPrice,
@@ -832,10 +1044,35 @@ exports.create = async (req, res) => {
     );
 
     // Bill of Materials
-    const parsedBOM =
-      typeof bill_of_materials === "string"
-        ? JSON.parse(bill_of_materials)
-        : bill_of_materials;
+    let parsedBOM = [];
+
+    if (
+      bill_of_materials !== undefined &&
+      bill_of_materials !== null &&
+      bill_of_materials !== ""
+    ) {
+      try {
+        parsedBOM =
+          typeof bill_of_materials === "string"
+            ? JSON.parse(bill_of_materials)
+            : bill_of_materials;
+      } catch (bomError) {
+        return respondInvalid(
+          conn,
+          res,
+          "Bill of materials must contain valid JSON.",
+        );
+      }
+
+      if (!Array.isArray(parsedBOM)) {
+        return respondInvalid(
+          conn,
+          res,
+          "Bill of materials must be an array of material rows.",
+        );
+      }
+    }
+
     for (const b of parsedBOM) {
       if (
         b.raw_material_id === undefined ||
@@ -850,20 +1087,43 @@ exports.create = async (req, res) => {
           "Each bill of materials row needs a valid raw material selected.",
         );
       }
-      if (!isValidNonNegativeNumber(b.quantity)) {
+
+      const rawMaterialId = Number(b.raw_material_id);
+
+      const [[rawMaterial]] = await conn.query(
+        `SELECT id, is_active
+   FROM raw_materials
+   WHERE id = ?
+   LIMIT 1`,
+        [rawMaterialId],
+      );
+
+      if (!rawMaterial) {
         return respondInvalid(
           conn,
           res,
-          "Bill of materials quantity must be a valid non-negative number.",
+          "The selected raw material does not exist.",
         );
       }
+
+      if (Number(rawMaterial.is_active) !== 1) {
+        return respondInvalid(
+          conn,
+          res,
+          "The selected raw material is archived and cannot be used.",
+        );
+      }
+      let bomQuantity;
+
+      try {
+        bomQuantity = parseBOMQuantity(b.quantity);
+      } catch (quantityError) {
+        return respondInvalid(conn, res, quantityError.message);
+      }
+
       await conn.query(
         "INSERT INTO bill_of_materials (product_id, raw_material_id, quantity) VALUES (?,?,?)",
-        [
-          productId,
-          parseInt(b.raw_material_id),
-          b.quantity ? parseFloat(b.quantity) : 0,
-        ],
+        [productId, rawMaterialId, bomQuantity],
       );
     }
 
@@ -872,8 +1132,28 @@ exports.create = async (req, res) => {
     res.status(201).json({ message: "Product created.", id: productId });
   } catch (err) {
     await conn.rollback();
+
     console.error("Create Error:", err);
-    res.status(500).json({ message: err.message });
+
+    if (err?.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({
+        message: "A product with this barcode already exists.",
+      });
+    }
+
+    if (
+      err?.code === "ER_DATA_TOO_LONG" ||
+      err?.code === "ER_WARN_DATA_OUT_OF_RANGE"
+    ) {
+      return res.status(400).json({
+        message:
+          "One or more product values exceed the allowed database limits.",
+      });
+    }
+
+    return res.status(500).json({
+      message: "Unable to create product.",
+    });
   } finally {
     conn.release();
   }
@@ -884,11 +1164,22 @@ exports.update = async (req, res) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    const productId = parseInt(req.params.id);
+    const productId = Number(req.params.id);
 
-    const [[old]] = await conn.query("SELECT * FROM products WHERE id = ?", [
-      productId,
-    ]);
+    if (
+      !Number.isInteger(productId) ||
+      productId <= 0 ||
+      String(req.params.id).trim() !== String(productId)
+    ) {
+      return res.status(400).json({
+        message: "Invalid product ID.",
+      });
+    }
+
+    const [[old]] = await conn.query(
+      "SELECT * FROM products WHERE id = ? FOR UPDATE",
+      [productId],
+    );
     if (!old) return res.status(404).json({ message: "Product not found." });
 
     if (req.body.type !== undefined) {
@@ -922,41 +1213,114 @@ exports.update = async (req, res) => {
     ];
 
     // ── Input validation (only for fields actually being updated) ──────
-    if (req.body.name !== undefined && !isNonEmptyString(req.body.name)) {
-      return respondInvalid(conn, res, "Product name cannot be empty.");
+
+    let normalizedUpdateName;
+    let normalizedUpdateBarcode;
+    let normalizedUpdateDescription;
+
+    if (req.body.name !== undefined) {
+      normalizedUpdateName = normalizeProductName(req.body.name);
+
+      if (!normalizedUpdateName) {
+        if (typeof req.body.name !== "string" || !req.body.name.trim()) {
+          return respondInvalid(conn, res, "Product name cannot be empty.");
+        }
+
+        return respondInvalid(
+          conn,
+          res,
+          `Product name must be ${MAX_PRODUCT_NAME_LENGTH} characters or fewer.`,
+        );
+      }
     }
-    if (
-      req.body.online_price !== undefined &&
-      (req.body.online_price === "" ||
-        !isValidNonNegativeNumber(req.body.online_price))
-    ) {
-      return respondInvalid(
-        conn,
-        res,
-        "Online price must be a valid non-negative number.",
+
+    if (req.body.barcode !== undefined) {
+      normalizedUpdateBarcode = normalizeProductBarcode(req.body.barcode);
+
+      if (
+        req.body.barcode !== null &&
+        req.body.barcode !== "" &&
+        !normalizedUpdateBarcode
+      ) {
+        return respondInvalid(
+          conn,
+          res,
+          `Barcode must be a non-empty value without spaces or control characters and must be ${MAX_PRODUCT_BARCODE_LENGTH} characters or fewer.`,
+        );
+      }
+    }
+
+    if (req.body.description !== undefined) {
+      normalizedUpdateDescription = normalizeProductDescription(
+        req.body.description,
       );
+
+      if (
+        req.body.description !== null &&
+        req.body.description !== "" &&
+        normalizedUpdateDescription === null
+      ) {
+        return respondInvalid(
+          conn,
+          res,
+          `Description must be ${MAX_PRODUCT_DESCRIPTION_LENGTH} characters or fewer.`,
+        );
+      }
     }
-    if (
-      req.body.walkin_price !== undefined &&
-      (req.body.walkin_price === "" ||
-        !isValidNonNegativeNumber(req.body.walkin_price))
-    ) {
-      return respondInvalid(
-        conn,
-        res,
-        "Walk-in price must be a valid non-negative number.",
+
+    if (req.body.category_id !== undefined) {
+      if (
+        req.body.category_id === null ||
+        req.body.category_id === "" ||
+        !/^\d+$/.test(String(req.body.category_id).trim()) ||
+        Number(req.body.category_id) <= 0
+      ) {
+        return respondInvalid(
+          conn,
+          res,
+          "A valid furniture category is required.",
+        );
+      }
+
+      const updateCategoryId = Number(req.body.category_id);
+
+      const [[validCategory]] = await conn.query(
+        `SELECT id
+     FROM categories
+     WHERE id = ?
+       AND type = 'build'
+     LIMIT 1
+     FOR UPDATE`,
+        [updateCategoryId],
       );
+
+      if (!validCategory) {
+        return respondInvalid(conn, res, "Select a valid furniture category.");
+      }
     }
-    if (
-      req.body.production_cost !== undefined &&
-      !isValidNonNegativeNumber(req.body.production_cost)
-    ) {
-      return respondInvalid(
-        conn,
-        res,
-        "Production cost must be a valid non-negative number.",
-      );
+
+    try {
+      if (req.body.online_price !== undefined) {
+        parseProductPrice(req.body.online_price, "Online price", {
+          required: true,
+        });
+      }
+
+      if (req.body.walkin_price !== undefined) {
+        parseProductPrice(req.body.walkin_price, "Walk-in price", {
+          required: true,
+        });
+      }
+
+      if (req.body.production_cost !== undefined) {
+        parseProductPrice(req.body.production_cost, "Production cost", {
+          required: true,
+        });
+      }
+    } catch (priceError) {
+      return respondInvalid(conn, res, priceError.message);
     }
+
     if (
       req.body.stock !== undefined &&
       Number(req.body.stock) !== Number(old.stock || 0)
@@ -967,6 +1331,7 @@ exports.update = async (req, res) => {
         "Stock on hand cannot be changed from Product Management. Use Stock Movement, Internal Stock Transfer, sales, or cancellation flows so every inventory change stays traceable.",
       );
     }
+
     if (
       req.body.reorder_point !== undefined &&
       !isValidNonNegativeInteger(req.body.reorder_point)
@@ -978,33 +1343,80 @@ exports.update = async (req, res) => {
       );
     }
 
-    const updateData = {};
-    allowedColumns.forEach((col) => {
-      if (req.body[col] !== undefined) {
-        // Safe conversions for numbers and booleans
-        if (col === "is_featured" || col === "is_published") {
-          updateData[col] =
-            req.body[col] === "true" ||
-            req.body[col] === 1 ||
-            req.body[col] === true
-              ? 1
-              : 0;
-        } else if (
-          ["online_price", "walkin_price", "production_cost"].includes(col)
-        ) {
-          updateData[col] = req.body[col] ? parseFloat(req.body[col]) : 0;
-        } else if (col === "reorder_point") {
-          updateData[col] = req.body[col] ? parseInt(req.body[col]) : 0;
-        } else if (col === "category_id") {
-          updateData[col] =
-            req.body[col] && !isNaN(parseInt(req.body[col]))
-              ? parseInt(req.body[col])
-              : null;
-        } else {
-          updateData[col] = req.body[col] || null;
-        }
+    let normalizedUpdateFeatured;
+    let normalizedUpdatePublished;
+
+    try {
+      if (req.body.is_featured !== undefined) {
+        normalizedUpdateFeatured = parseStrictBoolean(
+          req.body.is_featured,
+          "is_featured",
+        );
       }
-    });
+
+      if (req.body.is_published !== undefined) {
+        normalizedUpdatePublished = parseStrictBoolean(
+          req.body.is_published,
+          "is_published",
+        );
+      }
+    } catch (booleanError) {
+      return respondInvalid(conn, res, booleanError.message);
+    }
+
+    const updateData = {};
+
+    if (req.body.barcode !== undefined) {
+      updateData.barcode = normalizedUpdateBarcode;
+    }
+
+    if (req.body.name !== undefined) {
+      updateData.name = normalizedUpdateName;
+    }
+
+    if (req.body.description !== undefined) {
+      updateData.description = normalizedUpdateDescription;
+    }
+
+    if (req.body.category_id !== undefined) {
+      updateData.category_id = Number(req.body.category_id);
+    }
+
+    if (normalizedUpdateFeatured !== undefined) {
+      updateData.is_featured = normalizedUpdateFeatured;
+    }
+
+    if (normalizedUpdatePublished !== undefined) {
+      updateData.is_published = normalizedUpdatePublished;
+    }
+
+    if (req.body.online_price !== undefined) {
+      updateData.online_price = parseProductPrice(
+        req.body.online_price,
+        "Online price",
+        { required: true },
+      );
+    }
+
+    if (req.body.walkin_price !== undefined) {
+      updateData.walkin_price = parseProductPrice(
+        req.body.walkin_price,
+        "Walk-in price",
+        { required: true },
+      );
+    }
+
+    if (req.body.production_cost !== undefined) {
+      updateData.production_cost = parseProductPrice(
+        req.body.production_cost,
+        "Production cost",
+        { required: true },
+      );
+    }
+
+    if (req.body.reorder_point !== undefined) {
+      updateData.reorder_point = Number(req.body.reorder_point);
+    }
 
     const targetType = old.type;
 
@@ -1095,14 +1507,38 @@ exports.update = async (req, res) => {
     );
 
     // Replace BOM if provided
-    if (req.body.bill_of_materials) {
+    if (
+      req.body.bill_of_materials !== undefined &&
+      req.body.bill_of_materials !== null &&
+      req.body.bill_of_materials !== ""
+    ) {
+      let parsedBOM;
+
+      try {
+        parsedBOM =
+          typeof req.body.bill_of_materials === "string"
+            ? JSON.parse(req.body.bill_of_materials)
+            : req.body.bill_of_materials;
+      } catch (bomError) {
+        return respondInvalid(
+          conn,
+          res,
+          "Bill of materials must contain valid JSON.",
+        );
+      }
+
+      if (!Array.isArray(parsedBOM)) {
+        return respondInvalid(
+          conn,
+          res,
+          "Bill of materials must be an array of material rows.",
+        );
+      }
+
       await conn.query("DELETE FROM bill_of_materials WHERE product_id = ?", [
         productId,
       ]);
-      const parsedBOM =
-        typeof req.body.bill_of_materials === "string"
-          ? JSON.parse(req.body.bill_of_materials)
-          : req.body.bill_of_materials;
+
       for (const b of parsedBOM) {
         if (
           b.raw_material_id === undefined ||
@@ -1117,20 +1553,44 @@ exports.update = async (req, res) => {
             "Each bill of materials row needs a valid raw material selected.",
           );
         }
-        if (!isValidNonNegativeNumber(b.quantity)) {
+
+        const rawMaterialId = Number(b.raw_material_id);
+
+        const [[rawMaterial]] = await conn.query(
+          `SELECT id, is_active
+   FROM raw_materials
+   WHERE id = ?
+   LIMIT 1`,
+          [rawMaterialId],
+        );
+
+        if (!rawMaterial) {
           return respondInvalid(
             conn,
             res,
-            "Bill of materials quantity must be a valid non-negative number.",
+            "The selected raw material does not exist.",
           );
         }
+
+        if (Number(rawMaterial.is_active) !== 1) {
+          return respondInvalid(
+            conn,
+            res,
+            "The selected raw material is archived and cannot be used.",
+          );
+        }
+
+        let bomQuantity;
+
+        try {
+          bomQuantity = parseBOMQuantity(b.quantity);
+        } catch (quantityError) {
+          return respondInvalid(conn, res, quantityError.message);
+        }
+
         await conn.query(
           "INSERT INTO bill_of_materials (product_id, raw_material_id, quantity) VALUES (?,?,?)",
-          [
-            productId,
-            parseInt(b.raw_material_id),
-            b.quantity ? parseFloat(b.quantity) : 0,
-          ],
+          [productId, rawMaterialId, bomQuantity],
         );
       }
     }
@@ -1140,8 +1600,28 @@ exports.update = async (req, res) => {
     res.json({ message: "Product updated successfully." });
   } catch (err) {
     await conn.rollback();
+
     console.error("Update Error:", err);
-    res.status(500).json({ message: err.message });
+
+    if (err?.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({
+        message: "A product with this barcode already exists.",
+      });
+    }
+
+    if (
+      err?.code === "ER_DATA_TOO_LONG" ||
+      err?.code === "ER_WARN_DATA_OUT_OF_RANGE"
+    ) {
+      return res.status(400).json({
+        message:
+          "One or more product values exceed the allowed database limits.",
+      });
+    }
+
+    return res.status(500).json({
+      message: "Unable to update product.",
+    });
   } finally {
     conn.release();
   }
@@ -1880,9 +2360,7 @@ exports.toggleActive = async (req, res) => {
 
   const requestedActive = req.body?.is_active;
   const activeValue =
-    requestedActive === true ||
-    requestedActive === 1 ||
-    requestedActive === "1"
+    requestedActive === true || requestedActive === 1 || requestedActive === "1"
       ? 1
       : requestedActive === false ||
           requestedActive === 0 ||
