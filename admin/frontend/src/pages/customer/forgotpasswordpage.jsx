@@ -26,11 +26,6 @@ export default function ForgotPasswordPage() {
       }
     }
 
-    setFieldErrors((prev) => ({
-      ...prev,
-      identifier: message,
-    }));
-
     return message;
   };
 
