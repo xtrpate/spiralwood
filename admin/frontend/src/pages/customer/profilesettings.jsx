@@ -2383,6 +2383,9 @@ export default function ProfileSettings() {
                         onClick={() =>
                           setShowPass((p) => ({ ...p, current: !p.current }))
                         }
+                        aria-label={
+                          showPass.current ? "Hide password" : "Show password"
+                        }
                         style={{
                           position: "absolute",
                           right: 10,
@@ -2391,14 +2394,13 @@ export default function ProfileSettings() {
                           background: "none",
                           border: "none",
                           cursor: "pointer",
-                          color: "#aaa",
+                          color: "#555",
+                          fontSize: "11px",
+                          fontWeight: 800,
+                          padding: 0,
                         }}
                       >
-                        {showPass.current ? (
-                          <EyeOff size={16} />
-                        ) : (
-                          <Eye size={16} />
-                        )}
+                        {showPass.current ? "HIDE" : "SHOW"}
                       </button>
                     </div>
                   </div>
