@@ -153,13 +153,22 @@ const paid50 = analyzeInitialPayMongoSession({
     status: "active",
     metadata: { initial_payment_amount_cents: "5000000" },
     line_items: [{ amount: 5000000, quantity: 1 }],
-    payments: [{ attributes: { status: "paid", amount: 5000000 } }],
+    payments: [
+      {
+        attributes: {
+          status: "paid",
+          amount: 5000000,
+          source: { type: "gcash" },
+        },
+      },
+    ],
     payment_intent: { attributes: { status: "succeeded", amount: 5000000 } },
   },
 });
 assert.equal(paid50.ok, true);
 assert.equal(paid50.hasSuccessfulPayment, true);
 assert.equal(paid50.paidCents, 5000000);
+assert.equal(paid50.paymentMethodSnapshot, "gcash");
 
 const providerMismatch = analyzeInitialPayMongoSession({
   attributes: {
@@ -198,6 +207,7 @@ const legacyFallback = analyzeInitialPayMongoSession(
 assert.equal(legacyFallback.ok, true);
 assert.equal(legacyFallback.expectedCents, 3000000);
 assert.equal(legacyFallback.paidCents, 3000000);
+assert.equal(legacyFallback.paymentMethodSnapshot, "paymongo");
 
 const summary = summarizeVerifiedPaymentRows([
   { amount: "30000.00", status: "verified" },

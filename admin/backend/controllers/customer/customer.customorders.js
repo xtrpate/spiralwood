@@ -4774,10 +4774,50 @@ exports.verifyPayment = async (req, res) => {
       orderId: lockedOrder.id,
       paymentTransactionId: paymentInsertResult.insertId,
       issuedByUserId: req.user.id,
+      paymentMethodSnapshot:
+        providerAnalysis.paymentMethodSnapshot || "paymongo",
     });
+
+    const nextOrderStatus =
+      releaseAfterVerification && normalize(lockedCheck.status) === "confirmed"
+        ? "contract_released"
+        : lockedCheck.status;
+
+    // Prepare only non-sensitive financial/audit facts while the committed
+    // values are still in scope. The actual audit middleware is armed only
+    // AFTER the database transaction commits successfully.
+    const preparedAuditRecord = {
+      id: paymentInsertResult.insertId,
+      old: {
+        order_id: lockedOrder.id,
+        payment_status: lockedCheck.payment_status,
+        order_status: lockedCheck.status,
+        verified_total: centsToDecimalString(
+          paymentSummary.verifiedTotalCents,
+        ),
+      },
+      new: {
+        order_id: lockedOrder.id,
+        payment_method: "paymongo",
+        amount: paymentAmountDecimal,
+        verified_total: centsToDecimalString(
+          paymentSummary.verifiedTotalCents + paymentAmountCents,
+        ),
+        remaining_balance: centsToDecimalString(
+          Math.max(0, orderBounds.totalCents - paymentAmountCents),
+        ),
+        payment_status: nextPaymentStatus,
+        order_status: nextOrderStatus,
+        receipt_id: receiptResult.receiptId,
+        receipt_number: receiptResult.receiptNumber,
+        payment_label: receiptResult.paymentLabel,
+      },
+    };
 
     await conn.commit();
     transactionActive = false;
+
+    req.auditRecord = preparedAuditRecord;
 
     const paymentStatusChanged =
       normalize(lockedCheck.payment_status) !== normalize(nextPaymentStatus);
@@ -7470,6 +7510,8 @@ exports.verifyRemainingBalancePayment = async (req, res) => {
       orderId: order.id,
       paymentTransactionId: insertResult.insertId,
       issuedByUserId: req.user.id,
+      paymentMethodSnapshot:
+        finalProviderAnalysis.paymentMethodSnapshot || "paymongo",
     });
 
     await insertNotificationSafe(conn, order.customer_id, {

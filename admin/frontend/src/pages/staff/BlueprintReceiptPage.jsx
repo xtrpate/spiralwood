@@ -9,8 +9,11 @@ import receiptBrandLogoV172 from "../customer/spiral-wood-receipt-logo-v172.png"
 const PAYMENT_METHOD_LABELS = {
   cash: "Cash",
   gcash: "GCash",
+  paymaya: "Maya",
+  card: "Card",
+  qrph: "QR Ph",
   bank_transfer: "Bank Transfer",
-  paymongo: "Online Payment (PayMongo)",
+  paymongo: "Online Payment",
 };
 
 const PAYMENT_LABEL_TEXT = {

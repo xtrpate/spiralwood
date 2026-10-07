@@ -40,6 +40,7 @@ const baseReceipt = (overrides = {}) => ({
   created_at: '2026-09-30T03:00:00.000Z',
   printed_at: '2026-09-30T03:00:00.000Z',
   order_number: 'WLK-TEST-99',
+  order_channel: 'walkin',
   walkin_customer_name: 'Test Customer',
   walkin_customer_phone: '09171234567',
   payment_method: 'cash',
@@ -202,6 +203,7 @@ async function run() {
   assert.equal(res.body.payment_method, 'cash');
   assert.equal(res.body.items.length, 1);
   assert.equal(res.body.financial_summary, null);
+  assert.equal(res.body.cashier_display, 'Cashier Test');
 
   // Current standard PayMongo receipts may still use the historical immutable
   // item-array snapshot. When item math exactly equals the immutable receipt
@@ -520,6 +522,7 @@ async function run() {
     walkin_customer_name: 'Changed Order Customer',
     payment_method_snapshot: 'paymongo',
     staff_name: 'Technical Owner Name',
+    order_channel: 'online',
   });
   res = makeRes();
   await controller.getReceiptById(
@@ -528,8 +531,33 @@ async function run() {
   );
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.customer_display, 'Frozen Receipt Customer');
-  assert.equal(res.body.processor_display, 'Online Payment');
+  assert.equal(res.body.processor_display, 'PayMongo');
   assert.equal(res.body.payment_method, 'paymongo');
+  assert.equal(res.body.payment_provider, 'paymongo');
+  assert.equal(res.body.cashier_display, null);
+
+  // New PayMongo receipts may snapshot the exact provider payment channel.
+  // provider_reference preserves the provider identity, so GCash via PayMongo
+  // is distinct from a manual GCash payment.
+  reset('paymongo_exact_channel', {
+    payment_method_snapshot: 'gcash',
+    provider_reference: 'cs_test_exact_channel',
+    cash_received: null,
+    change_amount: null,
+  });
+  res = makeRes();
+  await controller.getReceiptById(
+    { user: admin, params: { id: '88' } },
+    res,
+  );
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.payment_method, 'gcash');
+  assert.equal(res.body.payment_provider, 'paymongo');
+  assert.equal(res.body.processor_display, 'PayMongo');
+  assert.ok(res.body.financial_summary);
+  assert.equal(res.body.financial_summary.subtotal, 10000);
+  assert.equal(res.body.financial_summary.vatable_sales, 8928.57);
+  assert.equal(res.body.financial_summary.tax, 1071.43);
 
   reset('cash_processor', { staff_name: 'Cashier Test' });
   res = makeRes();
@@ -748,7 +776,7 @@ async function run() {
     res,
   );
   assert.equal(res.statusCode, 200);
-  assert.equal(res.body.processor_display, 'PayMongo / Online Payment');
+  assert.equal(res.body.processor_display, 'PayMongo');
 
   // Frontend contract: status is no longer hard-coded and payment progress is visible.
   const receiptPagePath = path.resolve(
@@ -772,9 +800,25 @@ async function run() {
   assert.equal(receiptPageSource.includes("VAT-Exempt Sales"), false);
   assert.equal(receiptPageSource.includes("Zero-Rated Sales"), false);
   assert.match(receiptPageSource, /VAT \(12%\)/);
-  assert.match(
-    receiptPageSource,
-    /paymentMethod !== "paymongo"[\s\S]*<span>Discount<\/span>/,
+  assert.match(receiptPageSource, /paymaya: "Maya"/);
+  assert.match(receiptPageSource, /card: "Card"/);
+  assert.match(receiptPageSource, /qrph: "QR Ph"/);
+  assert.match(receiptPageSource, /receipt\.payment_provider === "paymongo"/);
+  assert.equal(
+    receiptPageSource.includes('!isPaymongoPayment'),
+    true,
+  );
+  assert.equal(
+    receiptPageSource.includes('<span>Cashier</span>'),
+    true,
+  );
+  assert.equal(
+    receiptPageSource.includes('receipt.cashier_display'),
+    true,
+  );
+  assert.equal(
+    receiptPageSource.includes('<span>Discount</span>'),
+    true,
   );
   assert.match(
     receiptPageSource,
@@ -823,7 +867,29 @@ async function run() {
   assert.match(customerStandardReceiptPageSource, /ORDER TOTAL/);
   assert.match(
     customerStandardReceiptPageSource,
+    /receipt\.financial_summary/,
+  );
+  assert.match(
+    customerStandardReceiptPageSource,
+    /Merchandise Subtotal/,
+  );
+  assert.equal(
+    customerStandardReceiptPageSource.includes('getVatInclusiveBreakdown'),
+    false,
+  );
+  assert.match(
+    customerStandardReceiptPageSource,
     /Previous verified payments/,
+  );
+  assert.equal(
+    customerStandardReceiptPageSource.includes('Processed by'),
+    true,
+  );
+  assert.equal(
+    customerStandardReceiptPageSource.includes(
+      'receipt.processor_display',
+    ),
+    true,
   );
 
   const customerBlueprintReceiptPagePath = path.resolve(
@@ -837,6 +903,16 @@ async function run() {
   assert.equal(
     customerBlueprintReceiptPageSource.includes('getVatInclusiveBreakdown'),
     false,
+  );
+  assert.equal(
+    customerBlueprintReceiptPageSource.includes('Processed by'),
+    true,
+  );
+  assert.equal(
+    customerBlueprintReceiptPageSource.includes(
+      'receipt.processor_display',
+    ),
+    true,
   );
   assert.equal(
     customerBlueprintReceiptPageSource.includes('VATable Sales'),

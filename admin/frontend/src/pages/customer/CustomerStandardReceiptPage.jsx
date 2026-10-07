@@ -10,6 +10,9 @@ const PAYMENT_METHOD_LABELS = {
   cash: "Cash",
   paymongo: "Online Payment",
   gcash: "GCash",
+  paymaya: "Maya",
+  card: "Card",
+  qrph: "QR Ph",
   bank_transfer: "Bank Transfer",
 };
 
@@ -24,20 +27,6 @@ const formatMoney = (value) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
-
-const getVatInclusiveBreakdown = (grossValue) => {
-  const gross = Number(grossValue || 0);
-  const totalCents = Number.isFinite(gross)
-    ? Math.max(0, Math.round((gross + Number.EPSILON) * 100))
-    : 0;
-  const vatableCents = Math.round(totalCents / 1.12);
-
-  return {
-    vatableSales: vatableCents / 100,
-    vatAmount: (totalCents - vatableCents) / 100,
-    total: totalCents / 100,
-  };
-};
 
 const formatReceiptDate = (value) => {
   if (!value) return "—";
@@ -137,7 +126,7 @@ export default function CustomerStandardReceiptPage() {
   const items = Array.isArray(receipt.items)
     ? receipt.items
     : [];
-  const vatBreakdown = getVatInclusiveBreakdown(receipt.total_amount);
+  const financialSummary = receipt.financial_summary || null;
 
   return (
     <div className="customer-receipt-page-v172 customer-receipt-v180">
@@ -269,6 +258,11 @@ export default function CustomerStandardReceiptPage() {
               <span>{receipt.payment_status || "—"}</span>
             </div>
 
+            <div className="meta-row">
+              <span>Processed by</span>
+              <span>{receipt.processor_display || "—"}</span>
+            </div>
+
             {receipt.provider_reference && (
               <div className="meta-row">
                 <span>Payment reference</span>
@@ -329,19 +323,30 @@ export default function CustomerStandardReceiptPage() {
               PAYMENT SUMMARY
             </div>
 
-            <div className="total-row">
-              <span>VATable Sales</span>
-              <span>{formatMoney(vatBreakdown.vatableSales)}</span>
-            </div>
+            {financialSummary && (
+              <>
+                <div className="total-row">
+                  <span>Merchandise Subtotal</span>
+                  <span>{formatMoney(financialSummary.subtotal)}</span>
+                </div>
 
-            <div className="total-row">
-              <span>VAT (12%)</span>
-              <span>{formatMoney(vatBreakdown.vatAmount)}</span>
-            </div>
+                <div className="total-row">
+                  <span>VATable Sales</span>
+                  <span>
+                    {formatMoney(financialSummary.vatable_sales)}
+                  </span>
+                </div>
+
+                <div className="total-row">
+                  <span>VAT (12%)</span>
+                  <span>{formatMoney(financialSummary.tax)}</span>
+                </div>
+              </>
+            )}
 
             <div className="total-row grand">
               <span>ORDER TOTAL</span>
-              <span>{formatMoney(vatBreakdown.total)}</span>
+              <span>{formatMoney(receipt.total_amount)}</span>
             </div>
 
             <div className="total-row">

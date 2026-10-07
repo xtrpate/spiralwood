@@ -105,6 +105,55 @@ assert.doesNotThrow(() =>
   }),
 );
 
+// Regression from Blueprint #254 runtime evidence:
+// expected "shelf|1764×18×560|pc" qty 3
+// actual legacy row "shelf (oak natural)|1764×18×560|pc" qty 3.
+const shelfDesign = {
+  components: [1, 2, 3].map((index) => ({
+    id: `shelf-${index}`,
+    label: `Shelf ${index}`,
+    material: "Plywood + Laminate",
+    width: 1764,
+    height: 18,
+    depth: 560,
+    qty: 1,
+  })),
+};
+
+const legacyDecoratedShelf = (quantity) => ({
+  name: "Shelf (Oak Natural)s",
+  quantity,
+  unit: "pc",
+  unit_cost: 1000,
+  note: "Oak Natural · Plywood + Laminate · 1764×18×560 mm",
+  source_key: "group:legacy-shelf",
+  source_type: "component",
+});
+
+assert.doesNotThrow(() =>
+  validateBlueprintEstimateQuantities({
+    designData: shelfDesign,
+    orderQuantity: 1,
+    items: [legacyDecoratedShelf(3)],
+  }),
+);
+
+expectMismatch(() =>
+  validateBlueprintEstimateQuantities({
+    designData: shelfDesign,
+    orderQuantity: 1,
+    items: [legacyDecoratedShelf(2)],
+  }),
+);
+
+expectMismatch(() =>
+  validateBlueprintEstimateQuantities({
+    designData: shelfDesign,
+    orderQuantity: 1,
+    items: [legacyDecoratedShelf(4)],
+  }),
+);
+
 // Area cut-list quantities also honor the order multiplier.
 const areaDesign = {
   conversionCutListRows: [
@@ -185,6 +234,18 @@ assert(
 assert(
   !mergeSource.includes("normalizeText(match.note)"),
   "Saved historical notes must never overwrite the latest Blueprint structure.",
+);
+
+const condenseStart = frontendSource.indexOf("const condenseAutoItems =");
+const condenseEnd = frontendSource.indexOf(
+  "const buildAutoItemsFromComponents =",
+  condenseStart,
+);
+assert(condenseStart >= 0 && condenseEnd > condenseStart);
+const condenseSource = frontendSource.slice(condenseStart, condenseEnd);
+assert(
+  !condenseSource.includes("${row.name}s"),
+  "Grouped Blueprint structural labels must not append a plural suffix after finish metadata.",
 );
 
 assert(

@@ -53,7 +53,11 @@ export default function ReceiptPage() {
     .trim()
     .toLowerCase();
   const PAYMENT_METHOD_LABELS = {
+    cash: "Cash",
     gcash: "GCash",
+    paymaya: "Maya",
+    card: "Card",
+    qrph: "QR Ph",
     bank_transfer: "Bank Transfer",
     paymongo: "Online Payment",
   };
@@ -72,6 +76,10 @@ export default function ReceiptPage() {
   const paymentStatusLabel =
     paymentSummary?.status || "Payment status unavailable";
   const financialSummary = receipt.financial_summary || null;
+  const isPaymongoPayment =
+    receipt.payment_provider === "paymongo" ||
+    paymentMethod === "paymongo";
+
   const formatMoney = (value) =>
     Number(value || 0).toLocaleString("en-PH", {
       minimumFractionDigits: 2,
@@ -220,6 +228,12 @@ export default function ReceiptPage() {
               <span>Customer</span>
               <span>{receipt.customer_display || receipt.issued_to || "Customer"}</span>
             </div>
+            {receipt.cashier_display && (
+              <div className="meta-row">
+                <span>Cashier</span>
+                <span>{receipt.cashier_display}</span>
+              </div>
+            )}
             <div className="meta-row">
               <span>Payment method</span>
               <span style={{ textTransform: "capitalize" }}>
@@ -314,7 +328,7 @@ export default function ReceiptPage() {
                     </span>
                   </div>
                 )}
-                {paymentMethod !== "paymongo" && (
+                {!isPaymongoPayment && (
                   <div className="total-row">
                     <span>Discount</span>
                     <span>

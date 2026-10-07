@@ -9,6 +9,9 @@ const {
   READY_MADE_VAT_RATE,
   computeReadyMadeVatInclusiveBreakdown,
 } = require("../../utils/readyMadeVat");
+const {
+  isPaymongoReceiptEvidence,
+} = require("../../utils/paymongoReceiptChannel");
 
 // Business/site settings now live in website_content (content_type='setting'),
 // replacing the removed website_settings table. These are the safe fallbacks
@@ -158,9 +161,10 @@ const deriveLegacyPaymongoFinancialSummary = (receipt, items) => {
     receipt.provider_reference,
   );
 
-  const isPaymongoReceipt =
-    snapshotPaymentMethod === "paymongo" ||
-    (!snapshotPaymentMethod && hasImmutableProviderReference);
+  const isPaymongoReceipt = isPaymongoReceiptEvidence({
+    paymentMethodSnapshot: snapshotPaymentMethod,
+    providerReference: receipt.provider_reference,
+  });
 
   if (!isPaymongoReceipt || !Array.isArray(items) || items.length === 0) {
     return null;
@@ -536,19 +540,34 @@ const preparePosReceiptForResponse = (rawReceipt) => {
   } else if (!paymentMethod && hasProviderSnapshot) {
     paymentMethod = "paymongo";
   }
+  const isPaymongoProvider = isPaymongoReceiptEvidence({
+    paymentMethodSnapshot: snapshotPaymentMethod,
+    providerReference: rawReceipt.provider_reference,
+  });
+
   const customerDisplay =
     String(rawReceipt.issued_to || "").trim() || "Customer";
-  const processorDisplay =
-    paymentMethod === "paymongo"
-      ? "Online Payment"
-      : String(rawReceipt.staff_name || "").trim() || "Staff";
+
+  const orderChannel = String(rawReceipt.order_channel || "")
+    .trim()
+    .toLowerCase();
+  const cashierDisplay =
+    orderChannel === "walkin"
+      ? String(rawReceipt.staff_name || "").trim() || null
+      : null;
+
+  const processorDisplay = isPaymongoProvider
+    ? "PayMongo"
+    : String(rawReceipt.staff_name || "").trim() || "Staff";
 
   return {
     ...rawReceipt,
     items: snapshot.items,
     financial_summary: snapshot.financial_summary,
     payment_method: paymentMethod,
+    payment_provider: isPaymongoProvider ? "paymongo" : null,
     customer_display: customerDisplay,
+    cashier_display: cashierDisplay,
     processor_display: processorDisplay,
     payment_summary: paymentSummary,
   };
@@ -572,6 +591,7 @@ exports.getReceiptById = async (req, res) => {
         DATE_FORMAT(r.created_at, '%Y-%m-%dT%H:%i:%s.000Z') AS created_at,
         DATE_FORMAT(r.printed_at, '%Y-%m-%dT%H:%i:%s.000Z') AS printed_at,
         o.order_number,
+        o.type AS order_channel,
         o.walkin_customer_name,
         o.walkin_customer_phone,
         o.payment_method,
@@ -693,6 +713,7 @@ exports.getReceiptByOrderId = async (req, res) => {
         DATE_FORMAT(r.created_at, '%Y-%m-%dT%H:%i:%s.000Z') AS created_at,
         DATE_FORMAT(r.printed_at, '%Y-%m-%dT%H:%i:%s.000Z') AS printed_at,
         o.order_number,
+        o.type AS order_channel,
         o.walkin_customer_name,
         o.walkin_customer_phone,
         o.payment_method,
@@ -815,8 +836,9 @@ exports.getBlueprintReceiptById = async (req, res) => {
       .trim()
       .toLowerCase();
     const processorDisplay =
-      paymentMethod === "paymongo"
-        ? "PayMongo / Online Payment"
+      paymentMethod === "paymongo" ||
+      hasStoredValue(receipt.provider_reference)
+        ? "PayMongo"
         : receipt.processor_name || "Staff";
 
     const [settings] = await db.query(
