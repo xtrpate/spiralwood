@@ -1256,8 +1256,7 @@ exports.getOrders = async (req, res) => {
   } catch (err) {
     console.error("[customer.orders GET]", err);
     return res.status(500).json({
-      message: "Server error.",
-      error: err.message,
+      message: "Server error. Please try again.",
     });
   }
 };
@@ -1472,8 +1471,7 @@ exports.getOrderPreview = async (req, res) => {
   } catch (err) {
     console.error("[customer.orders/:id/preview]", err);
     return res.status(500).json({
-      message: "Server error.",
-      error: err.message,
+      message: "Server error. Please try again.",
     });
   }
 };
@@ -1598,7 +1596,9 @@ exports.getOrderById = async (req, res) => {
     res.json(order);
   } catch (err) {
     console.error("[customer.orders/:id]", err);
-    res.status(500).json({ message: "Server error.", error: err.message });
+    res.status(500).json({
+      message: "Server error. Please try again.",
+    });
   }
 };
 
@@ -1855,7 +1855,9 @@ exports.confirmOrder = async (req, res) => {
     }
 
     console.error("[customer.orders/:id/confirm]", err);
-    return res.status(500).json({ message: "Server error." });
+    return res.status(500).json({
+      message: "Server error. Please try again.",
+    });
   } finally {
     if (conn) conn.release();
   }
@@ -2132,8 +2134,7 @@ exports.verifyPayment = async (req, res) => {
       err.response?.data || err.message,
     );
     res.status(500).json({
-      message: "Server error during verification.",
-      error: err.message,
+      message: "Server error during verification. Please try again.",
     });
   }
 };
@@ -2608,7 +2609,9 @@ exports.cancelOrder = async (req, res) => {
   } catch (err) {
     if (!conn.connection._fatalError) await conn.rollback();
     console.error("[customer.orders/:id/cancel]", err);
-    res.status(500).json({ message: "Server error.", error: err.message });
+    res.status(500).json({
+      message: "Server error. Please try again.",
+    });
   } finally {
     conn.release();
   }

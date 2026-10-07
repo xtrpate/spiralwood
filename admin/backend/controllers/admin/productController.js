@@ -601,7 +601,7 @@ exports.getAll = async (req, res) => {
 
     res.json({ products, total, page: parseInt(page), limit: parseInt(limit) });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: "Internal server error." });
   }
 };
 
@@ -669,7 +669,7 @@ exports.getSummary = async (req, res) => {
       categories,
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: "Internal server error." });
   }
 };
 
@@ -685,7 +685,7 @@ exports.getCategories = async (req, res) => {
 
     res.json({ categories });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: "Internal server error." });
   }
 };
 exports.getOne = async (req, res) => {
@@ -761,7 +761,7 @@ exports.getOne = async (req, res) => {
             : [],
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: "Internal server error." });
   }
 };
 
@@ -1827,7 +1827,7 @@ exports.toggleFeatured = async (req, res) => {
       // Keep the original error.
     }
 
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: "Internal server error." });
   } finally {
     conn.release();
   }
@@ -1893,7 +1893,7 @@ exports.getReport = async (req, res) => {
 
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: "Internal server error." });
   }
 };
 
@@ -1954,7 +1954,7 @@ exports.bulkPublish = async (req, res) => {
     res.json({ message: "Products updated successfully." });
   } catch (err) {
     console.error("[bulkPublish Error]:", err);
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: "Internal server error." });
   }
 };
 
@@ -2004,7 +2004,7 @@ exports.togglePublish = async (req, res) => {
     res.json({ is_published: !!publishValue });
   } catch (err) {
     console.error("[togglePublish Error]:", err);
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: "Internal server error." });
   }
 };
 
@@ -2238,7 +2238,7 @@ exports.publishByBlueprint = async (req, res) => {
     }
 
     console.error("[publishByBlueprint Error]:", err);
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: "Internal server error." });
   } finally {
     conn.release();
   }
@@ -2345,7 +2345,7 @@ exports.unpublishByBlueprint = async (req, res) => {
     }
 
     console.error("[unpublishByBlueprint Error]:", err);
-    return res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: "Internal server error." });
   } finally {
     conn.release();
   }

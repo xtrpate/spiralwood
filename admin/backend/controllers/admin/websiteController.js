@@ -14,9 +14,7 @@ const {
   isR2StoragePath,
   getR2BackupObject,
 } = require("../../services/databaseBackupService");
-const {
-  runDatabaseRestore,
-} = require("../../services/databaseRestoreService");
+const { runDatabaseRestore } = require("../../services/databaseRestoreService");
 
 // Setting-key categorization for audit metadata only — does not affect
 // validation or business behavior. Values are never logged, only which
@@ -390,7 +388,10 @@ exports.getSettings = async (req, res) => {
     const grouped = groupSettingRows(rows, { publicOnly: true });
     res.json(applyPageVisibilityToPublicSettings(grouped, pageRows));
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("[website.getSettings]", err);
+    res.status(500).json({
+      message: "Internal server error.",
+    });
   }
 };
 
@@ -400,7 +401,10 @@ exports.getAdminSettings = async (req, res) => {
     const rows = await loadSettingRows();
     res.json(groupSettingRows(rows));
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("[website.getSettings]", err);
+    res.status(500).json({
+      message: "Internal server error.",
+    });
   }
 };
 
@@ -653,9 +657,14 @@ exports.updateSettings = async (req, res) => {
       }
     }
 
-    res
-      .status(err.statusCode || err.status || 500)
-      .json({ message: err.message });
+    const status = err.statusCode || err.status || 500;
+
+    res.status(status).json({
+      message:
+        status >= 500
+          ? "Internal server error."
+          : err.message || "Request could not be completed.",
+    });
   } finally {
     conn.release();
   }
@@ -818,8 +827,13 @@ exports.createFaq = async (req, res) => {
       id: r.insertId,
     });
   } catch (err) {
-    res.status(err.statusCode || 500).json({
-      message: err.message,
+    const status = err.statusCode || 500;
+
+    res.status(status).json({
+      message:
+        status >= 500
+          ? "Internal server error."
+          : "Request could not be completed.",
     });
   }
 };
@@ -904,8 +918,13 @@ exports.updateFaq = async (req, res) => {
       message: "FAQ updated.",
     });
   } catch (err) {
-    return res.status(err.statusCode || 500).json({
-      message: err.message,
+    const status = err.statusCode || 500;
+
+    return res.status(status).json({
+      message:
+        status >= 500
+          ? "Internal server error."
+          : "Request could not be completed.",
     });
   }
 };
@@ -984,7 +1003,10 @@ exports.getPages = async (req, res) => {
     );
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("[website.getPages]", err);
+    res.status(500).json({
+      message: "Internal server error.",
+    });
   }
 };
 
@@ -1008,7 +1030,10 @@ exports.getAdminPages = async (req, res) => {
     );
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("[website.getAdminPages]", err);
+    res.status(500).json({
+      message: "Internal server error.",
+    });
   }
 };
 
@@ -1038,7 +1063,10 @@ exports.getPage = async (req, res) => {
     if (!page) return res.status(404).json({ message: "Page not found." });
     res.json(page);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("[website.getPage]", err);
+    res.status(500).json({
+      message: "Internal server error.",
+    });
   }
 };
 
@@ -1127,7 +1155,10 @@ exports.updatePage = async (req, res) => {
 
     res.json({ message: "Page updated." });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("[website.updatePage]", err);
+    res.status(500).json({
+      message: "Internal server error.",
+    });
   }
 };
 

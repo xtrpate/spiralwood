@@ -391,7 +391,7 @@ exports.getRawMaterialCategories = async (req, res) => {
     );
     return res.json({ categories });
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: "Internal server error." });
   }
 };
 
@@ -402,7 +402,7 @@ exports.getRawMaterialSupplierOptions = async (req, res) => {
     );
     return res.json({ suppliers });
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: "Internal server error." });
   }
 };
 
@@ -443,7 +443,7 @@ exports.createRawMaterialCategory = async (req, res) => {
       .status(201)
       .json({ message: "Raw material category added.", category });
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: "Internal server error." });
   }
 };
 
@@ -848,7 +848,7 @@ exports.createRawMaterial = async (req, res) => {
     });
   } catch (err) {
     await conn.rollback();
-    return res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: "Internal server error." });
   } finally {
     conn.release();
   }
@@ -1389,7 +1389,7 @@ exports.updateRawMaterial = async (req, res) => {
       conn.release();
     }
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: "Internal server error." });
   }
 };
 
@@ -2080,7 +2080,7 @@ exports.getStockMovements = async (req, res) => {
       return res.status(400).json({ message: err.message });
     }
 
-    return res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: "Internal server error." });
   }
 };
 
@@ -2154,7 +2154,9 @@ exports.createStockMovement = async (req, res) => {
     }
 
     if (materialProvided && !materialId) {
-      return res.status(400).json({ message: "Invalid raw material selection." });
+      return res
+        .status(400)
+        .json({ message: "Invalid raw material selection." });
     }
 
     if (productProvided && !productId) {
@@ -2219,8 +2221,7 @@ exports.createStockMovement = async (req, res) => {
     const requiresTraceability = type === "adjustment" || type === "return";
     const requiresSupplierReference =
       type === "in" && Boolean(materialId) && Boolean(supplierId);
-    const requiresReference =
-      requiresTraceability || requiresSupplierReference;
+    const requiresReference = requiresTraceability || requiresSupplierReference;
 
     if (requiresReference && !cleanReference) {
       return res.status(400).json({
@@ -2338,10 +2339,7 @@ exports.createStockMovement = async (req, res) => {
 
       newQty = normalizeRawMaterialQuantity(newQty);
 
-      if (
-        type === "adjustment" &&
-        Math.abs(newQty - currentQty) <= 0.0000001
-      ) {
+      if (type === "adjustment" && Math.abs(newQty - currentQty) <= 0.0000001) {
         return await rollbackAndRespond(409, {
           message:
             "Stock is already " +
@@ -2528,7 +2526,11 @@ exports.createStockMovement = async (req, res) => {
       });
     }
 
-    if (String(product.type || "").trim().toLowerCase() !== "standard") {
+    if (
+      String(product.type || "")
+        .trim()
+        .toLowerCase() !== "standard"
+    ) {
       return await rollbackAndRespond(409, {
         message:
           "Only standard ready-made products can receive finished-product stock movements.",
@@ -2554,7 +2556,8 @@ exports.createStockMovement = async (req, res) => {
       const newProductStock = currentProductStock + movementQty;
       if (newProductStock > MAX_READY_MADE_MOVEMENT_QUANTITY) {
         return await rollbackAndRespond(400, {
-          message: "Resulting product stock is above the supported stock limit.",
+          message:
+            "Resulting product stock is above the supported stock limit.",
         });
       }
 
@@ -2716,7 +2719,10 @@ exports.createStockMovement = async (req, res) => {
       try {
         await conn.rollback();
       } catch (rollbackError) {
-        console.error("[inventory.createStockMovement rollback]", rollbackError);
+        console.error(
+          "[inventory.createStockMovement rollback]",
+          rollbackError,
+        );
       }
     }
 

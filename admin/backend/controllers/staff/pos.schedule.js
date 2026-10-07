@@ -884,8 +884,7 @@ exports.getAppointments = async (req, res) => {
   } catch (err) {
     console.error("GET /api/pos/appointments error:", err);
     return res.status(500).json({
-      message: "Failed to load appointments",
-      error: err.message,
+      message: "Failed to load appointments. Please try again.",
     });
   }
 };
@@ -1336,8 +1335,7 @@ exports.createAppointment = async (req, res) => {
   } catch (err) {
     console.error("POST /api/pos/appointments error:", err);
     return res.status(500).json({
-      message: "Failed to create appointment",
-      error: err.message,
+      message: "Failed to create appointment. Please try again.",
     });
   }
 };

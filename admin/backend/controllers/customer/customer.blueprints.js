@@ -695,9 +695,7 @@ exports.getAllBlueprints = async (req, res) => {
             String(row.catalog_category_name || "").trim() ||
             "Furniture Template",
           catalog_category_id: Number(row.catalog_category_id) || null,
-          catalog_category_name: String(
-            row.catalog_category_name || "",
-          ).trim(),
+          catalog_category_name: String(row.catalog_category_name || "").trim(),
           is_template: row.is_template,
           is_gallery: row.is_gallery,
           stage: row.stage,
@@ -731,10 +729,8 @@ exports.getAllBlueprints = async (req, res) => {
               mapped.thumbnail_url || mapped.preview_image_url || "",
             preview_image_url:
               mapped.preview_image_url || mapped.thumbnail_url || "",
-            furniture_type:
-              mapped.furniture_type || mapped.furnitureType || "",
-            furnitureType:
-              mapped.furnitureType || mapped.furniture_type || "",
+            furniture_type: mapped.furniture_type || mapped.furnitureType || "",
+            furnitureType: mapped.furnitureType || mapped.furniture_type || "",
             template_type: mapped.template_type || mapped.templateType || "",
             templateType: mapped.templateType || mapped.template_type || "",
             preview_template_type: mapped.preview_template_type,
@@ -815,7 +811,9 @@ exports.getAllBlueprints = async (req, res) => {
     });
   } catch (err) {
     console.error("[customer.blueprints GET]", err);
-    res.status(500).json({ message: "Server error.", error: err.message });
+    res.status(500).json({
+      message: "Server error. Please try again.",
+    });
   }
 };
 
@@ -907,6 +905,8 @@ exports.getBlueprintById = async (req, res) => {
     });
   } catch (err) {
     console.error("[customer.blueprints/:id]", err);
-    res.status(500).json({ message: "Server error.", error: err.message });
+    res.status(500).json({
+      message: "Server error. Please try again.",
+    });
   }
 };

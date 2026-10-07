@@ -401,7 +401,14 @@ exports.getEstimation = async (req, res) => {
     });
   } catch (err) {
     console.error("getEstimation error:", err);
-    res.status(err.statusCode || 500).json({ message: err.message });
+    const status = err.statusCode || 500;
+
+    res.status(status).json({
+      message:
+        status >= 500
+          ? "Internal server error."
+          : "Request could not be completed.",
+    });
   } finally {
     conn.release();
   }
@@ -651,7 +658,9 @@ exports.saveEstimation = async (req, res) => {
 
     const unsupportedAdditionalItems = normalizedItems.filter((item) =>
       ["other", "manual"].includes(
-        String(item?.source_type || "").trim().toLowerCase(),
+        String(item?.source_type || "")
+          .trim()
+          .toLowerCase(),
       ),
     );
 
@@ -759,7 +768,8 @@ exports.saveEstimation = async (req, res) => {
       .toLowerCase();
 
     const preservedAdditionalDeliveryFee =
-      isTransactionEstimate && !isPickupOrder &&
+      isTransactionEstimate &&
+      !isPickupOrder &&
       existingDeliveryDecision === "fee_required"
         ? Math.max(
             0,
@@ -781,7 +791,9 @@ exports.saveEstimation = async (req, res) => {
           "oversized_delivery_decided_at",
           "delivery_requirement",
         ].forEach((key) => {
-          if (Object.prototype.hasOwnProperty.call(existingEstimationMeta, key)) {
+          if (
+            Object.prototype.hasOwnProperty.call(existingEstimationMeta, key)
+          ) {
             preservedDeliveryMeta[key] = existingEstimationMeta[key];
           }
         });
@@ -949,7 +961,14 @@ exports.saveEstimation = async (req, res) => {
   } catch (err) {
     await conn.rollback();
     console.error("saveEstimation error:", err);
-    res.status(err.statusCode || 500).json({ message: err.message });
+    const status = err.statusCode || 500;
+
+    res.status(status).json({
+      message:
+        status >= 500
+          ? "Internal server error."
+          : "Request could not be completed.",
+    });
   } finally {
     conn.release();
   }

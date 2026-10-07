@@ -2355,9 +2355,7 @@ exports.getCloudCart = async (req, res) => {
     return res.json({ cart: [] });
   } catch (err) {
     console.error("[getCloudCart]", err);
-    return res
-      .status(500)
-      .json({ message: "Server error", error: err.message });
+    return res.status(500).json({ message: "Server error. Please try again." });
   }
 };
 
@@ -2383,8 +2381,6 @@ exports.syncCloudCart = async (req, res) => {
     return res.json({ success: true, message: "Cart synced to cloud." });
   } catch (err) {
     console.error("[syncCloudCart]", err);
-    return res
-      .status(500)
-      .json({ message: "Server error", error: err.message });
+    return res.status(500).json({ message: "Server error. Please try again." });
   }
 };

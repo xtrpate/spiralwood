@@ -500,8 +500,7 @@ exports.createAppointment = async (req, res) => {
   } catch (err) {
     console.error("[customer.appointments POST]", err);
     return res.status(500).json({
-      message: "Server error.",
-      error: err.message,
+      message: "Server error. Please try again.",
     });
   }
 };
@@ -536,8 +535,7 @@ exports.getAppointments = async (req, res) => {
   } catch (err) {
     console.error("[customer.appointments GET]", err);
     return res.status(500).json({
-      message: "Server error.",
-      error: err.message,
+      message: "Server error. Please try again.",
     });
   }
 };
@@ -664,8 +662,7 @@ exports.cancelAppointment = async (req, res) => {
   } catch (err) {
     console.error("[customer.appointments DELETE]", err);
     return res.status(500).json({
-      message: "Server error.",
-      error: err.message,
+      message: "Server error. Please try again.",
     });
   }
 };
@@ -715,8 +712,7 @@ exports.getAvailability = async (req, res) => {
   } catch (err) {
     console.error("[customer.appointments AVAILABILITY]", err);
     return res.status(500).json({
-      message: "Server error.",
-      error: err.message,
+      message: "Server error. Please try again.",
     });
   }
 };
@@ -789,8 +785,7 @@ exports.getWeeklyAvailability = async (req, res) => {
     console.error("[customer.appointments WEEKLY AVAILABILITY]", err);
 
     return res.status(500).json({
-      message: "Server error.",
-      error: err.message,
+      message: "Server error. Please try again.",
     });
   }
 };

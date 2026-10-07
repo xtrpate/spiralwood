@@ -178,7 +178,9 @@ exports.getProjects = async (req, res) => {
     res.json(projects);
   } catch (err) {
     console.error("[pos.tasks GET /projects]", err);
-    res.status(500).json({ message: "Server error.", error: err.message });
+    res.status(500).json({
+      message: "Server error. Please try again.",
+    });
   }
 };
 
@@ -210,7 +212,7 @@ exports.getStaff = async (req, res) => {
     res.json(staff);
   } catch (err) {
     console.error("[pos.tasks GET /staff]", err);
-    res.status(500).json({ message: "Server error.", error: err.message });
+    res.status(500).json({ message: "Server error. Please try again." });
   }
 };
 
@@ -785,7 +787,7 @@ exports.getTasks = async (req, res) => {
     res.json(tasks);
   } catch (err) {
     console.error("[pos.tasks GET /]", err);
-    res.status(500).json({ message: "Server error.", error: err.message });
+    res.status(500).json({ message: "Server error. Please try again" });
   }
 };
 

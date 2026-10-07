@@ -246,8 +246,7 @@ exports.getAllProducts = async (req, res) => {
   } catch (err) {
     console.error("[customer.products]", err);
     res.status(500).json({
-      message: "Server error",
-      error: err.message,
+      message: "Server error. Please try again.",
     });
   }
 };
@@ -322,8 +321,7 @@ exports.getProductById = async (req, res) => {
   } catch (err) {
     console.error("[customer.products/:id]", err);
     res.status(500).json({
-      message: "Server error",
-      error: err.message,
+      message: "Server error. Please try again.",
     });
   }
 };

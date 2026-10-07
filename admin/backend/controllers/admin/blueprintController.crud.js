@@ -242,7 +242,14 @@ exports.getAll = async (req, res) => {
     });
   } catch (err) {
     console.error("getAll blueprints error:", err);
-    res.status(err.statusCode || 500).json({ message: err.message });
+    const status = err.statusCode || 500;
+
+    res.status(status).json({
+      message:
+        status >= 500
+          ? "Internal server error."
+          : "Request could not be completed.",
+    });
   }
 };
 
@@ -397,7 +404,14 @@ exports.getOne = async (req, res) => {
     });
   } catch (err) {
     console.error("getOne blueprint error:", err);
-    res.status(err.statusCode || 500).json({ message: err.message });
+    const status = err.statusCode || 500;
+
+    res.status(status).json({
+      message:
+        status >= 500
+          ? "Internal server error."
+          : "Request could not be completed.",
+    });
   }
 };
 
@@ -479,7 +493,14 @@ exports.create = async (req, res) => {
     });
   } catch (err) {
     console.error("create blueprint error:", err);
-    res.status(err.statusCode || 500).json({ message: err.message });
+    const status = err.statusCode || 500;
+
+    res.status(status).json({
+      message:
+        status >= 500
+          ? "Internal server error."
+          : "Request could not be completed.",
+    });
   }
 };
 
@@ -663,7 +684,14 @@ exports.update = async (req, res) => {
     }
 
     console.error("update blueprint error:", err);
-    res.status(err.statusCode || 500).json({ message: err.message });
+    const status = err.statusCode || 500;
+
+    res.status(status).json({
+      message:
+        status >= 500
+          ? "Internal server error."
+          : "Request could not be completed.",
+    });
   } finally {
     conn.release();
   }
@@ -778,7 +806,14 @@ exports.archive = async (req, res) => {
     res.json({ message: "Blueprint archived." });
   } catch (err) {
     console.error("archive blueprint error:", err);
-    res.status(err.statusCode || 500).json({ message: err.message });
+    const status = err.statusCode || 500;
+
+    res.status(status).json({
+      message:
+        status >= 500
+          ? "Internal server error."
+          : "Request could not be completed.",
+    });
   }
 };
 
@@ -833,7 +868,14 @@ exports.restore = async (req, res) => {
     res.json({ message: "Blueprint restored." });
   } catch (err) {
     console.error("restore blueprint error:", err);
-    res.status(err.statusCode || 500).json({ message: err.message });
+    const status = err.statusCode || 500;
+
+    res.status(status).json({
+      message:
+        status >= 500
+          ? "Internal server error."
+          : "Request could not be completed.",
+    });
   }
 };
 
@@ -900,7 +942,14 @@ exports.permanentDelete = async (req, res) => {
   } catch (err) {
     await conn.rollback();
     console.error("permanentDelete blueprint error:", err);
-    res.status(err.statusCode || 500).json({ message: err.message });
+    const status = err.statusCode || 500;
+
+    res.status(status).json({
+      message:
+        status >= 500
+          ? "Internal server error."
+          : "Request could not be completed.",
+    });
   } finally {
     conn.release();
   }

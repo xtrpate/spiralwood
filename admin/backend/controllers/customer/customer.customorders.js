@@ -1354,9 +1354,7 @@ exports.createCustomOrder = async (req, res) => {
     }
 
     console.error("[customer.customorders POST]", err);
-    return res
-      .status(500)
-      .json({ message: "Server error.", error: err.message });
+    res.status(500).json({ message: "Server error. Please try again." });
   } finally {
     if (conn) conn.release();
   }
@@ -1384,9 +1382,7 @@ exports.getCustomOrders = async (req, res) => {
     return res.json(orders);
   } catch (err) {
     console.error("[customer.customorders GET]", err);
-    return res
-      .status(500)
-      .json({ message: "Server error.", error: err.message });
+    res.status(500).json({ message: "Server error. Please try again." });
   }
 };
 
@@ -4792,9 +4788,7 @@ exports.verifyPayment = async (req, res) => {
         order_id: lockedOrder.id,
         payment_status: lockedCheck.payment_status,
         order_status: lockedCheck.status,
-        verified_total: centsToDecimalString(
-          paymentSummary.verifiedTotalCents,
-        ),
+        verified_total: centsToDecimalString(paymentSummary.verifiedTotalCents),
       },
       new: {
         order_id: lockedOrder.id,
@@ -6251,8 +6245,7 @@ exports.selectRemainingPaymentMethod = async (req, res) => {
 
     if (
       normalize(order.status) === "completed" ||
-      (normalize(order.status) === "cancelled" &&
-        !postProductionWithdrawal)
+      (normalize(order.status) === "cancelled" && !postProductionWithdrawal)
     ) {
       await conn.rollback();
       transactionActive = false;
@@ -6612,8 +6605,7 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
 
     if (
       normalize(order.status) === "completed" ||
-      (normalize(order.status) === "cancelled" &&
-        !postProductionWithdrawal)
+      (normalize(order.status) === "cancelled" && !postProductionWithdrawal)
     ) {
       await conn.rollback();
       transactionActive = false;

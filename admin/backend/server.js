@@ -515,7 +515,7 @@ app.get("/health", async (req, res) => {
     res.status(503).json({
       status: "error",
       db: "disconnected",
-      message: err.message,
+      message: "Database unavailable.",
       timestamp: new Date(),
     });
   }

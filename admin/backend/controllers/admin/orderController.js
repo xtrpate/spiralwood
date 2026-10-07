@@ -1538,14 +1538,9 @@ exports.getOne = async (req, res) => {
 
       const paymentCents = parseDecimalToCentsStrict(payment.amount);
       const nextTotalCents =
-        paymentCents === null
-          ? null
-          : verifiedPaymentTotalCents + paymentCents;
+        paymentCents === null ? null : verifiedPaymentTotalCents + paymentCents;
 
-      if (
-        paymentCents === null ||
-        !Number.isSafeInteger(nextTotalCents)
-      ) {
+      if (paymentCents === null || !Number.isSafeInteger(nextTotalCents)) {
         throw new Error(
           `Invalid persisted payment amount for order ${orderId}.`,
         );
@@ -2228,11 +2223,7 @@ exports.updateStatus = async (req, res) => {
     // so cancellation restores that product stock. Blueprint orders use
     // reservation release above and must never run the standard restock path.
     if (nextStatus === "cancelled" && !isBlueprintOrder) {
-      await restoreStandardOrderStock(
-        conn,
-        orderId,
-        req.user.id,
-      );
+      await restoreStandardOrderStock(conn, orderId, req.user.id);
     }
 
     // Keep delivery-attempt history immutable when the order reaches a
@@ -3265,8 +3256,15 @@ exports.assignStaff = async (req, res) => {
       });
     }
 
-    const [, yearText, monthText, dayText, hourText, minuteText, secondText = "00"] =
-      dueDateMatch;
+    const [
+      ,
+      yearText,
+      monthText,
+      dayText,
+      hourText,
+      minuteText,
+      secondText = "00",
+    ] = dueDateMatch;
 
     const year = Number(yearText);
     const month = Number(monthText);
@@ -3298,8 +3296,7 @@ exports.assignStaff = async (req, res) => {
       });
     }
 
-    const normalizedDueDate =
-      `${yearText}-${monthText}-${dayText} ${hourText}:${minuteText}:${secondText}`;
+    const normalizedDueDate = `${yearText}-${monthText}-${dayText} ${hourText}:${minuteText}:${secondText}`;
 
     let normalizedNote = "";
     if (note !== undefined && note !== null) {
@@ -3567,7 +3564,9 @@ exports.assignStaff = async (req, res) => {
       });
     }
 
-    return res.status(500).json({ message: err.message });
+    return res.status(500).json({
+      message: "Internal server error.",
+    });
   } finally {
     conn.release();
   }
@@ -4589,8 +4588,7 @@ exports.getOrderDiscussion = async (req, res) => {
   } catch (err) {
     console.error("[admin.order getOrderDiscussion]", err);
     return res.status(500).json({
-      message: "Failed to load discussion thread.",
-      error: err.message,
+      message: "Failed to load discussion thread. Please try again.",
     });
   } finally {
     if (conn) conn.release();
