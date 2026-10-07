@@ -34,55 +34,107 @@ const webhookStart = paymongoSource.indexOf(
 assert.ok(webhookStart >= 0, "PayMongo webhook handler was not found.");
 
 const webhookSource = paymongoSource.slice(webhookStart);
-const webhookCommitIndex = webhookSource.indexOf("await conn.commit();");
-const webhookAuditIndex = webhookSource.indexOf(
-  'action: "confirm_paymongo_webhook_payment"',
+const webhookActionNeedle =
+  'action: "confirm_paymongo_webhook_payment"';
+
+const webhookAuditPositions = [];
+let webhookSearchFrom = 0;
+
+while (true) {
+  const actionIndex = webhookSource.indexOf(
+    webhookActionNeedle,
+    webhookSearchFrom,
+  );
+  if (actionIndex < 0) break;
+  webhookAuditPositions.push(actionIndex);
+  webhookSearchFrom = actionIndex + webhookActionNeedle.length;
+}
+
+assert.equal(
+  webhookAuditPositions.length,
+  2,
+  "Expected both Blueprint and standard-order PayMongo webhook audit blocks.",
 );
 
-assert.ok(webhookCommitIndex >= 0, "PayMongo transaction commit was not found.");
-assert.ok(
-  webhookAuditIndex > webhookCommitIndex,
-  "PayMongo success audit must occur only after the database transaction commits.",
+const extractAuditBlock = (source, actionIndex) => {
+  const callStart = source.lastIndexOf(
+    "await writeAuditLogSafe({",
+    actionIndex,
+  );
+  assert.ok(
+    callStart >= 0,
+    "Unable to locate writeAuditLogSafe() for PayMongo audit.",
+  );
+
+  const tail = source.slice(callStart);
+  const closeMatch = tail.match(/\n\s*\}\);/);
+  assert.ok(closeMatch, "Unable to isolate PayMongo audit block.");
+
+  return tail.slice(0, closeMatch.index + closeMatch[0].length);
+};
+
+const webhookAuditBlocks = webhookAuditPositions.map((actionIndex) => {
+  const previousCommitIndex = webhookSource.lastIndexOf(
+    "await conn.commit();",
+    actionIndex,
+  );
+
+  assert.ok(
+    previousCommitIndex >= 0 && previousCommitIndex < actionIndex,
+    "Each PayMongo success audit must occur only after its database transaction commits.",
+  );
+
+  return extractAuditBlock(webhookSource, actionIndex);
+});
+
+for (const [index, auditBlock] of webhookAuditBlocks.entries()) {
+  assert.match(
+    auditBlock,
+    /actorType:\s*"webhook"/,
+    `PayMongo audit block ${index + 1} must be classified as a webhook actor.`,
+  );
+
+  assert.match(
+    auditBlock,
+    /responseStatus:\s*200/,
+    `PayMongo audit block ${index + 1} must record HTTP 200.`,
+  );
+
+  assert.match(
+    auditBlock,
+    /payment_transaction_created:/,
+    `PayMongo audit block ${index + 1} must record whether a payment row was created.`,
+  );
+
+  assert.match(
+    auditBlock,
+    /provider_session_present:\s*(?:true|Boolean\(sessionId\))/,
+    `PayMongo audit block ${index + 1} must record only provider-session presence.`,
+  );
+
+  assert.doesNotMatch(
+    auditBlock,
+    /rawBody|signatureHeader|paymongo-signature|webhookSecret|session_id\s*:|sessionId\s*,/,
+    `PayMongo audit block ${index + 1} must not persist signature secrets, raw webhook payloads, or the provider session ID.`,
+  );
+}
+
+assert.match(
+  webhookAuditBlocks[0],
+  /recordId:\s*blueprintWebhookResult\.paymentTransactionId/,
+  "Blueprint PayMongo webhook audit must link the payment transaction.",
 );
 
-const webhookAuditTail = webhookSource.slice(webhookAuditIndex);
 assert.match(
-  webhookAuditTail,
-  /actorType:\s*"webhook"/,
-  "PayMongo successful payment audit must be classified as a webhook actor.",
+  webhookAuditBlocks[1],
+  /recordId:\s*paymentTransaction\.id/,
+  "Standard-order PayMongo webhook audit must link the payment transaction.",
 );
+
 assert.match(
-  webhookAuditTail,
-  /responseStatus:\s*200/,
-  "PayMongo successful payment audit must record HTTP 200.",
-);
-assert.match(
-  webhookAuditTail,
-  /payment_transaction_created:\s*paymentTransactionCreated/,
-  "PayMongo audit must distinguish a fresh payment row from an idempotent replay.",
-);
-assert.match(
-  webhookAuditTail,
+  webhookAuditBlocks[1],
   /receipt_id:\s*receiptId/,
-  "PayMongo audit must link the resulting receipt ID.",
-);
-assert.match(
-  webhookAuditTail,
-  /provider_session_present:\s*Boolean\(sessionId\)/,
-  "PayMongo audit must record only presence of the provider session reference.",
-);
-
-const webhookAuditBlockEnd = webhookAuditTail.indexOf("\n      });");
-assert.ok(
-  webhookAuditBlockEnd > 0,
-  "Unable to isolate PayMongo audit block.",
-);
-const webhookAuditBlock = webhookAuditTail.slice(0, webhookAuditBlockEnd);
-
-assert.doesNotMatch(
-  webhookAuditBlock,
-  /rawBody|signatureHeader|paymongo-signature|webhookSecret|session_id\s*:|sessionId\s*,/,
-  "PayMongo audit must not persist signature secrets, raw webhook payloads, or the provider session ID.",
+  "Standard-order PayMongo audit must link the resulting receipt ID.",
 );
 
 assert.match(

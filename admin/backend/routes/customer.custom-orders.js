@@ -376,6 +376,7 @@ router.post(
   "/:id/verify-payment",
   authenticate,
   requireCustomer,
+  logAction("verify_blueprint_initial_payment", "payment_transactions"),
   customOrderController.verifyPayment,
 );
 
