@@ -265,8 +265,6 @@ function EmptyRow({ colSpan, text }) {
 
 export default function CurrentInventoryReportPage() {
   const { user } = useAuthStore();
-  const hasPermission = useAuthStore((state) => state.hasPermission);
-  const canExport = hasPermission("stock_movements.export");
   const [searchParams, setSearchParams] = useSearchParams();
   const todayManila = getManilaDateInput();
 
@@ -502,11 +500,6 @@ export default function CurrentInventoryReportPage() {
   };
 
   const exportExcel = async () => {
-    if (!canExport) {
-      toast.error("You do not have permission to export the Inventory report.");
-      return;
-    }
-
     if (!generatedAt || loading) return;
 
     if (filteredRaw.length === 0 && filteredReadyMade.length === 0) {
@@ -814,13 +807,7 @@ export default function CurrentInventoryReportPage() {
             type="button"
             className="cir-button cir-button-primary"
             onClick={exportExcel}
-            disabled={
-              loading ||
-              silentLoading ||
-              !generatedAt ||
-              exporting ||
-              !canExport
-            }
+            disabled={loading || silentLoading || !generatedAt || exporting}
           >
             {exporting ? "Exporting..." : "Export Excel"}
           </button>
