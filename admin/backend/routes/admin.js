@@ -635,8 +635,11 @@ router.patch(
   "/blueprints/:id/estimation/approve",
   adminStaff,
   requirePermission("blueprint_management.manage"),
-  logAction("send_blueprint_estimation", "estimations"),
-  blueprints.approveEstimation,
+  (req, res) =>
+    res.status(410).json({
+      message:
+        "Project Estimation is admin-only. Sending quotations from Project Estimation is no longer supported.",
+    }),
 );
 
 // ══════════════════════════════════════════════════════════════════════════════

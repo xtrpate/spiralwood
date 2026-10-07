@@ -567,54 +567,11 @@ exports.saveEstimation = async (req, res) => {
       });
     }
 
-    // Final order-state gate, re-checked against the locked row. A
-    // linked order must be exactly "confirmed" — "pending" is no longer
-    // accepted here, since a blueprint only ever gets linked to an order
-    // once that order has already been approved into "confirmed" by
-    // approveCustomRequest. Blueprint-only context (no linked order)
-    // skips this gate entirely.
+    // Project Estimation is an admin-only costing/reference tool.
+    // A linked order may provide quantity context, but order status,
+    // contracts and payment state do not gate saving this internal estimate.
+    // This endpoint must never mutate the linked order workflow.
     const order = lifecycle.order;
-
-    if (order) {
-      const normalizedStatus = String(order.status || "").toLowerCase();
-
-      if (normalizedStatus !== "confirmed") {
-        await conn.rollback();
-        return res.status(409).json({
-          message: `Order status is "${order.status}"; must be exactly "confirmed" to save an estimation.`,
-          integrity_reason: "ORDER_NOT_CONFIRMED",
-        });
-      }
-
-      if (lifecycle.contract) {
-        await conn.rollback();
-        return res.status(409).json({
-          message: "A contract already exists for this order.",
-          integrity_reason: "CONTRACT_EXISTS",
-        });
-      }
-
-      if (lifecycle.verified_payment_total > 0) {
-        await conn.rollback();
-        return res.status(409).json({
-          message: `Order already has a verified payment total of ${lifecycle.verified_payment_total}.`,
-          integrity_reason: "VERIFIED_PAYMENT_EXISTS",
-        });
-      }
-
-      if (lifecycle.has_pending_payment_transaction) {
-        await conn.rollback();
-        return res.status(409).json({
-          message: "Order has a pending payment proof awaiting review.",
-          integrity_reason: "PENDING_PAYMENT_EXISTS",
-        });
-      }
-    }
-
-    const isPickupOrder =
-      String(lifecycle.order?.fulfillment_method || "delivery")
-        .trim()
-        .toLowerCase() === "pickup";
 
     const {
       items = [],
@@ -628,7 +585,7 @@ exports.saveEstimation = async (req, res) => {
     validateEstimationItems(items);
 
     const laborCostInput = Number(labor_cost);
-    const overheadCostInput = isPickupOrder ? 0 : Number(overhead_cost);
+    const overheadCostInput = Number(overhead_cost);
     const taxRateInput = Number(tax_rate);
     const discountInput = Number(discount);
     const notesInput = String(notes || "").trim();
@@ -667,7 +624,7 @@ exports.saveEstimation = async (req, res) => {
 
     if (unsupportedAdditionalItems.length > 0) {
       throw createValidationError(
-        "Additional Items are no longer part of Project Estimate. Use Furniture Parts rates and Labor for quotation costing.",
+        "Additional Items are no longer part of Project Estimate. Use Furniture Parts rates and Labor for estimate costing.",
       );
     }
 
@@ -759,47 +716,11 @@ exports.saveEstimation = async (req, res) => {
       });
     }
 
-    const existingEstimationMeta =
-      safeJsonParse(lifecycle.estimation?.estimation_data, {}) || {};
-
-    const existingDeliveryDecision = String(
-      existingEstimationMeta.oversized_delivery_decision || "",
-    )
-      .trim()
-      .toLowerCase();
-
-    const preservedAdditionalDeliveryFee = isPickupOrder
-      ? 0
-      : existingDeliveryDecision === "fee_required"
-        ? Math.max(
-            0,
-            Number(existingEstimationMeta.additional_delivery_fee) || 0,
-          )
-        : 0;
-
-    const preservedDeliveryMeta = {};
-    if (isPickupOrder) {
-      preservedDeliveryMeta.fulfillment_method = "pickup";
-    }
-
-    [
-      "oversized_delivery_decision",
-      "oversized_delivery_reason",
-      "oversized_truck_type",
-      "oversized_delivery_decided_by",
-      "oversized_delivery_decided_at",
-      "delivery_requirement",
-    ].forEach((key) => {
-      if (Object.prototype.hasOwnProperty.call(existingEstimationMeta, key)) {
-        preservedDeliveryMeta[key] = existingEstimationMeta[key];
-      }
-    });
-
     const totals = computeEstimationTotals({
       items: normalizedItems,
       labor_cost: laborCostInput,
       overhead_cost: overheadCostInput,
-      additional_delivery_fee: preservedAdditionalDeliveryFee,
+      additional_delivery_fee: 0,
       tax_rate: taxRateInput,
       discount: discountInput,
       inventory_pricing_mode: "tracking_only",
@@ -814,7 +735,6 @@ exports.saveEstimation = async (req, res) => {
       : 1;
 
     const estimation_data = JSON.stringify({
-      ...preservedDeliveryMeta,
       items: normalizedItems,
       labor_cost: totals.labor_cost,
       overhead_cost: totals.overhead_cost,
@@ -865,59 +785,12 @@ exports.saveEstimation = async (req, res) => {
       );
     }
 
-    await conn.query(
-      `UPDATE blueprints
-       SET stage = 'estimation'
-       WHERE id = ? AND is_deleted = 0`,
-      [blueprintId],
-    );
-
-    // Restricted to the ONE canonical linked order, locked and re-checked
-    // moments earlier — never a blanket WHERE blueprint_id = ? match.
-    // The WHERE clause repeats order_type/status as a final DB-level
-    // backstop even though both were already verified under lock above,
-    // and affectedRows is checked so the new estimation can never be
-    // committed while the order it belongs to silently failed to update.
-    if (order) {
-      const [orderUpdateResult] = await conn.query(
-        `UPDATE orders
-         SET subtotal = ?,
-             tax = ?,
-             discount = ?,
-             total = ?,
-             down_payment = ?,
-             updated_at = NOW()
-         WHERE id = ?
-           AND order_type = 'blueprint'
-           AND status = 'confirmed'`,
-        [
-          totals.subtotal,
-          totals.tax_amount,
-          totals.discount_amount,
-          totals.grand_total,
-          Number((totals.grand_total * 0.3).toFixed(2)),
-          order.id,
-        ],
-      );
-
-      if (orderUpdateResult.affectedRows === 0) {
-        await conn.rollback();
-        return res.status(409).json({
-          message:
-            "Order status changed before the estimation could be saved. Please refresh and try again.",
-          integrity_reason: "ORDER_STATE_CHANGED",
-        });
-      }
-    }
-
     await conn.commit();
 
     const io = req.app.get("io");
 
     emitBlueprintUpdate(io, {
       blueprintId,
-      orderId: order?.id || null,
-      orderNumber: order?.order_number || null,
       changeType: "estimation_saved",
     });
 
@@ -934,7 +807,7 @@ exports.saveEstimation = async (req, res) => {
     };
 
     res.status(201).json({
-      message: "Estimation saved.",
+      message: "Project estimate saved.",
       id: insertResult.insertId,
       estimation: {
         id: insertResult.insertId,

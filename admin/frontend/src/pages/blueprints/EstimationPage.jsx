@@ -1832,7 +1832,7 @@ export default function EstimationPage() {
   const [saving, setSaving] = useState(false);
   const [approving, setApproving] = useState(false);
   const [savedDraftSignature, setSavedDraftSignature] = useState(null);
-  const [activeEstimateTab, setActiveEstimateTab] = useState("request");
+  const [activeEstimateTab, setActiveEstimateTab] = useState("estimate");
   const [showQuoteConfirmModal, setShowQuoteConfirmModal] = useState(false);
   const [deliveryGate, setDeliveryGate] = useState({
     active: true,
@@ -2268,23 +2268,14 @@ export default function EstimationPage() {
     (isHistoricalLockedEstimate ? otherSubtotal : 0) +
     (inventoryTrackingOnly ? 0 : inventorySubtotal);
   const laborCost = Number(costs.labor_cost || 0);
-  const isPickup = deliveryGate.fulfillmentMethod === "pickup";
+  const isPickup = false;
   const logisticsCost = isPickup ? 0 : Number(costs.overhead_cost || 0);
-  const draftDeliveryDecision = String(oversizedDeliveryDraft?.decision || "")
-    .trim()
-    .toLowerCase();
-  const additionalDeliveryFee = isPickup
-    ? 0
-    : Math.max(
-        0,
-        Number(
-          oversizedDeliveryDraft?.assessment_status === "oversized"
-            ? draftDeliveryDecision === "fee_required"
-              ? oversizedDeliveryDraft?.additional_delivery_fee || 0
-              : 0
-            : estimation?.additional_delivery_fee || 0,
-        ),
-      );
+  // Project Estimation is admin-only costing. Delivery decisions are not
+  // part of this page. Legacy locked records may still display their stored
+  // historical fee, but editable estimates never calculate a hidden fee.
+  const additionalDeliveryFee = isHistoricalLockedEstimate
+    ? Math.max(0, Number(estimation?.additional_delivery_fee || 0))
+    : 0;
   const subtotal =
     quoteItemsSubtotal + laborCost + logisticsCost + additionalDeliveryFee;
   const discountRate = Math.max(0, Math.min(100, Number(costs.discount || 0)));
@@ -2416,13 +2407,13 @@ export default function EstimationPage() {
     toast.success("Furniture parts refreshed. Existing rates were preserved.");
   };
 
-  const buildPayload = (deliveryDraft = oversizedDeliveryDraft) => {
+  const buildPayload = () => {
     const filledItems = items
       .filter((item) => isFilledItem(item) && !isOtherItem(item))
       .map(serializeItem);
+
     return {
       items: filledItems,
-      oversized_delivery: deliveryDraft,
       labor_cost: laborCost,
       overhead_cost: logisticsCost,
       tax_rate: Number(costs.tax_rate || 0),
@@ -2431,7 +2422,7 @@ export default function EstimationPage() {
       inventory_pricing_mode: "tracking_only",
       material_cost: quoteItemsSubtotal,
       items_total: quoteItemsSubtotal,
-      additional_delivery_fee: additionalDeliveryFee,
+      additional_delivery_fee: 0,
       subtotal,
       discount_amount: discountAmount,
       tax_amount: taxAmount,
@@ -2441,7 +2432,7 @@ export default function EstimationPage() {
 
   const handleSave = async () => {
     if (isReadOnly) {
-      toast.error("Sent or approved estimates are locked.");
+      toast.error("This legacy estimate is locked.");
       return;
     }
 
@@ -2451,74 +2442,24 @@ export default function EstimationPage() {
     });
     if (showFirstValidationError(validationErrors)) return;
 
-    const currentDeliveryDraft = isPickup
-      ? null
-      : readOversizedDeliveryDraft(id) || oversizedDeliveryDraft;
-
-    if (
-      currentDeliveryDraft?.assessment_status === "oversized" &&
-      !currentDeliveryDraft?.complete
-    ) {
-      toast.error(
-        "Complete the oversized-delivery decision before saving the estimate.",
-      );
-      return;
-    }
-
-    let estimationSaved = false;
     setSaving(true);
 
     try {
       const response = await api.post(
         `/blueprints/${id}/estimation`,
-        buildPayload(currentDeliveryDraft),
+        buildPayload(),
       );
 
-      let saved = response.data?.estimation || null;
-      estimationSaved = Boolean(saved?.id || response.data?.id);
-
-      if (currentDeliveryDraft?.assessment_status === "oversized") {
-        const deliveryResponse = await api.patch(
-          `/oversized-delivery/blueprints/${id}/decision`,
-          {
-            decision: currentDeliveryDraft.decision,
-            additional_delivery_fee:
-              currentDeliveryDraft.decision === "fee_required"
-                ? Number(currentDeliveryDraft.additional_delivery_fee || 0)
-                : 0,
-            reason: String(currentDeliveryDraft.reason || "").trim(),
-            truck_type: "",
-          },
-        );
-
-        const deliveryEstimation = deliveryResponse.data?.estimation || {};
-        const nextDecision = deliveryEstimation?.decision || {};
-
-        saved = {
-          ...(saved || {}),
-          ...deliveryEstimation,
-          additional_delivery_fee: Number(
-            deliveryEstimation.additional_delivery_fee ??
-              nextDecision.additional_delivery_fee ??
-              0,
-          ),
-          decision: nextDecision,
-        };
-
-        window.dispatchEvent(
-          new CustomEvent("wisdom:oversized-delivery-updated", {
-            detail: {
-              blueprintId: String(id),
-              estimation: saved,
-            },
-          }),
-        );
-      }
+      const saved = response.data?.estimation || null;
 
       if (saved) {
-        const normalizedSavedItems = reconcileLoadedItems(
+        const reconciledSavedItems = reconcileLoadedItems(
           saved.items || [],
           preferredAutoItems,
+        );
+        const normalizedSavedItems = applyEstimateCostingItemPolicy(
+          reconciledSavedItems,
+          saved.status,
         );
         const normalizedSavedCosts = {
           labor_cost: Number(saved.labor_cost ?? costs.labor_cost ?? 0),
@@ -2539,15 +2480,7 @@ export default function EstimationPage() {
             normalizedSavedCosts,
           ),
         );
-        setDeliveryGate((current) => ({
-          ...current,
-          dirty: false,
-        }));
       }
-
-      setBlueprint((current) =>
-        current ? { ...current, stage: "estimation" } : current,
-      );
 
       window.dispatchEvent(
         new CustomEvent("wisdom:estimation-saved", {
@@ -2558,22 +2491,11 @@ export default function EstimationPage() {
         }),
       );
 
-      toast.success(
-        currentDeliveryDraft?.assessment_status === "oversized"
-          ? "Estimate and oversized-delivery decision saved."
-          : "Estimate saved. Review it before sending the quotation.",
-      );
+      toast.success("Project estimate saved.");
     } catch (error) {
       console.error(error);
-
-      const serverMessage = error?.response?.data?.message || "";
-
       toast.error(
-        estimationSaved
-          ? `The estimate was saved, but the delivery decision failed: ${
-              serverMessage || "Please review the decision and save again."
-            }`
-          : serverMessage || "Failed to save estimation.",
+        error?.response?.data?.message || "Failed to save project estimate.",
       );
     } finally {
       setSaving(false);
@@ -2669,7 +2591,7 @@ export default function EstimationPage() {
     doc.setFontSize(18);
     doc.text("Spiral Wood Services", margin, 18);
     doc.setFontSize(16);
-    doc.text("QUOTATION", pageWidth - margin, 18, { align: "right" });
+    doc.text("PROJECT ESTIMATE", pageWidth - margin, 18, { align: "right" });
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.text(`Blueprint: ${getBlueprintDisplayTitle(blueprint)}`, margin, 28);
@@ -2737,14 +2659,14 @@ export default function EstimationPage() {
         ? [["Additional Items", money(otherSubtotal)]]
         : []),
       ["Labor", money(laborCost)],
-      ...(!isPickup ? [["Logistics", money(logisticsCost)]] : []),
+      ["Logistics", money(logisticsCost)],
       ...(additionalDeliveryFee > 0
         ? [["Additional Delivery Fee", money(additionalDeliveryFee)]]
         : []),
       ["Subtotal", money(subtotal)],
       [`Discount (${discountRate}%)`, `(${money(discountAmount)})`],
       [`VAT (${Number(costs.tax_rate || 0)}%)`, money(taxAmount)],
-      ["GRAND TOTAL", money(grandTotal)],
+      ["ESTIMATED TOTAL", money(grandTotal)],
     ];
 
     autoTable(doc, {
@@ -2771,8 +2693,8 @@ export default function EstimationPage() {
       doc.text(doc.splitTextToSize(costs.notes, 175), margin, notesY + 5);
     }
 
-    doc.save(`quotation_BP-${String(id).padStart(4, "0")}_${Date.now()}.pdf`);
-    toast.success("Quotation PDF exported.");
+    doc.save(`project_estimate_BP-${String(id).padStart(4, "0")}_${Date.now()}.pdf`);
+    toast.success("Project Estimate PDF exported.");
   };
 
   if (loading) return <div style={center}>Loading estimate...</div>;
@@ -2787,7 +2709,7 @@ export default function EstimationPage() {
           </button>
           <div>
             <h1 style={pageTitle}>
-              Estimate — {getBlueprintDisplayTitle(blueprint)}
+              Project Estimate — {getBlueprintDisplayTitle(blueprint)}
             </h1>
             <p style={pageSubTitle}>
               Blueprint #{String(id).padStart(5, "0")} ·{" "}
@@ -2813,44 +2735,6 @@ export default function EstimationPage() {
           <button type="button" onClick={exportPDF} style={btnGhost}>
             Export PDF
           </button>
-          {isApproved ? (
-            <button
-              type="button"
-              onClick={handleGenerateContract}
-              disabled={!blueprint?.order_id}
-              style={
-                !blueprint?.order_id
-                  ? { ...btnPrimary, ...btnDisabled }
-                  : btnPrimary
-              }
-            >
-              Create Project Agreement
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={handleSendQuoteClick}
-              disabled={approving || isSendQuotationBlocked || isSent}
-              title={
-                isSendQuotationBlocked
-                  ? quotationGateReasons
-                      .map((reason) => reason.message)
-                      .join(" ")
-                  : "Send quotation to customer"
-              }
-              style={
-                approving || isSendQuotationBlocked || isSent
-                  ? { ...btnGhost, ...btnDisabled }
-                  : btnPrimary
-              }
-            >
-              {isSent
-                ? "Quotation Sent"
-                : approving
-                  ? "Sending..."
-                  : "Send Quotation"}
-            </button>
-          )}
           <button
             type="button"
             onClick={handleSave}
@@ -2886,67 +2770,6 @@ export default function EstimationPage() {
             : "This quotation was sent to the customer. Editing is locked while waiting for the customer decision."}
         </div>
       )}
-
-      {!isReadOnly && visibleQuotationGateReasons.length > 0 && (
-        <div
-          style={{
-            border: "1px solid #fecaca",
-            background: "#fff7f7",
-            padding: "14px 16px",
-            marginBottom: 20,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 14,
-              fontWeight: 800,
-              color: "#991b1b",
-              marginBottom: 7,
-            }}
-          >
-            Action needed
-          </div>
-          <div style={{ display: "grid", gap: 7 }}>
-            {visibleQuotationGateReasons.map((reason) => (
-              <div key={reason.key} style={{ color: "#7f1d1d" }}>
-                <div style={{ fontSize: 13, fontWeight: 700 }}>
-                  {reason.title}
-                </div>
-                <div style={{ fontSize: 12, lineHeight: 1.5, marginTop: 2 }}>
-                  {reason.message}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div style={estimateTabs} role="tablist" aria-label="Estimate sections">
-        {[
-          ["request", "Request"],
-          ["components", "Components"],
-          ...(!isPickup ? [["delivery", "Delivery"]] : []),
-          ["quotation", "Quotation"],
-        ].map(([key, label]) => {
-          const active = activeEstimateTab === key;
-          return (
-            <button
-              key={key}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => setActiveEstimateTab(key)}
-              style={
-                active
-                  ? { ...estimateTabButton, ...estimateTabButtonActive }
-                  : estimateTabButton
-              }
-            >
-              {label}
-            </button>
-          );
-        })}
-      </div>
 
       {activeEstimateTab === "request" && (
         <div style={{ ...card, marginBottom: 20 }}>
@@ -3066,7 +2889,7 @@ export default function EstimationPage() {
         </div>
       )}
 
-      {!isPickup && (
+      {activeEstimateTab === "delivery" && !isPickup && (
         <div
           style={{
             display: activeEstimateTab === "delivery" ? "block" : "none",
@@ -3100,12 +2923,26 @@ export default function EstimationPage() {
         </>
       )}
 
-      {activeEstimateTab === "quotation" && (
+      {activeEstimateTab === "estimate" && (
         <>
+          <EstimateTable
+            title="Furniture Parts"
+            helper="Parts and quantities come from the saved Blueprint. Enter the estimated rate only."
+            section="blueprint"
+            rows={blueprintItems}
+            rawMaterials={rawMaterials}
+            readOnly={isReadOnly}
+            onRemove={removeItem}
+            onUpdate={updateItem}
+            subtotal={blueprintSubtotal}
+          />
+
+          <div style={{ height: 20 }} />
+
           <div style={chargesGrid}>
             <div style={card}>
               <div style={sectionHeaderSmall}>
-                <h3 style={sectionTitle}>Quotation Details</h3>
+                <h3 style={sectionTitle}>Estimate Details</h3>
                 <p style={helperText}>
                   {isPickup
                     ? "Enter labor, adjustments, and notes."
@@ -3227,9 +3064,9 @@ export default function EstimationPage() {
 
             <div style={{ ...card, alignSelf: "start" }}>
               <div style={sectionHeaderSmall}>
-                <h3 style={sectionTitle}>Quotation Summary</h3>
+                <h3 style={sectionTitle}>Estimate Summary</h3>
                 <p style={helperText}>
-                  Review the final breakdown before saving or sending.
+                  Review the estimated cost before saving.
                 </p>
               </div>
               <div style={{ padding: 24 }}>
@@ -3242,7 +3079,7 @@ export default function EstimationPage() {
                     ? [["Additional Items", otherSubtotal]]
                     : []),
                   ["Labor", laborCost],
-                  ...(!isPickup ? [["Logistics", logisticsCost]] : []),
+                  ["Logistics", logisticsCost],
                   ...(additionalDeliveryFee > 0
                     ? [["Additional Delivery Fee", additionalDeliveryFee]]
                     : []),
@@ -3274,7 +3111,7 @@ export default function EstimationPage() {
                   <strong>{formatMoney(taxAmount)}</strong>
                 </div>
                 <div style={grandTotalBox}>
-                  <span>Total Quotation</span>
+                  <span>Estimated Total</span>
                   <strong>{formatMoney(grandTotal)}</strong>
                 </div>
                 {estimation && (
