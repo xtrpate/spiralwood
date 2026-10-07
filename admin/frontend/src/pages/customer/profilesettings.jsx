@@ -1219,7 +1219,7 @@ export default function ProfileSettings() {
                   className="edit-toggle"
                   onClick={() => setEditName(true)}
                 >
-                  Edit
+                  Change
                 </button>
               )}
             </div>
@@ -1380,7 +1380,7 @@ export default function ProfileSettings() {
                   className="edit-toggle"
                   onClick={() => setEditAddress(true)}
                 >
-                  Edit
+                  Change
                 </button>
               )}
             </div>
