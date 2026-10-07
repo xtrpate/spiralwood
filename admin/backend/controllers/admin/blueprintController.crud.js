@@ -334,6 +334,7 @@ exports.getOne = async (req, res) => {
           o.customer_id,
           o.status AS order_status,
           o.payment_status,
+          o.fulfillment_method,
           o.notes AS order_notes,
           o.delivery_request_notes,
           oi.id AS order_item_id,
@@ -363,6 +364,12 @@ exports.getOne = async (req, res) => {
             customer_id: linkedOrderRows[0].customer_id,
             order_status: linkedOrderRows[0].order_status,
             payment_status: linkedOrderRows[0].payment_status,
+            fulfillment_method:
+              String(linkedOrderRows[0].fulfillment_method || "delivery")
+                .trim()
+                .toLowerCase() === "pickup"
+                ? "pickup"
+                : "delivery",
             order_notes: linkedOrderRows[0].order_notes || null,
             delivery_request_notes:
               linkedOrderRows[0].delivery_request_notes || null,

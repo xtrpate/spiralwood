@@ -558,11 +558,53 @@ exports.saveEstimation = async (req, res) => {
       });
     }
 
-    // Project Estimation is an admin-only costing/reference tool.
-    // A linked order may provide quantity context, but order status,
-    // contracts and payment state do not gate saving this internal estimate.
-    // This endpoint must never mutate the linked order workflow.
+    // Dual-context estimation:
+    // - no linked order => standalone internal Project Estimate only;
+    // - linked order => customer transaction quotation workflow.
     const order = lifecycle.order;
+    const isTransactionEstimate = Boolean(order);
+
+    if (isTransactionEstimate) {
+      const normalizedStatus = String(order.status || "").toLowerCase();
+
+      if (normalizedStatus !== "confirmed") {
+        await conn.rollback();
+        return res.status(409).json({
+          message: `Order status is "${order.status}"; must be exactly "confirmed" to save an estimation.`,
+          integrity_reason: "ORDER_NOT_CONFIRMED",
+        });
+      }
+
+      if (lifecycle.contract) {
+        await conn.rollback();
+        return res.status(409).json({
+          message: "A contract already exists for this order.",
+          integrity_reason: "CONTRACT_EXISTS",
+        });
+      }
+
+      if (lifecycle.verified_payment_total > 0) {
+        await conn.rollback();
+        return res.status(409).json({
+          message: `Order already has a verified payment total of ${lifecycle.verified_payment_total}.`,
+          integrity_reason: "VERIFIED_PAYMENT_EXISTS",
+        });
+      }
+
+      if (lifecycle.has_pending_payment_transaction) {
+        await conn.rollback();
+        return res.status(409).json({
+          message: "Order has a pending payment proof awaiting review.",
+          integrity_reason: "PENDING_PAYMENT_EXISTS",
+        });
+      }
+    }
+
+    const isPickupOrder =
+      isTransactionEstimate &&
+      String(order?.fulfillment_method || "delivery")
+        .trim()
+        .toLowerCase() === "pickup";
 
     const {
       items = [],
@@ -576,7 +618,7 @@ exports.saveEstimation = async (req, res) => {
     validateEstimationItems(items);
 
     const laborCostInput = Number(labor_cost);
-    const overheadCostInput = Number(overhead_cost);
+    const overheadCostInput = isPickupOrder ? 0 : Number(overhead_cost);
     const taxRateInput = Number(tax_rate);
     const discountInput = Number(discount);
     const notesInput = String(notes || "").trim();
@@ -707,11 +749,50 @@ exports.saveEstimation = async (req, res) => {
       });
     }
 
+    const existingEstimationMeta =
+      safeJsonParse(lifecycle.estimation?.estimation_data, {}) || {};
+
+    const existingDeliveryDecision = String(
+      existingEstimationMeta.oversized_delivery_decision || "",
+    )
+      .trim()
+      .toLowerCase();
+
+    const preservedAdditionalDeliveryFee =
+      isTransactionEstimate && !isPickupOrder &&
+      existingDeliveryDecision === "fee_required"
+        ? Math.max(
+            0,
+            Number(existingEstimationMeta.additional_delivery_fee) || 0,
+          )
+        : 0;
+
+    const preservedDeliveryMeta = {};
+
+    if (isTransactionEstimate) {
+      if (isPickupOrder) {
+        preservedDeliveryMeta.fulfillment_method = "pickup";
+      } else {
+        [
+          "oversized_delivery_decision",
+          "oversized_delivery_reason",
+          "oversized_truck_type",
+          "oversized_delivery_decided_by",
+          "oversized_delivery_decided_at",
+          "delivery_requirement",
+        ].forEach((key) => {
+          if (Object.prototype.hasOwnProperty.call(existingEstimationMeta, key)) {
+            preservedDeliveryMeta[key] = existingEstimationMeta[key];
+          }
+        });
+      }
+    }
+
     const totals = computeEstimationTotals({
       items: normalizedItems,
       labor_cost: laborCostInput,
       overhead_cost: overheadCostInput,
-      additional_delivery_fee: 0,
+      additional_delivery_fee: preservedAdditionalDeliveryFee,
       tax_rate: taxRateInput,
       discount: discountInput,
       inventory_pricing_mode: "tracking_only",
@@ -726,6 +807,7 @@ exports.saveEstimation = async (req, res) => {
       : 1;
 
     const estimation_data = JSON.stringify({
+      ...preservedDeliveryMeta,
       items: normalizedItems,
       labor_cost: totals.labor_cost,
       overhead_cost: totals.overhead_cost,
@@ -776,12 +858,53 @@ exports.saveEstimation = async (req, res) => {
       );
     }
 
+    if (isTransactionEstimate) {
+      await conn.query(
+        `UPDATE blueprints
+         SET stage = 'estimation'
+         WHERE id = ? AND is_deleted = 0`,
+        [blueprintId],
+      );
+
+      const [orderUpdateResult] = await conn.query(
+        `UPDATE orders
+         SET subtotal = ?,
+             tax = ?,
+             discount = ?,
+             total = ?,
+             down_payment = ?,
+             updated_at = NOW()
+         WHERE id = ?
+           AND order_type = 'blueprint'
+           AND status = 'confirmed'`,
+        [
+          totals.subtotal,
+          totals.tax_amount,
+          totals.discount_amount,
+          totals.grand_total,
+          Number((totals.grand_total * 0.3).toFixed(2)),
+          order.id,
+        ],
+      );
+
+      if (orderUpdateResult.affectedRows === 0) {
+        await conn.rollback();
+        return res.status(409).json({
+          message:
+            "Order status changed before the estimation could be saved. Please refresh and try again.",
+          integrity_reason: "ORDER_STATE_CHANGED",
+        });
+      }
+    }
+
     await conn.commit();
 
     const io = req.app.get("io");
 
     emitBlueprintUpdate(io, {
       blueprintId,
+      orderId: order?.id || null,
+      orderNumber: order?.order_number || null,
       changeType: "estimation_saved",
     });
 
@@ -798,7 +921,9 @@ exports.saveEstimation = async (req, res) => {
     };
 
     res.status(201).json({
-      message: "Project estimate saved.",
+      message: isTransactionEstimate
+        ? "Estimation saved."
+        : "Project estimate saved.",
       id: insertResult.insertId,
       estimation: {
         id: insertResult.insertId,
@@ -997,6 +1122,49 @@ exports.approveEstimation = async (req, res) => {
         message:
           "Quotation state changed before it could be sent. Please refresh and try again.",
         integrity_reason: "ESTIMATION_STATE_CHANGED",
+      });
+    }
+
+    const normalizedFulfillmentMethod = String(
+      order.fulfillment_method || "delivery",
+    )
+      .trim()
+      .toLowerCase();
+
+    if (normalizedFulfillmentMethod === "pickup") {
+      const pickupEstimationMeta =
+        safeJsonParse(latestEstimation.estimation_data, {}) || {};
+      const storedLogistics = Number(pickupEstimationMeta.overhead_cost) || 0;
+      const storedAdditionalDeliveryFee =
+        Number(pickupEstimationMeta.additional_delivery_fee) || 0;
+
+      if (
+        Math.abs(storedLogistics) > 0.005 ||
+        Math.abs(storedAdditionalDeliveryFee) > 0.005
+      ) {
+        await conn.rollback();
+        return res.status(409).json({
+          message:
+            "Pickup quotation still contains delivery-related charges. Save the estimate again before sending.",
+          integrity_reason: "PICKUP_DELIVERY_CHARGE_CONFLICT",
+        });
+      }
+    }
+
+    const inventoryReadiness = await checkQuotationInventoryReadiness(conn, {
+      estimation: latestEstimation,
+      orderId: order.id,
+    });
+
+    if (!inventoryReadiness.ready) {
+      await conn.rollback();
+      const firstIssue = inventoryReadiness.issues?.[0];
+      return res.status(409).json({
+        message:
+          firstIssue?.message ||
+          "Quotation cannot be sent until required inventory materials are complete and sufficient.",
+        integrity_reason: "INVENTORY_NOT_READY_FOR_QUOTATION",
+        inventory_issues: inventoryReadiness.issues || [],
       });
     }
 

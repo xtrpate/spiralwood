@@ -13,52 +13,60 @@ const reservation = read("services/blueprintMaterialReservationService.js");
 const consumption = read("services/blueprintMaterialConsumptionService.js");
 
 assert(
-  !frontend.includes('["materials", "Materials"]') &&
-    !frontend.includes('title="Required Materials"'),
-  "Project Estimate must not expose the Materials tab or Required Materials table.",
+  frontend.includes('["materials", "Materials"]') &&
+    frontend.includes('title="Required Materials"') &&
+    frontend.includes("isTransactionMode"),
+  "Required Materials must be restored only for linked customer transactions.",
 );
+
 assert(
   !frontend.includes('title="Additional Items"') &&
-    !frontend.includes("Required Inventory"),
-  "Project Estimate must not expose Additional Items or Required Inventory summary UI.",
+    !frontend.includes("addOtherItem"),
+  "Additional Items must remain retired from new/editable estimation costing.",
 );
+
 assert(
   frontend.includes("applyEstimateCostingItemPolicy") &&
     frontend.includes("isHistoricalLockedEstimate"),
-  "Editable estimates must remove Additional Items while locked historical quotations retain their original rows.",
+  "Editable estimates must still remove Additional Items while locked historical quotations retain their original rows.",
 );
+
 assert(
   frontend.includes('.filter((item) => isFilledItem(item) && !isOtherItem(item))'),
-  "Editable Project Estimate payloads must exclude Additional Items.",
+  "Editable payloads must continue excluding Additional Items.",
 );
+
 assert(
-  !frontend.includes("quotationInventoryIssues") &&
-    !frontend.includes("Add the required material before sending the quotation."),
-  "Frontend Send Quotation must not depend on Required Materials.",
+  frontend.includes("quotationInventoryIssues") &&
+    frontend.includes("Add the required material before sending the quotation."),
+  "Transaction Send Quotation must depend on Required Materials readiness.",
 );
 
 const approveStart = estimation.indexOf("exports.approveEstimation = async");
 assert(approveStart >= 0, "approveEstimation handler must exist.");
 const approveSection = estimation.slice(approveStart);
 assert(
-  !approveSection.includes("checkQuotationInventoryReadiness(conn"),
-  "Backend Send Quotation must not block on Required Materials/stock readiness.",
+  approveSection.includes("checkQuotationInventoryReadiness(conn") &&
+    approveSection.includes("INVENTORY_NOT_READY_FOR_QUOTATION"),
+  "Backend Send Quotation must re-check required inventory and stock readiness.",
 );
+
 assert(
   estimation.includes("Additional Items are no longer part of Project Estimate") &&
     estimation.includes('["other", "manual"].includes'),
-  "Backend must reject Additional Items from new/editable Project Estimate saves.",
+  "Backend must continue rejecting Additional Items from new/editable saves.",
 );
 
 assert(
   reservation.includes('reason: "NO_INVENTORY_MATERIALS"') &&
     consumption.includes('reservationReconciliation.reason === "NO_INVENTORY_MATERIALS"'),
-  "Existing production flow must retain its explicit no-inventory-material compatibility path.",
+  "Production material reservation/consumption compatibility path must remain intact.",
 );
+
 assert(
   reservation.includes("blueprint_material_reservations") &&
     consumption.includes("stock_movements"),
-  "Material reservation/consumption backend must remain intact for historical/existing tracked projects.",
+  "Material reservation/consumption backend must remain intact.",
 );
 
-console.log("PASS: Project Estimate costing separation integrity checks passed.");
+console.log("PASS: Project Estimate transaction material separation checks passed.");

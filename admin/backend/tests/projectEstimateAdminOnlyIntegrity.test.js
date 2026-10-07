@@ -17,41 +17,33 @@ const explodedSchedule = read(
 );
 
 assert(
-  frontend.includes('useState("estimate")') &&
-    !frontend.includes('role="tablist" aria-label="Estimate sections"'),
-  "Project Estimate must open as one admin-only costing view with no Request/Components/Delivery/Quotation tabs.",
+  frontend.includes("const isTransactionMode = Boolean(") &&
+    frontend.includes('loadedOrderId ? "request" : "estimate"'),
+  "Estimation page must explicitly separate linked-order transaction mode from standalone Project Estimate mode.",
 );
 
 assert(
-  frontend.includes('title="Furniture Parts"') &&
-    frontend.includes(">Estimate Details<") &&
-    frontend.includes(">Estimate Summary<"),
-  "Admin-only Project Estimate must keep Furniture Parts and the costing details/summary.",
+  frontend.includes('!isTransactionMode && activeEstimateTab === "estimate"') &&
+    frontend.includes('"Project Estimate"') &&
+    frontend.includes("<span>") &&
+    frontend.includes('"Estimated Total"'),
+  "Standalone mode must retain the simple Project Estimate calculator.",
 );
 
 assert(
-  frontend.includes("<label style={labelSm}>Logistics (₱)</label>") &&
-    frontend.includes('["Logistics", logisticsCost]'),
-  "Logistics must remain visible and included in Project Estimate totals.",
+  frontend.includes("{isTransactionMode &&") &&
+    frontend.includes('["request", "Request"]') &&
+    frontend.includes('["components", "Components"]') &&
+    frontend.includes('["materials", "Materials"]') &&
+    frontend.includes('["quotation", "Quotation"]'),
+  "Transaction-only tabs must be restored without exposing them in standalone mode.",
 );
 
 assert(
-  frontend.includes("<span>Estimated Total</span>") &&
-    frontend.includes('doc.text("PROJECT ESTIMATE"') &&
-    frontend.includes('["ESTIMATED TOTAL", money(grandTotal)]') &&
-    frontend.includes("project_estimate_BP-"),
-  "Project Estimate UI/PDF must use estimate wording instead of customer quotation wording.",
-);
-
-assert(
-  !frontend.includes("onClick={handleSendQuoteClick}") &&
-    !frontend.includes(">Create Project Agreement<"),
-  "Project Estimate header must not expose Send Quotation or Create Project Agreement.",
-);
-
-assert(
-  frontend.includes('activeEstimateTab === "delivery" && !isPickup'),
-  "Hidden Delivery estimator must not mount in the admin-only estimate view.",
+  frontend.includes("Create Project Agreement") &&
+    frontend.includes("Send Quotation") &&
+    frontend.includes("isTransactionMode &&"),
+  "Transaction actions must be available only in linked-order mode.",
 );
 
 const saveStart = estimation.indexOf("exports.saveEstimation = async");
@@ -60,33 +52,23 @@ assert(saveStart >= 0 && approveStart > saveStart, "Estimation controller sectio
 const saveSection = estimation.slice(saveStart, approveStart);
 
 assert(
-  !saveSection.includes("UPDATE orders") &&
-    !saveSection.includes("SET stage = 'estimation'"),
-  "Saving Project Estimate must not mutate linked Order financials or Blueprint workflow stage.",
+  saveSection.includes("const isTransactionEstimate = Boolean(order);") &&
+    saveSection.includes("if (isTransactionEstimate) {"),
+  "Backend save must branch explicitly between standalone and transaction estimation.",
 );
 
 assert(
-  !saveSection.includes("ORDER_NOT_CONFIRMED") &&
-    !saveSection.includes("CONTRACT_EXISTS") &&
-    !saveSection.includes("VERIFIED_PAYMENT_EXISTS") &&
-    !saveSection.includes("PENDING_PAYMENT_EXISTS"),
-  "Internal Project Estimate saving must not be gated by customer order/contract/payment workflow state.",
+  saveSection.includes("UPDATE orders") &&
+    saveSection.includes("SET stage = 'estimation'") &&
+    saveSection.includes("if (isTransactionEstimate)"),
+  "Only the transaction branch may synchronize Order financials and Blueprint workflow stage.",
 );
 
 assert(
-  saveSection.includes("const overheadCostInput = Number(overhead_cost);") &&
-    saveSection.includes("additional_delivery_fee: 0"),
-  "Internal Estimate must retain Logistics while excluding editable delivery-decision fees.",
-);
-
-const retiredRouteStart = routes.indexOf('"/blueprints/:id/estimation/approve"');
-assert(retiredRouteStart >= 0, "Legacy quotation route marker is missing.");
-const retiredRoute = routes.slice(retiredRouteStart, retiredRouteStart + 500);
-assert(
-  retiredRoute.includes("status(410)") &&
-    retiredRoute.includes("Project Estimation is admin-only") &&
-    !retiredRoute.includes("blueprints.approveEstimation"),
-  "Backend must reject attempts to send a customer quotation from Project Estimation.",
+  routes.includes('logAction("send_blueprint_estimation", "estimations")') &&
+    routes.includes("blueprints.approveEstimation") &&
+    !routes.includes("Project Estimation is admin-only. Sending quotations"),
+  "Guarded Send Quotation route must be restored for transaction mode.",
 );
 
 const allPagesStart = builders.indexOf("function buildAllExportPages(");
@@ -95,13 +77,13 @@ const allPages = builders.slice(allPagesStart);
 assert(
   !builders.includes('import { buildWoodworkingDetailsPages }') &&
     !allPages.includes("buildWoodworkingDetailsPages({"),
-  "Requested Technical Blueprint — Woodworking Details sheets must be removed from Preview/PDF/Print output.",
+  "Woodworking Details sheets must remain retired from Blueprint export.",
 );
 
 assert(
   !explodedSchedule.includes("Inventory selection remains manual in Project Estimate") &&
     !explodedSchedule.includes("<b>INVENTORY NOTE</b>"),
-  "Blueprint export must not claim that inventory selection happens in Project Estimate.",
+  "Obsolete Project Estimate inventory note must remain removed.",
 );
 
-console.log("PASS: Project Estimate admin-only integrity checks passed.");
+console.log("PASS: Project Estimate standalone/transaction dual-mode integrity checks passed.");
