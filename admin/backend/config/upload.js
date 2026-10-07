@@ -14,7 +14,6 @@ cloudinary.config({
 
 const ALLOWED_IMAGES = ["jpg", "jpeg", "png", "webp"];
 const ALLOWED_DOCS = ["pdf", "jpg", "jpeg", "png"];
-const ALLOWED_BLUEPRINTS = ["pdf", "png", "jpg", "jpeg", "svg"];
 const MAX_MB = parseInt(process.env.MAX_FILE_SIZE_MB || "15", 10);
 
 // 2. Helper function to route files to specific Cloudinary folders
@@ -282,45 +281,6 @@ exports.persistUserProfilePhoto = async (file) => {
     error.code = "INTERNAL_PROFILE_UPLOAD_FAILED";
     throw error;
   }
-};
-
-const blueprintUpload = multer({
-  storage: cloudStorage("blueprints", ALLOWED_BLUEPRINTS),
-  limits: { fileSize: MAX_MB * 1024 * 1024 },
-}).fields([
-  { name: "file", maxCount: 1 },
-  { name: "reference_file", maxCount: 1 },
-  { name: "front_reference", maxCount: 1 },
-  { name: "back_reference", maxCount: 1 },
-  { name: "left_reference", maxCount: 1 },
-  { name: "right_reference", maxCount: 1 },
-  { name: "top_reference", maxCount: 1 },
-]);
-
-exports.uploadBlueprintFile = (req, res, next) => {
-  blueprintUpload(req, res, (err) => {
-    if (err) return next(err);
-
-    req.referenceFiles = {
-      front:
-        req.files?.front_reference?.[0] ||
-        req.files?.reference_file?.[0] ||
-        req.files?.file?.[0] ||
-        null,
-      back: req.files?.back_reference?.[0] || null,
-      left: req.files?.left_reference?.[0] || null,
-      right: req.files?.right_reference?.[0] || null,
-      top: req.files?.top_reference?.[0] || null,
-    };
-
-    req.file =
-      req.referenceFiles.front ||
-      req.files?.reference_file?.[0] ||
-      req.files?.file?.[0] ||
-      null;
-
-    next();
-  });
 };
 
 exports.uploadPaymentProof = multer({

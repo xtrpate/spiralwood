@@ -1,26 +1,16 @@
 import { useEffect } from "react";
 import toast from "react-hot-toast";
 import api from "../../../services/api";
-import {
-  createEmptyReferenceFiles,
-  getReferenceFilesFromBlueprint,
-  getReferenceFileFromBlueprint,
-  getEditorMode,
-} from "../data/utils";
 import { resolveInitialComponents } from "../data/initHelpers";
 import {
   DEFAULT_IMPORT_DIMENSIONS,
   DEFAULT_IMPORT_TEMPLATE_TYPE,
-  createEmptyReferenceCalibrationByView,
-  createEmptyTraceObjectsByView,
-  normalizeReferenceCalibrationByView,
-  normalizeTraceObjectsByView,
   resolveImportTemplateType,
   sanitizeImportDimensions,
-} from "../data/referenceTraceUtils";
+} from "../data/blueprintCompatibilityUtils";
 import {
-  createImportedFurnitureComponents,
-  createImportedDiningChairComponents,
+  createFurnitureTemplateComponents,
+  createDiningChairComponentsFromMetadata,
 } from "../data/templateComponents";
 
 export function useBlueprintLoader({
@@ -35,25 +25,14 @@ export function useBlueprintLoader({
   setEstimatedPrice,
   setLockedFields,
   setUnit,
-  setReferenceFiles,
-  setReferenceFile,
-  setEditorMode,
   setImportTemplateType,
   setImportDimensions,
-  setImportComments,
-  setReferenceCalibrationByView,
-  setTraceObjectsByView,
-  setSelectedTraceId,
   setView,
 }) {
   useEffect(() => {
     if (!id || id === "new") {
-      setReferenceFiles(createEmptyReferenceFiles());
-      setReferenceFile(null);
-      setEditorMode("editable");
       setImportTemplateType(DEFAULT_IMPORT_TEMPLATE_TYPE);
       setImportDimensions(DEFAULT_IMPORT_DIMENSIONS);
-      setImportComments("");
 
       setBlueprint(null);
       setEstimatedPrice(null);
@@ -64,9 +43,6 @@ export function useBlueprintLoader({
       setSelectedId(null);
       setSelectedIds([]);
       setEdit3DId(null);
-      setReferenceCalibrationByView(createEmptyReferenceCalibrationByView());
-      setTraceObjectsByView(createEmptyTraceObjectsByView());
-      setSelectedTraceId(null);
       return;
     }
 
@@ -120,27 +96,7 @@ export function useBlueprintLoader({
           DEFAULT_IMPORT_DIMENSIONS,
         );
 
-        const loadedReferenceFiles = getReferenceFilesFromBlueprint(
-          saved,
-          blueprintData,
-        );
-        const referenceFile = getReferenceFileFromBlueprint(
-          saved,
-          blueprintData,
-          "front",
-        );
-        const resolvedMode = getEditorMode(saved, loadedReferenceFiles);
-
-        let loadedComponents = resolveInitialComponents(
-          {
-            ...saved,
-            importTemplateType: loadedTemplateType,
-            importDimensions: loadedImportDimensions,
-          },
-          referenceFile,
-          blueprintData,
-          worldDimensions,
-        );
+        let loadedComponents = resolveInitialComponents(saved);
 
         const loadedStartMode =
           saved.startMode || saved?.blueprintSetup?.startMode || "scratch";
@@ -156,21 +112,19 @@ export function useBlueprintLoader({
 
           loadedComponents =
             templateType === "template_dining_chair"
-              ? createImportedDiningChairComponents(
+              ? createDiningChairComponentsFromMetadata(
                   {
                     importTemplateType: templateType,
                     importDimensions: loadedImportDimensions,
                   },
-                  null,
                   { title: blueprintData.title || "Chair Template" },
                   worldDimensions,
                 )
-              : createImportedFurnitureComponents(
+              : createFurnitureTemplateComponents(
                   {
                     importTemplateType: templateType,
                     importDimensions: loadedImportDimensions,
                   },
-                  null,
                   {
                     title: blueprintData.title || "Furniture Template",
                     import_template_type: templateType,
@@ -187,35 +141,8 @@ export function useBlueprintLoader({
         setSelectedIds([]);
         setEdit3DId(null);
         setUnit(saved.unit || "mm");
-        setReferenceFiles(loadedReferenceFiles);
-        setReferenceFile(
-          loadedReferenceFiles?.front ||
-            loadedReferenceFiles?.back ||
-            loadedReferenceFiles?.left ||
-            loadedReferenceFiles?.right ||
-            loadedReferenceFiles?.top ||
-            referenceFile ||
-            null,
-        );
-        setEditorMode(resolvedMode);
         setImportTemplateType(loadedTemplateType);
         setImportDimensions(loadedImportDimensions);
-        setImportComments(saved.importComments || "");
-
-        const normalizedCalibrationByView = normalizeReferenceCalibrationByView(
-          saved.referenceCalibrationByView ||
-            saved.reference_calibration_by_view ||
-            saved.referenceCalibration,
-        );
-        const normalizedTraceObjectsByView = normalizeTraceObjectsByView(
-          saved.traceObjectsByView ||
-            saved.trace_objects_by_view ||
-            saved.traceObjects,
-        );
-
-        setReferenceCalibrationByView(normalizedCalibrationByView);
-        setTraceObjectsByView(normalizedTraceObjectsByView);
-        setSelectedTraceId(null);
         setView("front");
       })
       .catch(() => {

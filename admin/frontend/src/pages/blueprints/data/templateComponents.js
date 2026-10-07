@@ -32,40 +32,40 @@ function makeId() {
   return Math.random().toString(36).slice(2, 9);
 }
 
-const IMPORT_TEMPLATE_DEFAULTS = {
+const TEMPLATE_DEFAULTS = {
   template_closet_wardrobe: {
-    label: "Imported Closet / Wardrobe",
+    label: "Closet / Wardrobe",
     w: 2400,
     h: 2400,
     d: 600,
   },
   template_wardrobe: {
-    label: "Imported Wardrobe",
+    label: "Wardrobe",
     w: 1800,
     h: 2200,
     d: 600,
   },
   template_coffee_table: {
-    label: "Imported Coffee Table",
+    label: "Coffee Table",
     w: 1000,
     h: 450,
     d: 600,
   },
   template_dining_table: {
-    label: "Imported Dining Table",
+    label: "Dining Table",
     w: 1800,
     h: 760,
     d: 900,
   },
   template_bed_frame: {
-    label: "Imported Bed Frame",
+    label: "Bed Frame",
     w: 1600,
     h: 1100,
     d: 2000,
   },
 };
 
-function getImportedFurnitureTemplateType(savedData = {}, blueprintData = {}) {
+function getFurnitureTemplateType(savedData = {}, blueprintData = {}) {
   return (
     savedData?.importTemplateType ||
     savedData?.import_type ||
@@ -74,14 +74,14 @@ function getImportedFurnitureTemplateType(savedData = {}, blueprintData = {}) {
   );
 }
 
-function getImportedFurnitureDims(
+function getFurnitureTemplateDims(
   savedData = {},
   blueprintData = {},
   templateType = "template_closet_wardrobe",
 ) {
   const defaults =
-    IMPORT_TEMPLATE_DEFAULTS[templateType] ||
-    IMPORT_TEMPLATE_DEFAULTS.template_closet_wardrobe;
+    TEMPLATE_DEFAULTS[templateType] ||
+    TEMPLATE_DEFAULTS.template_closet_wardrobe;
 
   const source =
     savedData?.importDimensions ||
@@ -142,26 +142,24 @@ function scaleAssemblyComponentsToTarget(
   );
 }
 
-function createImportedFurnitureComponents(
+function createFurnitureTemplateComponents(
   savedData = {},
-  referenceFile = null,
   blueprintData = {},
   worldSize = { w: 6400, h: 3200, d: 5200 },
 ) {
-  const templateType = getImportedFurnitureTemplateType(
+  const templateType = getFurnitureTemplateType(
     savedData,
     blueprintData,
   );
 
   const defaults =
-    IMPORT_TEMPLATE_DEFAULTS[templateType] ||
-    IMPORT_TEMPLATE_DEFAULTS.template_closet_wardrobe;
+    TEMPLATE_DEFAULTS[templateType] ||
+    TEMPLATE_DEFAULTS.template_closet_wardrobe;
 
   const groupId = makeGroupId();
-  const groupLabel =
-    blueprintData?.title || referenceFile?.name || defaults.label;
+  const groupLabel = blueprintData?.title || defaults.label;
 
-  const dims = getImportedFurnitureDims(savedData, blueprintData, templateType);
+  const dims = getFurnitureTemplateDims(savedData, blueprintData, templateType);
 
   const originX = snap((worldSize.w - dims.w) / 2);
   const originZ = snap((worldSize.d - dims.d) / 2);
@@ -464,7 +462,7 @@ function scaleChairComponentsToTarget(
   );
 }
 
-function getImportedDiningChairDims(savedData = {}, blueprintData = {}) {
+function getDiningChairTemplateDims(savedData = {}, blueprintData = {}) {
   const source =
     savedData?.importDimensions ||
     savedData?.referenceDimensions ||
@@ -488,17 +486,15 @@ function getImportedDiningChairDims(savedData = {}, blueprintData = {}) {
   };
 }
 
-function createImportedDiningChairComponents(
+function createDiningChairComponentsFromMetadata(
   savedData = {},
-  referenceFile = null,
   blueprintData = {},
   worldSize = { w: 6400, h: 3200, d: 5200 },
 ) {
   const groupId = makeGroupId();
-  const groupLabel =
-    blueprintData?.title || referenceFile?.name || "Imported Dining Chair";
+  const groupLabel = blueprintData?.title || "Dining Chair";
 
-  const dims = getImportedDiningChairDims(savedData, blueprintData);
+  const dims = getDiningChairTemplateDims(savedData, blueprintData);
 
   const originX = snap((worldSize.w - dims.w) / 2);
   const originZ = snap((worldSize.d - dims.d) / 2);
@@ -631,8 +627,8 @@ export {
   createDiningChairTemplateComponents,
   buildFurnitureTemplateParts,
   buildDiningChairParts,
-  createImportedDiningChairComponents,
+  createDiningChairComponentsFromMetadata,
   createClosetWardrobeComponents,
-  createImportedFurnitureComponents,
+  createFurnitureTemplateComponents,
   getTemplateLibraryPartGroups,
 };

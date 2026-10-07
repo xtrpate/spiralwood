@@ -5,12 +5,7 @@ import {
   getProjectedBox,
   getMirroredBox,
 } from "../data/componentUtils";
-import {
-  formatDim,
-  isImageReferenceFile,
-  resolveAssetUrl,
-} from "../data/utils";
-import { useReferenceImage } from "../data/initHelpers";
+import { formatDim } from "../data/utils";
 import { VIEWS } from "../data/furnitureTypes";
 import { BLUEPRINT_METADATA_BAND_H } from "../data/technicalOutputUtils";
 import { getExplodedBox } from "../export/placementHelpers";
@@ -20,13 +15,6 @@ import {
   TITLE_BLOCK_H,
   DRAWING_PADDING,
 } from "./blueprintPaperComponents";
-
-function normalizeProjectionView(rawView = "front") {
-  if (rawView === "back") return "front";
-  if (rawView === "right") return "left";
-  if (rawView === "top") return "top";
-  return "front";
-}
 
 function getAxisLabels(view) {
   if (view === "left" || view === "right") {
@@ -44,7 +32,6 @@ export function useBlueprintCanvasModel({
   view,
   canvasW,
   canvasH,
-  referenceFile,
   unit,
   showMetadataBand = false,
 }) {
@@ -76,17 +63,6 @@ export function useBlueprintCanvasModel({
     [drawingArea, showMetadataBand],
   );
 
-  const activeProjectionView = normalizeProjectionView(view);
-
-  const referenceUrl = useMemo(
-    () => resolveAssetUrl(referenceFile?.url || ""),
-    [referenceFile],
-  );
-
-  const referenceImage = useReferenceImage(
-    isImageReferenceFile(referenceFile) ? referenceUrl : "",
-  );
-
   const previewComponents = useMemo(() => {
     if (view === "exploded") {
       return resolveExplodedPreviewComponents(
@@ -99,29 +75,6 @@ export function useBlueprintCanvasModel({
     if (allComponents.length) return allComponents;
     return [];
   }, [selectedComponents, allComponents, view]);
-
-  const referenceType = String(
-    referenceFile?.type || referenceFile?.file_type || "",
-  ).toLowerCase();
-  const isPdfReference = referenceType === "pdf";
-
-  const referenceImageBox = useMemo(() => {
-    if (!referenceImage) return null;
-
-    const imgW = Number(referenceImage.width) || 1;
-    const imgH = Number(referenceImage.height) || 1;
-    const scale = Math.min(drawingArea.w / imgW, drawingArea.h / imgH);
-
-    const width = imgW * scale;
-    const height = imgH * scale;
-
-    return {
-      x: drawingArea.x + (drawingArea.w - width) / 2,
-      y: drawingArea.y + (drawingArea.h - height) / 2,
-      w: width,
-      h: height,
-    };
-  }, [referenceImage, drawingArea]);
 
   const rawItems = useMemo(() => {
     if (!previewComponents.length) return [];
@@ -209,10 +162,6 @@ export function useBlueprintCanvasModel({
   return {
     drawingArea,
     metadataBand,
-    activeProjectionView,
-    referenceImage,
-    referenceImageBox,
-    isPdfReference,
     scaledItems,
     viewMeta,
     viewLabel,

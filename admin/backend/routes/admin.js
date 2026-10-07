@@ -585,7 +585,6 @@ router.post(
   "/blueprints",
   adminStaff,
   requirePermission("blueprint_management.create"),
-  upload.uploadBlueprintFile,
   logAction("create_blueprint", "blueprints"),
   blueprints.create,
 );
@@ -593,7 +592,6 @@ router.put(
   "/blueprints/:id",
   adminStaff,
   requirePermission("blueprint_management.edit"),
-  upload.uploadBlueprintFile,
   logAction("update_blueprint", "blueprints"),
   blueprints.update,
 );

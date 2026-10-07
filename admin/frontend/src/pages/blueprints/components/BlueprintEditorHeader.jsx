@@ -8,9 +8,6 @@ export function BlueprintEditorHeader({
   view,
   setView,
   activeChairBuild,
-  editorMode,
-  switchToReferenceMode,
-  switchToEditableMode,
   showGrid,
   setShowGrid,
   handleUndo,
@@ -197,59 +194,6 @@ export function BlueprintEditorHeader({
             minWidth: 0,
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              paddingRight: 12,
-              borderRight: "1px solid #e1e5ea",
-            }}
-          >
-            <span
-              style={{
-                fontSize: 9,
-                fontWeight: 600,
-                letterSpacing: "0.1em",
-                color: "#8a9099",
-              }}
-            >
-              MODE
-            </span>
-
-            <div
-              style={{
-                display: "flex",
-                gap: 3,
-                padding: 3,
-                border: "1px solid #dfe3e8",
-                background: "#ffffff",
-                borderRadius: 0,
-              }}
-            >
-              {["reference", "editable"].map((mode) => (
-                <button
-                  key={mode}
-                  onClick={() => {
-                    if (mode === "reference") switchToReferenceMode();
-                    else switchToEditableMode();
-                  }}
-                  style={{
-                    ...headerToolBtn,
-                    background:
-                      editorMode === mode ? "#111827" : "transparent",
-                    color: editorMode === mode ? "#ffffff" : "#52525b",
-                    fontWeight: editorMode === mode ? 700 : 500,
-                    padding: "7px 12px",
-                    border: "none",
-                  }}
-                >
-                  {mode === "reference" ? "Reference" : "Editable"}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div
             style={{
               display: "flex",

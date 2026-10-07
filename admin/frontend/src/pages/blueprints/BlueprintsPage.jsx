@@ -32,17 +32,8 @@ const TABS = [
 const DEFAULT_CREATE_FORM = {
   title: "",
   description: "",
-  startMode: "scratch",
   is_template: false,
   is_gallery: false,
-};
-
-const EMPTY_REFERENCE_FILES = {
-  front: null,
-  back: null,
-  left: null,
-  right: null,
-  top: null,
 };
 
 function formatDate(value) {
@@ -50,16 +41,6 @@ function formatDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return date.toLocaleDateString("en-PH");
-}
-
-function getBlueprintIcon(fileType) {
-  const type = String(fileType || "").toLowerCase();
-
-  if (type === "pdf") return "📄";
-  if (type === "svg") return "🧩";
-  if (["png", "jpg", "jpeg"].includes(type)) return "🖼️";
-
-  return "🗺️";
 }
 
 function isCustomerRequestBlueprint(bp = {}) {
@@ -334,40 +315,9 @@ export default function BlueprintsPage() {
     const markAsTemplate = Boolean(createForm.is_template || publishToCustomer);
     const cleanedDescription = String(createForm.description || "").trim();
 
-    const emptyCalibration = {
-      points: [],
-      realDistanceMm: 0,
-      pixelsPerMm: 0,
-      isCalibrated: false,
-    };
-
     const designSeed = {
-      startMode: createForm.startMode,
       unit: "mm",
-      editorMode:
-        createForm.startMode === "reference" ? "reference" : "editable",
-      blueprintSetup: {
-        startMode: createForm.startMode,
-        unit: "mm",
-      },
       components: [],
-      reference_files: EMPTY_REFERENCE_FILES,
-      traceObjects: [],
-      traceObjectsByView: {
-        front: [],
-        back: [],
-        left: [],
-        right: [],
-        top: [],
-      },
-      referenceCalibration: emptyCalibration,
-      referenceCalibrationByView: {
-        front: { ...emptyCalibration },
-        back: { ...emptyCalibration },
-        left: { ...emptyCalibration },
-        right: { ...emptyCalibration },
-        top: { ...emptyCalibration },
-      },
     };
 
     setCreating(true);
@@ -379,7 +329,6 @@ export default function BlueprintsPage() {
       const res = await api.post("/blueprints", {
         title: createForm.title.trim(),
         description: cleanedDescription || null,
-        source: "created",
         stage: "design",
         is_template: markAsTemplate ? 1 : 0,
         is_gallery: publishToCustomer ? 1 : 0,
@@ -408,14 +357,6 @@ export default function BlueprintsPage() {
     }
   };
 
-  const handleOpenFile = (fileUrl) => {
-    if (!fileUrl) {
-      toast.error("No imported file available.");
-      return;
-    }
-
-    window.open(buildAssetUrl(fileUrl), "_blank", "noopener,noreferrer");
-  };
 
 
   const totalPages = Math.max(
@@ -663,8 +604,6 @@ export default function BlueprintsPage() {
             const cachedStaticPreview = hasLivePreview
               ? readGeneratedCompactPreview(compactPreviewCacheKey)
               : "";
-            const isImported =
-              String(bp.source || "").toLowerCase() === "imported";
             const isCompleted = displayStage === "completed";
             const isFinalStage = ["delivery", "completed"].includes(
               displayStage,
@@ -807,7 +746,7 @@ export default function BlueprintsPage() {
                         style={{ fontSize: 42, opacity: 0.5 }}
                         aria-hidden="true"
                       >
-                        {getBlueprintIcon(bp.file_type)}
+                        ▱
                       </span>
                       <span
                         style={{
@@ -893,26 +832,6 @@ export default function BlueprintsPage() {
                       PUBLISHED TO CUSTOMERS
                     </span>
                   )}
-                  {isImported && (
-                    <span
-                      style={{
-                        position: "absolute",
-                        bottom: 12,
-                        right: 12,
-                        background: "#ffffff",
-                        color: "#52525b",
-                        border: "1px solid #d4d4d8",
-                        padding: "4px 10px",
-                        borderRadius: 999,
-                        fontSize: 10,
-                        fontWeight: 800,
-                        letterSpacing: "1px",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      {bp.file_type ? bp.file_type : "file"}
-                    </span>
-                  )}
                 </div>
 
                 <div
@@ -969,19 +888,6 @@ export default function BlueprintsPage() {
                       </p>
                     )}
 
-                    {isImported && (
-                      <p
-                        style={{
-                          fontSize: 12,
-                          color: "#71717a",
-                          margin: "0 0 6px",
-                          lineHeight: 1.4,
-                          fontWeight: 500,
-                        }}
-                      >
-                        {bp.file_type ? `${String(bp.file_type).toUpperCase()} reference file` : "Imported reference"}
-                      </p>
-                    )}
                   </div>
 
                   <p
@@ -1049,15 +955,6 @@ export default function BlueprintsPage() {
                           {getDesignActionLabel(displayStage, isCustomerRequest)}
                         </button>
 
-                        {isImported && !!bp.file_url && (
-                          <button
-                            onClick={() => handleOpenFile(bp.file_url)}
-                            style={btnGhost}
-                            disabled={isBusy}
-                          >
-                            Open Source File
-                          </button>
-                        )}
 
 
                         <button

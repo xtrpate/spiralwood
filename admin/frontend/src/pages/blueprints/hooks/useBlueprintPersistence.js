@@ -1,15 +1,7 @@
 import { useCallback, useRef } from "react";
 import toast from "react-hot-toast";
 import api from "../../../services/api";
-import {
-  flattenTraceObjectsByView,
-  normalizeReferenceCalibration,
-  normalizeReferenceCalibrationByView,
-  normalizeTraceObjectsByView,
-  sanitizeImportDimensions,
-  sanitizeReferenceFile,
-  sanitizeReferenceFiles,
-} from "../data/referenceTraceUtils";
+import { sanitizeImportDimensions } from "../data/blueprintCompatibilityUtils";
 import { normalizeComponent, getComponentsBounds3D } from "../data/componentUtils";
 import { snap } from "../data/utils";
 import {
@@ -24,17 +16,8 @@ export function useBlueprintPersistence({
   setBlueprint,
   components,
   unit,
-  editorMode,
-  referenceFiles,
-  referenceFile,
   importTemplateType,
   importDimensions,
-  importComments,
-  referenceCalibrationByView,
-  traceObjectsByView,
-  activeReferenceCalibration,
-  conversionHandoffSummary,
-  conversionCutListRows,
   editorStateSignature,
   onDesignSaved,
   publishForm,
@@ -109,25 +92,47 @@ export function useBlueprintPersistence({
         ? components.map((component) => normalizeComponent(component))
         : [];
 
+      const cleanedSavedDesignData = { ...savedDesignData };
+      [
+        "editorMode",
+        "reference_files",
+        "referenceFiles",
+        "reference_file",
+        "referenceFile",
+        "referenceCalibrationByView",
+        "reference_calibration_by_view",
+        "referenceCalibration",
+        "traceObjectsByView",
+        "trace_objects_by_view",
+        "traceObjects",
+        "importComments",
+        "conversionSummary",
+        "conversionCutListRows",
+      ].forEach((key) => delete cleanedSavedDesignData[key]);
+
+      if (cleanedSavedDesignData.startMode === "reference") {
+        cleanedSavedDesignData.startMode = "scratch";
+      }
+      if (cleanedSavedDesignData?.blueprintSetup?.startMode === "reference") {
+        cleanedSavedDesignData.blueprintSetup = {
+          ...cleanedSavedDesignData.blueprintSetup,
+          startMode: "scratch",
+        };
+      }
+
       const payload = {
-        ...savedDesignData,
+        ...cleanedSavedDesignData,
         unit,
-        editorMode,
         components: normalizedComponents,
-        reference_files: sanitizeReferenceFiles(referenceFiles),
-        reference_file: sanitizeReferenceFile(
-          referenceFiles?.front || referenceFile,
-        ),
 
         furnitureType: actualFurnitureType,
         templateType: actualTemplateType,
         preview_template_type: actualTemplateType,
         importTemplateType: actualTemplateType,
         importDimensions: sanitizeImportDimensions(actualImportDimensions),
-        importComments,
 
         blueprintSetup: {
-          ...(savedDesignData?.blueprintSetup || {}),
+          ...(cleanedSavedDesignData?.blueprintSetup || {}),
           furnitureType: actualFurnitureType,
           overallWidth: actualImportDimensions.w,
           overallHeight: actualImportDimensions.h,
@@ -155,17 +160,6 @@ export function useBlueprintPersistence({
         worldSize,
         sheetSize,
         exportViews,
-        referenceCalibrationByView: normalizeReferenceCalibrationByView(
-          referenceCalibrationByView,
-        ),
-        traceObjectsByView: normalizeTraceObjectsByView(traceObjectsByView),
-
-        referenceCalibration: normalizeReferenceCalibration(
-          referenceCalibrationByView?.front || activeReferenceCalibration,
-        ),
-        traceObjects: flattenTraceObjectsByView(traceObjectsByView),
-        conversionSummary: conversionHandoffSummary,
-        conversionCutListRows,
       };
 
       const view3dPayload = {
@@ -241,17 +235,8 @@ export function useBlueprintPersistence({
     blueprint,
     components,
     unit,
-    editorMode,
-    referenceFiles,
-    referenceFile,
     importTemplateType,
     importDimensions,
-    importComments,
-    referenceCalibrationByView,
-    traceObjectsByView,
-    activeReferenceCalibration,
-    conversionHandoffSummary,
-    conversionCutListRows,
     editorStateSignature,
     onDesignSaved,
     publishForm,
@@ -284,9 +269,7 @@ export function useBlueprintPersistence({
         : false;
 
       if (!hasRealComponent) {
-        toast.error(
-          "Add or convert at least one real furniture part before publishing.",
-        );
+        toast.error("Add at least one real furniture part before publishing.");
         return;
       }
 

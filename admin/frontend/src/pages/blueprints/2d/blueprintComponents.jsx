@@ -8,7 +8,6 @@ import {
   Line,
   Group,
   Circle,
-  Image as KonvaImage,
 } from "react-konva";
 import { formatDim } from "../data/utils";
 import { getSafeVerticalDimensionPlacement } from "../data/technicalOutputUtils";
@@ -20,7 +19,6 @@ import {
   PAPER_MARGIN,
 } from "./blueprintPaperComponents";
 import { useBlueprintCanvasModel } from "./useBlueprintCanvasModel";
-import { useBlueprintTraceInteraction } from "./useBlueprintTraceInteraction";
 
 function compactExplodedLabel(comp = {}, idx = 0) {
   const code = String(comp?.partCode || `P${idx + 1}`).trim();
@@ -278,24 +276,10 @@ function Canvas2D({
   showGrid,
   blueprintTitle,
   unit,
-  referenceFile,
-  editorMode,
-  referenceCalibration,
-  setReferenceCalibration,
-  traceObjects,
-  setTraceObjects,
-  traceTool,
-  selectedTraceId,
-  setSelectedTraceId,
-  newTraceType,
 }) {
   const {
     drawingArea,
     metadataBand,
-    activeProjectionView,
-    referenceImage,
-    referenceImageBox,
-    isPdfReference,
     scaledItems,
     viewMeta,
     viewLabel,
@@ -309,31 +293,8 @@ function Canvas2D({
     view,
     canvasW,
     canvasH,
-    referenceFile,
     unit,
     showMetadataBand: Boolean(selectedComp) && view !== "exploded",
-  });
-
-  const visibleTraceObjects = Array.isArray(traceObjects) ? traceObjects : [];
-
-  const {
-    stageRef,
-    draftTrace,
-    activeCalibration,
-    handleStageMouseDown,
-    handleStageMouseMove,
-    handleStageMouseUp,
-  } = useBlueprintTraceInteraction({
-    drawingArea,
-    editorMode,
-    view,
-    traceTool,
-    newTraceType,
-    activeProjectionView,
-    referenceCalibration,
-    setReferenceCalibration,
-    setTraceObjects,
-    setSelectedTraceId,
   });
 
   const explodedCalloutLayout =
@@ -380,45 +341,9 @@ function Canvas2D({
   };
 
   return (
-    <Stage
-      ref={stageRef}
-      width={canvasW}
-      height={canvasH}
-      onMouseDown={handleStageMouseDown}
-      onMouseMove={handleStageMouseMove}
-      onMouseUp={handleStageMouseUp}
-    >
+    <Stage width={canvasW} height={canvasH}>
       <Layer>
         <BlueprintPaper canvasW={canvasW} canvasH={canvasH} />
-        {referenceImage && referenceImageBox && (
-          <Group listening={false}>
-            <KonvaImage
-              image={referenceImage}
-              x={referenceImageBox.x}
-              y={referenceImageBox.y}
-              width={referenceImageBox.w}
-              height={referenceImageBox.h}
-              opacity={0.18}
-            />
-            <Rect
-              x={referenceImageBox.x}
-              y={referenceImageBox.y}
-              width={referenceImageBox.w}
-              height={referenceImageBox.h}
-              stroke="#cbd5e1"
-              strokeWidth={1}
-              dash={[4, 4]}
-            />
-            <Text
-              x={referenceImageBox.x + 8}
-              y={referenceImageBox.y + 8}
-              text="REFERENCE IMAGE"
-              fontSize={9}
-              fill="#64748b"
-            />
-          </Group>
-        )}
-
         {gridLines()}
 
         <Text
@@ -479,7 +404,7 @@ function Canvas2D({
           listening={false}
         />
 
-        {!scaledItems.length && !referenceImage && !isPdfReference && (
+        {!scaledItems.length && (
           <Group listening={false}>
             <Text
               x={drawingArea.x}
@@ -502,40 +427,6 @@ function Canvas2D({
             />
           </Group>
         )}
-        {!scaledItems.length && !referenceImage && isPdfReference && (
-          <Group listening={false}>
-            <Rect
-              x={drawingArea.x + 40}
-              y={drawingArea.y + 40}
-              width={drawingArea.w - 80}
-              height={drawingArea.h - 80}
-              stroke="#cbd5e1"
-              strokeWidth={1}
-              dash={[6, 4]}
-              cornerRadius={8}
-            />
-            <Text
-              x={drawingArea.x}
-              y={drawingArea.y + drawingArea.h / 2 - 18}
-              width={drawingArea.w}
-              align="center"
-              text="REFERENCE PDF LOADED"
-              fontSize={16}
-              fill="#64748b"
-              fontStyle="bold"
-            />
-            <Text
-              x={drawingArea.x}
-              y={drawingArea.y + drawingArea.h / 2 + 8}
-              width={drawingArea.w}
-              align="center"
-              text="PDF preview is not rendered on the canvas. Click 'Open Reference' to view the file."
-              fontSize={11}
-              fill="#94a3b8"
-            />
-          </Group>
-        )}
-
         {scaledItems.map(({ comp, screenBox }, idx) => {
           const isSelected = comp.id === selectedComp?.id;
           const renderView = view === "exploded" ? "front" : view;
@@ -692,64 +583,6 @@ function Canvas2D({
           )}
 
 
-        {visibleTraceObjects.map((obj) => {
-          const isSelected = obj.id === selectedTraceId;
-
-          return (
-            <Rect
-              key={obj.id}
-              x={obj.x}
-              y={obj.y}
-              width={obj.width}
-              height={obj.height}
-              stroke={isSelected ? "#f97316" : "#ef4444"}
-              strokeWidth={2}
-              dash={[6, 4]}
-              fill={isSelected ? "rgba(249,115,22,0.10)" : "rgba(239,68,68,0.06)"}
-              onClick={(e) => {
-                e.cancelBubble = true;
-                setSelectedTraceId?.(obj.id);
-              }}
-            />
-          );
-        })}
-
-        {draftTrace && (
-          <Rect
-            x={Math.min(draftTrace.x, draftTrace.x + draftTrace.width)}
-            y={Math.min(draftTrace.y, draftTrace.y + draftTrace.height)}
-            width={Math.abs(draftTrace.width)}
-            height={Math.abs(draftTrace.height)}
-            stroke="#f59e0b"
-            strokeWidth={2}
-            dash={[6, 4]}
-            fill="rgba(245,158,11,0.06)"
-          />
-        )}
-        {activeCalibration?.points?.map((p, i) => (
-          <Circle
-            key={`cal-${i}`}
-            x={p.x}
-            y={p.y}
-            radius={5}
-            fill="#2563eb"
-          />
-        ))}
-
-        {activeCalibration?.points?.length === 2 && (
-          <Line
-            points={[
-              activeCalibration.points[0].x,
-              activeCalibration.points[0].y,
-              activeCalibration.points[1].x,
-              activeCalibration.points[1].y,
-            ]}
-            stroke="#2563eb"
-            strokeWidth={2}
-            dash={[4, 4]}
-          />
-        )}
-        
         <BlueprintTitleBlock
           canvasW={canvasW}
           canvasH={canvasH}

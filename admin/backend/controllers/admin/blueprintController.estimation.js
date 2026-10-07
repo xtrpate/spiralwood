@@ -1,8 +1,7 @@
 // controllers/blueprintController.js
 // Route-facing Blueprint handlers. Shared imports, validators, normalizers,
-// and estimation/reference helpers live in blueprintController.helpers.js.
+// and estimation helpers live in blueprintController.helpers.js.
 const {
-  path,
   pool,
   resolveLifecycleByBlueprint,
   resolveLifecycleByOrder,
@@ -19,15 +18,7 @@ const {
   findRawMaterialMatch,
   computeEstimationTotals,
   buildAutoEstimationDraft,
-  getBlueprintFileMeta,
-  REFERENCE_VIEWS,
-  createEmptyReferenceFiles,
-  normalizeReferenceFilesMap,
-  buildUploadedReferenceFiles,
-  hasAnyReferenceFiles,
-  normalizeReferenceFile,
   mergeDesignData,
-  normalizeSource,
   backfillLegacyArchivedDates,
   deleteBlueprintCascade,
   purgeExpiredArchivedBlueprints,
