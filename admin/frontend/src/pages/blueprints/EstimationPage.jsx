@@ -622,6 +622,17 @@ const getDraftRows = (draft = {}) => {
   return [];
 };
 
+const isLockedEstimateStatus = (status = "") =>
+  ["sent", "approved"].includes(String(status || "").trim().toLowerCase());
+
+// PE-3 costing separation: Additional Items are no longer part of editable
+// Project Estimate costing. Locked historical quotations retain their original
+// rows so previously sent/approved financial snapshots are never recalculated.
+const applyEstimateCostingItemPolicy = (rows = [], status = "") =>
+  isLockedEstimateStatus(status)
+    ? rows
+    : rows.filter((row) => !isOtherItem(row));
+
 const getValidationErrors = ({ items = [], costs = {} } = {}) => {
   const errors = [];
   const filled = items.filter(isFilledItem);
@@ -1064,88 +1075,6 @@ const getInventoryAvailability = (item = {}, material = null) => {
     shortage: 0,
     remaining,
   };
-};
-
-const getQuotationInventoryIssues = (
-  inventoryItems = [],
-  rawMaterials = [],
-) => {
-  if (!inventoryItems.length) {
-    return [
-      {
-        code: "NO_REQUIRED_INVENTORY_MATERIALS",
-        message:
-          "Add at least one required material before sending the quotation.",
-      },
-    ];
-  }
-
-  const issues = [];
-  const requirements = new Map();
-  const materialMap = new Map(
-    rawMaterials.map((material) => [Number(material.id), material]),
-  );
-
-  inventoryItems.forEach((item, index) => {
-    const materialId = Number(item.raw_material_id);
-    const quantity = Number(item.quantity);
-
-    if (!Number.isSafeInteger(materialId) || materialId <= 0) {
-      issues.push({
-        code: "INVENTORY_MATERIAL_NOT_SELECTED",
-        message: `Required material row ${index + 1} needs an inventory item.`,
-      });
-      return;
-    }
-
-    if (!Number.isSafeInteger(quantity) || quantity < 1) {
-      issues.push({
-        code: "INVALID_INVENTORY_QUANTITY",
-        message: `Required material row ${index + 1} needs a whole-number quantity of at least 1.`,
-      });
-      return;
-    }
-
-    requirements.set(
-      materialId,
-      (requirements.get(materialId) || 0) + quantity,
-    );
-  });
-
-  for (const [materialId, required] of requirements.entries()) {
-    const material = materialMap.get(materialId);
-
-    if (!material) {
-      issues.push({
-        code: "RAW_MATERIAL_NOT_FOUND",
-        message: `Selected inventory material #${materialId} is no longer available. Refresh the page.`,
-      });
-      continue;
-    }
-
-    if (Number(material.is_active) === 0) {
-      issues.push({
-        code: "RAW_MATERIAL_INACTIVE",
-        message: `${material.name || `Material #${materialId}`} is archived or inactive.`,
-      });
-      continue;
-    }
-
-    const available = Math.max(
-      0,
-      Number(material.available_quantity ?? material.quantity) || 0,
-    );
-
-    if (available + 1e-9 < required) {
-      const shortage = Math.max(0, required - available);
-      issues.push({
-        code: "INSUFFICIENT_AVAILABLE_INVENTORY",
-        message: `${material.name || `Material #${materialId}`} is short by ${formatInventoryQuantity(shortage)} ${material.unit || "unit"}. Required: ${formatInventoryQuantity(required)}; available: ${formatInventoryQuantity(available)}.`,
-      });
-    }
-  }
-
-  return issues;
 };
 
 const getAvailabilityColors = (state) => {
@@ -1974,18 +1903,34 @@ export default function EstimationPage() {
         const savedEstimation = estimationResponse.data;
         if (savedEstimation) {
           setEstimation(savedEstimation);
-          const loadedItems = reconcileLoadedItems(
+          const reconciledItems = reconcileLoadedItems(
             Array.isArray(savedEstimation.items) ? savedEstimation.items : [],
             latestAutoRows,
           );
-          setItems(loadedItems.length ? loadedItems : latestAutoRows);
-          setCosts({
+          const loadedItems = applyEstimateCostingItemPolicy(
+            reconciledItems,
+            savedEstimation.status,
+          );
+          const loadedCosts = {
             labor_cost: Number(savedEstimation.labor_cost || 0),
             overhead_cost: Number(savedEstimation.overhead_cost || 0),
             tax_rate: Number(savedEstimation.tax_rate ?? 12),
             discount: Number(savedEstimation.discount || 0),
             notes: savedEstimation.notes || "",
-          });
+          };
+          const effectiveItems = loadedItems.length ? loadedItems : latestAutoRows;
+          const persistedItems = reconciledItems.length
+            ? reconciledItems
+            : latestAutoRows;
+
+          setItems(effectiveItems);
+          setCosts(loadedCosts);
+          // If an editable legacy draft still contains Additional Items, keep
+          // the persisted signature so the cleaned costing view is marked
+          // unsaved and cannot be sent until the admin saves the new version.
+          setSavedDraftSignature(
+            buildEditableEstimateSignature(persistedItems, loadedCosts),
+          );
         } else {
           const draftCandidates = [];
           if (location.state?.estimateDraft)
@@ -2004,11 +1949,10 @@ export default function EstimationPage() {
               String(id),
           );
           const draftRows = getDraftRows(matchedDraft);
-          setItems(
-            draftRows.length
-              ? reconcileLoadedItems(draftRows, latestAutoRows)
-              : latestAutoRows,
-          );
+          const draftItems = draftRows.length
+            ? reconcileLoadedItems(draftRows, latestAutoRows)
+            : latestAutoRows;
+          setItems(applyEstimateCostingItemPolicy(draftItems, "draft"));
         }
 
         const orderId =
@@ -2115,10 +2059,6 @@ export default function EstimationPage() {
   );
   const inventoryItems = useMemo(() => items.filter(isInventoryItem), [items]);
   const otherItems = useMemo(() => items.filter(isOtherItem), [items]);
-  const quotationInventoryIssues = useMemo(
-    () => getQuotationInventoryIssues(inventoryItems, rawMaterials),
-    [inventoryItems, rawMaterials],
-  );
 
   const currentDraftSignature = useMemo(
     () => buildEditableEstimateSignature(items, costs),
@@ -2186,9 +2126,13 @@ export default function EstimationPage() {
         );
 
         if (loadedEstimation) {
-          const normalizedItems = reconcileLoadedItems(
+          const reconciledItems = reconcileLoadedItems(
             loadedEstimation.items || [],
             latestAutoItems,
+          );
+          const normalizedItems = applyEstimateCostingItemPolicy(
+            reconciledItems,
+            loadedEstimation.status,
           );
 
           const normalizedCosts = {
@@ -2203,7 +2147,7 @@ export default function EstimationPage() {
           setItems(normalizedItems);
           setCosts(normalizedCosts);
           setSavedDraftSignature(
-            buildEditableEstimateSignature(normalizedItems, normalizedCosts),
+            buildEditableEstimateSignature(reconciledItems, normalizedCosts),
           );
 
           setDeliveryGate((current) => ({
@@ -2281,16 +2225,6 @@ export default function EstimationPage() {
       });
     }
 
-    if (quotationInventoryIssues.length > 0) {
-      reasons.push({
-        key: "inventory",
-        title: "Required materials needed",
-        message:
-          quotationInventoryIssues[0]?.message ||
-          "Add the required material before sending the quotation.",
-      });
-    }
-
     if (deliveryGate.active && !deliveryGate.readyForQuote) {
       reasons.push({
         key: "delivery",
@@ -2302,26 +2236,20 @@ export default function EstimationPage() {
     }
 
     return reasons;
-  }, [
-    quotationInventoryIssues,
-    deliveryGate,
-    estimation?.id,
-    hasUnsavedChanges,
-  ]);
+  }, [deliveryGate, estimation?.id, hasUnsavedChanges]);
 
   const isSendQuotationBlocked = quotationGateReasons.length > 0;
   const visibleQuotationGateReasons =
-    activeEstimateTab === "materials"
-      ? quotationGateReasons.filter((reason) => reason.key !== "inventory")
-      : activeEstimateTab === "delivery"
-        ? quotationGateReasons.filter((reason) => reason.key !== "delivery")
-        : quotationGateReasons;
+    activeEstimateTab === "delivery"
+      ? quotationGateReasons.filter((reason) => reason.key !== "delivery")
+      : quotationGateReasons;
 
   const inventoryPricingMode =
     estimation?.inventory_pricing_mode === "legacy_billable"
       ? "legacy_billable"
       : "tracking_only";
   const inventoryTrackingOnly = inventoryPricingMode === "tracking_only";
+  const isHistoricalLockedEstimate = isLockedEstimateStatus(estimation?.status);
 
   const blueprintSubtotal = blueprintItems.reduce(
     (sum, item) => sum + getItemAmount(item),
@@ -2337,7 +2265,7 @@ export default function EstimationPage() {
   );
   const quoteItemsSubtotal =
     blueprintSubtotal +
-    otherSubtotal +
+    (isHistoricalLockedEstimate ? otherSubtotal : 0) +
     (inventoryTrackingOnly ? 0 : inventorySubtotal);
   const laborCost = Number(costs.labor_cost || 0);
   const isPickup = deliveryGate.fulfillmentMethod === "pickup";
@@ -2370,7 +2298,7 @@ export default function EstimationPage() {
   const isApproved =
     String(estimation?.status || "").toLowerCase() === "approved";
   const isSent = String(estimation?.status || "").toLowerCase() === "sent";
-  const isReadOnly = isApproved || isSent;
+  const isReadOnly = isHistoricalLockedEstimate;
 
   // A generated first-time draft has no estimation.id yet. It still needs
   // to be saveable so the auto-draft can become a persisted estimation.
@@ -2469,39 +2397,6 @@ export default function EstimationPage() {
     setItems((current) => current.filter((item) => item._row_key !== rowKey));
   };
 
-  const addInventoryItem = () => {
-    if (isReadOnly) return;
-    setItems((current) => [
-      ...current,
-      normalizeItem({
-        raw_material_id: null,
-        name: "",
-        quantity: 1,
-        unit: "pc",
-        unit_cost: 0,
-        note: "",
-        source_key: makeLocalKey("inventory"),
-        source_type: "inventory_material",
-      }),
-    ]);
-  };
-
-  const addOtherItem = () => {
-    if (isReadOnly) return;
-    setItems((current) => [
-      ...current,
-      normalizeItem({
-        name: "",
-        quantity: 1,
-        unit: "pc",
-        unit_cost: "",
-        note: "",
-        source_key: makeLocalKey("other"),
-        source_type: "other",
-      }),
-    ]);
-  };
-
   const handleRegenerate = () => {
     if (isReadOnly) {
       toast.error("Sent or approved estimates cannot be refreshed.");
@@ -2512,19 +2407,19 @@ export default function EstimationPage() {
       return;
     }
     const shouldReplace = window.confirm(
-      "Refresh blueprint components from the latest design? Existing matching prices will be preserved. Required materials and additional items will remain unchanged.",
+      "Refresh furniture parts from the latest Blueprint? Existing matching rates will be preserved.",
     );
     if (!shouldReplace) return;
 
     const mergedAuto = mergeAutoRows(preferredAutoItems, blueprintItems, []);
-    setItems([...mergedAuto, ...inventoryItems, ...otherItems]);
-    toast.success(
-      "Blueprint components refreshed. Required materials and additional items were preserved.",
-    );
+    setItems([...mergedAuto, ...inventoryItems]);
+    toast.success("Furniture parts refreshed. Existing rates were preserved.");
   };
 
   const buildPayload = (deliveryDraft = oversizedDeliveryDraft) => {
-    const filledItems = items.filter(isFilledItem).map(serializeItem);
+    const filledItems = items
+      .filter((item) => isFilledItem(item) && !isOtherItem(item))
+      .map(serializeItem);
     return {
       items: filledItems,
       oversized_delivery: deliveryDraft,
@@ -2550,7 +2445,10 @@ export default function EstimationPage() {
       return;
     }
 
-    const validationErrors = getValidationErrors({ items, costs });
+    const validationErrors = getValidationErrors({
+      items: items.filter((item) => !isOtherItem(item)),
+      costs,
+    });
     if (showFirstValidationError(validationErrors)) return;
 
     const currentDeliveryDraft = isPickup
@@ -2691,16 +2589,11 @@ export default function EstimationPage() {
       toast.error("Save your latest changes before sending the quotation.");
       return;
     }
-    const validationErrors = getValidationErrors({ items, costs });
+    const validationErrors = getValidationErrors({
+      items: items.filter((item) => !isOtherItem(item)),
+      costs,
+    });
     if (showFirstValidationError(validationErrors)) return;
-
-    if (quotationInventoryIssues.length > 0) {
-      toast.error(
-        quotationInventoryIssues[0]?.message ||
-          "Add the required material before sending the quotation.",
-      );
-      return;
-    }
 
     if (deliveryGate.active && !deliveryGate.readyForQuote) {
       toast.error(
@@ -2837,10 +2730,12 @@ export default function EstimationPage() {
 
     const summaryRows = [
       ["Furniture Parts", money(blueprintSubtotal)],
-      ...(!inventoryTrackingOnly
+      ...(isHistoricalLockedEstimate && !inventoryTrackingOnly
         ? [["Required Materials", money(inventorySubtotal)]]
         : []),
-      ["Additional Items", money(otherSubtotal)],
+      ...(isHistoricalLockedEstimate && otherItems.length > 0
+        ? [["Additional Items", money(otherSubtotal)]]
+        : []),
       ["Labor", money(laborCost)],
       ...(!isPickup ? [["Logistics", money(logisticsCost)]] : []),
       ...(additionalDeliveryFee > 0
@@ -3030,7 +2925,6 @@ export default function EstimationPage() {
         {[
           ["request", "Request"],
           ["components", "Components"],
-          ["materials", "Materials"],
           ...(!isPickup ? [["delivery", "Delivery"]] : []),
           ["quotation", "Quotation"],
         ].map(([key, label]) => {
@@ -3206,37 +3100,8 @@ export default function EstimationPage() {
         </>
       )}
 
-      {activeEstimateTab === "materials" && (
-        <EstimateTable
-          title="Required Materials"
-          helper="Select the materials and quantities required for production."
-          section="inventory"
-          rows={inventoryItems}
-          rawMaterials={rawMaterials}
-          readOnly={isReadOnly}
-          onAdd={addInventoryItem}
-          onRemove={removeItem}
-          onUpdate={updateItem}
-          subtotal={inventorySubtotal}
-          inventoryTrackingOnly={inventoryTrackingOnly}
-        />
-      )}
-
       {activeEstimateTab === "quotation" && (
         <>
-          <EstimateTable
-            title="Additional Items"
-            helper="Add billable work or materials not included in the blueprint."
-            section="other"
-            rows={otherItems}
-            rawMaterials={rawMaterials}
-            readOnly={isReadOnly}
-            onAdd={addOtherItem}
-            onRemove={removeItem}
-            onUpdate={updateItem}
-            subtotal={otherSubtotal}
-          />
-
           <div style={chargesGrid}>
             <div style={card}>
               <div style={sectionHeaderSmall}>
@@ -3370,10 +3235,12 @@ export default function EstimationPage() {
               <div style={{ padding: 24 }}>
                 {[
                   ["Furniture Parts", blueprintSubtotal],
-                  ...(!inventoryTrackingOnly
+                  ...(isHistoricalLockedEstimate && !inventoryTrackingOnly
                     ? [["Required Materials", inventorySubtotal]]
                     : []),
-                  ["Additional Items", otherSubtotal],
+                  ...(isHistoricalLockedEstimate && otherItems.length > 0
+                    ? [["Additional Items", otherSubtotal]]
+                    : []),
                   ["Labor", laborCost],
                   ...(!isPickup ? [["Logistics", logisticsCost]] : []),
                   ...(additionalDeliveryFee > 0
@@ -3385,16 +3252,6 @@ export default function EstimationPage() {
                     <strong>{formatMoney(value)}</strong>
                   </div>
                 ))}
-                {inventoryTrackingOnly && (
-                  <div style={{ ...summaryRow, alignItems: "flex-start" }}>
-                    <span style={summaryLabel}>Required Inventory</span>
-                    <strong style={{ textAlign: "right", maxWidth: 190 }}>
-                      {inventoryItems.length
-                        ? `${inventoryItems.length} tracked material${inventoryItems.length === 1 ? "" : "s"} — not charged again`
-                        : "None added"}
-                    </strong>
-                  </div>
-                )}
                 <div
                   style={{ borderTop: "1px solid #e4e4e7", margin: "16px 0" }}
                 />

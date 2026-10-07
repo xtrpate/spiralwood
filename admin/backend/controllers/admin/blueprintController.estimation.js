@@ -659,6 +659,18 @@ exports.saveEstimation = async (req, res) => {
 
     let normalizedItems = normalizeEstimationItems(items);
 
+    const unsupportedAdditionalItems = normalizedItems.filter((item) =>
+      ["other", "manual"].includes(
+        String(item?.source_type || "").trim().toLowerCase(),
+      ),
+    );
+
+    if (unsupportedAdditionalItems.length > 0) {
+      throw createValidationError(
+        "Additional Items are no longer part of Project Estimate. Use Furniture Parts rates and Labor for quotation costing.",
+      );
+    }
+
     // Project Estimate quantity integrity:
     // - current Blueprint structure is authoritative for furniture parts;
     // - linked order quantity is multiplied exactly once;
@@ -1121,23 +1133,6 @@ exports.approveEstimation = async (req, res) => {
         message:
           "Quotation state changed before it could be sent. Please refresh and try again.",
         integrity_reason: "ESTIMATION_STATE_CHANGED",
-      });
-    }
-
-    const inventoryReadiness = await checkQuotationInventoryReadiness(conn, {
-      estimation: latestEstimation,
-      orderId: order.id,
-    });
-
-    if (!inventoryReadiness.ready) {
-      await conn.rollback();
-      const firstIssue = inventoryReadiness.issues?.[0];
-      return res.status(409).json({
-        message:
-          firstIssue?.message ||
-          "Quotation cannot be sent until required inventory materials are complete and sufficient.",
-        integrity_reason: "INVENTORY_NOT_READY_FOR_QUOTATION",
-        inventory_issues: inventoryReadiness.issues || [],
       });
     }
 
