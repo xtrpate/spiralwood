@@ -33,6 +33,9 @@ const {
   purgeExpiredArchivedBlueprints,
 } = require("./blueprintController.helpers");
 
+const {
+  validateBlueprintEstimateQuantities,
+} = require("../../utils/blueprintEstimateQuantityIntegrity");
 const { emitBlueprintUpdate } = require("../../utils/orderStatusSocket");
 
 const checkQuotationInventoryReadiness = async (
@@ -655,6 +658,45 @@ exports.saveEstimation = async (req, res) => {
     }
 
     let normalizedItems = normalizeEstimationItems(items);
+
+    // Project Estimate quantity integrity:
+    // - current Blueprint structure is authoritative for furniture parts;
+    // - linked order quantity is multiplied exactly once;
+    // - admin-entered rates remain editable;
+    // - stale/manipulated structural quantities are rejected server-side.
+    const [[quantityBlueprint]] = await conn.query(
+      `SELECT design_data
+       FROM blueprints
+       WHERE id = ?
+       LIMIT 1`,
+      [blueprintId],
+    );
+
+    let canonicalOrderQuantity = 1;
+
+    if (order) {
+      const [[quantityOrderItem]] = await conn.query(
+        `SELECT quantity
+         FROM order_items
+         WHERE order_id = ?
+         ORDER BY id ASC
+         LIMIT 1
+         FOR UPDATE`,
+        [order.id],
+      );
+
+      const linkedQuantity = Number(quantityOrderItem?.quantity);
+      canonicalOrderQuantity =
+        Number.isFinite(linkedQuantity) && linkedQuantity > 0
+          ? linkedQuantity
+          : 1;
+    }
+
+    validateBlueprintEstimateQuantities({
+      designData: safeJsonParse(quantityBlueprint?.design_data, {}) || {},
+      orderQuantity: canonicalOrderQuantity,
+      items: normalizedItems,
+    });
 
     const rawMaterialIds = [
       ...new Set(

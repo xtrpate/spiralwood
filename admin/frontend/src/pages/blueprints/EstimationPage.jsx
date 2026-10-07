@@ -257,6 +257,16 @@ const parseBlueprintDesignData = (blueprint = {}) => {
   }
 };
 
+const getBlueprintOrderQuantity = (blueprint = {}) => {
+  const items = Array.isArray(blueprint?.order_context?.items)
+    ? blueprint.order_context.items
+    : [];
+  const linkedItem = items.find((item) => Number(item?.quantity) > 0);
+  const quantity = Number(linkedItem?.quantity);
+
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+};
+
 const getWoodFinishMultiplier = (component = {}) => {
   const finish = String(component?.finish || "").trim();
   if (finish && WOOD_FINISH_PRICE_MAP[finish]) {
@@ -424,14 +434,19 @@ const condenseAutoItems = (rows = []) => {
   }));
 };
 
-const buildAutoItemsFromComponents = (components = []) =>
-  condenseAutoItems(
+const buildAutoItemsFromComponents = (
+  components = [],
+  orderQuantity = 1,
+) => {
+  const orderQty = Math.max(1, Number(orderQuantity) || 1);
+
+  return condenseAutoItems(
     components.map((component) => {
       const finishLabel = getWoodFinishLabel(component);
       const material = normalizeText(component?.material || "—") || "—";
       return {
         name: `${component.label || "Component"}${finishLabel ? ` (${finishLabel})` : ""}`,
-        quantity: Number(component.qty) || 1,
+        quantity: (Number(component.qty) || 1) * orderQty,
         unit: "pc",
         unit_cost: getResolvedUnitPrice(component, components),
         note: `${finishLabel ? `${finishLabel} · ` : ""}${material} · ${component.width || 0}×${component.height || 0}×${component.depth || 0} mm`,
@@ -440,9 +455,12 @@ const buildAutoItemsFromComponents = (components = []) =>
       };
     }),
   );
+};
 
-const buildAutoItemsFromCutList = (rows = []) =>
-  condenseAutoItems(
+const buildAutoItemsFromCutList = (rows = [], orderQuantity = 1) => {
+  const orderQty = Math.max(1, Number(orderQuantity) || 1);
+
+  return condenseAutoItems(
     rows.map((row, index) => {
       const useArea =
         String(row?.estimationUnit || "").toLowerCase() === "panel_area";
@@ -460,12 +478,15 @@ const buildAutoItemsFromCutList = (rows = []) =>
       ]
         .filter(Boolean)
         .join(" · ");
+      const baseQuantity = useArea
+        ? Number(Number(row?.totalAreaSqM || 0).toFixed(4)) || 0.0001
+        : Math.max(1, Number(row?.qty || 1) || 1);
 
       return {
         name,
         quantity: useArea
-          ? Number(Number(row?.totalAreaSqM || 0).toFixed(4)) || 0.0001
-          : Math.max(1, Number(row?.qty || 1) || 1),
+          ? Number((baseQuantity * orderQty).toFixed(4))
+          : baseQuantity * orderQty,
         unit: useArea ? "sq.m" : "pc",
         unit_cost: getDefaultCutListUnitCost(row),
         note,
@@ -476,16 +497,21 @@ const buildAutoItemsFromCutList = (rows = []) =>
       };
     }),
   );
+};
 
-const buildPreferredAutoItems = (design = {}) => {
+const buildPreferredAutoItems = (design = {}, orderQuantity = 1) => {
   if (
     Array.isArray(design?.conversionCutListRows) &&
     design.conversionCutListRows.length
   ) {
-    return buildAutoItemsFromCutList(design.conversionCutListRows);
+    return buildAutoItemsFromCutList(
+      design.conversionCutListRows,
+      orderQuantity,
+    );
   }
   return buildAutoItemsFromComponents(
     Array.isArray(design?.components) ? design.components : [],
+    orderQuantity,
   );
 };
 
@@ -538,14 +564,12 @@ const mergeAutoRows = (
     if (!match) return row;
     return {
       ...row,
+      // The current Blueprint/order remains authoritative for structural
+      // fields. Only the admin-entered rate may survive a refresh/reload.
       unit_cost:
         Number(match.unit_cost || 0) > 0
           ? Number(match.unit_cost)
           : row.unit_cost,
-      quantity:
-        Number(match.quantity || 0) > 0 ? Number(match.quantity) : row.quantity,
-      unit: normalizeText(match.unit) || row.unit,
-      note: normalizeText(match.note) || row.note,
       _row_key: row.source_key || row._row_key,
     };
   });
@@ -1151,6 +1175,7 @@ function EstimateTable({
   inventoryTrackingOnly = false,
 }) {
   const isInventory = section === "inventory";
+  const isBlueprint = section === "blueprint";
   const showNotes = section !== "blueprint";
   const showInventoryPricing = isInventory && !inventoryTrackingOnly;
   const emptyText =
@@ -1341,7 +1366,7 @@ function EstimateTable({
                               : "e.g. Custom carved design"
                           }
                           maxLength={255}
-                          disabled={readOnly}
+                          disabled={readOnly || isBlueprint}
                         />
                       )}
                     </td>
@@ -1407,7 +1432,7 @@ function EstimateTable({
                             ...readOnlyFieldStyle(readOnly),
                             width: "100%",
                           }}
-                          disabled={readOnly}
+                          disabled={readOnly || isBlueprint}
                         >
                           {UNIT_OPTIONS.map((unit) => (
                             <option key={unit} value={unit}>
@@ -1439,7 +1464,7 @@ function EstimateTable({
                             ? "numeric"
                             : "decimal"
                         }
-                        required={!readOnly}
+                        required={!readOnly && !isBlueprint}
                         value={item.quantity}
                         onChange={(event) => {
                           const nextValue = event.target.value;
@@ -1461,10 +1486,10 @@ function EstimateTable({
                         }}
                         style={{
                           ...cellInput,
-                          ...readOnlyFieldStyle(readOnly),
+                          ...readOnlyFieldStyle(readOnly || isBlueprint),
                           width: "100%",
                         }}
-                        disabled={readOnly}
+                        disabled={readOnly || isBlueprint}
                       />
                     </td>
                     {isInventory && (
@@ -1549,7 +1574,7 @@ function EstimateTable({
                       </td>
                     )}
                     <td style={{ ...td, textAlign: "center" }}>
-                      {!readOnly && (
+                      {!readOnly && !isBlueprint && (
                         <button
                           type="button"
                           onClick={() => onRemove(item._row_key)}
@@ -1907,9 +1932,13 @@ export default function EstimationPage() {
     () => buildEstimateProductionSnapshot(parsedDesign),
     [parsedDesign],
   );
+  const blueprintOrderQuantity = useMemo(
+    () => getBlueprintOrderQuantity(blueprint),
+    [blueprint],
+  );
   const preferredAutoItems = useMemo(
-    () => buildPreferredAutoItems(parsedDesign),
-    [parsedDesign],
+    () => buildPreferredAutoItems(parsedDesign, blueprintOrderQuantity),
+    [parsedDesign, blueprintOrderQuantity],
   );
 
   useEffect(() => {
@@ -1931,7 +1960,10 @@ export default function EstimationPage() {
         if (cancelled) return;
         const loadedBlueprint = blueprintResponse.data;
         const loadedDesign = parseBlueprintDesignData(loadedBlueprint);
-        const latestAutoRows = buildPreferredAutoItems(loadedDesign);
+        const latestAutoRows = buildPreferredAutoItems(
+          loadedDesign,
+          getBlueprintOrderQuantity(loadedBlueprint),
+        );
         setBlueprint(loadedBlueprint);
         setRawMaterials(
           Array.isArray(materialsResponse.data?.rows)
@@ -2150,6 +2182,7 @@ export default function EstimationPage() {
 
         const latestAutoItems = buildPreferredAutoItems(
           parseBlueprintDesignData(loadedBlueprint),
+          getBlueprintOrderQuantity(loadedBlueprint),
         );
 
         if (loadedEstimation) {
@@ -3161,7 +3194,7 @@ export default function EstimationPage() {
 
           <EstimateTable
             title="Furniture Parts"
-            helper="Review the generated components, quantities, and rates."
+            helper="Parts and quantities come from the saved Blueprint and linked order. Enter the rate only."
             section="blueprint"
             rows={blueprintItems}
             rawMaterials={rawMaterials}
