@@ -648,7 +648,11 @@ export default function ProductsPage() {
 
   const handleSelectAll = (event) => {
     setSelectedIds(
-      event.target.checked ? products.map((product) => product.id) : [],
+      event.target.checked
+        ? products
+            .filter((product) => product.type !== "blueprint")
+            .map((product) => product.id)
+        : [],
     );
   };
 
@@ -865,8 +869,10 @@ export default function ProductsPage() {
                 <input
                   type="checkbox"
                   checked={
-                    products.length > 0 &&
-                    selectedIds.length === products.length
+                    products.some((product) => product.type !== "blueprint") &&
+                    products
+                      .filter((product) => product.type !== "blueprint")
+                      .every((product) => selectedIds.includes(product.id))
                   }
                   onChange={handleSelectAll}
                   aria-label="Select all products on this page"
@@ -926,12 +932,26 @@ export default function ProductsPage() {
                     <td style={{ ...td, textAlign: "center" }}>
                       <input
                         type="checkbox"
-                        checked={selectedIds.includes(product.id)}
+                        checked={!isBlueprint && selectedIds.includes(product.id)}
+                        disabled={isBlueprint}
                         onChange={(event) =>
                           handleSelectOne(product.id, event.target.checked)
                         }
-                        aria-label={`Select ${product.name}`}
-                        style={checkbox}
+                        aria-label={
+                          isBlueprint
+                            ? `Blueprint publication for ${product.name} is managed in Blueprint Management`
+                            : `Select ${product.name}`
+                        }
+                        title={
+                          isBlueprint
+                            ? "Blueprint publication is managed in Blueprint Management"
+                            : undefined
+                        }
+                        style={{
+                          ...checkbox,
+                          cursor: isBlueprint ? "not-allowed" : "pointer",
+                          opacity: isBlueprint ? 0.45 : 1,
+                        }}
                       />
                     </td>
 
@@ -1088,7 +1108,24 @@ export default function ProductsPage() {
 
                           {actionMenuId === product.id && (
                             <div role="menu" style={moreMenu}>
-                              {Number(product.is_published) === 1 ? (
+                              {isBlueprint ? (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  style={menuItem}
+                                  disabled={!product.blueprint_id}
+                                  onClick={() => {
+                                    setActionMenuId(null);
+                                    if (product.blueprint_id) {
+                                      navigate(
+                                        `/admin/blueprints/${product.blueprint_id}/design`,
+                                      );
+                                    }
+                                  }}
+                                >
+                                  Manage publish status in Blueprint
+                                </button>
+                              ) : Number(product.is_published) === 1 ? (
                                 <button
                                   type="button"
                                   role="menuitem"

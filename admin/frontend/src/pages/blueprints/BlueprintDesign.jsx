@@ -1978,8 +1978,6 @@ export default function BlueprintDesign() {
       activeReferenceCalibration,
       conversionHandoffSummary,
       conversionCutListRows,
-      estimatedPrice,
-      designTotal,
       editorStateSignature: currentEditorStateSignature,
       onDesignSaved: markEditorStateSaved,
       publishForm,
@@ -2073,6 +2071,7 @@ export default function BlueprintDesign() {
         openProjectEstimate={openProjectEstimate}
         saveDesign={saveDesign}
         saving={saving}
+        publishing={publishing}
         setPublishForm={setPublishForm}
         setPublishModal={setPublishModal}
         handleUnpublishProduct={handleUnpublishProduct}

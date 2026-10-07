@@ -24,10 +24,13 @@ export function BlueprintEditorHeader({
   openProjectEstimate,
   saveDesign,
   saving,
+  publishing = false,
   setPublishForm,
   setPublishModal,
   handleUnpublishProduct,
 }) {
+  const hasPublishedProduct = Number(blueprint?.has_published_product || 0) === 1;
+
   const headerToolBtn = {
     ...S.toolBtn,
     minHeight: 32,
@@ -439,37 +442,43 @@ export function BlueprintEditorHeader({
               {saving ? "Saving…" : "Save"}
             </button>
 
-            <button
-              onClick={() => {
-                setPublishForm((prev) => ({
-                  ...prev,
-                  name: blueprint?.title || "",
-                  description:
-                    blueprint?.description || "Custom blueprint product.",
-                }));
-                setPublishModal(true);
-              }}
-              style={{
-                ...headerToolBtn,
-                background: "#ffffff",
-                color: "#18181b",
-                border: "1px solid #bfc5cd",
-              }}
-            >
-              Publish to Gallery
-            </button>
-
-            <button
-              onClick={handleUnpublishProduct}
-              style={{
-                ...headerToolBtn,
-                background: "#fffafa",
-                color: "#991b1b",
-                border: "1px solid #fecaca",
-              }}
-            >
-              Unpublish
-            </button>
+            {hasPublishedProduct ? (
+              <button
+                onClick={handleUnpublishProduct}
+                disabled={saving || publishing}
+                style={{
+                  ...headerToolBtn,
+                  background: "#fffafa",
+                  color: "#991b1b",
+                  border: "1px solid #fecaca",
+                  opacity: saving || publishing ? 0.6 : 1,
+                }}
+              >
+                {publishing ? "Updating…" : "Unpublish"}
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  setPublishForm((prev) => ({
+                    ...prev,
+                    name: blueprint?.title || "",
+                    description:
+                      blueprint?.description || "Custom blueprint product.",
+                  }));
+                  setPublishModal(true);
+                }}
+                disabled={saving || publishing}
+                style={{
+                  ...headerToolBtn,
+                  background: "#ffffff",
+                  color: "#18181b",
+                  border: "1px solid #bfc5cd",
+                  opacity: saving || publishing ? 0.6 : 1,
+                }}
+              >
+                Publish to Gallery
+              </button>
+            )}
           </div>
         </div>
       </div>

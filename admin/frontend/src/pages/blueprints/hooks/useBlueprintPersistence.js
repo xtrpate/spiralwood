@@ -35,8 +35,6 @@ export function useBlueprintPersistence({
   activeReferenceCalibration,
   conversionHandoffSummary,
   conversionCutListRows,
-  estimatedPrice,
-  designTotal,
   editorStateSignature,
   onDesignSaved,
   publishForm,
@@ -48,7 +46,7 @@ export function useBlueprintPersistence({
   sheetSize,
   exportViews,
 }) {
-  const publishInFlightRef = useRef(false);
+  const publicationInFlightRef = useRef(false);
 
   const saveDesign = useCallback(async () => {
     const savingEditorStateSignature = editorStateSignature;
@@ -189,16 +187,8 @@ export function useBlueprintPersistence({
         view_3d_data: JSON.stringify(view3dPayload),
         thumbnail_url:
           generatedThumbnailUrl || blueprint?.thumbnail_url || null,
-        is_template: Number(blueprint?.is_template) ? 1 : 0,
-        is_gallery: Number(blueprint?.is_gallery) ? 1 : 0,
-        base_price: Math.max(
-          0,
-          Math.round(
-            Number(estimatedPrice !== null ? estimatedPrice : designTotal || 0),
-          ),
-        ),
-        // Normal Save uses Blueprint metadata only. Publish form values are
-        // temporary and are applied only by the Publish workflow.
+        // Normal design Save intentionally does not own publication flags or
+        // customer pricing. Publish/Unpublish endpoints are authoritative.
         title: blueprint?.title || "",
         description: blueprint?.description || "",
       });
@@ -262,8 +252,6 @@ export function useBlueprintPersistence({
     activeReferenceCalibration,
     conversionHandoffSummary,
     conversionCutListRows,
-    estimatedPrice,
-    designTotal,
     editorStateSignature,
     onDesignSaved,
     publishForm,
@@ -284,22 +272,36 @@ export function useBlueprintPersistence({
         return;
       }
 
+      if (productName.length > 200) {
+        toast.error("Product name must be 200 characters or fewer.");
+        return;
+      }
+
+      const hasRealComponent = Array.isArray(components)
+        ? components.some(
+            (component) => component && component.type !== "reference_proxy",
+          )
+        : false;
+
+      if (!hasRealComponent) {
+        toast.error(
+          "Add or convert at least one real furniture part before publishing.",
+        );
+        return;
+      }
+
       const categoryId = Number(publishForm.category_id || 0);
       if (!Number.isInteger(categoryId) || categoryId <= 0) {
         toast.error("Select a furniture category before publishing.");
         return;
       }
 
-      // Blueprint gallery templates intentionally have no fixed selling price.
-      const automaticPrice = 0;
-
-      // Lock immediately so repeated Publish clicks cannot queue extra saves
-      // while the first publish request is still starting.
-      if (publishInFlightRef.current) {
+      // Lock immediately so repeated publication actions cannot overlap.
+      if (publicationInFlightRef.current) {
         return;
       }
 
-      publishInFlightRef.current = true;
+      publicationInFlightRef.current = true;
       setPublishFeedbackStatus("loading");
       setPublishing(true);
 
@@ -337,8 +339,8 @@ export function useBlueprintPersistence({
                   publishedBlueprint.description || productDescription,
                 is_template: 1,
                 is_gallery: 1,
-                base_price:
-                  publishedBlueprint.base_price ?? automaticPrice,
+                base_price: publishedBlueprint.base_price ?? 0,
+                has_published_product: 1,
               }
             : previous,
         );
@@ -365,15 +367,13 @@ export function useBlueprintPersistence({
             "Failed to publish blueprint.",
         );
       } finally {
-        publishInFlightRef.current = false;
+        publicationInFlightRef.current = false;
         setPublishing(false);
         setPublishFeedbackStatus("loading");
       }
     },
     [
       publishForm,
-      estimatedPrice,
-      designTotal,
       saveDesign,
       setPublishing,
       setPublishFeedbackStatus,
@@ -385,6 +385,10 @@ export function useBlueprintPersistence({
   );
 
   const handleUnpublishProduct = useCallback(async () => {
+    if (publicationInFlightRef.current) {
+      return;
+    }
+
     if (
       !window.confirm(
         "Are you sure you want to unpublish the product linked to this blueprint?",
@@ -393,27 +397,36 @@ export function useBlueprintPersistence({
       return;
     }
 
+    publicationInFlightRef.current = true;
+    setPublishing(true);
+
     try {
-      await api.patch(`/products/blueprint/${id}/unpublish`);
-      await api.put(`/blueprints/${id}`, {
-        is_template: 0,
-        is_gallery: 0,
-        base_price: 0,
-      });
+      const response = await api.patch(`/products/blueprint/${id}/unpublish`);
+      const unpublishedBlueprint = response?.data?.blueprint || {};
+
       setBlueprint((previous) =>
         previous
-          ? { ...previous, is_template: 0, is_gallery: 0, base_price: 0 }
+          ? {
+              ...previous,
+              ...unpublishedBlueprint,
+              is_template: 0,
+              is_gallery: 0,
+              base_price: 0,
+              has_published_product: 0,
+            }
           : previous,
       );
       toast.success("Blueprint removed from the customer customize gallery.");
     } catch (error) {
       console.error("Unpublish Error:", error);
       toast.error(
-        error?.response?.data?.message ||
-          "Failed to unpublish. Ensure you have published it first.",
+        error?.response?.data?.message || "Failed to unpublish Blueprint.",
       );
+    } finally {
+      publicationInFlightRef.current = false;
+      setPublishing(false);
     }
-  }, [id, setBlueprint]);
+  }, [id, setBlueprint, setPublishing]);
 
   return {
     saveDesign,

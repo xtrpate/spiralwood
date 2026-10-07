@@ -271,6 +271,13 @@ exports.getOne = async (req, res) => {
                 WHERE active_order.blueprint_id = b.id
                   AND LOWER(COALESCE(active_order.status, '')) NOT IN ('completed', 'cancelled')
               ) AS has_active_linked_order,
+              EXISTS (
+                SELECT 1
+                FROM products published_product
+                WHERE published_product.blueprint_id = b.id
+                  AND published_product.type = 'blueprint'
+                  AND published_product.is_published = 1
+              ) AS has_published_product,
               CASE
                 WHEN b.is_deleted = 0
                   AND (b.is_template = 1 OR b.is_gallery = 1)
