@@ -326,14 +326,6 @@ export default function ReceiptPage() {
                   <span>{"\u20B1"}{formatMoney(financialSummary.vatable_sales)}</span>
                 </div>
                 <div className="total-row">
-                  <span>VAT-Exempt Sales</span>
-                  <span>{"\u20B1"}{formatMoney(financialSummary.vat_exempt_sales)}</span>
-                </div>
-                <div className="total-row">
-                  <span>Zero-Rated Sales</span>
-                  <span>{"\u20B1"}{formatMoney(financialSummary.zero_rated_sales)}</span>
-                </div>
-                <div className="total-row">
                   <span>VAT (12%)</span>
                   <span>{"\u20B1"}{formatMoney(financialSummary.tax)}</span>
                 </div>

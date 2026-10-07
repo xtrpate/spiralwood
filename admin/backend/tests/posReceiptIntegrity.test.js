@@ -49,6 +49,13 @@ const baseReceipt = (overrides = {}) => ({
   delivery_fee: '0.00',
   total: '10000.00',
   notes: null,
+  // Current POS receipt controller requires the immutable order warranty
+  // snapshot before it will return a receipt. Keep the receipt test fixture
+  // aligned with that production integrity contract so presentation tests
+  // can reach the assertions they are intended to exercise.
+  warranty_period_days_snapshot: 365,
+  warranty_policy_version_snapshot: 'test-policy-v1',
+  warranty_policy_effective_at: '2026-09-01T00:00:00.000Z',
   staff_name: 'Cashier Test',
   ...overrides,
 });
@@ -700,8 +707,8 @@ async function run() {
   assert.equal(receiptPageSource.includes('receipt.walkin_customer_name'), false);
   assert.match(receiptPageSource, /receipt\.financial_summary/);
   assert.match(receiptPageSource, /VATable Sales/);
-  assert.match(receiptPageSource, /VAT-Exempt Sales/);
-  assert.match(receiptPageSource, /Zero-Rated Sales/);
+  assert.equal(receiptPageSource.includes("VAT-Exempt Sales"), false);
+  assert.equal(receiptPageSource.includes("Zero-Rated Sales"), false);
   assert.match(receiptPageSource, /VAT \(12%\)/);
   assert.match(
     receiptPageSource,
@@ -728,6 +735,59 @@ async function run() {
     false,
   );
   assert.match(blueprintReceiptPageSource, /ORDER TOTAL/);
+
+  const customerStandardReceiptPagePath = path.resolve(
+    __dirname,
+    '../../frontend/src/pages/customer/CustomerStandardReceiptPage.jsx',
+  );
+  const customerStandardReceiptPageSource = fs.readFileSync(
+    customerStandardReceiptPagePath,
+    'utf8',
+  );
+  assert.match(customerStandardReceiptPageSource, /VATable Sales/);
+  assert.match(customerStandardReceiptPageSource, /VAT \(12%\)/);
+  assert.equal(
+    customerStandardReceiptPageSource.includes('VAT-Exempt Sales'),
+    false,
+  );
+  assert.equal(
+    customerStandardReceiptPageSource.includes('Zero-Rated Sales'),
+    false,
+  );
+  assert.match(customerStandardReceiptPageSource, /ORDER TOTAL/);
+  assert.match(
+    customerStandardReceiptPageSource,
+    /Previous verified payments/,
+  );
+
+  const customerBlueprintReceiptPagePath = path.resolve(
+    __dirname,
+    '../../frontend/src/pages/customer/CustomerBlueprintReceiptPage.jsx',
+  );
+  const customerBlueprintReceiptPageSource = fs.readFileSync(
+    customerBlueprintReceiptPagePath,
+    'utf8',
+  );
+  assert.equal(
+    customerBlueprintReceiptPageSource.includes('getVatInclusiveBreakdown'),
+    false,
+  );
+  assert.equal(
+    customerBlueprintReceiptPageSource.includes('VATable Sales'),
+    false,
+  );
+  assert.equal(
+    customerBlueprintReceiptPageSource.includes('VAT (12%)'),
+    false,
+  );
+  assert.match(customerBlueprintReceiptPageSource, /PROJECT TOTAL/);
+  assert.match(
+    customerBlueprintReceiptPageSource,
+    /Previous verified payments/,
+  );
+  assert.match(customerBlueprintReceiptPageSource, /Payment received/);
+  assert.match(customerBlueprintReceiptPageSource, /Total paid/);
+  assert.match(customerBlueprintReceiptPageSource, /Remaining balance/);
 
   console.log('PASS: Receipt correctness and historical integrity tests passed.');
 }
