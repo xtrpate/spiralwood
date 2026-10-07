@@ -394,6 +394,7 @@
   min-height: 40px;
   padding: 0 14px;
   border: 1px solid #111111;
+  border-radius: 0;
   font-size: 12px;
   font-weight: 800;
   font-family: inherit;
@@ -739,9 +740,6 @@
 /* ==========================================================
    PASSWORD STRENGTH METER COLORS (5-LEVEL)
    ========================================================== */
-.password-strength .strength-bar {
-  border-radius: 4px; /* Makes the bars look slightly softer/more modern */
-}
 
 /* Force standard colors for all 5 levels, overriding the global black theme */
 .profile-layout .strength-bar.filled-very-weak {
@@ -861,4 +859,14 @@
 
 .field-eye-btn:hover {
   color: #111111;
+}
+
+/* ── Squared Button Theme ── */
+
+.profile-layout button,
+.profile-layout .edit-toggle,
+.profile-layout .btn,
+.profile-layout .resend-btn,
+.profile-layout .avatar-upload-btn {
+  border-radius: 0 !important;
 }
