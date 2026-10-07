@@ -1954,19 +1954,21 @@ export default function CustomRequestDetailPage() {
     }
   };
 
-  const handleDownloadProjectAgreement = () => {
+  const handleDownloadProjectAgreement = async () => {
     if (!projectAgreement || !latestEstimation) {
       toast.error("The contract is not ready to download yet.");
       return;
     }
 
     try {
-      downloadProjectAgreementPdf({
+      await downloadProjectAgreementPdf({
         agreement: projectAgreement,
         order: requestData,
         estimation: latestEstimation,
         projectItem: agreementProjectItem,
         customerName: projectAgreement.customer_name || "Customer",
+        customerEmail:
+          projectAgreement.customer_email || requestData.customer_email || "",
         authorizedByName: "Spiral Wood Services",
       });
       toast.success("Contract PDF downloaded.");

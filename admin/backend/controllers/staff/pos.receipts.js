@@ -148,16 +148,90 @@ const normalizePosFinancialSummary = (summary, receiptTotalAmount) => {
   };
 };
 
+const deriveLegacyPaymongoFinancialSummary = (receipt, items) => {
+  const snapshotPaymentMethod = String(
+    receipt.payment_method_snapshot || "",
+  )
+    .trim()
+    .toLowerCase();
+  const hasImmutableProviderReference = hasStoredValue(
+    receipt.provider_reference,
+  );
+
+  const isPaymongoReceipt =
+    snapshotPaymentMethod === "paymongo" ||
+    (!snapshotPaymentMethod && hasImmutableProviderReference);
+
+  if (!isPaymongoReceipt || !Array.isArray(items) || items.length === 0) {
+    return null;
+  }
+
+  const receiptTotalCents = parseDecimalToCentsStrict(receipt.total_amount);
+  if (receiptTotalCents === null) return null;
+
+  let subtotalCents = 0;
+
+  for (const item of items) {
+    const quantity = parseStoredPositiveInt(item.quantity);
+    const unitPriceCents = parseDecimalToCentsStrict(item.unit_price);
+
+    if (quantity === null || unitPriceCents === null) return null;
+
+    const lineCents = unitPriceCents * quantity;
+    if (!Number.isSafeInteger(lineCents)) return null;
+
+    subtotalCents += lineCents;
+    if (!Number.isSafeInteger(subtotalCents)) return null;
+  }
+
+  // Current standard PayMongo checkout has no receipt-level discount or
+  // delivery fee. If immutable merchandise math does not equal the immutable
+  // receipt total, do not guess missing adjustments.
+  if (subtotalCents !== receiptTotalCents) return null;
+
+  const breakdown = computeReadyMadeVatInclusiveBreakdown({
+    subtotalCents,
+    discountCents: 0,
+    deliveryFeeCents: 0,
+  });
+
+  if (!breakdown || breakdown.totalCents !== receiptTotalCents) {
+    return null;
+  }
+
+  return {
+    pricing_mode: "vat_inclusive",
+    vat_rate: READY_MADE_VAT_RATE,
+    subtotal: centsToAmount(breakdown.subtotalCents),
+    discount: 0,
+    delivery_fee: 0,
+    vatable_sales: centsToAmount(breakdown.vatableSalesCents),
+    vat_exempt_sales: 0,
+    zero_rated_sales: 0,
+    tax: centsToAmount(breakdown.taxCents),
+    total: centsToAmount(breakdown.totalCents),
+  };
+};
+
 const parsePosReceiptSnapshot = (receipt) => {
   try {
     const parsed = JSON.parse(receipt.items_snapshot);
 
-    // Historical POS / standard-online receipts used a plain item array.
-    // Keep them readable exactly as recorded and do not invent VAT for them.
+    // Historical plain-array snapshots remain readable. Cash receipts stay
+    // VAT-neutral. Standard PayMongo receipts may expose a VAT-inclusive
+    // summary only from immutable receipt evidence, never mutable order fields.
     if (Array.isArray(parsed)) {
-      return parsed.length > 0 && parsed.every(validatePosReceiptItem)
-        ? { items: parsed, financial_summary: null }
-        : null;
+      if (parsed.length === 0 || !parsed.every(validatePosReceiptItem)) {
+        return null;
+      }
+
+      return {
+        items: parsed,
+        financial_summary: deriveLegacyPaymongoFinancialSummary(
+          receipt,
+          parsed,
+        ),
+      };
     }
 
     if (

@@ -340,8 +340,13 @@ export default function CustomerStandardReceiptPage() {
             </div>
 
             <div className="total-row grand">
-              <span>TOTAL</span>
+              <span>ORDER TOTAL</span>
               <span>{formatMoney(vatBreakdown.total)}</span>
+            </div>
+
+            <div className="total-row">
+              <span>Previous verified payments</span>
+              <span>{formatMoney(receipt.previous_paid_amount)}</span>
             </div>
 
             <div className="total-row customer-payment-received-v172 customer-payment-received-v180">

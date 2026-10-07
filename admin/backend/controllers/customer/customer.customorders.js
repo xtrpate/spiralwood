@@ -1407,6 +1407,7 @@ exports.getCustomOrderById = async (req, res) => {
           id,
           order_number,
           customer_id,
+          (SELECT u.email FROM users u WHERE u.id = orders.customer_id LIMIT 1) AS customer_email,
           blueprint_id,
           type,
           order_type,
@@ -1725,6 +1726,7 @@ exports.getCustomOrderById = async (req, res) => {
           order_id: lifecycle.contract.order_id,
           blueprint_id: lifecycle.contract.blueprint_id,
           customer_name: lifecycle.contract.customer_name || null,
+          customer_email: order.customer_email || null,
           terms: lifecycle.contract.materials_used || "",
           warranty_terms: lifecycle.contract.warranty_terms || "",
           down_payment: Number(

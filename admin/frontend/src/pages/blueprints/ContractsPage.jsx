@@ -6,26 +6,23 @@ import toast from "react-hot-toast";
 import { downloadProjectAgreementPdf } from "../../utils/projectAgreementPdf";
 import "./ContractsPage.css";
 
-const DEFAULT_TERMS = `1. PROJECT WORK
-Spiral Wood Services will build the furniture based on the approved design and quotation.
+const DEFAULT_TERMS = `3. PAYMENT
+A minimum down payment of 30% is required before production starts. The Customer may pay more than the minimum, up to the full project total. Any remaining balance, subject to any approved changes or additional charges, must be fully paid before the order is completed or finally released.
 
-2. PAYMENT
-Production starts after at least the required 30% minimum payment is verified. The customer may pay more than the minimum, up to the full project total. Any remaining balance must be fully paid before the order is completed.
+4. CHANGES
+Any requested change after the Agreement is accepted must be reviewed by the Contractor first. Approved changes may affect the contract price, materials, specifications, or completion date. No change shall be treated as approved until it has been recorded and accepted by the Contractor.
 
-3. CHANGES
-Any requested change after the contract is accepted must be reviewed first. Approved changes may affect the price or completion date.
+5. CANCELLATION
+Before production starts, the Customer may request cancellation through the applicable WISDOM workflow for administrative review. Verified payments remain recorded and are not refunded by this workflow. Once production starts or project-specific materials are committed or consumed, withdrawal may stop avoidable future work but does not erase the agreed contract price; any unpaid balance remains due in accordance with the Agreement. If delivery is already in transit, the delivery attempt must first be recorded as failed or refused after the furniture is returned before the withdrawal can be finalized. Nothing in this provision limits customer rights or remedies that cannot legally be waived.
 
-4. CANCELLATION
-Before production starts, the customer may request cancellation through WISDOM for admin review. Verified payments remain recorded and are not refunded by this workflow. Once production starts or project-specific materials are committed or consumed, a customer withdrawal may stop avoidable future work but does not erase the agreed contract price; any unpaid balance remains due in full. If delivery is already in transit, the delivery attempt must first be recorded as failed or refused after the furniture is returned before the withdrawal can be finalized. Nothing in this policy limits customer rights or remedies that cannot legally be waived.
-
-5. COMPLETION
+6. COMPLETION AND HANDOFF
 The completion and handoff schedule follows the fulfillment method selected for the order. Full payment is required before final release. Delays outside the reasonable control of Spiral Wood Services may affect the schedule.
 
-6. OWNERSHIP
-Ownership of the finished furniture transfers to the customer after full payment.
+7. OWNERSHIP
+Ownership of the finished furniture transfers to the Customer after full payment.
 
-7. GOVERNING LAW
-This contract is governed by the laws of the Republic of the Philippines.`;
+8. GOVERNING LAW
+This Agreement is governed by the laws of the Republic of the Philippines.`;
 
 const DEFAULT_WARRANTY_PERIOD_DAYS = 365;
 
@@ -477,7 +474,7 @@ export default function ContractsPage() {
         }
       }
 
-      downloadProjectAgreementPdf({
+      await downloadProjectAgreementPdf({
         agreement: {
           ...c,
           terms: c.materials_used || "",
