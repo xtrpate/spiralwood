@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import api from "../../services/api";
 
@@ -115,8 +115,17 @@ const showRequestErrorIfNeeded = (err, fallback) => {
   }
 };
 
+const getCancellationRowDomId = (row) => {
+  const rawKey =
+    row?.record_key ||
+    `${row?.record_source || "row"}-${row?.request_id || row?.order_id || "unknown"}`;
+
+  return `cancellation-row-${String(rawKey).replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+};
+
 export default function CancellationsPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -125,6 +134,7 @@ export default function CancellationsPage() {
   const [modal, setModal] = useState(null);
   const [reviewNote, setReviewNote] = useState("");
   const [processing, setProcessing] = useState(false);
+  const [focusedCancellationKey, setFocusedCancellationKey] = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -143,6 +153,86 @@ export default function CancellationsPage() {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     load();
   }, []);
+
+  useEffect(() => {
+    if (loading) return undefined;
+
+    const rawRequestId = searchParams.get("focus_cancellation_id");
+    const rawOrderId = searchParams.get("focus_order_id");
+
+    if (!rawRequestId && !rawOrderId) return undefined;
+
+    const parseFocusId = (value) => {
+      if (!/^\d+$/.test(String(value || ""))) return null;
+      const parsed = Number(value);
+      return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+    };
+
+    const requestId = rawRequestId ? parseFocusId(rawRequestId) : null;
+    const orderId = rawOrderId ? parseFocusId(rawOrderId) : null;
+
+    const clearFocusParams = () => {
+      const next = new URLSearchParams(searchParams);
+      next.delete("focus_cancellation_id");
+      next.delete("focus_order_id");
+      setSearchParams(next, { replace: true });
+    };
+
+    if ((rawRequestId && !requestId) || (rawOrderId && !orderId)) {
+      toast.error("Invalid cancellation notification link.");
+      clearFocusParams();
+      return undefined;
+    }
+
+    let match = requestId
+      ? rows.find((row) => Number(row.request_id) === requestId)
+      : null;
+
+    if (!match && orderId) {
+      match =
+        rows.find(
+          (row) =>
+            Number(row.order_id) === orderId &&
+            normalize(row.record_source) === "custom_request",
+        ) || rows.find((row) => Number(row.order_id) === orderId);
+    }
+
+    if (!match) {
+      toast.error(
+        "That cancellation record could not be found. It may no longer be available.",
+      );
+      clearFocusParams();
+      return undefined;
+    }
+
+    setSearch("");
+    setTypeFilter("");
+    setStatusFilter("");
+
+    const focusKey = String(
+      match.record_key ||
+        `${match.record_source || "row"}-${match.request_id || match.order_id}`,
+    );
+    setFocusedCancellationKey(focusKey);
+
+    const scrollTimer = setTimeout(() => {
+      document
+        .getElementById(getCancellationRowDomId(match))
+        ?.scrollIntoView({ behavior: "auto", block: "center" });
+    }, 50);
+
+    const highlightTimer = setTimeout(
+      () => setFocusedCancellationKey(null),
+      4000,
+    );
+
+    clearFocusParams();
+
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(highlightTimer);
+    };
+  }, [searchParams, loading, rows, setSearchParams]);
 
   const filteredRows = useMemo(() => {
     const term = normalize(search);
@@ -417,8 +507,24 @@ export default function CancellationsPage() {
                       ? row.order_status_at_request || row.order_status
                       : row.order_status;
 
+                  const rowKey = String(
+                    row.record_key || `${rowSource}-${row.order_id}`,
+                  );
+
                   return (
-                    <tr key={row.record_key || `${rowSource}-${row.order_id}`}>
+                    <tr
+                      id={getCancellationRowDomId(row)}
+                      key={rowKey}
+                      style={
+                        focusedCancellationKey === rowKey
+                          ? {
+                              background: "#fff7ed",
+                              outline: "2px solid #18181b",
+                              outlineOffset: "-2px",
+                            }
+                          : undefined
+                      }
+                    >
                       <td style={td}>
                         <button
                           type="button"

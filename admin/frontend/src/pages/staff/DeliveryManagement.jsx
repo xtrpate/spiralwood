@@ -377,23 +377,40 @@ export default function DeliveryManagement() {
     };
   }, [loadDeliveries, user?.id]);
 
-  // Notification double-click focus support: clears any status/search
-  // filter that would hide the record, locates it, scrolls it into
-  // view, and briefly highlights it. Fails safely if the delivery no
-  // longer exists — never guesses a record from message text.
+  // Notification focus support: exact current notifications carry a delivery
+  // id. Legacy cancellation notifications only carried the order id, so the
+  // rider page safely resolves that older link to the latest delivery that is
+  // still visible to the logged-in rider.
   useEffect(() => {
-    const focusId = searchParams.get("focus_delivery_id");
-    if (!focusId || loading) return;
+    const rawDeliveryId = searchParams.get("focus_delivery_id");
+    const rawOrderId = searchParams.get("focus_order_id");
 
-    const numericId = Number(focusId);
-    const match = deliveries.find((d) => Number(d.id) === numericId);
+    if ((!rawDeliveryId && !rawOrderId) || loading) return;
+
+    const deliveryId = rawDeliveryId ? Number(rawDeliveryId) : null;
+    const orderId = rawOrderId ? Number(rawOrderId) : null;
+
+    let match =
+      Number.isSafeInteger(deliveryId) && deliveryId > 0
+        ? deliveries.find((d) => Number(d.id) === deliveryId)
+        : null;
+
+    if (!match && Number.isSafeInteger(orderId) && orderId > 0) {
+      match = deliveries
+        .filter((d) => Number(d.order_id) === orderId)
+        .sort((a, b) => Number(b.id) - Number(a.id))[0];
+    }
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("focus_delivery_id");
+    next.delete("focus_order_id");
 
     if (!match) {
-      const next = new URLSearchParams(searchParams);
-      next.delete("focus_delivery_id");
       setSearchParams(next, { replace: true });
       return;
     }
+
+    const numericId = Number(match.id);
 
     setStatusFilter("all");
     setSearch("");
@@ -403,20 +420,18 @@ export default function DeliveryManagement() {
     const scrollTimer = setTimeout(() => {
       document
         .getElementById(`delivery-card-${numericId}`)
-        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+        ?.scrollIntoView({ behavior: "auto", block: "center" });
     }, 50);
 
     const highlightTimer = setTimeout(() => setFocusedDeliveryId(null), 4000);
 
-    const next = new URLSearchParams(searchParams);
-    next.delete("focus_delivery_id");
     setSearchParams(next, { replace: true });
 
     return () => {
       clearTimeout(scrollTimer);
       clearTimeout(highlightTimer);
     };
-  }, [searchParams, loading, deliveries]);
+  }, [searchParams, loading, deliveries, setSearchParams]);
 
   // PHASE 5 correction — automatic payment-status refresh for blueprint
   // deliveries still waiting on the customer's remaining-payment choice
