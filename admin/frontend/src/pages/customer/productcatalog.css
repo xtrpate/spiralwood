@@ -385,7 +385,7 @@
 .catalog-search-shell {
   position: relative;
   flex: 1;
-  max-width: 520px;
+  max-width: 480px;
 }
 
 .catalog-search {
@@ -417,15 +417,7 @@
 }
 
 .catalog-clear-inline {
-  border: 1px solid #111111;
-  background: #ffffff;
-  color: #111111;
-  min-height: 50px;
-  padding: 0 18px;
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-  flex-shrink: 0;
+  display: none;
 }
 
 .catalog-search-dropdown {
