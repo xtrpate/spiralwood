@@ -583,7 +583,7 @@ export default function AdminLayout() {
         onMouseEnter={() => setSidebarHovering(true)}
         onMouseLeave={() => setSidebarHovering(false)}
         style={{
-          width: sidebarExpanded ? 240 : 64,
+          width: sidebarExpanded ? 240 : 84,
           background: "#0a0a0a",
           color: "#e5e7eb",
           transition: "width .2s ease",
@@ -859,7 +859,9 @@ export default function AdminLayout() {
                       !sidebarExpanded
                         ? {
                             justifyContent: "center",
+                            margin: "0",
                             padding: "10px 0",
+                            width: "100%",
                           }
                         : {}
                     }
