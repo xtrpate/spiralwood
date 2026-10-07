@@ -203,6 +203,68 @@ async function run() {
   assert.equal(res.body.items.length, 1);
   assert.equal(res.body.financial_summary, null);
 
+  // Current standard PayMongo receipts may still use the historical immutable
+  // item-array snapshot. When item math exactly equals the immutable receipt
+  // total, expose the canonical VAT-inclusive breakdown without consulting
+  // mutable order pricing.
+  reset('legacy_paymongo_vat', {
+    payment_method_snapshot: 'paymongo',
+    provider_reference: 'cs_test_receipt_snapshot',
+    cash_received: null,
+    change_amount: null,
+    items_snapshot: JSON.stringify([
+      {
+        product_id: 7,
+        product_name: 'Test Chair',
+        unit_price: '10000.00',
+        quantity: 1,
+      },
+    ]),
+  });
+  res = makeRes();
+  await controller.getReceiptById(
+    { user: cashier, params: { id: '88' } },
+    res,
+  );
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.payment_method, 'paymongo');
+  assert.deepEqual(res.body.financial_summary, {
+    pricing_mode: 'vat_inclusive',
+    vat_rate: 12,
+    subtotal: 10000,
+    discount: 0,
+    delivery_fee: 0,
+    vatable_sales: 8928.57,
+    vat_exempt_sales: 0,
+    zero_rated_sales: 0,
+    tax: 1071.43,
+    total: 10000,
+  });
+
+  // Never guess a discount, fee, or other adjustment. If immutable item math
+  // does not match the immutable receipt total, the fallback stays disabled.
+  reset('legacy_paymongo_mismatch', {
+    payment_method_snapshot: 'paymongo',
+    provider_reference: 'cs_test_receipt_snapshot',
+    cash_received: null,
+    change_amount: null,
+    items_snapshot: JSON.stringify([
+      {
+        product_id: 7,
+        product_name: 'Test Chair',
+        unit_price: '9000.00',
+        quantity: 1,
+      },
+    ]),
+  });
+  res = makeRes();
+  await controller.getReceiptById(
+    { user: cashier, params: { id: '88' } },
+    res,
+  );
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.financial_summary, null);
+
   const ownedReceiptCall = calls.find((entry) => entry.sql.includes('FROM receipts r'));
   assert.ok(ownedReceiptCall);
   assert.match(ownedReceiptCall.sql, /r\.issued_by = \?/);
@@ -710,6 +772,10 @@ async function run() {
   assert.equal(receiptPageSource.includes("VAT-Exempt Sales"), false);
   assert.equal(receiptPageSource.includes("Zero-Rated Sales"), false);
   assert.match(receiptPageSource, /VAT \(12%\)/);
+  assert.match(
+    receiptPageSource,
+    /paymentMethod !== "paymongo"[\s\S]*<span>Discount<\/span>/,
+  );
   assert.match(
     receiptPageSource,
     /Number\(financialSummary\.delivery_fee\) > 0/,

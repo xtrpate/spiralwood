@@ -314,13 +314,15 @@ export default function ReceiptPage() {
                     </span>
                   </div>
                 )}
-                <div className="total-row">
-                  <span>Discount</span>
-                  <span>
-                    {Number(financialSummary.discount) > 0 ? "-" : ""}
-                    {"\u20B1"}{formatMoney(financialSummary.discount)}
-                  </span>
-                </div>
+                {paymentMethod !== "paymongo" && (
+                  <div className="total-row">
+                    <span>Discount</span>
+                    <span>
+                      {Number(financialSummary.discount) > 0 ? "-" : ""}
+                      {"\u20B1"}{formatMoney(financialSummary.discount)}
+                    </span>
+                  </div>
+                )}
                 <div className="total-row">
                   <span>VATable Sales</span>
                   <span>{"\u20B1"}{formatMoney(financialSummary.vatable_sales)}</span>
