@@ -15,7 +15,9 @@ const PASSWORD_HISTORY_LIMIT = 3;
 const MAX_PROFILE_ADDRESS_LENGTH = 500;
 
 /* ── OTP generator ── */
-const genOtp = () => Math.floor(100000 + Math.random() * 900000).toString();
+const { randomInt } = require("crypto");
+
+const genOtp = () => randomInt(100000, 1000000).toString();
 
 /* ── Directory for deleting old avatars ── */
 const avatarDir = path.join(__dirname, "../../uploads/avatars");

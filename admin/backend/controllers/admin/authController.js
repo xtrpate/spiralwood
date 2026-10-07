@@ -3,6 +3,7 @@
 // controllers/authController.js (Unified Gateway for Admin, Staff, and Customers)
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 // const nodemailer = require("nodemailer");
 const pool = require("../../config/db");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
@@ -21,8 +22,7 @@ require("dotenv").config();
 // ══════════════════════════════════════════════════════════════
 const OTP_EXPIRY_MINUTES = 15;
 
-const generateOtp = () =>
-  Math.floor(100000 + Math.random() * 900000).toString();
+const generateOtp = () => crypto.randomInt(100000, 1000000).toString();
 
 /* ── Brevo REST API Setup ── */
 const sendOtpEmail = async (email, otp, name) => {
