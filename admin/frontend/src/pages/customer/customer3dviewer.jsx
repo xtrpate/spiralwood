@@ -6426,9 +6426,17 @@ export default function Customer3DViewer({
                             commitOverallDimension("width");
                           }
                         }}
-                        aria-invalid={Boolean(overallDimensionErrors.width)}
+                        aria-invalid={Boolean(
+                          overallDimensionErrors.width ||
+                            (canSmartResizeWardrobeWidth &&
+                              wardrobeWidthPreview &&
+                              !wardrobeWidthPreview.ok),
+                        )}
                         aria-describedby={
-                          overallDimensionErrors.width
+                          overallDimensionErrors.width ||
+                          (canSmartResizeWardrobeWidth &&
+                            wardrobeWidthPreview &&
+                            !wardrobeWidthPreview.ok)
                             ? "customer-overall-width-error"
                             : undefined
                         }
@@ -6440,15 +6448,6 @@ export default function Customer3DViewer({
                         }}
                       />
 
-                      {overallDimensionErrors.width ? (
-                        <span
-                          id="customer-overall-width-error"
-                          role="alert"
-                          style={styles.fieldError}
-                        >
-                          {overallDimensionErrors.width}
-                        </span>
-                      ) : null}
                     </div>
 
                     <div style={styles.inputGroup}>
@@ -6530,6 +6529,31 @@ export default function Customer3DViewer({
                     </div>
                   </div>
 
+                  {(overallDimensionErrors.width ||
+                    (canSmartResizeWardrobeWidth &&
+                      wardrobeWidthPreview &&
+                      !wardrobeWidthPreview.ok)) ? (
+                    <div
+                      id="customer-overall-width-error"
+                      role="alert"
+                      style={{
+                        boxSizing: "border-box",
+                        width: "100%",
+                        marginTop: 6,
+                        padding: "8px 10px",
+                        border: "1px solid #fecaca",
+                        background: "#fff5f5",
+                        color: "#b91c1c",
+                        fontSize: 11,
+                        lineHeight: 1.4,
+                        overflowWrap: "anywhere",
+                      }}
+                    >
+                      {overallDimensionErrors.width ||
+                        wardrobeWidthPreview?.error}
+                    </div>
+                  ) : null}
+
                   {canSmartResizeWardrobeWidth && wardrobeWidthPreview ? (
                     <div style={{ marginTop: 8, display: "grid", gap: 7 }}>
                       {wardrobeWidthPreview.ok ? (
@@ -6563,11 +6587,7 @@ export default function Customer3DViewer({
                             Apply Width
                           </button>
                         </>
-                      ) : overallDimensionErrors.width ? null : (
-                        <div style={styles.fieldError} role="alert">
-                          {wardrobeWidthPreview.error}
-                        </div>
-                      )}
+                      ) : null}
                     </div>
                   ) : null}
                 </section>
