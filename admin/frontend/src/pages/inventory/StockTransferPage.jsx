@@ -405,7 +405,8 @@ export default function StockTransferPage() {
                     {productNeedle && (
                       <div style={helperStyle}>
                         {matchingInventory.length.toLocaleString("en-PH")} of{" "}
-                        {inventory.length.toLocaleString("en-PH")} products match
+                        {inventory.length.toLocaleString("en-PH")} products
+                        match
                       </div>
                     )}
                   </div>
@@ -734,7 +735,12 @@ function Detail({ label, value }) {
   );
 }
 
-const pageStyle = { maxWidth: 1180, margin: "0 auto", paddingBottom: 36 };
+const pageStyle = {
+  width: "100%",
+  maxWidth: "none",
+  margin: 0,
+  paddingBottom: 36,
+};
 const headerStyle = {
   display: "flex",
   justifyContent: "space-between",

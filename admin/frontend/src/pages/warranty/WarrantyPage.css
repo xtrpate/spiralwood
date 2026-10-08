@@ -898,18 +898,14 @@
   margin-top: 14px !important;
 }
 
-.warranty-admin-v2
-  .warranty-review-actions-pending
-  > .warranty-view-order-btn {
+.warranty-admin-v2 .warranty-review-actions-pending > .warranty-view-order-btn {
   flex: 1 1 0 !important;
   width: auto !important;
   min-width: 0 !important;
   margin: 0 !important;
 }
 
-.warranty-admin-v2
-  .warranty-review-actions-pending
-  > .warranty-decision-stack {
+.warranty-admin-v2 .warranty-review-actions-pending > .warranty-decision-stack {
   display: flex !important;
   flex: 2 1 0 !important;
   width: auto !important;
@@ -918,12 +914,8 @@
   margin: 0 !important;
 }
 
-.warranty-admin-v2
-  .warranty-review-actions-pending
-  .warranty-approve-btn,
-.warranty-admin-v2
-  .warranty-review-actions-pending
-  .warranty-reject-btn {
+.warranty-admin-v2 .warranty-review-actions-pending .warranty-approve-btn,
+.warranty-admin-v2 .warranty-review-actions-pending .warranty-reject-btn {
   flex: 1 1 0 !important;
   width: auto !important;
   min-width: 0 !important;
@@ -935,15 +927,9 @@
    View Order = white,
    Approve Claim = black,
    Reject Claim = red outline. */
-.warranty-admin-v2
-  .warranty-review-actions-pending
-  .warranty-view-order-btn,
-.warranty-admin-v2
-  .warranty-review-actions-pending
-  .warranty-approve-btn,
-.warranty-admin-v2
-  .warranty-review-actions-pending
-  .warranty-reject-btn {
+.warranty-admin-v2 .warranty-review-actions-pending .warranty-view-order-btn,
+.warranty-admin-v2 .warranty-review-actions-pending .warranty-approve-btn,
+.warranty-admin-v2 .warranty-review-actions-pending .warranty-reject-btn {
   height: 36px !important;
   min-height: 36px !important;
   padding: 0 9px !important;
@@ -955,7 +941,8 @@
 }
 
 /* Non-pending statuses keep their existing action layout. */
-.warranty-admin-v2 .warranty-review-actions:not(.warranty-review-actions-pending) {
+.warranty-admin-v2
+  .warranty-review-actions:not(.warranty-review-actions-pending) {
   margin-top: 14px;
 }
 
@@ -971,15 +958,9 @@
     width: 100% !important;
   }
 
-  .warranty-admin-v2
-    .warranty-review-actions-pending
-    .warranty-view-order-btn,
-  .warranty-admin-v2
-    .warranty-review-actions-pending
-    .warranty-approve-btn,
-  .warranty-admin-v2
-    .warranty-review-actions-pending
-    .warranty-reject-btn {
+  .warranty-admin-v2 .warranty-review-actions-pending .warranty-view-order-btn,
+  .warranty-admin-v2 .warranty-review-actions-pending .warranty-approve-btn,
+  .warranty-admin-v2 .warranty-review-actions-pending .warranty-reject-btn {
     width: 100% !important;
   }
 }
@@ -1028,15 +1009,9 @@
 
 /* Preserve the equal three-button row from V2.1.3.1 while making sure labels
    have enough breathing room. */
-.warranty-admin-v2
-  .warranty-review-actions-pending
-  .warranty-view-order-btn,
-.warranty-admin-v2
-  .warranty-review-actions-pending
-  .warranty-approve-btn,
-.warranty-admin-v2
-  .warranty-review-actions-pending
-  .warranty-reject-btn {
+.warranty-admin-v2 .warranty-review-actions-pending .warranty-view-order-btn,
+.warranty-admin-v2 .warranty-review-actions-pending .warranty-approve-btn,
+.warranty-admin-v2 .warranty-review-actions-pending .warranty-reject-btn {
   min-width: 104px !important;
   overflow: visible !important;
   text-overflow: clip !important;
@@ -1062,19 +1037,12 @@
     grid-template-columns: 1fr !important;
   }
 
-  .warranty-admin-v2
-    .warranty-review-actions-pending
-    .warranty-view-order-btn,
-  .warranty-admin-v2
-    .warranty-review-actions-pending
-    .warranty-approve-btn,
-  .warranty-admin-v2
-    .warranty-review-actions-pending
-    .warranty-reject-btn {
+  .warranty-admin-v2 .warranty-review-actions-pending .warranty-view-order-btn,
+  .warranty-admin-v2 .warranty-review-actions-pending .warranty-approve-btn,
+  .warranty-admin-v2 .warranty-review-actions-pending .warranty-reject-btn {
     min-width: 0 !important;
   }
 }
-
 
 /* WISDOM WARRANTY ADMIN SIZE TYPOGRAPHY CONSISTENCY V1 */
 /*
@@ -1323,4 +1291,18 @@
   .warranty-admin-v2 .warranty-pagination-controls {
     justify-content: space-between;
   }
+}
+
+/* ==========================================================================
+   WISDOM WARRANTY PAGE POSITIONING FIX
+   Match the common Admin workspace positioning.
+   Page-level content should use the full available main area.
+   ========================================================================== */
+
+.warranty-admin-v2 {
+  width: 100% !important;
+  max-width: none !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  margin-top: 0 !important;
 }

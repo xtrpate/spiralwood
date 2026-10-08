@@ -1,7 +1,7 @@
 .delivery-report-page {
   padding: 28px 32px 40px;
   color: #18181b;
-  font-family: "Inter", sans-serif;
+  font-family: inherit;
 }
 
 .delivery-report-header {
@@ -76,7 +76,10 @@
 
 .delivery-report-filter-card {
   display: grid;
-  grid-template-columns: minmax(260px, 1.6fr) minmax(150px, 0.7fr) minmax(140px, 0.65fr) 150px 150px auto;
+  grid-template-columns: minmax(260px, 1.6fr) minmax(150px, 0.7fr) minmax(
+      140px,
+      0.65fr
+    ) 150px 150px auto;
   align-items: end;
   gap: 10px;
   padding: 14px;

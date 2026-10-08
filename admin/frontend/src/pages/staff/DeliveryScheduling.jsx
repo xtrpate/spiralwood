@@ -414,14 +414,12 @@ export default function DeliveryScheduling() {
     if (!address) {
       nextErrors.address = "Delivery address is required.";
     } else if (address.length > MAX_DELIVERY_ADDRESS_LENGTH) {
-      nextErrors.address =
-        `Delivery address must be ${MAX_DELIVERY_ADDRESS_LENGTH} characters or fewer.`;
+      nextErrors.address = `Delivery address must be ${MAX_DELIVERY_ADDRESS_LENGTH} characters or fewer.`;
     }
 
     const notes = String(form.notes || "").trim();
     if (notes.length > MAX_DELIVERY_NOTES_LENGTH) {
-      nextErrors.notes =
-        `Delivery notes must be ${MAX_DELIVERY_NOTES_LENGTH} characters or fewer.`;
+      nextErrors.notes = `Delivery notes must be ${MAX_DELIVERY_NOTES_LENGTH} characters or fewer.`;
     }
 
     if (!form.scheduled_date) {
@@ -876,8 +874,7 @@ export default function DeliveryScheduling() {
 
     const notes = String(rescheduleForm.notes || "").trim();
     if (notes.length > MAX_DELIVERY_NOTES_LENGTH) {
-      nextErrors.notes =
-        `Delivery notes must be ${MAX_DELIVERY_NOTES_LENGTH} characters or fewer.`;
+      nextErrors.notes = `Delivery notes must be ${MAX_DELIVERY_NOTES_LENGTH} characters or fewer.`;
     }
 
     setRescheduleFieldErrors(nextErrors);
@@ -1086,7 +1083,7 @@ export default function DeliveryScheduling() {
             flexWrap: "wrap",
           }}
         >
-          <button
+          {/* <button
             type="button"
             onClick={() => navigate("/admin/reports/deliveries")}
             style={{
@@ -1099,7 +1096,7 @@ export default function DeliveryScheduling() {
           >
             <Truck size={16} />
             View Delivery Report
-          </button>
+          </button> */}
 
           <button
             type="button"
@@ -1246,10 +1243,8 @@ export default function DeliveryScheduling() {
                       setForm((prev) => ({
                         ...prev,
                         order_id: nextOrderId,
-                        address:
-                          selectedOrder?.delivery_address || "",
-                        scheduled_date:
-                          requestedDateOnly,
+                        address: selectedOrder?.delivery_address || "",
+                        scheduled_date: requestedDateOnly,
                       }));
 
                       setFieldErrors((prev) => ({
@@ -2145,7 +2140,6 @@ export default function DeliveryScheduling() {
                 cursor: hasDeliveryFilters ? "pointer" : "default",
               }}
             >
-              <RotateCcw size={14} strokeWidth={1.7} aria-hidden="true" />
               Reset filters
             </button>
           </div>

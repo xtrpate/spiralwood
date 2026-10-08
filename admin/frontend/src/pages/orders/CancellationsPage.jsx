@@ -268,7 +268,8 @@ export default function CancellationsPage() {
     () => ({
       total: rows.length,
       pending: rows.filter((row) => getStatusGroup(row) === "pending").length,
-      cancelled: rows.filter((row) => getStatusGroup(row) === "cancelled").length,
+      cancelled: rows.filter((row) => getStatusGroup(row) === "cancelled")
+        .length,
       declined: rows.filter((row) => getStatusGroup(row) === "declined").length,
     }),
     [rows],
@@ -276,8 +277,9 @@ export default function CancellationsPage() {
 
   const typeStats = useMemo(
     () => ({
-      readyMade: rows.filter((row) => normalize(row.record_type) === "ready_made")
-        .length,
+      readyMade: rows.filter(
+        (row) => normalize(row.record_type) === "ready_made",
+      ).length,
       custom: rows.filter(
         (row) => normalize(row.record_type) === "custom_furniture",
       ).length,
@@ -381,9 +383,9 @@ export default function CancellationsPage() {
       <div style={policyCard}>
         <strong>No-refund policy</strong>
         <span>
-          This page does not issue refunds. Ready-made orders keep their existing
-          cancellation and stock-restoration flow. Custom furniture cancellation
-          approval preserves recorded payments in payment history.
+          This page does not issue refunds. Ready-made orders keep their
+          existing cancellation and stock-restoration flow. Custom furniture
+          cancellation approval preserves recorded payments in payment history.
         </span>
       </div>
 
@@ -444,8 +446,8 @@ export default function CancellationsPage() {
           <div>
             <h2 style={{ margin: 0, fontSize: 18 }}>Cancellation Records</h2>
             <p style={{ margin: "6px 0 0", color: "#71717a", fontSize: 13 }}>
-              Ready-made cancellations are history. Custom requests remain active
-              until an admin approves or declines them.
+              Ready-made cancellations are history. Custom requests remain
+              active until an admin approves or declines them.
             </p>
           </div>
           <span style={{ color: "#71717a", fontSize: 13 }}>
@@ -491,8 +493,10 @@ export default function CancellationsPage() {
                   const rowType = normalize(row.record_type);
                   const rowSource = normalize(row.record_source);
                   const decision = normalize(row.status) || "cancelled";
-                  const statusMeta = STATUS_META[decision] || STATUS_META.cancelled;
-                  const typeMeta = TYPE_META[rowType] || TYPE_META.custom_furniture;
+                  const statusMeta =
+                    STATUS_META[decision] || STATUS_META.cancelled;
+                  const typeMeta =
+                    TYPE_META[rowType] || TYPE_META.custom_furniture;
                   const taskTotal = Number(row.production_task_count || 0);
                   const taskDone = Number(row.production_completed_count || 0);
                   const hasPendingPayment =
@@ -528,12 +532,16 @@ export default function CancellationsPage() {
                       <td style={td}>
                         <button
                           type="button"
-                          onClick={() => navigate(`/admin/orders/${row.order_id}`)}
+                          onClick={() =>
+                            navigate(`/admin/orders/${row.order_id}`)
+                          }
                           style={linkButton}
                         >
                           {row.order_number || `#${row.order_id}`}
                         </button>
-                        <div style={subText}>{formatDateTime(row.requested_at)}</div>
+                        <div style={subText}>
+                          {formatDateTime(row.requested_at)}
+                        </div>
                         <div style={sourceText}>{getSourceLabel(row)}</div>
                       </td>
 
@@ -551,7 +559,9 @@ export default function CancellationsPage() {
                       </td>
 
                       <td style={td}>
-                        <div style={strongText}>{row.customer_name || "Customer"}</div>
+                        <div style={strongText}>
+                          {row.customer_name || "Customer"}
+                        </div>
                         {rowSource === "custom_request" ? (
                           <div style={subText}>
                             Requested by {row.requested_by_name || "Customer"}
@@ -562,7 +572,8 @@ export default function CancellationsPage() {
                       <td style={td}>
                         <div>{prettyStage(stageValue)}</div>
                         {rowSource === "custom_request" &&
-                        normalize(row.order_status) !== normalize(stageValue) ? (
+                        normalize(row.order_status) !==
+                          normalize(stageValue) ? (
                           <div style={subText}>
                             Current: {prettyStage(row.order_status)}
                           </div>
@@ -588,7 +599,9 @@ export default function CancellationsPage() {
                       </td>
 
                       <td style={{ ...td, minWidth: 250 }}>
-                        <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.45 }}>
+                        <div
+                          style={{ whiteSpace: "pre-wrap", lineHeight: 1.45 }}
+                        >
                           {row.reason || "No reason recorded."}
                         </div>
                         {row.review_note ? (
@@ -614,7 +627,9 @@ export default function CancellationsPage() {
                         <div style={actionRow}>
                           <button
                             type="button"
-                            onClick={() => navigate(`/admin/orders/${row.order_id}`)}
+                            onClick={() =>
+                              navigate(`/admin/orders/${row.order_id}`)
+                            }
                             style={secondaryButton}
                           >
                             View Order
@@ -665,7 +680,7 @@ export default function CancellationsPage() {
             </h2>
 
             <p style={modalCopy}>
-              {modalRow.order_number || `Order #${modalRow.order_id}`} — {" "}
+              {modalRow.order_number || `Order #${modalRow.order_id}`} —{" "}
               {modalRow.customer_name || "Customer"}
             </p>
 
@@ -731,7 +746,8 @@ export default function CancellationsPage() {
 
             <label style={fieldLabel}>
               <span>
-                Admin note {modal.action === "decline" ? "(required)" : "(optional)"}
+                Admin note{" "}
+                {modal.action === "decline" ? "(required)" : "(optional)"}
               </span>
               <textarea
                 rows={4}
@@ -746,7 +762,9 @@ export default function CancellationsPage() {
                 }
                 style={textarea}
               />
-              <small style={{ color: "#71717a" }}>{reviewNote.length}/500</small>
+              <small style={{ color: "#71717a" }}>
+                {reviewNote.length}/500
+              </small>
             </label>
 
             <div style={modalActions}>
@@ -766,7 +784,9 @@ export default function CancellationsPage() {
                   (modal.action === "approve" && approveBlocked) ||
                   (modal.action === "decline" && !reviewNote.trim())
                 }
-                style={modal.action === "approve" ? primaryButton : dangerButton}
+                style={
+                  modal.action === "approve" ? primaryButton : dangerButton
+                }
               >
                 {processing
                   ? "Saving..."
@@ -801,8 +821,12 @@ function SummaryLine({ label, value }) {
 }
 
 const pageShell = {
-  padding: "24px 28px 40px",
+  width: "100%",
+  maxWidth: "none",
+  margin: 0,
+  padding: "0 0 40px",
   color: "#18181b",
+  boxSizing: "border-box",
 };
 
 const headerRow = {

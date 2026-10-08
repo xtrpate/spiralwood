@@ -56,7 +56,9 @@ const CLAIM_TYPE_META = {
 };
 
 const getClaimTypeKey = (value) => {
-  const key = String(value || "").trim().toLowerCase();
+  const key = String(value || "")
+    .trim()
+    .toLowerCase();
   return CLAIM_TYPE_META[key] ? key : "legacy_unlinked";
 };
 
@@ -115,7 +117,9 @@ export default function WarrantyPage() {
   const canViewOrders = hasPermission("orders.view");
 
   const getOrderPath = (orderId) =>
-    String(user?.role || "").trim().toLowerCase() === "staff"
+    String(user?.role || "")
+      .trim()
+      .toLowerCase() === "staff"
       ? `/staff/admin/orders/${orderId}`
       : `/admin/orders/${orderId}`;
 
@@ -176,8 +180,10 @@ export default function WarrantyPage() {
       const rawPagination = data?.pagination || {};
       const nextPagination = {
         page: Math.max(1, Number(rawPagination.page) || page),
-        limit:
-          Math.max(1, Number(rawPagination.limit) || ADMIN_WARRANTY_PAGE_SIZE),
+        limit: Math.max(
+          1,
+          Number(rawPagination.limit) || ADMIN_WARRANTY_PAGE_SIZE,
+        ),
         total: Math.max(0, Number(rawPagination.total) || 0),
         totalPages: Math.max(0, Number(rawPagination.totalPages) || 0),
         hasNextPage: rawPagination.hasNextPage === true,
@@ -337,7 +343,15 @@ export default function WarrantyPage() {
     }
   };
 
-  const handleFulfill = async ({ id, file, resolution_type, resolution_notes, replacement_source, return_disposition, materials }) => {
+  const handleFulfill = async ({
+    id,
+    file,
+    resolution_type,
+    resolution_notes,
+    replacement_source,
+    return_disposition,
+    materials,
+  }) => {
     if (!canManageWarranty) {
       toast.error("You do not have permission to fulfill warranty claims.");
       return;
@@ -632,8 +646,7 @@ export default function WarrantyPage() {
         {pagination.total > 0 && (
           <div className="warranty-pagination">
             <div className="warranty-pagination-summary">
-              Showing{" "}
-              {(pagination.page - 1) * pagination.limit + 1}–
+              Showing {(pagination.page - 1) * pagination.limit + 1}–
               {Math.min(
                 (pagination.page - 1) * pagination.limit + rows.length,
                 pagination.total,
@@ -994,11 +1007,7 @@ function DecisionModal({ row, decision, busy, onClose, onSubmit }) {
             }}
             style={isReject ? rejectBtn : approveBtn}
           >
-            {busy
-              ? "Saving..."
-              : isReject
-                ? "Save Rejection"
-                : "Save Approval"}
+            {busy ? "Saving..." : isReject ? "Save Rejection" : "Save Approval"}
           </button>
         </div>
       </div>
@@ -1015,8 +1024,9 @@ function FulfillModal({ row, onClose, onSubmit }) {
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
 const pageShell = {
-  maxWidth: 1180,
-  margin: "0 auto",
+  width: "100%",
+  maxWidth: "none",
+  margin: 0,
   display: "flex",
   flexDirection: "column",
   gap: 16,

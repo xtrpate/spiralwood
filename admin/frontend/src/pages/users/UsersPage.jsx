@@ -1803,26 +1803,26 @@ const styles = `
   /* WISDOM USER ACCOUNT MODAL BUTTON FONT V1
      Font only: Cancel + Create Account / Save Changes. */
   .um-modal-footer .um-account-modal-action {
-    font-family: "Inter", sans-serif !important;
-    font-size: 11.5px !important;
-    line-height: 1 !important;
-    font-weight: 700 !important;
-    letter-spacing: 0 !important;
-  }
+  font-family: inherit !important;
+  font-size: 11.5px !important;
+  line-height: 1 !important;
+  font-weight: 700 !important;
+  letter-spacing: 0 !important;
+}
 
   .um-add-account-btn {
-    min-height: 34px;
-    padding: 0 13px;
-    gap: 6px;
-    border-radius: 3px;
-    box-shadow: none;
-    font-family: "Inter", sans-serif;
-    font-size: 12px;
-    line-height: 1;
-    font-weight: 700;
-    letter-spacing: 0;
-    white-space: nowrap;
-  }
+  min-height: 34px;
+  padding: 0 13px;
+  gap: 6px;
+  border-radius: 3px;
+  box-shadow: none;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
 
   .um-add-account-btn svg {
     flex: 0 0 auto;
@@ -1831,12 +1831,12 @@ const styles = `
   /* WISDOM ADD ACCOUNT TEXT FORCE MATCH V1
      Target the rendered text directly so no broader button rule can alter it. */
   .wisdom-admin-users-v2 .um-add-account-btn > span {
-    font-family: "Inter", sans-serif !important;
-    font-size: 11.5px !important;
-    line-height: 1 !important;
-    font-weight: 700 !important;
-    letter-spacing: 0 !important;
-  }
+  font-family: inherit !important;
+  font-size: 11.5px !important;
+  line-height: 1 !important;
+  font-weight: 700 !important;
+  letter-spacing: 0 !important;
+}
 
   .um-add-account-btn:hover:not(:disabled) {
     background: #252529;
@@ -2663,7 +2663,10 @@ const styles = `
   border-radius: 3px;
   background: #ffffff;
   color: #27272a;
-  font: 600 11px/1 "Inter", sans-serif;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
 }
 
 .um-authority-select:focus {

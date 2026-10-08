@@ -1,5 +1,6 @@
 // src/pages/tasks/TasksPage.jsx
 import React, { useEffect, useState, useCallback, useMemo } from "react";
+import { Plus } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../services/api";
 import { getSocket, subscribeSocketReady } from "../../services/socket";
@@ -787,6 +788,14 @@ export default function TasksPage() {
   const selectedProductionOrder =
     productionOrderGroups.find((order) => order.key === detailsOrderKey) ||
     null;
+
+  const hasActiveFilters =
+    search.trim() !== "" ||
+    filterStatus !== "all" ||
+    filterStaff !== "all" ||
+    dueFrom !== "" ||
+    dueTo !== "";
+
   const handleExportSelectedProductionOrderPdf = () => {
     if (!selectedProductionOrder) return;
     try {
@@ -843,7 +852,7 @@ export default function TasksPage() {
   // ── Styles ──────────────────────────────────────────────────────────────────
   const S = {
     page: {
-      padding: "28px 32px",
+      padding: "0 0 40px",
       background: "#f4f4f5",
       minHeight: "100vh",
       fontFamily: "inherit",
@@ -951,9 +960,8 @@ export default function TasksPage() {
     },
     searchWrap: {
       position: "relative",
-      flex: "0 1 360px",
-      width: 360,
-      maxWidth: "100%",
+      width: "100%",
+      minWidth: 0,
     },
     searchIcon: {
       position: "absolute",
@@ -1179,10 +1187,15 @@ export default function TasksPage() {
         {canManageTasks && (
           <button
             type="button"
-            style={{ ...S.btn, ...S.btnPrim, minHeight: 36, padding: "0 14px" }}
+            style={{
+              ...S.btn,
+              ...S.btnPrim,
+              gap: 7,
+            }}
             onClick={openProductionOrderPicker}
           >
-            + Assign production staff
+            <Plus size={16} />
+            Assign production staff
           </button>
         )}
       </div>
@@ -1225,7 +1238,16 @@ export default function TasksPage() {
           </span>
         </div>
 
-        <div style={S.toolbar}>
+        <div
+          style={{
+            ...S.toolbar,
+            display: "grid",
+            gridTemplateColumns:
+              "minmax(300px, 1.8fr) minmax(135px, 0.7fr) minmax(155px, 0.8fr) minmax(145px, 0.75fr) minmax(145px, 0.75fr) auto",
+            gap: 8,
+            alignItems: "center",
+          }}
+        >
           <div style={S.searchWrap}>
             <svg
               width="14"
@@ -1253,7 +1275,7 @@ export default function TasksPage() {
           </div>
 
           <select
-            style={{ ...S.select, width: 160 }}
+            style={{ ...S.select, width: "100%", boxSizing: "border-box" }}
             value={filterStatus}
             onChange={(event) => setFilterStatus(event.target.value)}
             aria-label="Filter production orders by status"
@@ -1267,7 +1289,7 @@ export default function TasksPage() {
           </select>
 
           <select
-            style={{ ...S.select, width: 190 }}
+            style={{ ...S.select, width: "100%", boxSizing: "border-box" }}
             value={filterStaff}
             onChange={(event) => setFilterStaff(event.target.value)}
             aria-label="Filter production orders by current staff"
@@ -1282,7 +1304,12 @@ export default function TasksPage() {
 
           <input
             type="date"
-            style={{ ...S.select, width: 150, paddingRight: 8 }}
+            style={{
+              ...S.select,
+              width: "100%",
+              paddingRight: 8,
+              boxSizing: "border-box",
+            }}
             value={dueFrom}
             onChange={(event) => setDueFrom(event.target.value)}
             aria-label="Due date from"
@@ -1290,7 +1317,12 @@ export default function TasksPage() {
           />
           <input
             type="date"
-            style={{ ...S.select, width: 150, paddingRight: 8 }}
+            style={{
+              ...S.select,
+              width: "100%",
+              paddingRight: 8,
+              boxSizing: "border-box",
+            }}
             value={dueTo}
             onChange={(event) => setDueTo(event.target.value)}
             aria-label="Due date to"
@@ -1302,27 +1334,14 @@ export default function TasksPage() {
             style={{
               ...S.btn,
               ...S.btnGray,
-              opacity: loading || filteredOrders.length === 0 ? 0.55 : 1,
-              cursor:
-                loading || filteredOrders.length === 0
-                  ? "not-allowed"
-                  : "pointer",
+              minHeight: 36,
+              padding: "0 12px",
+              opacity: hasActiveFilters ? 1 : 0.55,
+              cursor: hasActiveFilters ? "pointer" : "default",
             }}
-            onClick={handleExportTaskAssignmentsPdf}
-            disabled={loading || filteredOrders.length === 0}
-            title={
-              filteredOrders.length === 0
-                ? "No production orders match the current filters"
-                : "Export the currently filtered production orders as PDF"
-            }
-          >
-            Export Task PDF
-          </button>
-
-          <button
-            type="button"
-            style={{ ...S.btn, ...S.btnGray }}
             onClick={() => {
+              if (!hasActiveFilters) return;
+
               setSearch("");
               setFilterStatus("all");
               setFilterRole("all");
@@ -1330,8 +1349,9 @@ export default function TasksPage() {
               setDueFrom("");
               setDueTo("");
             }}
+            disabled={!hasActiveFilters}
           >
-            Reset
+            Reset Filters
           </button>
         </div>
 
