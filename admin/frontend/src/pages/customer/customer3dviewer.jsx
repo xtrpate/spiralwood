@@ -571,6 +571,8 @@ const isCustomerDoorPreviewComponent = (component = {}) => {
 
   const text = [
     component?.type,
+    component?.partRole,
+    component?.part_role,
     component?.label,
     component?.partCode,
     component?.category,
@@ -580,6 +582,10 @@ const isCustomerDoorPreviewComponent = (component = {}) => {
     .trim()
     .toLowerCase();
 
+  // Frames, handles, hinges, and rails must not open as separate doors.
+  if (/(^|[\s_-])(handle|hinge|knob|pull|frame|jamb|trim|rail)([\s_-]|$)/.test(text)) {
+    return false;
+  }
   return component?.type === "wr_door" || /(^|[\s_-])door([\s_-]|$)/.test(text);
 };
 
@@ -5348,9 +5354,67 @@ export default function Customer3DViewer({
                     ))}
                   </select>
                   <div style={styles.helperTextMuted}>
-                    Choose one door to change its finish. Door size stays locked
-                    until safe cabinet limits are available.
+                    Choose one door to change its finish or preview its movement.
+                    Door size stays locked until safe cabinet limits are available.
                   </div>
+                  <button
+                    type="button"
+                    disabled={
+                      selectedGroup.length !== 1 ||
+                      !sampleSelectedPart ||
+                      !isCustomerDoorPreviewComponent(sampleSelectedPart)
+                    }
+                    onClick={() => {
+                      if (
+                        selectedGroup.length !== 1 ||
+                        !sampleSelectedPart ||
+                        !isCustomerDoorPreviewComponent(sampleSelectedPart)
+                      ) return;
+                      const selectedSet = buildCustomerDoorPreviewSets(components).find(
+                        (set) => set.members.some((part) => part.id === sampleSelectedPart.id),
+                      );
+                      if (!selectedSet) return;
+                      const alreadyOpen = (doorMotionPreviewRef.current || []).some(
+                        (preview) => preview.key === selectedSet.key,
+                      );
+                      if (toggleCustomerDoorFromComponentId(sampleSelectedPart.id)) {
+                        showCustomizeFeedback(
+                          alreadyOpen
+                            ? "Door closed for preview."
+                            : "Door opened for preview.",
+                        );
+                      }
+                    }}
+                    style={{
+                      ...styles.toolBtn,
+                      ...(
+                        selectedGroup.length !== 1 ||
+                        !sampleSelectedPart ||
+                        !isCustomerDoorPreviewComponent(sampleSelectedPart)
+                          ? styles.toolBtnDisabled
+                          : {}
+                      ),
+                    }}
+                  >
+                    Open / Close Selected Door
+                  </button>
+                  {hasCustomerPreviewDoors ? (
+                    <button
+                      type="button"
+                      aria-pressed={doorsPreviewOpen}
+                      onClick={
+                        doorsPreviewOpen
+                          ? closeAllCustomerDoors
+                          : () => openAllCustomerDoors()
+                      }
+                      style={{
+                        ...styles.toolBtn,
+                        ...(doorsPreviewOpen ? styles.unitBtnActive : {}),
+                      }}
+                    >
+                      {doorsPreviewOpen ? "Close All Doors" : "Open All Doors"}
+                    </button>
+                  ) : null}
                 </section>
               ) : null}
 
