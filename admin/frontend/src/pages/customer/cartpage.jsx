@@ -226,12 +226,23 @@ export default function CartPage() {
         ? "Proceed to Custom Checkout"
         : "Proceed to Checkout";
 
-  const checkoutButtonDisabled = selected.size === 0 || isMixedSelection;
+  const checkoutButtonDisabled =
+    customerUser && (selected.size === 0 || isMixedSelection);
 
   const handleCheckout = () => {
     if (!selectedItems.length) return;
 
     setCheckoutError("");
+
+    // Guests must sign in before proceeding.
+    if (!customerUser) {
+      navigate("/login", {
+        state: {
+          redirectTo: "/cart",
+        },
+      });
+      return;
+    }
 
     if (isMixedSelection) {
       setCheckoutError(mixedSelectionMessage);
@@ -243,31 +254,26 @@ export default function CartPage() {
       return;
     }
 
-    if (!customerUser) {
-      navigate("/login", {
-        state: {
-          redirectTo: "/cart",
-        },
-      });
-      return;
-    }
-
     setIsCheckingOut(true);
 
     setTimeout(() => {
       if (hasBlueprintSelected) {
         const blueprintKeys = selectedItems.map((item) => item.key);
+
         sessionStorage.setItem(
           "cust_selected_custom_checkout",
           JSON.stringify(blueprintKeys),
         );
+
         navigate("/custom-checkout");
       } else {
         const standardKeys = selectedItems.map((item) => item.key);
+
         sessionStorage.setItem(
           "cust_selected_keys",
           JSON.stringify(standardKeys),
         );
+
         navigate("/checkout");
       }
 

@@ -112,7 +112,9 @@ export default function LoginPage() {
       } else if (user.role === "staff") {
         navigate("/staff/dashboard", { replace: true });
       } else {
-        navigate("/catalog", { replace: true });
+        navigate(location.state?.redirectTo || "/catalog", {
+          replace: true,
+        });
       }
     } catch (err) {
       const code = err.response?.data?.code;
