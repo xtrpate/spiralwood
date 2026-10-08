@@ -1022,20 +1022,77 @@ const getCustomerBayKey = (component = {}) => {
 };
 
 const isCustomerShelfStructure = (component = {}) => {
-  const role = String(component?.partRole ?? component?.part_role ?? "")
-    .trim()
-    .toLowerCase();
-  const type = String(component?.type || "")
-    .trim()
-    .toLowerCase();
+  // Templates may store the same semantic role in different metadata fields.
+  // Never treat an explicitly identified shelf as an unrestricted raw part.
+  const roles = [
+    component?.partRole,
+    component?.part_role,
+    component?.assemblyRole,
+    component?.assembly_role,
+    component?.shelfType,
+    component?.shelf_type,
+    component?.type,
+  ]
+    .map((value) => String(value ?? "").trim().toLowerCase())
+    .filter(Boolean);
 
-  return (
-    role === "shelf" ||
-    role.endsWith("_shelf") ||
-    type === "wr_shelf" ||
-    type === "wr_top_shelf" ||
-    type.endsWith("_shelf")
+  return roles.some(
+    (role) =>
+      role === "shelf" ||
+      role === "adjustable" ||
+      role === "fixed_shelf" ||
+      role.startsWith("shelf_") ||
+      role.endsWith("_shelf") ||
+      role === "wr_shelf" ||
+      role === "wr_top_shelf",
   );
+};
+
+// These two independent upper shelves in the supported wardrobe template
+// are configurable only after cabinet-wall and collision checks pass.
+// Top/base shelves, drawer supports and unnamed shelves stay protected.
+const CUSTOMER_WARDROBE_ADJUSTABLE_SHELF_CODES = new Set([
+  "WRC-B2-S1",
+  "WRC-B2-S2",
+]);
+
+// Shelf editing is opt-in. Generic "shelf" roles do not prove adjustability:
+// wardrobe drawer tops and load-bearing dividers often share that role.
+const getCustomerShelfClassification = (component = {}) => {
+  if (!isCustomerShelfStructure(component)) return "not-shelf";
+  const attributes = [
+    component?.shelfClassification,
+    component?.shelf_classification,
+    component?.shelfType,
+    component?.shelf_type,
+    component?.assemblyRole,
+    component?.assembly_role,
+    component?.partRole,
+    component?.part_role,
+  ].map((value) => String(value ?? "").trim().toLowerCase());
+  const partCode = String(component?.partCode || component?.part_code || component?.technicalId || "").trim().toUpperCase();
+  // Saved customer blueprints can normalize type/role differently.
+  // Exact allowlisted part codes are enough after the shelf-type guard above.
+  const templateAdjustable =
+    CUSTOMER_WARDROBE_ADJUSTABLE_SHELF_CODES.has(partCode);
+  const explicitAdjustable =
+    component?.isAdjustableShelf === true ||
+    component?.is_adjustable_shelf === true ||
+    templateAdjustable ||
+    attributes.some((value) => ["adjustable_shelf", "shelf_adjustable", "adjustable"].includes(value));
+  const roleText = attributes.join(" ");
+  const explicitlyFixed =
+    component?.locked === true ||
+    component?.isAdjustableShelf === false ||
+    component?.is_adjustable_shelf === false ||
+    /(?:^|-)(?:DTOP|BTM|BOTTOM|BASE|TOP)(?:-|$)/.test(partCode) ||
+    /(?:^|[_\s-])(fixed|structural|support|drawer[_\s-]?top)(?:[_\s-]|$)/.test(roleText) ||
+    attributes.some((value) =>
+      ["fixed_shelf", "shelf_fixed", "structural_shelf", "drawer_support_shelf", "drawer_top_shelf"].includes(value),
+    );
+  // Explicitly structural/locked parts take precedence over adjustable tags.
+  if (explicitlyFixed) return "fixed";
+  return explicitAdjustable ? "adjustable" : "unverified";
 };
 
 const isCustomerDrawerRole = (component = {}, roleName = "") => {
@@ -1060,6 +1117,87 @@ const isCustomerDrawerRole = (component = {}, roleName = "") => {
   return roles.some(
     (role) => role.startsWith("drawer_") || role.startsWith("wr_drawer_"),
   );
+};
+
+
+const SHELF_TOLERANCE_MM = 3;
+// The wardrobe template contains a nominal 800-mm shelf in a 799-mm bay.
+const SHELF_FIT_EPSILON_MM = 1;
+const shelfHasRotation = (p = {}) =>
+  ["rotationX", "rotationY", "rotationZ"].some((key) => Math.abs(Number(p[key] || 0)) > 0.0001);
+
+// This is intentionally conservative: only explicitly adjustable shelves
+// with two visible, unrotated vertical side supports can be modified.
+const getVerifiedShelfLimits = (parts = [], shelf = null) => {
+  if (!shelf?.id || shelf.locked ||
+      getCustomerShelfClassification(shelf) !== "adjustable" ||
+      shelfHasRotation(shelf) ||
+      ![shelf.x,shelf.y,shelf.z,shelf.width,shelf.height,shelf.depth]
+        .every((n) => Number.isFinite(Number(n))) ||
+      shelf.height > 60 || shelf.height < 1) return null;
+  const box = getCustomerPartBounds(shelf);
+  const bay = getCustomerBayKey(shelf);
+  const walls = parts.filter((p) => {
+    if (!p?.id || p.id === shelf.id || shelfHasRotation(p) ||
+        isCustomerDrawerRole(p) ||
+        /door|drawer|handle|hinge|rail|slide/i.test(String(p.label || p.name || ""))) return false;
+    const wallLabel = [
+      p.label, p.name, p.type, p.partRole, p.part_role,
+      p.assemblyRole, p.assembly_role, p.groupType,
+    ].filter(Boolean).join(" ").toLowerCase();
+    // Never mistake a tall decoration or unrelated object for a cabinet wall.
+    if (!/(side|panel|divider|partition|wall|carcass)/.test(wallLabel)) return false;
+    const b = getCustomerPartBounds(p);
+    const depthOverlap = Math.min(b.maxZ,box.maxZ)-Math.max(b.minZ,box.minZ);
+    return p.height >= Math.max(100, shelf.height * 3) &&
+      b.minY <= box.minY + SHELF_TOLERANCE_MM &&
+      b.maxY >= box.maxY - SHELF_TOLERANCE_MM &&
+      depthOverlap >= Math.max(20, Math.min(100,shelf.depth/2)) &&
+      (!bay || !getCustomerBayKey(p) || getCustomerBayKey(p) === bay);
+  });
+  const left = walls.filter((p)=> Math.abs(getCustomerPartBounds(p).maxX-box.minX) <= SHELF_TOLERANCE_MM)
+    .sort((a,b)=> b.height-a.height)[0];
+  const right = walls.filter((p)=> getCustomerPartBounds(p).minX >= box.maxX-SHELF_TOLERANCE_MM)
+    .sort((a,b)=>getCustomerPartBounds(a).minX-getCustomerPartBounds(b).minX)[0];
+  if (!left || !right || left.id === right.id) return null;
+  const lb=getCustomerPartBounds(left), rb=getCustomerPartBounds(right);
+  const minY = Math.ceil(Math.max(lb.minY,rb.minY) + SHELF_TOLERANCE_MM);
+  const maxY = Math.floor(Math.min(lb.maxY,rb.maxY)-shelf.height-SHELF_TOLERANCE_MM);
+  const maxWidth=Math.floor(rb.minX-shelf.x+SHELF_FIT_EPSILON_MM);
+  // A shelf must still touch both side supports after customization.
+  // Without additional brackets, arbitrary width reduction is unsafe.
+  const minSupportedWidth=Math.max(20,maxWidth-SHELF_TOLERANCE_MM);
+  const maxDepth=Math.floor(Math.min(lb.maxZ,rb.maxZ)-shelf.z);
+  if (minY>maxY || maxWidth<20 || maxDepth<100 ||
+      shelf.y<minY-SHELF_TOLERANCE_MM || shelf.y>maxY+SHELF_TOLERANCE_MM ||
+      shelf.width<minSupportedWidth-SHELF_TOLERANCE_MM ||
+      shelf.width>maxWidth+SHELF_TOLERANCE_MM ||
+      shelf.depth>maxDepth+SHELF_TOLERANCE_MM) return null;
+  return {min:{width:minSupportedWidth,depth:100,y:minY},max:{width:maxWidth,depth:maxDepth,y:maxY}};
+};
+
+const validateShelfCandidate = (parts = [], shelf = null, proposed = null) => {
+  const limits=getVerifiedShelfLimits(parts,shelf);
+  if (!limits || !proposed) return "Shelf supports could not be verified.";
+  const validNumbers=["x","y","z","width","height","depth"]
+    .every((key)=>Number.isFinite(Number(proposed[key])));
+  if (!validNumbers || shelfHasRotation(proposed) ||
+      proposed.x!==shelf.x || proposed.z!==shelf.z ||
+      proposed.height!==shelf.height) return "Shelf thickness and anchors are locked.";
+  if (proposed.width<limits.min.width || proposed.width>limits.max.width ||
+      proposed.depth<limits.min.depth || proposed.depth>limits.max.depth ||
+      proposed.y<limits.min.y || proposed.y>limits.max.y)
+    return "Shelf exceeds its cabinet limits.";
+  const box=getCustomerPartBounds(proposed);
+  if (parts.some((p)=>{
+    if (!p || p.id===shelf.id) return false;
+    if (shelfHasRotation(p)) return true; // Unverifiable collision: reject.
+    const b=getCustomerPartBounds(p);
+    return Math.min(box.maxX,b.maxX)-Math.max(box.minX,b.minX)>1 &&
+      Math.min(box.maxY,b.maxY)-Math.max(box.minY,b.minY)>1 &&
+      Math.min(box.maxZ,b.maxZ)-Math.max(box.minZ,b.minZ)>1;
+  })) return "Shelf collides with another furniture part.";
+  return "";
 };
 
 const resolveCustomerDrawerMetrics = (allComponents = [], editGroup = null) => {
@@ -1589,6 +1727,8 @@ export default function Customer3DViewer({
     height: "",
     depth: "",
   });
+  const [shelfYDraft, setShelfYDraft] = useState("");
+  const [shelfYError, setShelfYError] = useState("");
 
   const [overallDimensionErrors, setOverallDimensionErrors] = useState({
     width: "",
@@ -1874,6 +2014,13 @@ export default function Customer3DViewer({
         : null,
     [components, selectedEditGroup],
   );
+  const selectedShelfLimits = useMemo(
+    () => selectedGroup.length === 1 && sampleSelectedPart &&
+      isCustomerShelfStructure(sampleSelectedPart)
+      ? getVerifiedShelfLimits(components, sampleSelectedPart)
+      : null,
+    [components, selectedGroup, sampleSelectedPart],
+  );
   const selectedAssemblyBounds =
     selectedDrawerMetrics?.bounds ||
     (selectedGroup.length > 1 ? getCustomerAssemblyBounds(selectedGroup) : null);
@@ -1883,7 +2030,8 @@ export default function Customer3DViewer({
       : selectedGroup.length === 1 &&
         Boolean(sampleSelectedPart) &&
         !Boolean(sampleSelectedPart?.locked) &&
-        !isCustomerEditHardwareComponent(sampleSelectedPart);
+        !isCustomerEditHardwareComponent(sampleSelectedPart) &&
+        (!isCustomerShelfStructure(sampleSelectedPart) || Boolean(selectedShelfLimits));
 
   const selectedPartGroup = useMemo(
     () =>
@@ -1953,6 +2101,8 @@ export default function Customer3DViewer({
         height: "",
         depth: "",
       });
+      setShelfYDraft(convertMmToUnit(sampleSelectedPart.y, unit));
+      setShelfYError("");
     }
   }, [overallBounds, sampleSelectedPart, unit, convertMmToUnit]);
 
@@ -4173,7 +4323,9 @@ export default function Customer3DViewer({
       !isCustomizable ||
       readOnly ||
       !selectedGroup.length ||
-      !canResizeSelectedPart
+      !canResizeSelectedPart ||
+      (selectedEditGroup?.kind !== "drawer" &&
+        selectedGroup.some(isCustomerShelfStructure) && !selectedShelfLimits)
     ) {
       return;
     }
@@ -4184,12 +4336,13 @@ export default function Customer3DViewer({
       ? Number(selectedAssemblyBounds?.[axis] || 0)
       : Number(sampleSelectedPart?.[axis] || 0);
 
+    const isShelfSelection = Boolean(selectedShelfLimits) && !isDrawerSelection;
     const minMm = isDrawerSelection
       ? Number(selectedDrawerMetrics?.min?.[axis] || 1)
-      : 1;
+      : isShelfSelection ? (axis === "height" ? sampleSelectedPart.height : selectedShelfLimits.min[axis]) : 1;
     const maxMm = isDrawerSelection
       ? Number(selectedDrawerMetrics?.max?.[axis] || Infinity)
-      : Infinity;
+      : isShelfSelection ? (axis === "height" ? sampleSelectedPart.height : selectedShelfLimits.max[axis]) : Infinity;
 
     const validationMessage = getDimensionFieldError(rawUnitValue, {
       minMm,
@@ -4234,6 +4387,19 @@ export default function Customer3DViewer({
       return;
     }
 
+    if (isShelfSelection) {
+      const candidate = {...sampleSelectedPart, [axis]:nextValueMm};
+      const error = validateShelfCandidate(components, sampleSelectedPart, candidate);
+      if (error) {
+        setPartDimensionErrors((prev)=>({...prev,[axis]:error}));
+        return;
+      }
+      commitComponents((prev)=>prev.map((c)=> c.id === sampleSelectedPart.id ? candidate : c));
+      setCustomizeProgressStep((current)=>Math.max(current,4));
+      showCustomizeFeedback("Shelf updated within verified cabinet limits.");
+      return;
+    }
+
     commitComponents((prev) =>
       prev.map((c) => {
         if (!selectedCompIds.includes(c.id)) return c;
@@ -4264,6 +4430,31 @@ export default function Customer3DViewer({
 
     setCustomizeProgressStep((current) => Math.max(current, 4));
     showCustomizeFeedback("Part size updated. Choose a finish when ready.");
+  };
+
+  const commitShelfVerticalPosition = (rawValue) => {
+    if (!isCustomizable || readOnly || !selectedShelfLimits || !sampleSelectedPart) return;
+    const parsed = convertUnitToMm(rawValue, unit);
+    const value = Math.round(parsed);
+    if (!Number.isFinite(parsed) || parsed < selectedShelfLimits.min.y ||
+        parsed > selectedShelfLimits.max.y) {
+      setShelfYError("Vertical position is outside the verified cabinet limits.");
+      return;
+    }
+    if (value === Math.round(Number(sampleSelectedPart.y))) {
+      setShelfYError("");
+      return;
+    }
+    const candidate = {...sampleSelectedPart, y: value};
+    const error = validateShelfCandidate(components, sampleSelectedPart, candidate);
+    if (error) {
+      setShelfYError(error);
+      return;
+    }
+    setShelfYError("");
+    commitComponents((prev)=>prev.map((c)=> c.id === sampleSelectedPart.id ? candidate : c));
+    setCustomizeProgressStep((current)=>Math.max(current,4));
+    showCustomizeFeedback("Shelf moved within verified cabinet limits.");
   };
 
   const handleFinishChange = (finishId, targetIdsOverride = null) => {
@@ -5118,6 +5309,63 @@ export default function Customer3DViewer({
                 </section>
               ) : null}
 
+              {isCustomizable && !readOnly && components.some(isCustomerShelfStructure) ? (
+                <section style={styles.sidebarSection}>
+                  <label htmlFor="customer-shelf-selector" style={styles.label}>
+                    Select Individual Shelf
+                  </label>
+                  <select
+                    id="customer-shelf-selector"
+                    aria-label="Select individual shelf"
+                    style={styles.partGroupSelect}
+                    value={
+                      selectedGroup.length === 1 &&
+                      sampleSelectedPart &&
+                      isCustomerShelfStructure(sampleSelectedPart)
+                        ? String(sampleSelectedPart.id)
+                        : ""
+                    }
+                    onChange={(event) => {
+                      const shelf = components.find(
+                        (item) =>
+                          isCustomerShelfStructure(item) &&
+                          String(item.id) === event.target.value,
+                      );
+                      setSelectedCompIds(shelf ? [shelf.id] : []);
+                      if (shelf) {
+                        setSelectionMode(true);
+                        setCustomizeProgressStep((current) => Math.max(current, 3));
+                        showCustomizeFeedback(`${shelf.label || shelf.name || "Shelf"} selected.`);
+                      }
+                    }}
+                  >
+                    <option value="">Choose one shelf</option>
+                    {components.filter(isCustomerShelfStructure).map((shelf) => {
+                      const classification = getCustomerShelfClassification(shelf);
+                      const status =
+                        classification === "fixed"
+                          ? "Fixed / protected"
+                          : classification === "adjustable"
+                            ? getVerifiedShelfLimits(components, shelf)
+                              ? "Adjustable"
+                              : "Adjustable / supports unverified"
+                            : "Unverified / protected";
+                      return (
+                        <option key={String(shelf.id)} value={String(shelf.id)}>
+                          {shelf.label || shelf.name || "Shelf"}
+                          {shelf.partCode ? ` (${shelf.partCode})` : ""}
+                          {" — "}{status}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <div style={styles.helperTextMuted}>
+                    Choose one shelf, not the whole Shelves finish group.
+                    Fixed and unverified shelves cannot be resized.
+                  </div>
+                </section>
+              ) : null}
+
               {partListVisible ? (
                 <>
                   <section className="wisdom-config-section wisdom-config-whole">
@@ -5545,13 +5793,50 @@ export default function Customer3DViewer({
                     </div>
                   ) : null}
 
+                  {selectedShelfLimits ? (
+                    <div style={styles.helperTextMuted}>
+                      Adjustable shelf: Depth and Vertical Position are editable.
+                      Width stays fitted to both side supports; Thickness is fixed.
+                      Collisions and unsupported changes are blocked.
+                    </div>
+                  ) : null}
+                  {selectedShelfLimits ? (
+                    <div style={styles.inputGroup}>
+                      <label style={styles.dimLabel}>Vertical Position ({unit})</label>
+                      <input
+                        type="number"
+                        value={shelfYDraft}
+                        min={convertMmToUnit(selectedShelfLimits.min.y, unit)}
+                        max={convertMmToUnit(selectedShelfLimits.max.y, unit)}
+                        onChange={(e) => {
+                          setShelfYDraft(e.target.value);
+                          setShelfYError("");
+                        }}
+                        onBlur={(e) => commitShelfVerticalPosition(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") commitShelfVerticalPosition(e.target.value);
+                        }}
+                        aria-invalid={Boolean(shelfYError)}
+                        style={{...styles.input, ...(shelfYError ? styles.inputError : {})}}
+                      />
+                      {shelfYError ? (
+                        <span role="alert" style={styles.fieldError}>{shelfYError}</span>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {!canResizeSelectedPart ? (
                     <div style={styles.helperTextMuted}>
                       {selectedEditGroup?.kind === "drawer"
                         ? "Drawer selected, but its cabinet opening could not be detected safely."
                         : sampleSelectedPart?.locked
                           ? "This part is locked and cannot be resized."
-                          : "This selection cannot be resized as one raw group."}
+                          : selectedGroup.some(isCustomerShelfStructure)
+                            ? getCustomerShelfClassification(sampleSelectedPart) === "fixed"
+                              ? "Fixed or structural shelf: size and position are protected. Finish customization remains available."
+                              : getCustomerShelfClassification(sampleSelectedPart) === "adjustable"
+                                ? "Adjustable shelf identified. Size and vertical position stay locked until cabinet boundaries and supports are verified."
+                                : "Shelf adjustability is unverified. Size and position remain locked for safety."
+                            : "This selection cannot be resized as one raw group."}
                     </div>
                   ) : null}
 
@@ -5638,7 +5923,7 @@ export default function Customer3DViewer({
                       </span>
                       <input
                         type="number"
-                        disabled={!canResizeSelectedPart}
+                        disabled={!canResizeSelectedPart || Boolean(selectedShelfLimits)}
                         min={
                           selectedEditGroup?.kind === "drawer"
                             ? convertMmToUnit(
