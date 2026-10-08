@@ -819,6 +819,19 @@ exports.createCustomOrder = async (req, res) => {
     });
   }
 
+  // Storage permits up to 300 individual furniture parts. Reject a larger
+  // design before inserting any order instead of silently dropping the extra
+  // parts and showing an incomplete submitted blueprint to the Admin.
+  const submittedPartCount = Array.isArray(items[0]?.editor_snapshot?.components)
+    ? items[0].editor_snapshot.components.length
+    : 0;
+  if (submittedPartCount > 300) {
+    return res.status(400).json({
+      message:
+        "This custom design has more than 300 parts and cannot be submitted without losing measurements. Please simplify the design or contact our team.",
+    });
+  }
+
   const incomingReferenceFiles = Array.isArray(req.files) ? req.files : [];
   const legacyReferencePhotos = toSafeReferencePhotos(
     items[0]?.reference_photos,
