@@ -4359,10 +4359,36 @@ export default function Customer3DViewer({
   const commitOverallDimension = (axis) => {
     if (!isCustomizable || readOnly) return;
     if (!Array.isArray(components) || !components.length) return;
-    // Wardrobe width only changes through the reviewed Apply Width button.
-    // Height and depth stay locked until their own verified planners exist.
+    // Wardrobe width only changes through Apply Width, but pressing Enter or
+    // leaving an invalid field must still show WHY the value was rejected.
+    // Height and depth stay locked until their verified planners exist.
     if (needsSafeWardrobeResize(components)) {
-      if (axis !== "width" || !canSmartResizeWardrobeWidth) {
+      if (axis === "width" && canSmartResizeWardrobeWidth) {
+        const rawWidth = overallDrafts.width;
+        const fieldError = getDimensionFieldError(rawWidth, {
+          label: "Width",
+        });
+        const candidate = fieldError
+          ? { ok: false, error: fieldError }
+          : planCustomerWardrobeWidth(
+              components,
+              Math.round(convertUnitToMm(rawWidth, unit)),
+            );
+
+        if (!candidate.ok) {
+          const message = candidate.error || "Width cannot be resized safely.";
+          setOverallDimensionErrors((previous) => ({
+            ...previous,
+            width: message,
+          }));
+          showCustomizeFeedback(message);
+        } else {
+          setOverallDimensionErrors((previous) => ({
+            ...previous,
+            width: "",
+          }));
+        }
+      } else {
         showCustomizeFeedback(
           "This overall furniture size is protected until safe resizing is ready.",
         );
@@ -6395,8 +6421,10 @@ export default function Customer3DViewer({
                         }
                         onBlur={() => commitOverallDimension("width")}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter")
+                          if (e.key === "Enter") {
+                            if (overallWardrobeSizeProtected) e.preventDefault();
                             commitOverallDimension("width");
+                          }
                         }}
                         aria-invalid={Boolean(overallDimensionErrors.width)}
                         aria-describedby={
@@ -6535,7 +6563,7 @@ export default function Customer3DViewer({
                             Apply Width
                           </button>
                         </>
-                      ) : (
+                      ) : overallDimensionErrors.width ? null : (
                         <div style={styles.fieldError} role="alert">
                           {wardrobeWidthPreview.error}
                         </div>
