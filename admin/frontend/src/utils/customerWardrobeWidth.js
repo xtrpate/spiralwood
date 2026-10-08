@@ -13,7 +13,7 @@ const WARDROBE_PART_CODES = [
   "B2-D2-F", "B2-D2-SL", "B2-D2-SR", "B2-D2-BK",
   "B2-D2-BOT", "B2-D2-HDL",
   "B3-D1-F", "B3-D1-SL", "B3-D1-SR", "B3-D1-BK",
-  "B3-D1-BOT", "B3-D1-HDL", "B3-ROD",
+  "B3-D1-BOT", "B3-D1-HDL",
 ].map((suffix) => `WRC-${suffix}`);
 
 const EXPECTED_CODES = new Set(WARDROBE_PART_CODES);
