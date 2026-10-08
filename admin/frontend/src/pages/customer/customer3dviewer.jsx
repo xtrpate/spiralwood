@@ -5595,9 +5595,16 @@ export default function Customer3DViewer({
                       ).trim(),
                     );
                     const groupFinishId =
-                      finishIds.length && new Set(finishIds).size === 1
-                        ? finishIds[0]
-                        : "__mixed__";
+                      group.label === "Doors"
+                        ? finishIds.length && new Set(finishIds).size === 1
+                          ? finishIds[0]
+                          : "__mixed__"
+                        : String(
+                            representative?.finish_id ||
+                              representative?.woodFinish ||
+                              representative?.finish ||
+                              "",
+                          ).trim();
 
                     const groupSelected = group.ids.some((id) =>
                       selectedCompIds.includes(id),
