@@ -128,10 +128,26 @@ const getGlobalEmailFooter = async () => {
 /* ── Formatter: Creates the HTML block for the footer ── */
 const buildFooterHtml = (footerText) => {
   if (!footerText) return "";
+
   return `
     <tr>
-      <td style="background:#fff3e0;padding:20px 40px;text-align:center;border-top:2px dashed #D2691E;">
-        <p style="font-size:13px;color:#8B4513;margin:0;line-height:1.6;font-weight:600;">
+      <td
+        style="
+          background:#ffffff;
+          padding:20px 40px;
+          text-align:center;
+          border-top:2px dashed #222222;
+        "
+      >
+        <p
+          style="
+            font-size:13px;
+            color:#222222;
+            margin:0;
+            line-height:1.6;
+            font-weight:600;
+          "
+        >
           ${footerText.replace(/\n/g, "<br/>")}
         </p>
       </td>
@@ -258,75 +274,219 @@ const sendResetOtpEmail = async (email, otp, name) => {
       to: [{ email: email, name: name }],
       subject: "Your Spiral Wood Password Reset Code",
       htmlContent: `
-        <!DOCTYPE html>
-        <html>
-          <body style="margin:0;padding:0;background:#f4f6f9;font-family:'Segoe UI',sans-serif;">
-            <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 0;">
+  <!DOCTYPE html>
+  <html>
+    <body style="margin:0;padding:0;background:#f3f4f6;font-family:'Segoe UI',Arial,sans-serif;color:#111111;">
+
+      <table
+        width="100%"
+        cellpadding="0"
+        cellspacing="0"
+        style="padding:32px 0;background:#f3f4f6;"
+      >
+        <tr>
+          <td align="center">
+
+            <table
+              width="480"
+              cellpadding="0"
+              cellspacing="0"
+              style="
+                background:#ffffff;
+                border-radius:16px;
+                overflow:hidden;
+                border:1px solid #e5e5e5;
+              "
+            >
+
+              <!-- HEADER -->
               <tr>
-                <td align="center">
-                  <table width="480" cellpadding="0" cellspacing="0"
-                    style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
-                    <tr>
-                      <td style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px;text-align:center;">
-                        <div style="width:56px;height:56px;background:linear-gradient(135deg,#8B4513,#D2691E);
-                                    border-radius:14px;display:inline-flex;align-items:center;justify-content:center;
-                                    font-size:26px;font-weight:900;color:white;font-family:Georgia,serif;
-                                    line-height:56px;">W</div>
-                        <h1 style="color:#ffffff;font-size:20px;font-weight:800;margin:12px 0 4px;
-                                   letter-spacing:2px;">SPIRAL WOOD SERVICES</h1>
-                        <p style="color:rgba(255,255,255,0.5);font-size:13px;margin:0;">
-                          Password Reset
-                        </p>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td style="padding:36px 40px;">
-                        <p style="font-size:16px;color:#1a1a2e;margin:0 0 8px;">
-                          Hi <strong>${name}</strong>,
-                        </p>
-                        <p style="font-size:14px;color:#666;line-height:1.7;margin:0 0 28px;">
-                          We received a request to reset your password.
-                          Use the code below to continue.
-                        </p>
-                        <div style="background:#fff3e0;border:2px dashed #D2691E;border-radius:12px;
-                                    padding:24px;text-align:center;margin-bottom:28px;">
-                          <p style="font-size:12px;color:#8B4513;font-weight:700;
-                                    letter-spacing:2px;margin:0 0 10px;text-transform:uppercase;">
-                            Password Reset Code
-                          </p>
-                          <div style="font-size:42px;font-weight:900;color:#8B4513;
-                                      letter-spacing:12px;font-family:'Courier New',monospace;">
-                            ${otp}
-                          </div>
-                          <p style="font-size:12px;color:#aaa;margin:10px 0 0;">
-                            Expires in <strong>${RESET_OTP_EXPIRY_MINUTES} minutes</strong>
-                          </p>
-                        </div>
-                        <p style="font-size:13px;color:#888;line-height:1.7;margin:0;">
-                          Enter this code on the password reset page and create a new password.
-                          If you did not request a reset, please ignore this email.
-                        </p>
-                      </td>
-                    </tr>
+                <td
+                  style="
+                    background:#111111;
+                    padding:32px;
+                    text-align:center;
+                  "
+                >
 
-                    ${dynamicFooterHtml}
+                  <!-- S LOGO -->
+                  <img
+                    src="YOUR_STABLE_S_LOGO_URL"
+                    alt="Spiral Wood Services"
+                    width="56"
+                    height="56"
+                    style="
+                      width:56px;
+                      height:56px;
+                      object-fit:contain;
+                      display:inline-block;
+                    "
+                  />
 
-                    <tr>
-                      <td style="background:#f7f8fa;padding:20px 40px;text-align:center;
-                                 border-top:1px solid #eee;">
-                        <p style="font-size:12px;color:#aaa;margin:0;line-height:1.6;">
-                          © ${new Date().getFullYear()} Spiral Wood Services. All rights reserved.<br/>
-                          This is an automated email — please do not reply.
-                        </p>
-                      </td>
-                    </tr>
-                  </table>
+                  <h1
+                    style="
+                      color:#ffffff;
+                      font-size:20px;
+                      font-weight:800;
+                      margin:12px 0 4px;
+                      letter-spacing:2px;
+                    "
+                  >
+                    SPIRAL WOOD SERVICES
+                  </h1>
+
+                  <p
+                    style="
+                      color:#bdbdbd;
+                      font-size:13px;
+                      margin:0;
+                    "
+                  >
+                    Password Reset
+                  </p>
+
                 </td>
               </tr>
+
+
+              <!-- BODY -->
+              <tr>
+                <td
+                  style="
+                    padding:36px 40px;
+                    background:#ffffff;
+                  "
+                >
+
+                  <p
+                    style="
+                      font-size:16px;
+                      color:#111111;
+                      margin:0 0 8px;
+                    "
+                  >
+                    Hi <strong>${name}</strong>,
+                  </p>
+
+                  <p
+                    style="
+                      font-size:14px;
+                      color:#555555;
+                      line-height:1.7;
+                      margin:0 0 28px;
+                    "
+                  >
+                    We received a request to reset your password.
+                    Use the code below to continue.
+                  </p>
+
+
+                  <!-- RESET CODE -->
+                  <div
+                    style="
+                      background:#ffffff;
+                      border:2px dashed #222222;
+                      border-radius:12px;
+                      padding:24px;
+                      text-align:center;
+                      margin-bottom:28px;
+                    "
+                  >
+
+                    <p
+                      style="
+                        font-size:12px;
+                        color:#111111;
+                        font-weight:700;
+                        letter-spacing:2px;
+                        margin:0 0 10px;
+                        text-transform:uppercase;
+                      "
+                    >
+                      Password Reset Code
+                    </p>
+
+                    <div
+                      style="
+                        font-size:42px;
+                        font-weight:900;
+                        color:#111111;
+                        letter-spacing:12px;
+                        font-family:'Courier New',monospace;
+                      "
+                    >
+                      ${otp}
+                    </div>
+
+                    <p
+                      style="
+                        font-size:12px;
+                        color:#777777;
+                        margin:10px 0 0;
+                      "
+                    >
+                      Expires in
+                      <strong>${RESET_OTP_EXPIRY_MINUTES} minutes</strong>
+                    </p>
+
+                  </div>
+
+
+                  <p
+                    style="
+                      font-size:13px;
+                      color:#666666;
+                      line-height:1.7;
+                      margin:0;
+                    "
+                  >
+                    Enter this code on the password reset page and create a
+                    new password. If you did not request a reset, please
+                    ignore this email.
+                  </p>
+
+                </td>
+              </tr>
+
+
+              <!-- EXISTING DYNAMIC FOOTER -->
+              ${dynamicFooterHtml}
+
+
+              <!-- COPYRIGHT -->
+              <tr>
+                <td
+                  style="
+                    background:#f7f7f7;
+                    padding:20px 40px;
+                    text-align:center;
+                    border-top:1px solid #e5e5e5;
+                  "
+                >
+                  <p
+                    style="
+                      font-size:12px;
+                      color:#777777;
+                      margin:0;
+                      line-height:1.6;
+                    "
+                  >
+                    © ${new Date().getFullYear()} Spiral Wood Services.
+                    All rights reserved.<br/>
+                    This is an automated email — please do not reply.
+                  </p>
+                </td>
+              </tr>
+
             </table>
-          </body>
-        </html>
-      `,
+
+          </td>
+        </tr>
+      </table>
+
+    </body>
+  </html>
+`,
     };
 
     const response = await fetch("https://api.brevo.com/v3/smtp/email", {
@@ -1951,7 +2111,7 @@ exports.resetPassword = async (req, res) => {
 
         return res.status(400).json({
           message:
-            "You cannot reuse your current password or any of your previous 3 passwords.",
+            "You cannot reuse your current password or any of your previous passwords.",
         });
       }
     }
