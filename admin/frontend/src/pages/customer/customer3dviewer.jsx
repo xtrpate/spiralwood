@@ -1071,10 +1071,10 @@ const getCustomerShelfClassification = (component = {}) => {
     component?.part_role,
   ].map((value) => String(value ?? "").trim().toLowerCase());
   const partCode = String(component?.partCode || component?.part_code || component?.technicalId || "").trim().toUpperCase();
+  // Saved customer blueprints can normalize type/role differently.
+  // Exact allowlisted part codes are enough after the shelf-type guard above.
   const templateAdjustable =
-    CUSTOMER_WARDROBE_ADJUSTABLE_SHELF_CODES.has(partCode) &&
-    String(component?.type || "").toLowerCase() === "wr_shelf" &&
-    String(component?.partRole ?? component?.part_role ?? "shelf").toLowerCase() === "shelf";
+    CUSTOMER_WARDROBE_ADJUSTABLE_SHELF_CODES.has(partCode);
   const explicitAdjustable =
     component?.isAdjustableShelf === true ||
     component?.is_adjustable_shelf === true ||
@@ -1085,7 +1085,7 @@ const getCustomerShelfClassification = (component = {}) => {
     component?.locked === true ||
     component?.isAdjustableShelf === false ||
     component?.is_adjustable_shelf === false ||
-    /(?:^|-)(?:DTOP|BTM|BOTTOM|TOP)(?:-|$)/.test(partCode) ||
+    /(?:^|-)(?:DTOP|BTM|BOTTOM|BASE|TOP)(?:-|$)/.test(partCode) ||
     /(?:^|[_\s-])(fixed|structural|support|drawer[_\s-]?top)(?:[_\s-]|$)/.test(roleText) ||
     attributes.some((value) =>
       ["fixed_shelf", "shelf_fixed", "structural_shelf", "drawer_support_shelf", "drawer_top_shelf"].includes(value),
@@ -1121,6 +1121,8 @@ const isCustomerDrawerRole = (component = {}, roleName = "") => {
 
 
 const SHELF_TOLERANCE_MM = 3;
+// The wardrobe template contains a nominal 800-mm shelf in a 799-mm bay.
+const SHELF_FIT_EPSILON_MM = 1;
 const shelfHasRotation = (p = {}) =>
   ["rotationX", "rotationY", "rotationZ"].some((key) => Math.abs(Number(p[key] || 0)) > 0.0001);
 
@@ -1161,7 +1163,7 @@ const getVerifiedShelfLimits = (parts = [], shelf = null) => {
   const lb=getCustomerPartBounds(left), rb=getCustomerPartBounds(right);
   const minY = Math.ceil(Math.max(lb.minY,rb.minY) + SHELF_TOLERANCE_MM);
   const maxY = Math.floor(Math.min(lb.maxY,rb.maxY)-shelf.height-SHELF_TOLERANCE_MM);
-  const maxWidth=Math.floor(rb.minX-shelf.x);
+  const maxWidth=Math.floor(rb.minX-shelf.x+SHELF_FIT_EPSILON_MM);
   // A shelf must still touch both side supports after customization.
   // Without additional brackets, arbitrary width reduction is unsafe.
   const minSupportedWidth=Math.max(20,maxWidth-SHELF_TOLERANCE_MM);
