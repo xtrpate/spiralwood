@@ -948,6 +948,25 @@ const getCustomerFinishGroupTargetIds = (
     : groupIds;
 };
 
+
+const isCustomerCabinetStructuralPart = (part = {}) => {
+  // Only protect known wardrobe frame parts. Table legs and other furniture
+  // groups must keep their existing edit behavior.
+  const type = String(part?.type || "").trim().toLowerCase();
+  const code = String(
+    part?.partCode || part?.part_code || part?.technicalId || "",
+  ).trim().toUpperCase();
+  const wardrobeTypes = new Set([
+    "wr_side_panel",
+    "wr_back_panel",
+    "wr_top_panel",
+    "wr_bottom_panel",
+    "wr_divider",
+  ]);
+  if (wardrobeTypes.has(type)) return true;
+  return /^(?:WRC-(?:SIDE-[LR]|BACK|DIV-\d+)|WR-(?:SL|SR|BK|TOP|BOT))$/.test(code);
+};
+
 const getCustomerDrawerEditLabel = (reference = {}) => {
   const rawLabel = String(reference?.label || reference?.name || "").trim();
 
@@ -2071,6 +2090,7 @@ export default function Customer3DViewer({
         Boolean(sampleSelectedPart) &&
         !Boolean(sampleSelectedPart?.locked) &&
         !isCustomerEditHardwareComponent(sampleSelectedPart) &&
+        !isCustomerCabinetStructuralPart(sampleSelectedPart) &&
         !selectedGroup.some((part) => isCustomerDoorPreviewComponent(part) || isCustomerDoorPanelComponent(part)) &&
         (!isCustomerShelfStructure(sampleSelectedPart) || Boolean(selectedShelfLimits));
 
@@ -4365,6 +4385,7 @@ export default function Customer3DViewer({
       readOnly ||
       !selectedGroup.length ||
       !canResizeSelectedPart ||
+      (selectedEditGroup?.kind !== "drawer" && selectedGroup.some(isCustomerCabinetStructuralPart)) ||
       selectedGroup.some((part) => isCustomerDoorPreviewComponent(part) || isCustomerDoorPanelComponent(part)) ||
       (selectedEditGroup?.kind !== "drawer" &&
         selectedGroup.some(isCustomerShelfStructure) && !selectedShelfLimits)
@@ -6003,6 +6024,8 @@ export default function Customer3DViewer({
                           ? "This part is locked and cannot be resized."
                           : selectedGroup.some((part) => isCustomerDoorPreviewComponent(part) || isCustomerDoorPanelComponent(part))
                             ? "Door size is locked until safe cabinet limits are ready. You can still change the finish."
+                          : selectedGroup.some(isCustomerCabinetStructuralPart)
+                            ? "Cabinet frame part: size is protected. You can still change its finish."
                           : selectedGroup.some(isCustomerShelfStructure)
                             ? getCustomerShelfClassification(sampleSelectedPart) === "fixed"
                               ? "Fixed or structural shelf: size and position are protected. Finish customization remains available."
