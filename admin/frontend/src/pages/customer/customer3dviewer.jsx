@@ -1126,6 +1126,12 @@ const getVerifiedShelfLimits = (parts = [], shelf = null) => {
     if (!p?.id || p.id === shelf.id || shelfHasRotation(p) ||
         isCustomerDrawerRole(p) ||
         /door|drawer|handle|hinge|rail|slide/i.test(String(p.label || p.name || ""))) return false;
+    const wallLabel = [
+      p.label, p.name, p.type, p.partRole, p.part_role,
+      p.assemblyRole, p.assembly_role, p.groupType,
+    ].filter(Boolean).join(" ").toLowerCase();
+    // Never mistake a tall decoration or unrelated object for a cabinet wall.
+    if (!/(side|panel|divider|partition|wall|carcass)/.test(wallLabel)) return false;
     const b = getCustomerPartBounds(p);
     const depthOverlap = Math.min(b.maxZ,box.maxZ)-Math.max(b.minZ,box.minZ);
     return p.height >= Math.max(100, shelf.height * 3) &&
