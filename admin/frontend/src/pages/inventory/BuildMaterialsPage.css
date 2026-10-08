@@ -133,8 +133,8 @@
 .build-materials-table-card thead th,
 .build-materials-panel-table thead th {
   position: sticky;
-  top: 0;
-  z-index: 1;
+  top: 64px;
+  z-index: 20;
   padding: 11px 12px;
   color: #71717a;
   background: #fafafa;
@@ -434,4 +434,23 @@
 .build-materials-table-card th:nth-child(9) {
   width: 13%;
   text-align: center;
+}
+
+/* ==========================================================================
+   WISDOM BUILD MATERIALS STICKY TABLE HEADER V1
+   Keep the table header below the sticky Admin topbar while scrolling.
+   ========================================================================== */
+
+@media (max-width: 1023px) {
+  .build-materials-table-card thead th,
+  .build-materials-panel-table thead th {
+    top: 61px;
+  }
+}
+
+@media (max-width: 767px) {
+  .build-materials-table-card thead th,
+  .build-materials-panel-table thead th {
+    top: 60px;
+  }
 }
