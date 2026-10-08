@@ -51,14 +51,25 @@ export const getCustomerWardrobeWidthSupport = (parts = []) => {
     return errorResult(unsupported);
   }
   const map = new Map();
+  const counts = new Map();
   for (const part of parts) {
     const code = codeOf(part);
-    if (!EXPECTED_CODES.has(code) || map.has(code) || !safePart(part)) {
+    if (!EXPECTED_CODES.has(code) || !safePart(part)) {
       return errorResult(unsupported);
     }
-    map.set(code, part);
+    const nextCount = (counts.get(code) || 0) + 1;
+    // The supplied 43-part template intentionally has TWO Bay 3 rods
+    // with the same WRC-B3-ROD code at different positions.
+    if (nextCount > (code === "WRC-B3-ROD" ? 2 : 1)) {
+      return errorResult(unsupported);
+    }
+    counts.set(code, nextCount);
+    if (!map.has(code)) map.set(code, part);
   }
-  if (map.size !== EXPECTED_CODES.size) return errorResult(unsupported);
+  if (map.size !== EXPECTED_CODES.size ||
+      [...EXPECTED_CODES].some((code) =>
+        counts.get(code) !== (code === "WRC-B3-ROD" ? 2 : 1)
+      )) return errorResult(unsupported);
 
   const left = map.get("WRC-SIDE-L");
   const right = map.get("WRC-SIDE-R");
