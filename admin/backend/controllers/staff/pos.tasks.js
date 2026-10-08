@@ -606,6 +606,7 @@ exports.getTasks = async (req, res) => {
              assignee.name AS assigned_to_name,
              assigner.name AS assigned_by_name,
              o.order_number,
+             o.status AS order_status,
              o.delivery_address,
              COALESCE(customer.name, o.walkin_customer_name, 'Walk-in Customer') AS customer_name
       FROM project_tasks t
