@@ -116,7 +116,8 @@ export const getCustomerWardrobeWidthSupport = (parts = []) => {
   }
   if (
     leftBay < HANGING_BAY_MIN_MM || leftBay > HANGING_BAY_MAX_MM ||
-    rightBay < HANGING_BAY_MIN_MM || rightBay > HANGING_BAY_MAX_MM
+    rightBay < HANGING_BAY_MIN_MM || rightBay > HANGING_BAY_MAX_MM ||
+    Math.abs(leftBay - rightBay) > 1
   ) {
     return errorResult(unsupported);
   }
@@ -125,8 +126,8 @@ export const getCustomerWardrobeWidthSupport = (parts = []) => {
     ok: true,
     width,
     openings: { bay1: leftBay, bay2, bay3, bay4: rightBay },
-    minWidth: width + 2 * (HANGING_BAY_MIN_MM - Math.min(leftBay, rightBay)),
-    maxWidth: width + 2 * (HANGING_BAY_MAX_MM - Math.max(leftBay, rightBay)),
+    minWidth: width - leftBay - rightBay + 2 * HANGING_BAY_MIN_MM,
+    maxWidth: width - leftBay - rightBay + 2 * HANGING_BAY_MAX_MM,
     policy: "Provisional 600-900 mm hanging-bay openings; final size needs shop review.",
   };
 };
@@ -141,10 +142,14 @@ export const planCustomerWardrobeWidth = (parts = [], targetWidthMm) => {
     return errorResult("Enter a valid whole-number width in millimeters.");
   }
   const delta = targetWidth - support.width;
-  const leftChange = Math.floor(delta / 2);
-  const rightChange = delta - leftChange;
-  const bay1 = support.openings.bay1 + leftChange;
-  const bay4 = support.openings.bay4 + rightChange;
+  // Calculate from the requested total rather than splitting the delta.
+  // This prevents a 1 mm drift after repeated odd-number width changes.
+  const hangingTotal =
+    support.openings.bay1 + support.openings.bay4 + delta;
+  const bay1 = Math.floor(hangingTotal / 2);
+  const bay4 = hangingTotal - bay1;
+  const leftChange = bay1 - support.openings.bay1;
+  const rightChange = bay4 - support.openings.bay4;
 
   if (
     bay1 < HANGING_BAY_MIN_MM || bay1 > HANGING_BAY_MAX_MM ||
