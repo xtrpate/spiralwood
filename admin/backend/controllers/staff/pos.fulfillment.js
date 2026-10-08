@@ -473,7 +473,7 @@ const getBlueprintDeliveryReadiness = async (conn, orderId) => {
   }
 
   const [taskRows] = await conn.query(
-    `SELECT task_role, status
+    `SELECT task_role, status, blueprint_id
      FROM project_tasks
      WHERE order_id = ?`,
     [orderId],
@@ -501,6 +501,39 @@ const getBlueprintDeliveryReadiness = async (conn, orderId) => {
       ok: false,
       message:
         "Create all required production tasks before scheduling delivery.",
+    };
+  }
+
+  // Match the canonical production packet: exactly one of each required step,
+  // all linked to the order's own blueprint. Unrelated legacy tasks may remain.
+  const requiredTaskRows = taskRows.filter((row) =>
+    REQUIRED_BLUEPRINT_DELIVERY_TASK_ROLES.includes(
+      normalizeBlueprintDeliveryTaskRole(row.task_role),
+    ),
+  );
+  const requiredTaskKeys = requiredTaskRows.map((row) =>
+    normalizeBlueprintDeliveryTaskRole(row.task_role),
+  );
+  if (
+    requiredTaskRows.length !== REQUIRED_BLUEPRINT_DELIVERY_TASK_ROLES.length ||
+    new Set(requiredTaskKeys).size !== REQUIRED_BLUEPRINT_DELIVERY_TASK_ROLES.length
+  ) {
+    return {
+      ok: false,
+      message:
+        "The required production task packet contains duplicate or unexpected steps. Manual review is required.",
+    };
+  }
+
+  if (
+    requiredTaskRows.some(
+      (row) => Number(row.blueprint_id) !== Number(lifecycleOrder.blueprint_id),
+    )
+  ) {
+    return {
+      ok: false,
+      message:
+        "The production tasks do not match this order's blueprint. Manual review is required.",
     };
   }
 

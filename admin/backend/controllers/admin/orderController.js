@@ -2106,7 +2106,7 @@ exports.updateStatus = async (req, res) => {
       ["shipping", "delivered", "completed"].includes(nextStatus)
     ) {
       const [taskRows] = await conn.query(
-        `SELECT task_role, status
+        `SELECT task_role, status, blueprint_id
         FROM project_tasks
         WHERE order_id = ?`,
         [orderId],
@@ -2146,6 +2146,37 @@ exports.updateStatus = async (req, res) => {
           message: `Finish all required production tasks before moving to ${nextStatus}: ${incompleteRoles
             .map(getTaskRoleLabel)
             .join(", ")}.`,
+        });
+      }
+
+      // A completed role alone is insufficient if duplicates or mismatched
+      // blueprint task rows exist. Fail closed on inconsistent production data.
+      const requiredTaskRows = taskRows.filter((row) =>
+        REQUIRED_BLUEPRINT_TASK_ROLES.includes(normalizeTaskRole(row.task_role)),
+      );
+      const requiredTaskKeys = requiredTaskRows.map((row) =>
+        normalizeTaskRole(row.task_role),
+      );
+      if (
+        requiredTaskRows.length !== REQUIRED_BLUEPRINT_TASK_ROLES.length ||
+        new Set(requiredTaskKeys).size !== REQUIRED_BLUEPRINT_TASK_ROLES.length
+      ) {
+        await conn.rollback();
+        return res.status(409).json({
+          message:
+            "This order's required production packet contains duplicate or unexpected steps. Manual review is required.",
+        });
+      }
+
+      if (
+        requiredTaskRows.some(
+          (row) => Number(row.blueprint_id) !== Number(order.blueprint_id),
+        )
+      ) {
+        await conn.rollback();
+        return res.status(409).json({
+          message:
+            "Production task blueprint mismatch. Manual review is required before fulfillment.",
         });
       }
     }
