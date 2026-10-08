@@ -1038,6 +1038,35 @@ const isCustomerShelfStructure = (component = {}) => {
   );
 };
 
+// Shelf editing is opt-in. Generic "shelf" roles do not prove adjustability:
+// wardrobe drawer tops and load-bearing dividers often share that role.
+const getCustomerShelfClassification = (component = {}) => {
+  if (!isCustomerShelfStructure(component)) return "not-shelf";
+  const attributes = [
+    component?.shelfClassification,
+    component?.shelf_classification,
+    component?.shelfType,
+    component?.shelf_type,
+    component?.assemblyRole,
+    component?.assembly_role,
+    component?.partRole,
+    component?.part_role,
+  ].map((value) => String(value ?? "").trim().toLowerCase());
+  const explicitAdjustable =
+    component?.isAdjustableShelf === true ||
+    component?.is_adjustable_shelf === true ||
+    attributes.some((value) => ["adjustable_shelf", "shelf_adjustable", "adjustable"].includes(value));
+  const explicitlyFixed =
+    component?.isAdjustableShelf === false ||
+    component?.is_adjustable_shelf === false ||
+    attributes.some((value) =>
+      ["fixed_shelf", "shelf_fixed", "structural_shelf", "drawer_support_shelf", "drawer_top_shelf"].includes(value),
+    );
+  // Conflicting metadata is never sufficient to enable customization.
+  if (explicitlyFixed) return "fixed";
+  return explicitAdjustable ? "adjustable" : "unverified";
+};
+
 const isCustomerDrawerRole = (component = {}, roleName = "") => {
   // Saved wardrobe blueprints identify these parts by assemblyRole/type.
   // partRole alone is not reliable for imported template components.
@@ -5555,7 +5584,11 @@ export default function Customer3DViewer({
                         : sampleSelectedPart?.locked
                           ? "This part is locked and cannot be resized."
                           : selectedGroup.some(isCustomerShelfStructure)
-                            ? "Shelf dimensions are protected until cabinet-wall bounds and structural supports can be verified. Finish customization remains available."
+                            ? getCustomerShelfClassification(sampleSelectedPart) === "fixed"
+                              ? "Fixed or structural shelf: size and position are protected. Finish customization remains available."
+                              : getCustomerShelfClassification(sampleSelectedPart) === "adjustable"
+                                ? "Adjustable shelf identified. Size and vertical position stay locked until cabinet boundaries and supports are verified."
+                                : "Shelf adjustability is unverified. Size and position remain locked for safety."
                             : "This selection cannot be resized as one raw group."
                     </div>
                   ) : null}
