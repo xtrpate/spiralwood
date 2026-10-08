@@ -967,6 +967,24 @@ const isCustomerCabinetStructuralPart = (part = {}) => {
   return /^(?:WRC-(?:SIDE-[LR]|BACK|DIV-\d+)|WR-(?:SL|SR|BK|TOP|BOT))$/.test(code);
 };
 
+// Do not scale a wardrobe until a size change can keep every part safe.
+const needsSafeWardrobeResize = (items = []) =>
+  Array.isArray(items) &&
+  items.some((part) => {
+    if (!part) return false;
+    if (isCustomerCabinetStructuralPart(part)) return true;
+    const label = [
+      part?.templateType,
+      part?.template_type,
+      part?.assemblyName,
+      part?.groupLabel,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return /(^|[\s_-])(wardrobe|closet)([\s_-]|$)/.test(label);
+  });
+
 const getCustomerDrawerEditLabel = (reference = {}) => {
   const rawLabel = String(reference?.label || reference?.name || "").trim();
 
@@ -1989,6 +2007,11 @@ export default function Customer3DViewer({
       return current;
     return normalizeDimensions(initialDimensions || {});
   }, [components, initialDimensions]);
+
+  const overallWardrobeSizeProtected = useMemo(
+    () => needsSafeWardrobeResize(components),
+    [components],
+  );
 
   const viewMetadata = useMemo(() => {
     const firstComponent = Array.isArray(components)
@@ -4308,6 +4331,13 @@ export default function Customer3DViewer({
   const commitOverallDimension = (axis) => {
     if (!isCustomizable || readOnly) return;
     if (!Array.isArray(components) || !components.length) return;
+    // Guard the resize path, not only the disabled text fields.
+    if (needsSafeWardrobeResize(components)) {
+      showCustomizeFeedback(
+        "Overall wardrobe size is protected until safe resizing is ready.",
+      );
+      return;
+    }
 
     const rawUnitValue = overallDrafts?.[axis];
     const parsedMmValue = convertUnitToMm(rawUnitValue, unit);
@@ -6275,8 +6305,20 @@ export default function Customer3DViewer({
                     <label style={styles.label}>
                       Furniture Size ({unit === "inches" ? "in" : unit})
                     </label>
-                    <span style={styles.pill}>Keeps proportions</span>
+                    <span style={styles.pill}>
+                      {overallWardrobeSizeProtected
+                        ? "Size protected"
+                        : "Keeps proportions"}
+                    </span>
                   </div>
+
+                  {overallWardrobeSizeProtected ? (
+                    <div style={styles.helperTextMuted} role="status">
+                      Overall wardrobe size is temporarily locked to protect
+                      the wood thickness and connected parts. You can still
+                      edit supported drawers, shelves, and finishes.
+                    </div>
+                  ) : null}
 
                   <div
                     className="wisdom-size-grid"
@@ -6287,7 +6329,7 @@ export default function Customer3DViewer({
                       <input
                         type="number"
                         value={overallDrafts.width}
-                        disabled={!isCustomizable || readOnly}
+                        disabled={!isCustomizable || readOnly || overallWardrobeSizeProtected}
                         onChange={(e) =>
                           handleOverallDraftChange("width", e.target.value)
                         }
@@ -6326,7 +6368,7 @@ export default function Customer3DViewer({
                       <input
                         type="number"
                         value={overallDrafts.height}
-                        disabled={!isCustomizable || readOnly}
+                        disabled={!isCustomizable || readOnly || overallWardrobeSizeProtected}
                         onChange={(e) =>
                           handleOverallDraftChange("height", e.target.value)
                         }
@@ -6365,7 +6407,7 @@ export default function Customer3DViewer({
                       <input
                         type="number"
                         value={overallDrafts.depth}
-                        disabled={!isCustomizable || readOnly}
+                        disabled={!isCustomizable || readOnly || overallWardrobeSizeProtected}
                         onChange={(e) =>
                           handleOverallDraftChange("depth", e.target.value)
                         }
