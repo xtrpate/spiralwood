@@ -159,8 +159,7 @@ const readBoundedDeliveryText = (
 };
 
 const getEffectiveDeliveryFulfillmentMethod = (order = {}) => {
-  const orderType =
-    normalizeText(order.order_type).toLowerCase() || "standard";
+  const orderType = normalizeText(order.order_type).toLowerCase() || "standard";
   const paymentMethod = normalizeText(order.payment_method).toLowerCase();
 
   // Standard storefront COP is Cash on Pickup. Those orders currently do
@@ -186,15 +185,14 @@ const getEffectiveDeliveryFulfillmentMethod = (order = {}) => {
 const isActiveDeliveryRider = (user) =>
   Boolean(
     user &&
-      user.role === "staff" &&
-      user.staff_type === "delivery_rider" &&
-      Number(user.is_active) === 1,
+    user.role === "staff" &&
+    user.staff_type === "delivery_rider" &&
+    Number(user.is_active) === 1,
   );
 
 const getCreateDeliveryBaseEligibility = (order = {}) => {
   const orderStatus = normalizeText(order.status).toLowerCase();
-  const orderType =
-    normalizeText(order.order_type).toLowerCase() || "standard";
+  const orderType = normalizeText(order.order_type).toLowerCase() || "standard";
   const fulfillmentMethod = getEffectiveDeliveryFulfillmentMethod(order);
   const canonicalAddress = normalizeText(order.delivery_address);
 
@@ -516,7 +514,8 @@ const getBlueprintDeliveryReadiness = async (conn, orderId) => {
   );
   if (
     requiredTaskRows.length !== REQUIRED_BLUEPRINT_DELIVERY_TASK_ROLES.length ||
-    new Set(requiredTaskKeys).size !== REQUIRED_BLUEPRINT_DELIVERY_TASK_ROLES.length
+    new Set(requiredTaskKeys).size !==
+      REQUIRED_BLUEPRINT_DELIVERY_TASK_ROLES.length
   ) {
     return {
       ok: false,
@@ -1496,13 +1495,10 @@ exports.createDelivery = async (req, res) => {
     });
   }
 
-  const scheduledDateInput = readBoundedDeliveryText(
-    req.body.scheduled_date,
-    {
-      required: true,
-      maxLength: 32,
-    },
-  );
+  const scheduledDateInput = readBoundedDeliveryText(req.body.scheduled_date, {
+    required: true,
+    maxLength: 32,
+  });
 
   if (!scheduledDateInput.ok) {
     return res.status(400).json({
@@ -1841,12 +1837,7 @@ exports.createDelivery = async (req, res) => {
 };
 
 exports.reassignDeliveryRider = async (req, res) => {
-  if (
-    !hasOnlyAllowedDeliveryKeys(
-      req.body,
-      REASSIGN_DELIVERY_BODY_KEYS,
-    )
-  ) {
+  if (!hasOnlyAllowedDeliveryKeys(req.body, REASSIGN_DELIVERY_BODY_KEYS)) {
     return res.status(400).json({
       message: "Unsupported delivery reassignment field detected.",
     });
@@ -1854,13 +1845,10 @@ exports.reassignDeliveryRider = async (req, res) => {
 
   const deliveryId = parseDeliveryPositiveInt(req.params.id);
   const driverId = parseDeliveryPositiveInt(req.body.driver_id);
-  const reasonResult = readBoundedDeliveryText(
-    req.body.reassignment_reason,
-    {
-      required: true,
-      maxLength: MAX_RESCHEDULE_REASON_LENGTH,
-    },
-  );
+  const reasonResult = readBoundedDeliveryText(req.body.reassignment_reason, {
+    required: true,
+    maxLength: MAX_RESCHEDULE_REASON_LENGTH,
+  });
 
   if (!deliveryId) {
     return res.status(400).json({ message: "Invalid delivery id." });
@@ -1937,10 +1925,7 @@ exports.reassignDeliveryRider = async (req, res) => {
       [deliveryId],
     );
 
-    if (
-      !existing ||
-      Number(existing.order_id) !== Number(order.id)
-    ) {
+    if (!existing || Number(existing.order_id) !== Number(order.id)) {
       await conn.rollback();
       transactionActive = false;
       return res.status(409).json({
@@ -2186,11 +2171,13 @@ exports.reassignDeliveryRider = async (req, res) => {
     console.error("PATCH /api/pos/deliveries/:id/assignment error:", err);
 
     if (isRetryableTransactionError(err)) {
-      return res.status(409).json(
-        buildConcurrentUpdateResponse(
-          "This delivery was updated at the same time by another process. Refresh and try the reassignment again.",
-        ),
-      );
+      return res
+        .status(409)
+        .json(
+          buildConcurrentUpdateResponse(
+            "This delivery was updated at the same time by another process. Refresh and try the reassignment again.",
+          ),
+        );
     }
 
     return res.status(500).json({
@@ -2202,12 +2189,7 @@ exports.reassignDeliveryRider = async (req, res) => {
 };
 
 exports.rescheduleDelivery = async (req, res) => {
-  if (
-    !hasOnlyAllowedDeliveryKeys(
-      req.body,
-      RESCHEDULE_DELIVERY_BODY_KEYS,
-    )
-  ) {
+  if (!hasOnlyAllowedDeliveryKeys(req.body, RESCHEDULE_DELIVERY_BODY_KEYS)) {
     return res.status(400).json({
       message: "Unsupported delivery reschedule field detected.",
     });
@@ -2224,13 +2206,10 @@ exports.rescheduleDelivery = async (req, res) => {
     return res.status(400).json({ message: "Invalid driver_id." });
   }
 
-  const scheduledDateInput = readBoundedDeliveryText(
-    req.body.scheduled_date,
-    {
-      required: true,
-      maxLength: 32,
-    },
-  );
+  const scheduledDateInput = readBoundedDeliveryText(req.body.scheduled_date, {
+    required: true,
+    maxLength: 32,
+  });
 
   if (!scheduledDateInput.ok) {
     return res.status(400).json({
@@ -2254,13 +2233,10 @@ exports.rescheduleDelivery = async (req, res) => {
     });
   }
 
-  const reasonResult = readBoundedDeliveryText(
-    req.body.reschedule_reason,
-    {
-      required: true,
-      maxLength: MAX_RESCHEDULE_REASON_LENGTH,
-    },
-  );
+  const reasonResult = readBoundedDeliveryText(req.body.reschedule_reason, {
+    required: true,
+    maxLength: MAX_RESCHEDULE_REASON_LENGTH,
+  });
 
   if (!reasonResult.ok) {
     return res.status(400).json({
@@ -2664,11 +2640,13 @@ exports.rescheduleDelivery = async (req, res) => {
     console.error("POST /api/pos/deliveries/:id/reschedule error:", err);
 
     if (isRetryableTransactionError(err)) {
-      return res.status(409).json(
-        buildConcurrentUpdateResponse(
-          "This delivery was updated at the same time by another process. Refresh and try the reschedule again.",
-        ),
-      );
+      return res
+        .status(409)
+        .json(
+          buildConcurrentUpdateResponse(
+            "This delivery was updated at the same time by another process. Refresh and try the reschedule again.",
+          ),
+        );
     }
 
     return res.status(500).json({ message: "Failed to reschedule delivery." });
@@ -2690,10 +2668,9 @@ exports.updateDeliveryStatus = async (req, res) => {
     return res.status(400).json({ message: "Invalid delivery status" });
   }
 
-  const collectionNotesResult = readBoundedDeliveryText(
-    body.collection_notes,
-    { maxLength: MAX_COLLECTION_NOTES_LENGTH },
-  );
+  const collectionNotesResult = readBoundedDeliveryText(body.collection_notes, {
+    maxLength: MAX_COLLECTION_NOTES_LENGTH,
+  });
   if (!collectionNotesResult.ok) {
     return res.status(400).json({
       message:
@@ -2840,10 +2817,7 @@ exports.updateDeliveryStatus = async (req, res) => {
       [deliveryId],
     );
 
-    if (
-      !existing ||
-      Number(existing.order_id) !== Number(order.id)
-    ) {
+    if (!existing || Number(existing.order_id) !== Number(order.id)) {
       await conn.rollback();
       cleanupRequestUpload();
       return res.status(409).json({
@@ -4170,14 +4144,18 @@ exports.updateDeliveryStatus = async (req, res) => {
     console.error("PATCH /api/pos/deliveries/:id/status error:", err);
 
     if (isRetryableTransactionError(err)) {
-      return res.status(409).json(
-        buildConcurrentUpdateResponse(
-          "This order or delivery was updated at the same time by another process. Refresh and try again.",
-        ),
-      );
+      return res
+        .status(409)
+        .json(
+          buildConcurrentUpdateResponse(
+            "This order or delivery was updated at the same time by another process. Refresh and try again.",
+          ),
+        );
     }
 
-    return res.status(500).json({ message: "Failed to update delivery status" });
+    return res
+      .status(500)
+      .json({ message: "Failed to update delivery status" });
   } finally {
     if (freshUploadNeedsCleanup && !commitAttempted && !committed) {
       cleanupRequestUpload();
@@ -4266,10 +4244,7 @@ exports.retryDeliveryCollection = async (req, res) => {
       [deliveryId],
     );
 
-    if (
-      !delivery ||
-      Number(delivery.order_id) !== Number(order.id)
-    ) {
+    if (!delivery || Number(delivery.order_id) !== Number(order.id)) {
       await conn.rollback();
       transactionStarted = false;
       return res.status(409).json({
@@ -4387,8 +4362,7 @@ exports.retryDeliveryCollection = async (req, res) => {
       transactionStarted = false;
       return res.status(409).json({
         reason_code: "DELIVERY_COLLECTION_REVIEW_PENDING",
-        message:
-          "A payment is already awaiting Admin review for this order.",
+        message: "A payment is already awaiting Admin review for this order.",
       });
     }
 
@@ -4517,8 +4491,7 @@ exports.retryDeliveryCollection = async (req, res) => {
         order_id: order.id,
         order_status: order.status,
         payment_status: order.payment_status,
-        rejected_delivery_collection_count:
-          rejectedDeliveryCollections.length,
+        rejected_delivery_collection_count: rejectedDeliveryCollections.length,
       },
       new: {
         delivery_id: deliveryId,
@@ -4568,17 +4541,16 @@ exports.retryDeliveryCollection = async (req, res) => {
       }
     }
 
-    console.error(
-      "POST /api/pos/deliveries/:id/retry-collection error:",
-      err,
-    );
+    console.error("POST /api/pos/deliveries/:id/retry-collection error:", err);
 
     if (isRetryableTransactionError(err)) {
-      return res.status(409).json(
-        buildConcurrentUpdateResponse(
-          "This order or delivery was updated at the same time by another process. Refresh and try again.",
-        ),
-      );
+      return res
+        .status(409)
+        .json(
+          buildConcurrentUpdateResponse(
+            "This order or delivery was updated at the same time by another process. Refresh and try again.",
+          ),
+        );
     }
 
     return res.status(500).json({
@@ -4921,36 +4893,43 @@ const buildDeliveryReportFilterState = (req) => {
   }
 
   if (search) {
-    const like = `%${search}%`;
-    const normalizedStatusSearch = `%${search
-      .replace(/_/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .toLowerCase()}%`;
+    const searchTerms = search
+      .split(/\s+/)
+      .map((term) => term.trim())
+      .filter(Boolean);
 
-    where.push(`(
-    o.order_number LIKE ?
-    OR COALESCE(
-      NULLIF(TRIM(o.walkin_customer_name), ''),
-      NULLIF(TRIM(customer.name), ''),
-      'Walk-in Customer'
-    ) LIKE ?
-    OR COALESCE(d.address, '') LIKE ?
-    OR COALESCE(driver.name, '') LIKE ?
-    OR COALESCE(da.receipt_number, '') LIKE ?
-    OR LOWER(REPLACE(COALESCE(d.status, ''), '_', ' ')) LIKE ?
-    OR LOWER(REPLACE(${DELIVERY_REPORT_STATUS_SQL}, '_', ' ')) LIKE ?
-  )`);
+    for (const searchTerm of searchTerms) {
+      const like = `%${searchTerm}%`;
+      const normalizedStatusSearch = `%${searchTerm
+        .replace(/_/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase()}%`;
 
-    params.push(
-      like,
-      like,
-      like,
-      like,
-      like,
-      normalizedStatusSearch,
-      normalizedStatusSearch,
-    );
+      where.push(`(
+      o.order_number LIKE ?
+      OR COALESCE(
+        NULLIF(TRIM(o.walkin_customer_name), ''),
+        NULLIF(TRIM(customer.name), ''),
+        'Walk-in Customer'
+      ) LIKE ?
+      OR COALESCE(d.address, '') LIKE ?
+      OR COALESCE(driver.name, '') LIKE ?
+      OR COALESCE(da.receipt_number, '') LIKE ?
+      OR LOWER(REPLACE(COALESCE(d.status, ''), '_', ' ')) LIKE ?
+      OR LOWER(REPLACE(${DELIVERY_REPORT_STATUS_SQL}, '_', ' ')) LIKE ?
+    )`);
+
+      params.push(
+        like,
+        like,
+        like,
+        like,
+        like,
+        normalizedStatusSearch,
+        normalizedStatusSearch,
+      );
+    }
   }
 
   if (fromDate) {

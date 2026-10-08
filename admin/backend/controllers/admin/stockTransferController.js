@@ -11,10 +11,7 @@ const {
   getPhilippineDateKey,
 } = require("../../utils/philippineTime");
 
-const DIRECTIONS = new Set([
-  "warehouse_to_display",
-  "display_to_warehouse",
-]);
+const DIRECTIONS = new Set(["warehouse_to_display", "display_to_warehouse"]);
 
 const STOCK_TRANSFER_REPORT_DATE_FILTERS = new Set([
   "all",
@@ -40,11 +37,7 @@ const shiftTransferReportDateKey = (dateKey, days) => {
   );
 };
 
-const buildStockTransferReportDateRange = ({
-  dateFilter,
-  from,
-  to,
-}) => {
+const buildStockTransferReportDateRange = ({ dateFilter, from, to }) => {
   const normalizedFilter = String(dateFilter || "all")
     .trim()
     .toLowerCase();
@@ -71,12 +64,8 @@ const buildStockTransferReportDateRange = ({
 
     try {
       return {
-        startUtc: fromKey
-          ? getPhilippineDateBoundsUtc(fromKey).startUtc
-          : null,
-        endUtc: toKey
-          ? getPhilippineDateBoundsUtc(toKey).nextStartUtc
-          : null,
+        startUtc: fromKey ? getPhilippineDateBoundsUtc(fromKey).startUtc : null,
+        endUtc: toKey ? getPhilippineDateBoundsUtc(toKey).nextStartUtc : null,
       };
     } catch {
       const error = new Error(
@@ -120,7 +109,6 @@ const buildStockTransferReportDateRange = ({
     endUtc: getPhilippineDateBoundsUtc(endKey).startUtc,
   };
 };
-
 
 const cleanText = (value, maxLength) => {
   const text = String(value ?? "").trim();
@@ -169,13 +157,17 @@ const normalizeItems = (rawItems) => {
     }
 
     if (!Number.isInteger(quantity) || quantity <= 0) {
-      const error = new Error("Transfer quantity must be a whole number greater than 0.");
+      const error = new Error(
+        "Transfer quantity must be a whole number greater than 0.",
+      );
       error.status = 400;
       throw error;
     }
 
     if (seen.has(productId)) {
-      const error = new Error("The same product cannot appear twice in one transfer.");
+      const error = new Error(
+        "The same product cannot appear twice in one transfer.",
+      );
       error.status = 400;
       throw error;
     }
@@ -253,7 +245,9 @@ const applyTransfer = async (
   const stockMap = await lockReadyMadeStocks(conn, productIds);
 
   if (stockMap.size !== productIds.length) {
-    const error = new Error("One of the selected ready-made products no longer exists.");
+    const error = new Error(
+      "One of the selected ready-made products no longer exists.",
+    );
     error.status = 409;
     throw error;
   }
@@ -262,7 +256,9 @@ const applyTransfer = async (
 
   for (const item of normalizedItems) {
     const row = stockMap.get(item.product_id);
-    const type = String(row?.type || "").trim().toLowerCase();
+    const type = String(row?.type || "")
+      .trim()
+      .toLowerCase();
 
     if (!row || type !== "standard") {
       const error = new Error("Only ready-made products can be transferred.");
@@ -271,7 +267,9 @@ const applyTransfer = async (
     }
 
     if (Number(row.is_active) !== 1) {
-      const error = new Error(`${row.name} is archived and cannot be transferred.`);
+      const error = new Error(
+        `${row.name} is archived and cannot be transferred.`,
+      );
       error.status = 409;
       throw error;
     }
@@ -322,7 +320,9 @@ const applyTransfer = async (
     const warehouseAfter = totalStock - displayAfter;
 
     if (displayAfter < 0 || warehouseAfter < 0) {
-      const error = new Error(`Transfer would make ${row.name} stock negative.`);
+      const error = new Error(
+        `Transfer would make ${row.name} stock negative.`,
+      );
       error.status = 409;
       throw error;
     }
@@ -344,13 +344,7 @@ const applyTransfer = async (
     `INSERT INTO stock_transfers
        (reference_code, direction, reason, transferred_by, reversal_of_transfer_id, created_at)
      VALUES (?, ?, ?, ?, ?, NOW())`,
-    [
-      referenceCode,
-      direction,
-      cleanReason,
-      actorUserId,
-      reversalOfTransferId,
-    ],
+    [referenceCode, direction, cleanReason, actorUserId, reversalOfTransferId],
   );
 
   const transferId = transferResult.insertId;
@@ -435,7 +429,12 @@ exports.getTransferInventory = async (req, res) => {
         acc.display_stock += row.display_stock;
         return acc;
       },
-      { product_count: 0, total_stock: 0, warehouse_stock: 0, display_stock: 0 },
+      {
+        product_count: 0,
+        total_stock: 0,
+        warehouse_stock: 0,
+        display_stock: 0,
+      },
     );
 
     return res.json({ inventory, summary });
@@ -457,7 +456,9 @@ exports.listTransfers = async (req, res) => {
     const where = ["1=1"];
     const params = [];
 
-    const direction = String(req.query.direction || "").trim().toLowerCase();
+    const direction = String(req.query.direction || "")
+      .trim()
+      .toLowerCase();
     if (direction) {
       if (!DIRECTIONS.has(direction)) {
         return res.status(400).json({ message: "Invalid direction filter." });
@@ -467,6 +468,7 @@ exports.listTransfers = async (req, res) => {
     }
 
     const search = String(req.query.search || "").trim();
+
     if (search) {
       if (search.length > 100) {
         return res
@@ -474,32 +476,41 @@ exports.listTransfers = async (req, res) => {
           .json({ message: "Search must be 100 characters or less." });
       }
 
-      const pattern = `%${search}%`;
-      where.push(`(
-        CAST(st.id AS CHAR) LIKE ?
-        OR COALESCE(st.reference_code, '') LIKE ?
-        OR COALESCE(st.direction, '') LIKE ?
-        OR COALESCE(st.reason, '') LIKE ?
-        OR COALESCE(actor.name, '') LIKE ?
-        OR CAST(COALESCE(st.transferred_by, 0) AS CHAR) LIKE ?
-        OR CAST(COALESCE(st.reversal_of_transfer_id, 0) AS CHAR) LIKE ?
-        OR EXISTS (
-          SELECT 1
-          FROM stock_transfer_items sti_search
-          WHERE sti_search.transfer_id = st.id
-            AND (
-              COALESCE(sti_search.product_name_snapshot, '') LIKE ?
-              OR CAST(COALESCE(sti_search.quantity, 0) AS CHAR) LIKE ?
-            )
-        )
-        OR EXISTS (
-          SELECT 1
-          FROM stock_transfers reversal_search
-          WHERE reversal_search.reversal_of_transfer_id = st.id
-            AND COALESCE(reversal_search.reference_code, '') LIKE ?
-        )
-      )`);
-      params.push(...Array(10).fill(pattern));
+      const searchTerms = search
+        .split(/\s+/)
+        .map((term) => term.trim())
+        .filter(Boolean);
+
+      for (const searchTerm of searchTerms) {
+        const pattern = `%${searchTerm}%`;
+
+        where.push(`(
+      CAST(st.id AS CHAR) LIKE ?
+      OR COALESCE(st.reference_code, '') LIKE ?
+      OR COALESCE(st.direction, '') LIKE ?
+      OR COALESCE(st.reason, '') LIKE ?
+      OR COALESCE(actor.name, 'System') LIKE ?
+      OR CAST(COALESCE(st.transferred_by, 0) AS CHAR) LIKE ?
+      OR CAST(COALESCE(st.reversal_of_transfer_id, 0) AS CHAR) LIKE ?
+      OR EXISTS (
+        SELECT 1
+        FROM stock_transfer_items sti_search
+        WHERE sti_search.transfer_id = st.id
+          AND (
+            COALESCE(sti_search.product_name_snapshot, '') LIKE ?
+            OR CAST(COALESCE(sti_search.quantity, 0) AS CHAR) LIKE ?
+          )
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM stock_transfers reversal_search
+        WHERE reversal_search.reversal_of_transfer_id = st.id
+          AND COALESCE(reversal_search.reference_code, '') LIKE ?
+      )
+    )`);
+
+        params.push(...Array(10).fill(pattern));
+      }
     }
 
     const dateFilter = String(req.query.date_filter || "").trim();
@@ -628,12 +639,8 @@ exports.listTransfers = async (req, res) => {
 
       response.total = Number(summaryRow?.total_records || 0);
       response.summary = {
-        completed_transfers: Number(
-          summaryRow?.completed_transfers || 0,
-        ),
-        reversed_transfers: Number(
-          summaryRow?.reversed_transfers || 0,
-        ),
+        completed_transfers: Number(summaryRow?.completed_transfers || 0),
+        reversed_transfers: Number(summaryRow?.reversed_transfers || 0),
       };
     }
 
@@ -642,7 +649,6 @@ exports.listTransfers = async (req, res) => {
     return sendError(res, error);
   }
 };
-
 
 exports.getTransfer = async (req, res) => {
   try {
@@ -711,7 +717,9 @@ exports.createTransfer = async (req, res) => {
     await conn.beginTransaction();
 
     const result = await applyTransfer(conn, {
-      direction: String(req.body?.direction || "").trim().toLowerCase(),
+      direction: String(req.body?.direction || "")
+        .trim()
+        .toLowerCase(),
       items: req.body?.items,
       reason: req.body?.reason,
       actorUserId: Number(req.user.id),
@@ -762,7 +770,9 @@ exports.reverseTransfer = async (req, res) => {
 
     const reason = cleanText(req.body?.reason, 500);
     if (!reason) {
-      return res.status(400).json({ message: "Reason is required to reverse a transfer." });
+      return res
+        .status(400)
+        .json({ message: "Reason is required to reverse a transfer." });
     }
 
     await conn.beginTransaction();
@@ -815,7 +825,10 @@ exports.reverseTransfer = async (req, res) => {
       [transferId],
     );
 
-    if (!originalItems.length || originalItems.some((item) => !item.product_id)) {
+    if (
+      !originalItems.length ||
+      originalItems.some((item) => !item.product_id)
+    ) {
       await conn.rollback();
       return res.status(409).json({
         message:

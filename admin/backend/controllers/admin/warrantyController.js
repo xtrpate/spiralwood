@@ -33,7 +33,9 @@ const classifyWarrantyClaimType = (row) => {
     return "legacy_unlinked";
   }
 
-  const orderType = String(row?.order_type || "").trim().toLowerCase();
+  const orderType = String(row?.order_type || "")
+    .trim()
+    .toLowerCase();
   const catalogProductId = Number(row?.catalog_product_id);
   const catalogProductType = String(row?.catalog_product_type || "")
     .trim()
@@ -222,34 +224,41 @@ const getOperationsWarrantyReport = async (req, res) => {
     }
 
     if (search) {
-      const pattern = `%${search}%`;
+      const searchTerms = search
+        .split(/\s+/)
+        .map((term) => term.trim())
+        .filter(Boolean);
 
-      where.push(`(
-        CAST(w.id AS CHAR) LIKE ?
-        OR CAST(COALESCE(w.order_id, 0) AS CHAR) LIKE ?
-        OR CAST(COALESCE(w.order_item_id, 0) AS CHAR) LIKE ?
-        OR CAST(COALESCE(w.customer_id, 0) AS CHAR) LIKE ?
-        OR COALESCE(w.product_name, '') LIKE ?
-        OR CAST(COALESCE(w.claim_quantity, 0) AS CHAR) LIKE ?
-        OR COALESCE(w.reason, '') LIKE ?
-        OR COALESCE(w.admin_note, '') LIKE ?
-        OR CAST(COALESCE(w.warranty_expiry, '') AS CHAR) LIKE ?
-        OR COALESCE(w.status, '') LIKE ?
-        OR COALESCE(w.resolution_type, '') LIKE ?
-        OR COALESCE(w.resolution_notes, '') LIKE ?
-        OR COALESCE(w.replacement_source, '') LIKE ?
-        OR COALESCE(w.return_disposition, '') LIKE ?
-        OR CAST(COALESCE(w.fulfilled_at, '') AS CHAR) LIKE ?
-        OR CAST(COALESCE(w.fulfilled_by, 0) AS CHAR) LIKE ?
-        OR CAST(COALESCE(w.created_at, '') AS CHAR) LIKE ?
-        OR CAST(COALESCE(w.updated_at, '') AS CHAR) LIKE ?
-        OR COALESCE(o.order_number, '') LIKE ?
-        OR CAST(COALESCE(oi.quantity, 0) AS CHAR) LIKE ?
-        OR COALESCE(c.name, o.walkin_customer_name, 'Customer') LIKE ?
-        OR COALESCE(fulfiller.name, '') LIKE ?
-      )`);
+      for (const searchTerm of searchTerms) {
+        const pattern = `%${searchTerm}%`;
 
-      params.push(...Array(22).fill(pattern));
+        where.push(`(
+      CAST(w.id AS CHAR) LIKE ?
+      OR CAST(COALESCE(w.order_id, 0) AS CHAR) LIKE ?
+      OR CAST(COALESCE(w.order_item_id, 0) AS CHAR) LIKE ?
+      OR CAST(COALESCE(w.customer_id, 0) AS CHAR) LIKE ?
+      OR COALESCE(w.product_name, '') LIKE ?
+      OR CAST(COALESCE(w.claim_quantity, 0) AS CHAR) LIKE ?
+      OR COALESCE(w.reason, '') LIKE ?
+      OR COALESCE(w.admin_note, '') LIKE ?
+      OR CAST(COALESCE(w.warranty_expiry, '') AS CHAR) LIKE ?
+      OR COALESCE(w.status, '') LIKE ?
+      OR COALESCE(w.resolution_type, '') LIKE ?
+      OR COALESCE(w.resolution_notes, '') LIKE ?
+      OR COALESCE(w.replacement_source, '') LIKE ?
+      OR COALESCE(w.return_disposition, '') LIKE ?
+      OR CAST(COALESCE(w.fulfilled_at, '') AS CHAR) LIKE ?
+      OR CAST(COALESCE(w.fulfilled_by, 0) AS CHAR) LIKE ?
+      OR CAST(COALESCE(w.created_at, '') AS CHAR) LIKE ?
+      OR CAST(COALESCE(w.updated_at, '') AS CHAR) LIKE ?
+      OR COALESCE(o.order_number, '') LIKE ?
+      OR CAST(COALESCE(oi.quantity, 0) AS CHAR) LIKE ?
+      OR COALESCE(c.name, o.walkin_customer_name, 'Customer') LIKE ?
+      OR COALESCE(fulfiller.name, '') LIKE ?
+    )`);
+
+        params.push(...Array(22).fill(pattern));
+      }
     }
 
     const { startUtc, endUtc } = buildOperationsWarrantyDateRange({
@@ -735,7 +744,9 @@ exports.decideClaim = async (req, res) => {
         message:
           "This warranty claim was already updated. Refresh and review the latest status.",
         current_status: latestClaim
-          ? String(latestClaim.status || "").trim().toLowerCase() || null
+          ? String(latestClaim.status || "")
+              .trim()
+              .toLowerCase() || null
           : null,
       });
     }
@@ -773,9 +784,7 @@ exports.decideClaim = async (req, res) => {
     });
   } catch (err) {
     console.error("[admin.warranty decide]", err);
-    return res
-      .status(500)
-      .json({ message: "Server error." });
+    return res.status(500).json({ message: "Server error." });
   }
 };
 
@@ -880,8 +889,8 @@ exports.fulfillClaim = async (req, res) => {
   } catch (err) {
     const mustRetainFreshUpload = Boolean(
       fulfillmentCommitted ||
-        err?.warrantyFulfillmentCommitted ||
-        err?.warrantyFulfillmentCommitOutcomeUncertain,
+      err?.warrantyFulfillmentCommitted ||
+      err?.warrantyFulfillmentCommitOutcomeUncertain,
     );
 
     if (freshUploadNeedsCleanup && freshUpload) {

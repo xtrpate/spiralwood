@@ -296,7 +296,38 @@
 }
 
 .sales-products-table {
-  min-width: 560px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  table-layout: fixed;
+}
+
+.sales-products-table th:nth-child(1),
+.sales-products-table td:nth-child(1) {
+  width: 52%;
+}
+
+.sales-products-table th:nth-child(2),
+.sales-products-table td:nth-child(2) {
+  width: 20%;
+}
+
+.sales-products-table th:nth-child(3),
+.sales-products-table td:nth-child(3) {
+  width: 28%;
+}
+
+.sales-products-table td.sales-product-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sales-table-scroll-products {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .sales-table th {

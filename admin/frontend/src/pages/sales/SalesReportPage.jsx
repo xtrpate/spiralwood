@@ -225,8 +225,6 @@ export default function SalesReportPage() {
   const [appliedFilters, setAppliedFilters] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [exportOpen, setExportOpen] = useState(false);
-  const [exportScope, setExportScope] = useState("filtered");
   const [exporting, setExporting] = useState(false);
   const [detailSection, setDetailSection] = useState("orders");
   const [search, setSearch] = useState("");
@@ -447,46 +445,36 @@ export default function SalesReportPage() {
     let saveHandle = null;
 
     try {
-      const scopeFilenamePart =
-        exportScope === "all" ? "all_sales" : "current_filters";
-
       const channelFilenamePart =
-        exportScope === "all"
-          ? "all_channels"
-          : String(appliedChannel || "all")
-              .trim()
-              .toLowerCase()
-              .replace(/[^a-z0-9]+/g, "_")
-              .replace(/^_+|_+$/g, "") || "all_channels";
+        String(appliedChannel || "all")
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "_")
+          .replace(/^_+|_+$/g, "") || "all_channels";
 
       const paymentFilenamePart =
-        exportScope === "all"
-          ? "all_payments"
-          : String(appliedPayment || "all")
-              .trim()
-              .toLowerCase()
-              .replace(/[^a-z0-9]+/g, "_")
-              .replace(/^_+|_+$/g, "") || "all_payments";
+        String(appliedPayment || "all")
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "_")
+          .replace(/^_+|_+$/g, "") || "all_payments";
 
       const dateFilenamePart =
-        exportScope === "all"
-          ? "all_time"
-          : appliedPeriod === "custom"
-            ? `${appliedFrom || "start"}_to_${appliedTo || "end"}`
-            : appliedPeriod === "daily"
-              ? "today"
-              : appliedPeriod === "weekly"
-                ? "this_week"
-                : appliedPeriod === "monthly"
-                  ? "this_month"
-                  : appliedPeriod === "yearly"
-                    ? "this_year"
-                    : "report_period";
+        appliedPeriod === "custom"
+          ? `${appliedFrom || "start"}_to_${appliedTo || "end"}`
+          : appliedPeriod === "daily"
+            ? "today"
+            : appliedPeriod === "weekly"
+              ? "this_week"
+              : appliedPeriod === "monthly"
+                ? "this_month"
+                : appliedPeriod === "yearly"
+                  ? "this_year"
+                  : "report_period";
 
       const exportTimestamp = new Date().getTime();
 
-      const fileName = `wisdom_sales_report_${scopeFilenamePart}_${channelFilenamePart}_${paymentFilenamePart}_${dateFilenamePart}_${exportTimestamp}.xlsx`;
-
+      const fileName = `wisdom_sales_report_${channelFilenamePart}_${paymentFilenamePart}_${dateFilenamePart}_${exportTimestamp}.xlsx`;
       /*
        * IMPORTANT:
        * Open Save As BEFORE any awaited API request so the browser
@@ -517,10 +505,7 @@ export default function SalesReportPage() {
 
       setExporting(true);
 
-      const exportParams =
-        exportScope === "all"
-          ? { period: "all" }
-          : buildSalesReportParams(appliedFilters);
+      const exportParams = buildSalesReportParams(appliedFilters);
 
       const response = await api.get("/sales/report/print", {
         params: exportParams,
@@ -927,8 +912,6 @@ export default function SalesReportPage() {
         XLSX.writeFile(workbook, fileName);
       }
 
-      setExportOpen(false);
-
       toast.success("Sales report exported successfully.");
     } catch (err) {
       if (err?.name !== "AbortError") {
@@ -958,7 +941,7 @@ export default function SalesReportPage() {
           <button
             type="button"
             className="sales-button sales-button-primary"
-            onClick={() => setExportOpen(true)}
+            onClick={exportExcel}
             disabled={!data || !appliedFilters || loading || !canExport}
             title={
               !canExport
@@ -1396,101 +1379,6 @@ export default function SalesReportPage() {
           </div>
         </>
       ) : null}
-
-      {exportOpen && canExport && (
-        <div className="sales-modal-backdrop">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="export-sales-title"
-            className="sales-dialog"
-          >
-            <div className="sales-dialog-eyebrow">Sales Report</div>
-            <h2 id="export-sales-title" className="sales-dialog-title">
-              Export sales report
-            </h2>
-            <p className="sales-dialog-text">
-              Create an Excel report of your sales performance based on your
-              last successfully applied filters.
-            </p>
-
-            <div className="sales-export-scope-list">
-              <button
-                type="button"
-                onClick={() => setExportScope("filtered")}
-                className={`sales-export-scope-option ${exportScope === "filtered" ? "sales-export-scope-selected" : ""}`}
-                disabled={exporting}
-              >
-                <span className="sales-export-scope-title">
-                  Current filters
-                </span>
-                <span className="sales-export-scope-meta">
-                  {count(summary.total_orders)} sales orders ·{" "}
-                  {reportDateRangeLabel}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setExportScope("all")}
-                className={`sales-export-scope-option ${exportScope === "all" ? "sales-export-scope-selected" : ""}`}
-                disabled={exporting}
-              >
-                <span className="sales-export-scope-title">All sales</span>
-                <span className="sales-export-scope-meta">
-                  Entire sales history
-                </span>
-              </button>
-            </div>
-
-            <div className="sales-export-contents">
-              <div className="sales-export-contents-label">
-                Included in Excel
-              </div>
-              <div className="sales-export-contents-text">
-                Financial overview, sales by channel, top products, payment
-                collections, and outstanding balances.
-              </div>
-            </div>
-
-            <div className="sales-dialog-actions">
-              <button
-                type="button"
-                onClick={() => setExportOpen(false)}
-                className="sales-button sales-button-secondary"
-                disabled={exporting}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={exportExcel}
-                className="sales-button sales-button-primary"
-                style={{ display: "inline-flex", alignItems: "center", gap: 7 }}
-                disabled={exporting}
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-                  <polyline points="14 2 14 8 20 8" />
-                  <path d="M12 18v-6" />
-                  <path d="m9 15 3 3 3-3" />
-                </svg>
-                {exporting ? "Preparing..." : "Export Excel"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* PRINT-ONLY SALES REPORT */}
       <div className="sales-print-report">

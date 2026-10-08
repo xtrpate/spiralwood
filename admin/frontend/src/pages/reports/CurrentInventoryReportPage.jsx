@@ -233,6 +233,21 @@ const buildSearchText = (...values) =>
     .join(" ")
     .toLowerCase();
 
+const matchesSearch = (searchValue, ...values) => {
+  const searchTerms = normalize(searchValue)
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter(Boolean);
+
+  if (searchTerms.length === 0) {
+    return true;
+  }
+
+  const searchableText = buildSearchText(...values);
+
+  return searchTerms.every((term) => searchableText.includes(term));
+};
+
 function StatusBadge({ value }) {
   const normalized = normalizeHealthStatus(value);
 
@@ -415,13 +430,14 @@ export default function CurrentInventoryReportPage() {
 
       if (!normalizedSearch) return true;
 
-      return buildSearchText(
+      return matchesSearch(
+        normalizedSearch,
         row.name,
         row.category_name,
         row.supplier_name,
         row.unit,
         row.material_form,
-      ).includes(normalizedSearch);
+      );
     });
   }, [inventoryType, normalizedSearch, rawMaterials, stockStatus]);
 
@@ -435,7 +451,7 @@ export default function CurrentInventoryReportPage() {
 
       if (!normalizedSearch) return true;
 
-      return buildSearchText(row.name, row.barcode).includes(normalizedSearch);
+      return matchesSearch(normalizedSearch, row.name, row.barcode);
     });
   }, [inventoryType, normalizedSearch, readyMade, stockStatus]);
 

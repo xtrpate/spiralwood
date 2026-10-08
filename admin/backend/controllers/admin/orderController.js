@@ -996,58 +996,83 @@ exports.getAll = async (req, res) => {
     }
 
     if (normalizedSearch) {
-      const term = normalizedSearch;
-      const pattern = `%${term}%`;
-      const clauses = [
-        "COALESCE(u.name, o.walkin_customer_name) LIKE ?",
-        "COALESCE(u.email, '') LIKE ?",
-        "o.order_number LIKE ?",
-      ];
-      const searchParams = [pattern, pattern, pattern];
+      const searchTerms = normalizedSearch
+        .split(/\s+/)
+        .map((term) => term.trim())
+        .filter(Boolean);
 
-      if (/^\d+$/.test(term)) {
-        const strictOrderId = Number(term);
+      for (const term of searchTerms) {
+        const pattern = `%${term}%`;
 
-        if (Number.isSafeInteger(strictOrderId) && strictOrderId > 0) {
-          clauses.push("o.id = ?");
-          searchParams.push(strictOrderId);
+        const clauses = [
+          "COALESCE(u.name, o.walkin_customer_name) LIKE ?",
+          "COALESCE(u.email, '') LIKE ?",
+          "o.order_number LIKE ?",
+        ];
+
+        const searchParams = [pattern, pattern, pattern];
+
+        if (/^\d+$/.test(term)) {
+          const strictOrderId = Number(term);
+
+          if (Number.isSafeInteger(strictOrderId) && strictOrderId > 0) {
+            clauses.push("o.id = ?");
+            searchParams.push(strictOrderId);
+          }
         }
-      }
 
-      if (transactionReportMode) {
-        clauses.push(
-          "LOWER(COALESCE(o.type, '')) LIKE LOWER(?)",
-          "LOWER(COALESCE(o.status, '')) LIKE LOWER(?)",
-          `LOWER(${ADMIN_ORDER_PAYMENT_STATUS_SQL}) LIKE LOWER(?)`,
-          "LOWER(COALESCE(o.payment_method, '')) LIKE LOWER(?)",
-          "LOWER(COALESCE(o.order_type, '')) LIKE LOWER(?)",
-          "CAST(COALESCE(o.total, 0) AS CHAR) LIKE ?",
-        );
-        searchParams.push(pattern, pattern, pattern, pattern, pattern, pattern);
-      }
+        if (transactionReportMode) {
+          clauses.push(
+            "LOWER(COALESCE(o.type, '')) LIKE LOWER(?)",
+            "LOWER(COALESCE(o.status, '')) LIKE LOWER(?)",
+            `LOWER(${ADMIN_ORDER_PAYMENT_STATUS_SQL}) LIKE LOWER(?)`,
+            "LOWER(COALESCE(o.payment_method, '')) LIKE LOWER(?)",
+            "LOWER(COALESCE(o.order_type, '')) LIKE LOWER(?)",
+            "CAST(COALESCE(o.total, 0) AS CHAR) LIKE ?",
+          );
 
-      const rawDigits = term.replace(/\D/g, "");
-      const phoneVariants = new Set(rawDigits ? [rawDigits] : []);
-      try {
-        const canonicalPhone = normalizePhilippinePhone(term);
-        getPhoneLookupVariants(canonicalPhone).forEach((variant) => {
-          const digits = String(variant || "").replace(/\D/g, "");
-          if (digits) phoneVariants.add(digits);
-        });
-      } catch {
-        // Search text does not have to be a full Philippine mobile number.
-      }
+          searchParams.push(
+            pattern,
+            pattern,
+            pattern,
+            pattern,
+            pattern,
+            pattern,
+          );
+        }
 
-      for (const phoneVariant of phoneVariants) {
-        if (phoneVariant.length < 4) continue;
-        clauses.push(
-          `${phoneDigitsSql("COALESCE(u.phone, o.walkin_customer_phone, '')")} LIKE ?`,
-        );
-        searchParams.push(`%${phoneVariant}%`);
-      }
+        const rawDigits = term.replace(/\D/g, "");
+        const phoneVariants = new Set(rawDigits ? [rawDigits] : []);
 
-      where.push(`(${clauses.join(" OR ")})`);
-      params.push(...searchParams);
+        try {
+          const canonicalPhone = normalizePhilippinePhone(term);
+
+          getPhoneLookupVariants(canonicalPhone).forEach((variant) => {
+            const digits = String(variant || "").replace(/\D/g, "");
+
+            if (digits) {
+              phoneVariants.add(digits);
+            }
+          });
+        } catch {
+          // Search text does not have to be a full Philippine mobile number.
+        }
+
+        for (const phoneVariant of phoneVariants) {
+          if (phoneVariant.length < 4) continue;
+
+          clauses.push(
+            `${phoneDigitsSql(
+              "COALESCE(u.phone, o.walkin_customer_phone, '')",
+            )} LIKE ?`,
+          );
+
+          searchParams.push(`%${phoneVariant}%`);
+        }
+
+        where.push(`(${clauses.join(" OR ")})`);
+        params.push(...searchParams);
+      }
     }
 
     const [orders] = await pool.query(
@@ -2152,7 +2177,9 @@ exports.updateStatus = async (req, res) => {
       // A completed role alone is insufficient if duplicates or mismatched
       // blueprint task rows exist. Fail closed on inconsistent production data.
       const requiredTaskRows = taskRows.filter((row) =>
-        REQUIRED_BLUEPRINT_TASK_ROLES.includes(normalizeTaskRole(row.task_role)),
+        REQUIRED_BLUEPRINT_TASK_ROLES.includes(
+          normalizeTaskRole(row.task_role),
+        ),
       );
       const requiredTaskKeys = requiredTaskRows.map((row) =>
         normalizeTaskRole(row.task_role),

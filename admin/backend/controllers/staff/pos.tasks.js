@@ -423,27 +423,36 @@ const getOperationsTaskReport = async (req, res) => {
     }
 
     if (search) {
-      const pattern = `%${search}%`;
-      where.push(`(
-        CAST(t.id AS CHAR) LIKE ?
-        OR COALESCE(t.title, '') LIKE ?
-        OR COALESCE(t.description, '') LIKE ?
-        OR COALESCE(t.task_role, '') LIKE ?
-        OR COALESCE(t.status, '') LIKE ?
-        OR CAST(COALESCE(t.due_date, '') AS CHAR) LIKE ?
-        OR CAST(COALESCE(t.order_id, 0) AS CHAR) LIKE ?
-        OR CAST(COALESCE(t.blueprint_id, 0) AS CHAR) LIKE ?
-        OR CAST(COALESCE(t.assigned_to, 0) AS CHAR) LIKE ?
-        OR CAST(COALESCE(t.assigned_by, 0) AS CHAR) LIKE ?
-        OR COALESCE(assignee.name, '') LIKE ?
-        OR COALESCE(assigner.name, '') LIKE ?
-        OR COALESCE(o.order_number, '') LIKE ?
-        OR COALESCE(o.delivery_address, '') LIKE ?
-        OR COALESCE(customer.name, o.walkin_customer_name, 'Walk-in Customer') LIKE ?
-        OR CAST(COALESCE(t.created_at, '') AS CHAR) LIKE ?
-        OR CAST(COALESCE(t.updated_at, '') AS CHAR) LIKE ?
-      )`);
-      params.push(...Array(17).fill(pattern));
+      const searchTerms = search
+        .split(/\s+/)
+        .map((term) => term.trim())
+        .filter(Boolean);
+
+      for (const searchTerm of searchTerms) {
+        const pattern = `%${searchTerm}%`;
+
+        where.push(`(
+      CAST(t.id AS CHAR) LIKE ?
+      OR COALESCE(t.title, '') LIKE ?
+      OR COALESCE(t.description, '') LIKE ?
+      OR COALESCE(t.task_role, '') LIKE ?
+      OR COALESCE(t.status, '') LIKE ?
+      OR CAST(COALESCE(t.due_date, '') AS CHAR) LIKE ?
+      OR CAST(COALESCE(t.order_id, 0) AS CHAR) LIKE ?
+      OR CAST(COALESCE(t.blueprint_id, 0) AS CHAR) LIKE ?
+      OR CAST(COALESCE(t.assigned_to, 0) AS CHAR) LIKE ?
+      OR CAST(COALESCE(t.assigned_by, 0) AS CHAR) LIKE ?
+      OR COALESCE(assignee.name, '') LIKE ?
+      OR COALESCE(assigner.name, '') LIKE ?
+      OR COALESCE(o.order_number, '') LIKE ?
+      OR COALESCE(o.delivery_address, '') LIKE ?
+      OR COALESCE(customer.name, o.walkin_customer_name, 'Walk-in Customer') LIKE ?
+      OR CAST(COALESCE(t.created_at, '') AS CHAR) LIKE ?
+      OR CAST(COALESCE(t.updated_at, '') AS CHAR) LIKE ?
+    )`);
+
+        params.push(...Array(17).fill(pattern));
+      }
     }
 
     const { startUtc, endUtc } = buildOperationsTaskDateRange({

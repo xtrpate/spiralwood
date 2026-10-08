@@ -1966,32 +1966,96 @@ exports.getStockMovements = async (req, res) => {
     }
 
     if (normalizedSearch) {
-      const pattern = `%${normalizedSearch}%`;
+      const searchTerms = normalizedSearch
+        .split(/\s+/)
+        .map((term) => term.trim().replace(/^[,]+|[,]+$/g, ""))
+        .filter(Boolean);
 
-      where.push(`(
-    CAST(sm.id AS CHAR) LIKE ?
-    OR COALESCE(sm.type, '') LIKE ?
-    OR (${movementSourceSql}) LIKE ?
-    OR COALESCE(rm.name, '') LIKE ?
-    OR COALESCE(rm.unit, '') LIKE ?
-    OR COALESCE(p.name, '') LIKE ?
-    OR COALESCE(s.name, '') LIKE ?
-    OR COALESCE(u.name, '') LIKE ?
-    OR COALESCE(o.order_number, '') LIKE ?
-    OR COALESCE(o.order_type, '') LIKE ?
-    OR COALESCE(o.status, '') LIKE ?
-    OR COALESCE(o.payment_status, '') LIKE ?
-    OR COALESCE(customer.name, '') LIKE ?
-    OR COALESCE(o.walkin_customer_name, '') LIKE ?
-    OR COALESCE(sm.reference, '') LIKE ?
-    OR COALESCE(sm.notes, '') LIKE ?
-    OR CAST(COALESCE(sm.quantity, 0) AS CHAR) LIKE ?
-    OR CAST(COALESCE(sm.material_id, 0) AS CHAR) LIKE ?
-    OR CAST(COALESCE(sm.product_id, 0) AS CHAR) LIKE ?
-    OR CAST(COALESCE(sm.order_id, 0) AS CHAR) LIKE ?
-  )`);
+      const normalizedTerms = searchTerms.map((term) => term.toLowerCase());
 
-      params.push(...Array(20).fill(pattern));
+      const hasStockSearch = normalizedTerms.includes("stock");
+      const hasStockInSearch = hasStockSearch && normalizedTerms.includes("in");
+      const hasStockOutSearch =
+        hasStockSearch && normalizedTerms.includes("out");
+
+      const remainingTerms = searchTerms.filter((term) => {
+        const normalizedTerm = term.toLowerCase();
+
+        if (normalizedTerm === "stock" && hasStockSearch) {
+          return false;
+        }
+
+        if (
+          (normalizedTerm === "in" && hasStockInSearch) ||
+          (normalizedTerm === "out" && hasStockOutSearch)
+        ) {
+          return false;
+        }
+
+        return true;
+      });
+
+      if (hasStockSearch && hasStockInSearch && hasStockOutSearch) {
+        where.push("1 = 0");
+      } else if (hasStockInSearch) {
+        where.push("sm.type = ?");
+        params.push("in");
+      } else if (hasStockOutSearch) {
+        where.push("sm.type = ?");
+        params.push("out");
+      } else if (hasStockSearch) {
+        where.push("sm.type IN ('in', 'out')");
+      }
+
+      const movementLabelSql = `CASE
+    WHEN sm.type = 'in' THEN 'stock in'
+    WHEN sm.type = 'out' THEN 'stock out'
+    WHEN sm.type = 'adjustment' THEN 'adjustment'
+    WHEN sm.type = 'return' THEN 'return'
+    ELSE COALESCE(sm.type, '')
+  END`;
+
+      const searchableFields = [
+        "CAST(sm.id AS CHAR)",
+        "COALESCE(sm.type, '')",
+        movementLabelSql,
+        `(${movementSourceSql})`,
+        "COALESCE(rm.name, '')",
+        "COALESCE(rm.unit, '')",
+        "COALESCE(p.name, '')",
+        "COALESCE(s.name, '')",
+        "COALESCE(u.name, 'System')",
+        "COALESCE(o.order_number, '')",
+        "COALESCE(o.order_type, '')",
+        "COALESCE(o.status, '')",
+        "COALESCE(o.payment_status, '')",
+        "COALESCE(customer.name, '')",
+        "COALESCE(o.walkin_customer_name, '')",
+        "COALESCE(sm.reference, '')",
+        "COALESCE(sm.notes, '')",
+        "CAST(COALESCE(sm.quantity, 0) AS CHAR)",
+        "CAST(COALESCE(sm.material_id, 0) AS CHAR)",
+        "CAST(COALESCE(sm.product_id, 0) AS CHAR)",
+        "CAST(COALESCE(sm.order_id, 0) AS CHAR)",
+      ];
+
+      const termConditions = [];
+
+      for (const searchTerm of remainingTerms) {
+        const pattern = `%${searchTerm}%`;
+
+        termConditions.push(`
+      (
+        ${searchableFields.map((field) => `${field} LIKE ?`).join(" OR ")}
+      )
+    `);
+
+        params.push(...searchableFields.map(() => pattern));
+      }
+
+      if (termConditions.length > 0) {
+        where.push(`(${termConditions.join(" AND ")})`);
+      }
     }
 
     const whereSql = where.join(" AND ");

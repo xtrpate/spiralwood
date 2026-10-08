@@ -448,29 +448,36 @@ exports.listRequests = async (req, res) => {
     const normalizedSearch = String(search || "").trim();
 
     if (normalizedSearch) {
-      const pattern = `%${normalizedSearch}%`;
+      const searchTerms = normalizedSearch
+        .split(/\s+/)
+        .map((term) => term.trim())
+        .filter(Boolean);
 
-      where.push(`(
-        COALESCE(records.record_key, '') LIKE ?
-        OR CAST(COALESCE(records.request_id, 0) AS CHAR) LIKE ?
-        OR COALESCE(o.order_number, '') LIKE ?
-        OR CAST(records.order_id AS CHAR) LIKE ?
-        OR COALESCE(NULLIF(TRIM(o.walkin_customer_name), ''), customer.name, '') LIKE ?
-        OR COALESCE(requester.name, '') LIKE ?
-        OR COALESCE(reviewer.name, '') LIKE ?
-        OR COALESCE(records.reason, '') LIKE ?
-        OR COALESCE(records.review_note, '') LIKE ?
-        OR COALESCE(records.record_type, '') LIKE ?
-        OR COALESCE(records.record_source, '') LIKE ?
-        OR COALESCE(records.status, '') LIKE ?
-        OR COALESCE(records.order_status_at_request, '') LIKE ?
-        OR COALESCE(o.status, '') LIKE ?
-        OR COALESCE(o.payment_status, '') LIKE ?
-        OR COALESCE(o.fulfillment_method, '') LIKE ?
-        OR CAST(COALESCE(o.total, 0) AS CHAR) LIKE ?
-      )`);
+      for (const searchTerm of searchTerms) {
+        const pattern = `%${searchTerm}%`;
 
-      params.push(...Array(17).fill(pattern));
+        where.push(`(
+      COALESCE(records.record_key, '') LIKE ?
+      OR CAST(COALESCE(records.request_id, 0) AS CHAR) LIKE ?
+      OR COALESCE(o.order_number, '') LIKE ?
+      OR CAST(records.order_id AS CHAR) LIKE ?
+      OR COALESCE(NULLIF(TRIM(o.walkin_customer_name), ''), customer.name, '') LIKE ?
+      OR COALESCE(requester.name, '') LIKE ?
+      OR COALESCE(reviewer.name, '') LIKE ?
+      OR COALESCE(records.reason, '') LIKE ?
+      OR COALESCE(records.review_note, '') LIKE ?
+      OR COALESCE(records.record_type, '') LIKE ?
+      OR COALESCE(records.record_source, '') LIKE ?
+      OR COALESCE(records.status, '') LIKE ?
+      OR COALESCE(records.order_status_at_request, '') LIKE ?
+      OR COALESCE(o.status, '') LIKE ?
+      OR COALESCE(o.payment_status, '') LIKE ?
+      OR COALESCE(o.fulfillment_method, '') LIKE ?
+      OR CAST(COALESCE(o.total, 0) AS CHAR) LIKE ?
+    )`);
+
+        params.push(...Array(17).fill(pattern));
+      }
     }
 
     const whereSql = where.length > 0 ? ` WHERE ${where.join(" AND ")}` : "";

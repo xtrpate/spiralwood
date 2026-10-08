@@ -648,34 +648,41 @@ const getOperationsAppointmentReport = async (req, res) => {
     }
 
     if (search) {
-      const pattern = `%${search}%`;
+      const searchTerms = search
+        .split(/\s+/)
+        .map((term) => term.trim())
+        .filter(Boolean);
 
-      where.push(`(
-        CAST(a.id AS CHAR) LIKE ?
-        OR CAST(COALESCE(a.order_id, 0) AS CHAR) LIKE ?
-        OR CAST(COALESCE(a.customer_id, 0) AS CHAR) LIKE ?
-        OR CAST(COALESCE(a.reviewed_by, 0) AS CHAR) LIKE ?
-        OR CAST(COALESCE(a.assigned_staff_id, 0) AS CHAR) LIKE ?
-        OR CAST(COALESCE(a.request_owner_id, 0) AS CHAR) LIKE ?
-        OR COALESCE(a.purpose, '') LIKE ?
-        OR CAST(COALESCE(a.scheduled_date, '') AS CHAR) LIKE ?
-        OR CAST(COALESCE(a.preferred_date, '') AS CHAR) LIKE ?
-        OR COALESCE(a.status, '') LIKE ?
-        OR COALESCE(a.notes, '') LIKE ?
-        OR COALESCE(o.order_number, '') LIKE ?
-        OR CAST(COALESCE(o.total, 0) AS CHAR) LIKE ?
-        OR COALESCE(o.payment_method, '') LIKE ?
-        OR COALESCE(o.delivery_address, '') LIKE ?
-        OR COALESCE(customer.address, '') LIKE ?
-        OR COALESCE(o.walkin_customer_name, customer.name, 'Walk-in Customer') LIKE ?
-        OR COALESCE(o.walkin_customer_phone, customer.phone, '') LIKE ?
-        OR COALESCE(request_owner.name, '') LIKE ?
-        OR COALESCE(handler.name, '') LIKE ?
-        OR COALESCE(provider.name, '') LIKE ?
-        OR CAST(COALESCE(a.updated_at, '') AS CHAR) LIKE ?
-      )`);
+      for (const searchTerm of searchTerms) {
+        const pattern = `%${searchTerm}%`;
 
-      params.push(...Array(22).fill(pattern));
+        where.push(`(
+      CAST(a.id AS CHAR) LIKE ?
+      OR CAST(COALESCE(a.order_id, 0) AS CHAR) LIKE ?
+      OR CAST(COALESCE(a.customer_id, 0) AS CHAR) LIKE ?
+      OR CAST(COALESCE(a.reviewed_by, 0) AS CHAR) LIKE ?
+      OR CAST(COALESCE(a.assigned_staff_id, 0) AS CHAR) LIKE ?
+      OR CAST(COALESCE(a.request_owner_id, 0) AS CHAR) LIKE ?
+      OR COALESCE(a.purpose, '') LIKE ?
+      OR CAST(COALESCE(a.scheduled_date, '') AS CHAR) LIKE ?
+      OR CAST(COALESCE(a.preferred_date, '') AS CHAR) LIKE ?
+      OR COALESCE(a.status, '') LIKE ?
+      OR COALESCE(a.notes, '') LIKE ?
+      OR COALESCE(o.order_number, '') LIKE ?
+      OR CAST(COALESCE(o.total, 0) AS CHAR) LIKE ?
+      OR COALESCE(o.payment_method, '') LIKE ?
+      OR COALESCE(o.delivery_address, '') LIKE ?
+      OR COALESCE(customer.address, '') LIKE ?
+      OR COALESCE(o.walkin_customer_name, customer.name, 'Walk-in Customer') LIKE ?
+      OR COALESCE(o.walkin_customer_phone, customer.phone, '') LIKE ?
+      OR COALESCE(request_owner.name, '') LIKE ?
+      OR COALESCE(handler.name, '') LIKE ?
+      OR COALESCE(provider.name, '') LIKE ?
+      OR CAST(COALESCE(a.updated_at, '') AS CHAR) LIKE ?
+    )`);
+
+        params.push(...Array(22).fill(pattern));
+      }
     }
 
     const { startKey, endKey } = buildOperationsAppointmentDateRange({
