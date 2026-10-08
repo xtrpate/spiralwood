@@ -243,11 +243,21 @@ export default function MyTasks() {
       });
     };
 
+    const handleOrderStatusUpdated = (payload) => {
+      const orderId = Number(payload?.order_id);
+      if (!Number.isSafeInteger(orderId) || orderId <= 0) return;
+      loadTasks({ silent: true }).catch((err) => {
+        console.error("Failed to refresh production work after order update:", err);
+      });
+    };
+
     const attachListener = (socket) => {
       if (!socket) return;
 
       socket.off("task:updated", handleTaskUpdated);
       socket.on("task:updated", handleTaskUpdated);
+      socket.off("order:status_updated", handleOrderStatusUpdated);
+      socket.on("order:status_updated", handleOrderStatusUpdated);
     };
 
     const socket = getSocket();
@@ -265,6 +275,7 @@ export default function MyTasks() {
 
       if (currentSocket) {
         currentSocket.off("task:updated", handleTaskUpdated);
+        currentSocket.off("order:status_updated", handleOrderStatusUpdated);
       }
 
       unsubscribeReady();
@@ -442,6 +453,7 @@ export default function MyTasks() {
           key,
           orderId: task.order_id || null,
           orderNumber: task.order_number || "—",
+          orderStatus: normalize(task.order_status),
           assignedByName: task.assigned_by_name || "—",
           dueDate: task.due_date || null,
           adminNote: extractAdminProductionNote(task.description),
@@ -907,6 +919,9 @@ export default function MyTasks() {
 
                           const canUndoThisStep =
                             order.packetIntegrityOk &&
+                            (order.orderStatus === "production" ||
+                              (order.orderStatus === "ready_for_pickup" &&
+                                normalize(step.stepLabel) === "packing")) &&
                             order.steps
                               .slice(stepIndex + 1)
                               .every(
