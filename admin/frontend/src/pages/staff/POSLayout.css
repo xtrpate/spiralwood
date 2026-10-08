@@ -257,20 +257,25 @@ body {
   border-color: #fecaca;
 }
 
-/* â”€â”€â”€ MAIN â”€â”€â”€ */
 .pos-main {
-  flex: 1;
+  flex: 1 1 0;
+  width: 0;
+  min-width: 0;
+  max-width: 100%;
   padding: 32px 40px;
   transition: margin-left 0.25s ease;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
+
 .sidebar-open .pos-main {
   margin-left: 240px;
 }
+
 .sidebar-closed .pos-main {
   margin-left: 68px;
 }
 
-/* â”€â”€â”€ SHARED PAGE STYLES (Monochrome Updates) â”€â”€â”€ */
 :where(.pos-root) .page-header {
   margin-bottom: 24px;
 }
@@ -733,9 +738,7 @@ body {
     gap: 8px;
   }
 
-  .pos-staff-workspace
-    .pos-mobile-staff-actions
-    > .staff-notification-trigger {
+  .pos-staff-workspace .pos-mobile-staff-actions > .staff-notification-trigger {
     width: 44px !important;
     height: 44px !important;
     min-width: 44px !important;
@@ -799,9 +802,7 @@ body {
     max-height: min(78dvh, 680px);
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding:
-      8px
-      max(16px, env(safe-area-inset-right, 0px))
+    padding: 8px max(16px, env(safe-area-inset-right, 0px))
       calc(16px + env(safe-area-inset-bottom, 0px))
       max(16px, env(safe-area-inset-left, 0px));
     box-sizing: border-box;
@@ -945,9 +946,7 @@ body {
     margin-left: 0 !important;
     padding-top: calc(72px + env(safe-area-inset-top, 0px)) !important;
     padding-right: max(12px, env(safe-area-inset-right, 0px)) !important;
-    padding-bottom: calc(
-      78px + env(safe-area-inset-bottom, 0px)
-    ) !important;
+    padding-bottom: calc(78px + env(safe-area-inset-bottom, 0px)) !important;
     padding-left: max(12px, env(safe-area-inset-left, 0px)) !important;
     box-sizing: border-box;
   }
@@ -962,8 +961,10 @@ body {
     padding-left: env(safe-area-inset-left, 0px);
     box-sizing: border-box;
     display: grid;
-    grid-template-columns:
-      repeat(var(--wisdom-mobile-nav-count, 4), minmax(0, 1fr));
+    grid-template-columns: repeat(
+      var(--wisdom-mobile-nav-count, 4),
+      minmax(0, 1fr)
+    );
     align-items: stretch;
     border-top: 1px solid #d8d8dc;
     background: rgba(255, 255, 255, 0.98);

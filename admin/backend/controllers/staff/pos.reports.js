@@ -7,7 +7,10 @@ const {
   getPhilippineDateKey,
 } = require("../../utils/philippineTime");
 
-const normalize = (value) => String(value || "").trim().toLowerCase();
+const normalize = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
 const VALID_PERIODS = new Set(["daily", "weekly", "monthly", "yearly"]);
 const DEFAULT_TRANSACTION_LIMIT = 200;
 const MAX_TRANSACTION_LIMIT = 200;
@@ -239,8 +242,29 @@ exports.getReports = async (req, res) => {
       return res.status(401).json({ message: "Invalid cashier session." });
     }
 
-    const ownerSql = isCashierScope ? "pt.verified_by = ?" : "1=1";
-    const ownerParams = isCashierScope ? [cashierId] : [];
+    // Cashier ownership is primarily determined by payment_transactions.verified_by.
+    // For legacy POS transactions where verified_by was not populated, safely fall
+    // back to the receipt owner only when the receipt is explicitly linked to the
+    // same payment transaction.
+    //
+    // IMPORTANT:
+    // - A payment verified by another cashier is NOT included.
+    // - Only NULL verified_by values may use the legacy receipt fallback.
+    // - Admin reports remain unrestricted.
+    const ownerSql = isCashierScope
+      ? `(pt.verified_by = ?
+      OR (
+        pt.verified_by IS NULL
+        AND EXISTS (
+          SELECT 1
+          FROM receipts r_owner
+          WHERE r_owner.payment_transaction_id = pt.id
+            AND r_owner.issued_by = ?
+        )
+      ))`
+      : "1=1";
+
+    const ownerParams = isCashierScope ? [cashierId, cashierId] : [];
 
     // Preserve the current cancellation semantics for R3B1. A separate
     // accounting/refund decision is required before cancelled collections
@@ -271,7 +295,16 @@ exports.getReports = async (req, res) => {
       scopedPaymentDateExpression,
     );
     const scopedOwnerSql = isCashierScope
-      ? "pt_scope.verified_by = ?"
+      ? `(pt_scope.verified_by = ?
+      OR (
+        pt_scope.verified_by IS NULL
+        AND EXISTS (
+          SELECT 1
+          FROM receipts r_scope_owner
+          WHERE r_scope_owner.payment_transaction_id = pt_scope.id
+            AND r_scope_owner.issued_by = ?
+        )
+      ))`
       : "1=1";
 
     const orderWhereSql = [
@@ -292,7 +325,7 @@ exports.getReports = async (req, res) => {
       ...source.params,
       ...scopedPayment.params,
       ...scopedPaymentDate.params,
-      ...(isCashierScope ? [cashierId] : []),
+      ...(isCashierScope ? [cashierId, cashierId] : []),
     ];
 
     const [[orderTotals]] = await db.query(
@@ -329,14 +362,35 @@ exports.getReports = async (req, res) => {
     );
     const [summaryRows] = await db.query(
       `SELECT
-         ${periodExpression} AS period_label,
-         COUNT(*) AS transaction_count,
-         COALESCE(SUM(pt.amount), 0) AS total_sales
-       FROM payment_transactions pt
-       INNER JOIN orders o ON o.id = pt.order_id
-       WHERE ${paymentWhereSql}
-       GROUP BY ${periodExpression}
-       ORDER BY period_label ASC`,
+     ${periodExpression} AS period_label,
+     COUNT(*) AS transaction_count,
+     COALESCE(SUM(pt.amount), 0) AS total_sales,
+
+     COALESCE(
+       SUM(
+         CASE
+           WHEN o.type = 'online' THEN pt.amount
+           ELSE 0
+         END
+       ),
+       0
+     ) AS online_sales,
+
+     COALESCE(
+       SUM(
+         CASE
+           WHEN o.type <> 'online' OR o.type IS NULL THEN pt.amount
+           ELSE 0
+         END
+       ),
+       0
+     ) AS walkin_sales
+
+   FROM payment_transactions pt
+   INNER JOIN orders o ON o.id = pt.order_id
+   WHERE ${paymentWhereSql}
+   GROUP BY ${periodExpression}
+   ORDER BY period_label ASC`,
       paymentParams,
     );
 
@@ -413,10 +467,11 @@ exports.getReports = async (req, res) => {
          COALESCE(customer.name, o.walkin_customer_name, 'Walk-in Customer') AS customer_name,
          COALESCE(customer.phone, o.walkin_customer_phone, 'No phone') AS customer_phone,
          CASE
-           WHEN pt.payment_method = 'paymongo' THEN 'PayMongo / Online Payment'
-           WHEN verifier.name IS NOT NULL THEN verifier.name
-           ELSE 'System'
-         END AS processed_by,
+  WHEN pt.payment_method = 'paymongo' THEN 'PayMongo / Online Payment'
+  WHEN verifier.name IS NOT NULL THEN verifier.name
+  WHEN receiptIssuer.name IS NOT NULL THEN receiptIssuer.name
+  ELSE 'System'
+END AS processed_by,
          receipt.id AS receipt_id,
          receipt.receipt_number,
          receipt.payment_label,
@@ -425,8 +480,9 @@ exports.getReports = async (req, res) => {
        FROM payment_transactions pt
        INNER JOIN orders o ON o.id = pt.order_id
        LEFT JOIN users customer ON customer.id = o.customer_id
-       LEFT JOIN users verifier ON verifier.id = pt.verified_by
-       LEFT JOIN receipts receipt ON receipt.payment_transaction_id = pt.id
+LEFT JOIN users verifier ON verifier.id = pt.verified_by
+LEFT JOIN receipts receipt ON receipt.payment_transaction_id = pt.id
+LEFT JOIN users receiptIssuer ON receiptIssuer.id = receipt.issued_by
        WHERE ${paymentWhereSql}
        ORDER BY COALESCE(pt.verified_at, pt.created_at) DESC, pt.id DESC
        LIMIT ? OFFSET ?`,
@@ -480,9 +536,7 @@ exports.getReports = async (req, res) => {
     }
     res.status(statusCode).json({
       message:
-        statusCode === 400
-          ? err.message
-          : "Server error generating reports",
+        statusCode === 400 ? err.message : "Server error generating reports",
     });
   }
 };

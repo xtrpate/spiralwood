@@ -732,3 +732,294 @@
     text-align: center;
   }
 }
+
+/* =========================================================
+   CASHIER SALES REPORT — MAIN SCREEN UI
+   Cashier CSS only. No Admin Sales Report dependencies.
+   ========================================================= */
+
+.cashier-sales-report-page {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+.cashier-sales-report-page *,
+.cashier-sales-report-page *::before,
+.cashier-sales-report-page *::after {
+  box-sizing: border-box;
+}
+
+/* Header */
+
+.cashier-sales-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  min-width: 0;
+}
+
+.cashier-sales-header > div {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cashier-sales-title {
+  margin: 0;
+  color: #0a0a0a;
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.cashier-sales-subtitle {
+  margin: 6px 0 0;
+  color: #6f6f75;
+  font-size: 12.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.cashier-sales-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* Print button */
+
+.cashier-sales-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 9px 13px;
+  border: 1px solid #bfc1c5;
+  border-radius: 0;
+  background: #fff;
+  color: #18181b;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.cashier-sales-action:hover:not(:disabled) {
+  background: #f4f4f5;
+}
+
+.cashier-sales-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+/* Report metadata */
+
+.cashier-sales-summary-meta {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-bottom: 12px;
+  padding: 9px 11px;
+  border: 1px solid #e2e2e5;
+  background: #fafafa;
+  color: #626269;
+  font-size: 10.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.cashier-sales-summary-meta span {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.cashier-sales-summary-meta strong {
+  color: #3f3f46;
+  font-weight: 800;
+}
+
+/* Filter toolbar */
+
+.cashier-sales-filter-card {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-bottom: 12px;
+}
+
+.cashier-sales-filter-grid {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.cashier-sales-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 180px;
+  min-width: 145px;
+  max-width: 240px;
+  box-sizing: border-box;
+}
+
+.cashier-sales-filter-label {
+  color: #55565b;
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.cashier-sales-input {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 38px;
+  padding: 9px 10px;
+  border: 1px solid #cfd0d4;
+  border-radius: 0;
+  background: #fff;
+  color: #18181b;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.cashier-sales-input:focus,
+.cashier-sales-input:focus-visible {
+  outline: none;
+  border-color: #cfd0d4;
+  box-shadow: none;
+}
+
+/* Applied report */
+
+.cashier-sales-report-meta {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Section headers */
+
+.cashier-sales-section-header {
+  min-width: 0;
+  padding: 14px 16px;
+  border-bottom: 1px solid #dcdde0;
+  background: #fafafa;
+}
+
+.cashier-sales-section-title {
+  margin: 0;
+  color: #18181b;
+  font-size: 14.5px;
+  font-weight: 900;
+  line-height: 1.3;
+}
+
+.cashier-sales-section-subtitle {
+  margin: 4px 0 0;
+  color: #77787e;
+  font-size: 10.5px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+/* Prevent long report content from creating page-level X overflow */
+
+.cashier-sales-report-page .cashier-sales-card,
+.cashier-sales-report-page .cashier-sales-chart-grid,
+.cashier-sales-report-page .cashier-sales-metric-grid,
+.cashier-sales-report-page .cashier-sales-filter-grid {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cashier-sales-report-page .cashier-sales-card {
+  overflow: hidden;
+}
+
+.cashier-sales-report-page table {
+  max-width: 100%;
+}
+
+/* =========================================================
+   CASHIER SALES REPORT — PREVENT PAGE-LEVEL HORIZONTAL OVERFLOW
+   ========================================================= */
+
+.cashier-sales-report-page {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: clip;
+}
+
+.cashier-sales-report-page .cashier-sales-chart-grid,
+.cashier-sales-report-page .cashier-sales-metric-grid,
+.cashier-sales-report-page .cashier-sales-filter-grid {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.cashier-sales-report-page .cashier-sales-chart-grid {
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.85fr) !important;
+}
+
+.cashier-sales-report-page .cashier-sales-card,
+.cashier-sales-report-page .cashier-sales-chart-body,
+.cashier-sales-report-page .cashier-sales-method-panel {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cashier-sales-report-page .cashier-sales-chart-body {
+  overflow: hidden;
+}
+
+.cashier-sales-report-page .recharts-responsive-container {
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+@media screen and (max-width: 1100px) {
+  .cashier-sales-report-page .cashier-sales-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media screen and (max-width: 899px) {
+  .cashier-sales-report-page .cashier-sales-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .cashier-sales-report-page .cashier-sales-chart-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+@media screen and (max-width: 359px) {
+  .cashier-sales-report-page .cashier-sales-metric-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}

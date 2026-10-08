@@ -1,18 +1,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import api from "../../services/api";
+import { Line } from "react-chartjs-2";
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Tooltip as ChartTooltip,
+  Legend,
+} from "chart.js";
 import { Printer } from "lucide-react";
 import "./SalesReports.css";
 
 const PAGE_SIZE = 20;
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  ChartTooltip,
+  Legend,
+);
+
 const INITIAL_FILTERS = {
   source: "all",
   payment: "all",
@@ -20,6 +31,14 @@ const INITIAL_FILTERS = {
   from: "",
   to: "",
 };
+
+const REPORT_PERIODS = [
+  { value: "daily", label: "Today" },
+  { value: "weekly", label: "This Week" },
+  { value: "monthly", label: "This Month" },
+  { value: "yearly", label: "This Year" },
+  { value: "custom", label: "Custom Range" },
+];
 
 const money = (value) =>
   `₱${Number(value || 0).toLocaleString("en-PH", {
@@ -113,27 +132,12 @@ const formatPeriodLabel = (value, period) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
 
-  if (period === "yearly") {
-    return date.toLocaleDateString("en-PH", {
-      timeZone: "Asia/Manila",
-      year: "numeric",
-    });
-  }
-
   if (period === "monthly") {
     return date.toLocaleDateString("en-PH", {
       timeZone: "Asia/Manila",
       year: "numeric",
       month: "short",
     });
-  }
-
-  if (period === "weekly") {
-    return `Week of ${date.toLocaleDateString("en-PH", {
-      timeZone: "Asia/Manila",
-      month: "short",
-      day: "numeric",
-    })}`;
   }
 
   return date.toLocaleDateString("en-PH", {
@@ -143,11 +147,127 @@ const formatPeriodLabel = (value, period) => {
   });
 };
 
+const getPhilippineTodayKey = () =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+
+const shiftPhilippineDateKey = (dateKey, days) => {
+  const [year, month, day] = String(dateKey).split("-").map(Number);
+
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day)
+  ) {
+    return dateKey;
+  }
+
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + days);
+
+  return date.toISOString().slice(0, 10);
+};
+
+const getNextMonthDateKey = (dateKey) => {
+  const [year, month] = String(dateKey).split("-").map(Number);
+
+  if (!Number.isInteger(year) || !Number.isInteger(month)) {
+    return dateKey;
+  }
+
+  const nextMonth = new Date(Date.UTC(year, month, 1));
+
+  return nextMonth.toISOString().slice(0, 10);
+};
+
+const getNextYearDateKey = (dateKey) => {
+  const year = Number(String(dateKey).slice(0, 4));
+
+  if (!Number.isInteger(year)) return dateKey;
+
+  return `${year + 1}-01-01`;
+};
+
+const getChartRequest = (filters = {}) => {
+  const period = String(filters.period || "daily").toLowerCase();
+
+  /*
+   * The report period determines the date range.
+   * The chart uses a finer grouping:
+   *
+   * Daily       -> daily
+   * Weekly      -> daily
+   * Monthly     -> daily
+   * Yearly      -> monthly
+   * Custom      -> daily
+   */
+  const chartPeriod = period === "yearly" ? "monthly" : "daily";
+
+  if (filters.from || filters.to) {
+    return {
+      period: chartPeriod,
+      from: filters.from || undefined,
+      to: filters.to || undefined,
+    };
+  }
+
+  const today = getPhilippineTodayKey();
+
+  if (period === "weekly") {
+    const todayDate = new Date(`${today}T00:00:00+08:00`);
+    const dayOfWeek = todayDate.getUTCDay();
+
+    // Backend weekly reports start on Monday.
+    const mondayOffset = (dayOfWeek + 6) % 7;
+    const weekStart = shiftPhilippineDateKey(today, -mondayOffset);
+
+    return {
+      period: "daily",
+      from: weekStart,
+      to: shiftPhilippineDateKey(weekStart, 7),
+    };
+  }
+
+  if (period === "monthly") {
+    const monthStart = `${today.slice(0, 7)}-01`;
+
+    return {
+      period: "daily",
+      from: monthStart,
+      to: getNextMonthDateKey(monthStart),
+    };
+  }
+
+  if (period === "yearly") {
+    const yearStart = `${today.slice(0, 4)}-01-01`;
+
+    return {
+      period: "monthly",
+      from: yearStart,
+      to: getNextYearDateKey(yearStart),
+    };
+  }
+
+  return {
+    period: "daily",
+    from: today,
+    to: shiftPhilippineDateKey(today, 1),
+  };
+};
+
 function MetricCard({ label, value, note }) {
   return (
     <div className="cashier-sales-metric-card" style={metricCard}>
-      <div className="cashier-sales-metric-label" style={metricLabel}>{label}</div>
-      <div className="cashier-sales-metric-value" style={metricValue}>{value}</div>
+      <div className="cashier-sales-metric-label" style={metricLabel}>
+        {label}
+      </div>
+      <div className="cashier-sales-metric-value" style={metricValue}>
+        {value}
+      </div>
       {note ? (
         <div className="cashier-sales-metric-note" style={metricNote}>
           {note}
@@ -159,12 +279,12 @@ function MetricCard({ label, value, note }) {
 
 export default function SalesReports() {
   const [data, setData] = useState(null);
+  const [chartSummary, setChartSummary] = useState([]);
+  const [search, setSearch] = useState("");
   const [draftFilters, setDraftFilters] = useState(() => ({
     ...INITIAL_FILTERS,
   }));
-  const [appliedFilters, setAppliedFilters] = useState(() => ({
-    ...INITIAL_FILTERS,
-  }));
+  const [appliedFilters, setAppliedFilters] = useState(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -178,7 +298,8 @@ export default function SalesReports() {
     const params = {
       source: filtersToApply.source,
       payment: filtersToApply.payment,
-      period: filtersToApply.period,
+      period:
+        filtersToApply.period === "custom" ? "daily" : filtersToApply.period,
       page: pageToLoad,
       limit: PAGE_SIZE,
     };
@@ -187,7 +308,28 @@ export default function SalesReports() {
     if (filtersToApply.to) params.to = filtersToApply.to;
 
     try {
-      const response = await api.get("/pos/reports", { params });
+      const chartRequest = getChartRequest(filtersToApply);
+
+      const chartParams = {
+        source: filtersToApply.source,
+        payment: filtersToApply.payment,
+        period: chartRequest.period,
+        page: 1,
+        limit: 200,
+      };
+
+      if (chartRequest.from) {
+        chartParams.from = chartRequest.from;
+      }
+
+      if (chartRequest.to) {
+        chartParams.to = chartRequest.to;
+      }
+
+      const [response, chartResponse] = await Promise.all([
+        api.get("/pos/reports", { params }),
+        api.get("/pos/reports", { params: chartParams }),
+      ]);
 
       if (requestId !== requestSequenceRef.current) return;
 
@@ -202,6 +344,7 @@ export default function SalesReports() {
       }
 
       setData(response.data);
+      setChartSummary(chartResponse.data?.transactions || []);
     } catch (err) {
       if (requestId !== requestSequenceRef.current) return;
 
@@ -216,6 +359,8 @@ export default function SalesReports() {
   }, []);
 
   useEffect(() => {
+    if (!appliedFilters) return;
+
     loadReport(appliedFilters, page);
 
     return () => {
@@ -224,27 +369,41 @@ export default function SalesReports() {
   }, [appliedFilters, page, loadReport]);
 
   const hasInvalidRange = Boolean(
-    draftFilters.from &&
-      draftFilters.to &&
-      draftFilters.from > draftFilters.to,
+    draftFilters.from && draftFilters.to && draftFilters.from > draftFilters.to,
   );
 
-  const handleGenerateReport = () => {
+  useEffect(() => {
     if (hasInvalidRange) {
       setError("Start date cannot be after end date.");
       return;
     }
 
+    if (
+      draftFilters.period === "custom" &&
+      (!draftFilters.from || !draftFilters.to)
+    ) {
+      return;
+    }
+
+    setError("");
     setAppliedFilters({ ...draftFilters });
     setPage(1);
-  };
+  }, [
+    draftFilters.source,
+    draftFilters.payment,
+    draftFilters.period,
+    draftFilters.from,
+    draftFilters.to,
+    hasInvalidRange,
+  ]);
 
   const totals = data?.totals || {};
   const transactions = data?.transactions || [];
   const paymentBreakdown = data?.payment_breakdown || [];
   const products = data?.top_products || [];
   const isCashierReport = data?.report_scope === "cashier";
-  const displayFilters = data?.filters_applied || appliedFilters;
+  const displayFilters =
+    appliedFilters || data?.filters_applied || INITIAL_FILTERS;
   const pagination = data?.pagination || {};
   const currentPage = Math.max(1, Number(pagination.page || page || 1));
   const totalPages = Math.max(1, Number(pagination.total_pages || 1));
@@ -267,62 +426,439 @@ export default function SalesReports() {
     setPage(boundedPage);
   };
 
-  const chartData = useMemo(
-    () =>
-      (data?.summary || []).map((row) => ({
+  const chartGrouping =
+    String(displayFilters.period || "daily").toLowerCase() === "yearly"
+      ? "monthly"
+      : "daily";
+
+  const chartData = useMemo(() => {
+    const buckets = new Map();
+
+    chartSummary.forEach((row) => {
+      const paymentDate = new Date(row.payment_date);
+
+      if (Number.isNaN(paymentDate.getTime())) return;
+
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Manila",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(paymentDate);
+
+      const year = parts.find((part) => part.type === "year")?.value;
+      const month = parts.find((part) => part.type === "month")?.value;
+      const day = parts.find((part) => part.type === "day")?.value;
+
+      if (!year || !month || !day) return;
+
+      const dateKey = `${year}-${month}-${day}`;
+
+      const bucketKey =
+        chartGrouping === "monthly" ? `${year}-${month}-01` : dateKey;
+
+      if (!buckets.has(bucketKey)) {
+        buckets.set(bucketKey, {
+          period_label: bucketKey,
+          online_sales: 0,
+          walkin_sales: 0,
+          total_sales: 0,
+        });
+      }
+
+      const bucket = buckets.get(bucketKey);
+      const amount = Number(row.amount || 0);
+      const orderSource = String(row.type || "").toLowerCase();
+
+      bucket.total_sales += amount;
+
+      if (orderSource === "online") {
+        bucket.online_sales += amount;
+      } else {
+        bucket.walkin_sales += amount;
+      }
+    });
+
+    return Array.from(buckets.values())
+      .sort((a, b) =>
+        String(a.period_label).localeCompare(String(b.period_label)),
+      )
+      .map((row) => ({
         ...row,
-        formatted_period: formatPeriodLabel(
-          row.period_label,
-          displayFilters.period,
+        formatted_period: formatPeriodLabel(row.period_label, chartGrouping),
+      }));
+  }, [chartSummary, chartGrouping]);
+
+  const salesLineData = useMemo(
+    () => ({
+      labels: chartData.map((row) => row.formatted_period),
+      datasets: [
+        {
+          label: "Online Collections",
+          data: chartData.map((row) => row.online_sales),
+          borderColor: "#18181b",
+          backgroundColor: "transparent",
+          fill: false,
+          cubicInterpolationMode: "monotone",
+          tension: 0.24,
+          borderWidth: 2.25,
+          borderCapStyle: "round",
+          borderJoinStyle: "round",
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          pointHitRadius: 12,
+          pointBorderWidth: 2,
+          pointBackgroundColor: "#ffffff",
+          pointBorderColor: "#18181b",
+        },
+        {
+          label: "Walk-in Collections",
+          data: chartData.map((row) => row.walkin_sales),
+          borderColor: "#9ca3af",
+          backgroundColor: "transparent",
+          borderDash: [6, 5],
+          fill: false,
+          cubicInterpolationMode: "monotone",
+          tension: 0.24,
+          borderWidth: 1.75,
+          borderCapStyle: "round",
+          borderJoinStyle: "round",
+          pointRadius: 0,
+          pointHoverRadius: 3.5,
+          pointHitRadius: 12,
+          pointBorderWidth: 2,
+          pointBackgroundColor: "#ffffff",
+          pointBorderColor: "#9ca3af",
+        },
+      ],
+    }),
+    [chartData],
+  );
+
+  const lineOptions = useMemo(
+    () => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      normalized: true,
+
+      animation: {
+        duration: 320,
+        easing: "easeOutQuart",
+      },
+
+      interaction: {
+        mode: "index",
+        intersect: false,
+        axis: "x",
+      },
+
+      layout: {
+        padding: {
+          top: 2,
+          right: 4,
+          bottom: 0,
+          left: 2,
+        },
+      },
+
+      plugins: {
+        legend: {
+          position: "top",
+          align: "start",
+          labels: {
+            usePointStyle: true,
+            pointStyle: "line",
+            boxWidth: 24,
+            boxHeight: 8,
+            color: "#3f3f46",
+            padding: 18,
+            font: {
+              size: 10.5,
+              weight: 500,
+            },
+          },
+        },
+
+        tooltip: {
+          backgroundColor: "#ffffff",
+          titleColor: "#18181b",
+          bodyColor: "#3f3f46",
+          borderColor: "#d4d4d8",
+          borderWidth: 1,
+          cornerRadius: 0,
+          padding: 10,
+          caretPadding: 8,
+          displayColors: true,
+          boxWidth: 8,
+          boxHeight: 8,
+          boxPadding: 5,
+
+          titleFont: {
+            size: 11,
+            weight: 600,
+          },
+
+          bodyFont: {
+            size: 11,
+            weight: 400,
+          },
+
+          callbacks: {
+            labelColor: (context) => ({
+              borderColor: context.dataset.borderColor,
+              backgroundColor: context.dataset.borderColor,
+            }),
+
+            label: (context) =>
+              `${context.dataset.label}: ${money(context.parsed.y || 0)}`,
+          },
+        },
+      },
+
+      scales: {
+        x: {
+          ticks: {
+            color: "#71717a",
+            maxRotation: 0,
+            autoSkip: true,
+            maxTicksLimit: chartGrouping === "monthly" ? 12 : 7,
+            padding: 8,
+            font: {
+              size: 10.5,
+              weight: 400,
+            },
+          },
+
+          grid: {
+            display: false,
+          },
+
+          border: {
+            display: false,
+          },
+        },
+
+        y: {
+          beginAtZero: true,
+          grace: "6%",
+
+          ticks: {
+            color: "#71717a",
+            padding: 8,
+            maxTicksLimit: 6,
+
+            callback: (value) => {
+              const amount = Number(value || 0);
+              const absolute = Math.abs(amount);
+
+              if (absolute >= 1000000) {
+                const compact = amount / 1000000;
+                const digits = Math.abs(compact) >= 10 ? 0 : 1;
+
+                return `₱${compact.toFixed(digits).replace(/\.0$/, "")}M`;
+              }
+
+              if (absolute >= 1000) {
+                return `₱${Math.round(amount / 1000)}k`;
+              }
+
+              return `₱${Number(amount).toLocaleString("en-PH")}`;
+            },
+
+            font: {
+              size: 10.5,
+              weight: 400,
+            },
+          },
+
+          grid: {
+            color: "rgba(24, 24, 27, 0.065)",
+            drawTicks: false,
+            lineWidth: 1,
+          },
+
+          border: {
+            display: false,
+          },
+        },
+      },
+    }),
+    [chartGrouping],
+  );
+
+  const searchQuery = search.trim().toLowerCase();
+
+  const matchesSearch = (...values) => {
+    if (!searchQuery) return true;
+
+    return values.some((value) =>
+      String(value ?? "")
+        .toLowerCase()
+        .includes(searchQuery),
+    );
+  };
+
+  const filteredTransactions = useMemo(
+    () =>
+      transactions.filter((row) =>
+        matchesSearch(
+          formatDateTime(row.payment_date),
+          row.receipt_number,
+          row.order_number,
+          row.order_id,
+          row.customer_name,
+          row.customer_phone,
+          orderTypeLabel(row),
+          paymentMethodLabel(row.payment_method),
+          row.amount,
+          row.order_total,
+          row.total_paid_after,
+          row.lifetime_collected,
+          row.remaining_balance,
+          humanize(row.payment_status),
+          processedByLabel(row.processed_by),
         ),
-      })),
-    [data?.summary, displayFilters.period],
+      ),
+    [transactions, searchQuery],
+  );
+
+  const filteredPaymentBreakdown = useMemo(
+    () =>
+      paymentBreakdown.filter((row) =>
+        matchesSearch(
+          paymentMethodLabel(row.payment_method),
+          row.payment_method,
+          row.count,
+          row.total_amount,
+        ),
+      ),
+    [paymentBreakdown, searchQuery],
+  );
+
+  const filteredProducts = useMemo(
+    () =>
+      products.filter((row) =>
+        matchesSearch(row.product_name, row.qty, row.gross_order_value),
+      ),
+    [products, searchQuery],
   );
 
   const paymentMethodTotal = useMemo(
     () =>
-      paymentBreakdown.reduce(
+      filteredPaymentBreakdown.reduce(
         (sum, row) => sum + Number(row.total_amount || 0),
         0,
       ),
-    [paymentBreakdown],
+    [filteredPaymentBreakdown],
   );
 
   return (
-    <div className="cashier-sales-report-page" style={{ paddingBottom: 40 }}>
-      <div className="cashier-sales-header" style={headerRow}>
+    <div
+      className="cashier-sales-report-page"
+      style={{
+        paddingBottom: 40,
+        width: "100%",
+        maxWidth: "100%",
+        minWidth: 0,
+      }}
+    >
+      <div className="cashier-sales-header">
         <div>
-          <h1 className="cashier-sales-title" style={pageTitle}>
-            {isCashierReport ? "My Sales Report" : "Sales Report"}
-          </h1>
-          <p className="cashier-sales-subtitle" style={pageSubtitle}>
-            {isCashierReport
-              ? "Review only the verified payments and orders processed under your cashier account."
-              : "Review verified payments, balances, and sales activity."}
+          <h1 className="cashier-sales-title">My Sales Report</h1>
+
+          <p className="cashier-sales-subtitle">
+            Review only the verified payments and orders processed under your
+            cashier account.
           </p>
+        </div>
+
+        <div className="cashier-sales-header-actions no-print">
+          <button
+            type="button"
+            className="cashier-sales-action"
+            onClick={() => window.print()}
+            disabled={!data || loading}
+            title={
+              loading
+                ? "Wait for the current report update to finish before printing."
+                : undefined
+            }
+          >
+            <Printer size={14} />
+            Print
+          </button>
         </div>
       </div>
 
-      <div className="cashier-sales-notice" style={noticeBox}>
-        <strong>
-          {isCashierReport
-            ? "Your cashier transactions only."
-            : "Verified payments only."}
-        </strong>{" "}
-        {isCashierReport
-          ? "Only verified payments processed under your account are included. Blueprint down payments and remaining balances stay as separate transactions."
-          : "Blueprint down payments and remaining balances are recorded as separate payment transactions."}
+      <div className="cashier-sales-summary-meta">
+        <span>
+          <strong>Scope:</strong> My Sales Report
+        </span>
+
+        <span>
+          <strong>Cashier:</strong>{" "}
+          {data?.report_owner?.name || "Current Cashier"}
+        </span>
+
+        <span>
+          <strong>Report:</strong> {sourceFilterLabel(displayFilters.source)}
+          {" · "}
+          {paymentFilterLabel(displayFilters.payment)}
+          {" · "}
+          {reportRangeLabel(displayFilters)}
+        </span>
+
+        {data?.generated_at ? (
+          <span>
+            <strong>Generated:</strong> {formatDateTime(data.generated_at)}
+          </span>
+        ) : null}
       </div>
 
-      <div className="cashier-sales-filter-card" style={filterCard}>
-        <div className="cashier-sales-filter-grid" style={filterGrid}>
-          {/* WISDOM CASHIER C3 FORM SEMANTICS R3 */}
+      <div className="cashier-sales-filter-card no-print">
+        <div className="cashier-sales-filter-grid">
+          <label
+            className="cashier-sales-search-field"
+            htmlFor="sales-report-search"
+            style={{
+              ...fieldWrap,
+              flex: "1 1 320px",
+              minWidth: 320,
+            }}
+          >
+            <span
+              style={{
+                ...fieldLabel,
+              }}
+            >
+              Search Records
+            </span>
+
+            <input
+              id="sales-report-search"
+              name="sales_report_search"
+              type="search"
+              className="cashier-sales-input"
+              style={{
+                ...input,
+                width: "100%",
+                boxSizing: "border-box",
+              }}
+              maxLength={100}
+              value={search}
+              placeholder="Search orders, customers, payments..."
+              aria-label="Search sales report records"
+              onChange={(event) => {
+                setSearch(event.target.value.slice(0, 100));
+              }}
+            />
+          </label>
+
           <FilterField label="Order Source" htmlFor="sales-report-source">
             <select
               id="sales-report-source"
               name="sales_report_source"
               className="cashier-sales-input"
-              style={input}
               value={draftFilters.source}
               onChange={(event) =>
                 setDraftFilters((current) => ({
@@ -337,15 +873,11 @@ export default function SalesReports() {
             </select>
           </FilterField>
 
-          <FilterField
-            label="Payment Type"
-            htmlFor="sales-report-payment-type"
-          >
+          <FilterField label="Payment Type" htmlFor="sales-report-payment-type">
             <select
               id="sales-report-payment-type"
               name="sales_report_payment_type"
               className="cashier-sales-input"
-              style={input}
               value={draftFilters.payment}
               onChange={(event) =>
                 setDraftFilters((current) => ({
@@ -360,89 +892,67 @@ export default function SalesReports() {
             </select>
           </FilterField>
 
-          <FilterField label="Period" htmlFor="sales-report-period">
+          <FilterField label="Report Period" htmlFor="sales-report-period">
             <select
               id="sales-report-period"
               name="sales_report_period"
               className="cashier-sales-input"
-              style={input}
               value={draftFilters.period}
               onChange={(event) =>
                 setDraftFilters((current) => ({
                   ...current,
                   period: event.target.value,
+                  ...(event.target.value !== "custom"
+                    ? { from: "", to: "" }
+                    : {}),
                 }))
               }
             >
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-              <option value="yearly">Yearly</option>
+              {REPORT_PERIODS.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
             </select>
           </FilterField>
 
-          <FilterField label="From Date" htmlFor="sales-report-from-date">
-            <input
-              id="sales-report-from-date"
-              name="sales_report_from_date"
-              className="cashier-sales-input"
-              style={input}
-              type="date"
-              value={draftFilters.from}
-              onChange={(event) =>
-                setDraftFilters((current) => ({
-                  ...current,
-                  from: event.target.value,
-                }))
-              }
-            />
-          </FilterField>
+          {draftFilters.period === "custom" ? (
+            <>
+              <FilterField label="From Date" htmlFor="sales-report-from-date">
+                <input
+                  id="sales-report-from-date"
+                  name="sales_report_from_date"
+                  className="cashier-sales-input"
+                  type="date"
+                  value={draftFilters.from}
+                  max={draftFilters.to || undefined}
+                  onChange={(event) =>
+                    setDraftFilters((current) => ({
+                      ...current,
+                      from: event.target.value,
+                    }))
+                  }
+                />
+              </FilterField>
 
-          <FilterField label="To Date" htmlFor="sales-report-to-date">
-            <input
-              id="sales-report-to-date"
-              name="sales_report_to_date"
-              className="cashier-sales-input"
-              style={input}
-              type="date"
-              value={draftFilters.to}
-              onChange={(event) =>
-                setDraftFilters((current) => ({
-                  ...current,
-                  to: event.target.value,
-                }))
-              }
-            />
-          </FilterField>
-
-          <button
-            type="button"
-            className="cashier-sales-action cashier-sales-generate"
-            style={buttonPrimary}
-            onClick={handleGenerateReport}
-            disabled={loading && !data}
-          >
-            {loading && !data ? "Loading..." : "Generate Report"}
-          </button>
-
-          <button
-            type="button"
-            className="cashier-sales-action cashier-sales-print"
-            style={buttonGhost}
-            onClick={() => window.print()}
-            disabled={!data || loading}
-            title={
-              loading
-                ? "Wait for the current report update to finish before printing."
-                : undefined
-            }
-          >
-            <Printer size={15} /> Print Current View
-          </button>
-        </div>
-        <div className="cashier-sales-filter-help" style={filterHelp}>
-          Date fields are optional. With no dates, Period uses the current
-          day/week/month/year. With dates, Period controls chart grouping.
+              <FilterField label="To Date" htmlFor="sales-report-to-date">
+                <input
+                  id="sales-report-to-date"
+                  name="sales_report_to_date"
+                  className="cashier-sales-input"
+                  type="date"
+                  min={draftFilters.from || undefined}
+                  value={draftFilters.to}
+                  onChange={(event) =>
+                    setDraftFilters((current) => ({
+                      ...current,
+                      to: event.target.value,
+                    }))
+                  }
+                />
+              </FilterField>
+            </>
+          ) : null}
         </div>
       </div>
 
@@ -506,53 +1016,43 @@ export default function SalesReports() {
           <div className="cashier-sales-chart-grid" style={chartGrid}>
             <section className="cashier-sales-card" style={card}>
               <SectionHeader
-                title="Payment Activity"
-                subtitle="Verified payments grouped by payment date"
+                title="Collection Trend"
+                subtitle="Verified online and walk-in payments for the selected period."
               />
-              <div className="cashier-sales-chart-body" style={{ padding: 18 }}>
+
+              <div
+                className="cashier-sales-chart-body"
+                style={{
+                  padding: "18px 18px 14px",
+                  minHeight: 300,
+                }}
+              >
                 {chartData.length === 0 ? (
                   <div style={emptyChart}>
-                    No verified payments for this period.
+                    <div
+                      style={{
+                        fontWeight: 700,
+                        color: "#18181b",
+                        marginBottom: 4,
+                      }}
+                    >
+                      No verified collections
+                    </div>
+
+                    <div>
+                      No verified payments were recorded in the selected period.
+                    </div>
                   </div>
                 ) : (
-                  <ResponsiveContainer width="100%" height={260}>
-                    <BarChart
-                      data={chartData}
-                      margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                    >
-                      <CartesianGrid
-                        strokeDasharray="3 3"
-                        stroke="#e4e4e7"
-                        vertical={false}
-                      />
-                      <XAxis
-                        dataKey="formatted_period"
-                        tick={{ fontSize: 11, fill: "#71717a" }}
-                        axisLine={false}
-                        tickLine={false}
-                        minTickGap={18}
-                      />
-                      <YAxis
-                        tick={{ fontSize: 11, fill: "#71717a" }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <Tooltip
-                        formatter={(value) => [
-                          money(value),
-                          "Collected Payments",
-                        ]}
-                        contentStyle={tooltipStyle}
-                        itemStyle={{ color: "#fff" }}
-                      />
-                      <Bar
-                        dataKey="total_sales"
-                        fill="#18181b"
-                        radius={[0, 0, 0, 0]}
-                        barSize={42}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <div
+                    style={{
+                      position: "relative",
+                      width: "100%",
+                      height: 280,
+                    }}
+                  >
+                    <Line data={salesLineData} options={lineOptions} />
+                  </div>
                 )}
               </div>
             </section>
@@ -563,10 +1063,10 @@ export default function SalesReports() {
                 subtitle="Verified payments grouped by payment method"
               />
               <div className="cashier-sales-method-panel" style={methodPanel}>
-                {paymentBreakdown.length === 0 ? (
+                {filteredPaymentBreakdown.length === 0 ? (
                   <div style={methodEmpty}>No verified payment data.</div>
                 ) : (
-                  paymentBreakdown.map((row) => {
+                  filteredPaymentBreakdown.map((row) => {
                     const amount = Number(row.total_amount || 0);
                     const share =
                       paymentMethodTotal > 0
@@ -579,7 +1079,10 @@ export default function SalesReports() {
                         className="cashier-sales-method-block"
                         style={methodBlock}
                       >
-                        <div className="cashier-sales-method-row" style={methodRow}>
+                        <div
+                          className="cashier-sales-method-row"
+                          style={methodRow}
+                        >
                           <div>
                             <strong style={methodName}>
                               {paymentMethodLabel(row.payment_method)}
@@ -589,7 +1092,10 @@ export default function SalesReports() {
                               {Number(row.count || 0) === 1 ? "" : "s"}
                             </div>
                           </div>
-                          <strong className="cashier-sales-method-amount" style={methodAmount}>
+                          <strong
+                            className="cashier-sales-method-amount"
+                            style={methodAmount}
+                          >
                             {money(row.total_amount)}
                           </strong>
                         </div>
@@ -649,7 +1155,11 @@ export default function SalesReports() {
                   {transactions.length === 0 ? (
                     <EmptyRow
                       colSpan={12}
-                      text="No verified payment transactions for this period."
+                      text={
+                        searchQuery
+                          ? "No payment transactions match your search."
+                          : "No verified payment transactions for this period."
+                      }
                     />
                   ) : (
                     transactions.map((row) => (
@@ -705,7 +1215,9 @@ export default function SalesReports() {
                   >
                     <div className="cashier-sales-mobile-transaction-header">
                       <div className="cashier-sales-mobile-transaction-heading">
-                        <strong>{row.order_number || "#" + row.order_id}</strong>
+                        <strong>
+                          {row.order_number || "#" + row.order_id}
+                        </strong>
                         <span>{formatDateTime(row.payment_date)}</span>
                       </div>
                       <div className="cashier-sales-mobile-transaction-summary">
@@ -718,7 +1230,9 @@ export default function SalesReports() {
 
                     <div className="cashier-sales-mobile-customer">
                       <strong>{row.customer_name || "—"}</strong>
-                      {row.customer_phone ? <span>{row.customer_phone}</span> : null}
+                      {row.customer_phone ? (
+                        <span>{row.customer_phone}</span>
+                      ) : null}
                     </div>
 
                     <dl className="cashier-sales-mobile-details">
@@ -740,7 +1254,11 @@ export default function SalesReports() {
                       </div>
                       <div>
                         <dt>Paid After Payment</dt>
-                        <dd>{money(row.total_paid_after ?? row.lifetime_collected)}</dd>
+                        <dd>
+                          {money(
+                            row.total_paid_after ?? row.lifetime_collected,
+                          )}
+                        </dd>
                       </div>
                       <div>
                         <dt>Balance After Payment</dt>
@@ -761,12 +1279,19 @@ export default function SalesReports() {
             </div>
             {totalTransactions > 0 ? (
               <div className="cashier-sales-pagination" style={paginationBar}>
-                <div className="cashier-sales-pagination-text" style={paginationText}>
-                  Showing {pageStart}–{pageEnd} of {totalTransactions} transactions
+                <div
+                  className="cashier-sales-pagination-text"
+                  style={paginationText}
+                >
+                  Showing {pageStart}–{pageEnd} of {totalTransactions}{" "}
+                  transactions
                   {" · Page "}
                   {currentPage} of {totalPages}
                 </div>
-                <div className="cashier-sales-pagination-actions" style={paginationActions}>
+                <div
+                  className="cashier-sales-pagination-actions"
+                  style={paginationActions}
+                >
                   <button
                     type="button"
                     className="cashier-sales-pagination-button"
@@ -808,10 +1333,13 @@ export default function SalesReports() {
                 </thead>
                 <tbody>
                   {products.length === 0 ? (
-                    <EmptyRow
-                      colSpan={3}
-                      text="No product sales data for this period."
-                    />
+                    <tr>
+                      <td colSpan={3} style={emptyCell}>
+                        {searchQuery
+                          ? "No products match your search."
+                          : "No product sales data for this period."}
+                      </td>
+                    </tr>
                   ) : (
                     products.map((row, index) => {
                       const hasOrderValue =
@@ -845,12 +1373,12 @@ export default function SalesReports() {
               className="cashier-sales-mobile-product-list"
               aria-label="Top products by included order value"
             >
-              {products.length === 0 ? (
+              {filteredProducts.length === 0 ? (
                 <div className="cashier-sales-mobile-empty">
                   No product sales data for this period.
                 </div>
               ) : (
-                products.map((row, index) => {
+                filteredProducts.map((row, index) => {
                   const hasOrderValue =
                     Math.abs(Number(row.gross_order_value || 0)) > 0.009;
 
@@ -961,9 +1489,9 @@ export default function SalesReports() {
               </div>
             </div>
             <p className="cashier-sales-print-footnote">
-              Current Remaining Balance is the current unpaid balance of included
-              orders when this report was generated. It is not the historical
-              balance at the end of the selected report period.
+              Current Remaining Balance is the current unpaid balance of
+              included orders when this report was generated. It is not the
+              historical balance at the end of the selected report period.
             </p>
           </section>
 
@@ -984,7 +1512,7 @@ export default function SalesReports() {
                     <td colSpan={4}>No verified payment data.</td>
                   </tr>
                 ) : (
-                  paymentBreakdown.map((row) => {
+                  filteredPaymentBreakdown.map((row) => {
                     const amount = Number(row.total_amount || 0);
                     const share =
                       paymentMethodTotal > 0
@@ -1009,7 +1537,8 @@ export default function SalesReports() {
             <h3>3. Payment Transactions</h3>
             <div className="cashier-sales-print-transaction-scope">
               <strong>
-                Showing {pageStart}-{pageEnd} of {totalTransactions} transactions
+                Showing {pageStart}-{pageEnd} of {totalTransactions}{" "}
+                transactions
                 {" - Page "}
                 {currentPage} of {totalPages}
               </strong>
@@ -1020,13 +1549,13 @@ export default function SalesReports() {
               </span>
             </div>
 
-            {transactions.length === 0 ? (
+            {filteredTransactions.length === 0 ? (
               <div className="cashier-sales-print-empty">
                 No verified payment transactions for this period.
               </div>
             ) : (
               <div className="cashier-sales-print-transaction-list">
-                {transactions.map((row) => (
+                {filteredTransactions.map((row) => (
                   <article
                     key={"print-" + row.payment_transaction_id}
                     className="cashier-sales-print-transaction"
@@ -1042,7 +1571,9 @@ export default function SalesReports() {
                       </div>
                       <div className="cashier-sales-print-field">
                         <span>Order</span>
-                        <strong>{row.order_number || "#" + row.order_id}</strong>
+                        <strong>
+                          {row.order_number || "#" + row.order_id}
+                        </strong>
                       </div>
                       <div className="cashier-sales-print-field">
                         <span>Customer</span>
@@ -1057,7 +1588,9 @@ export default function SalesReports() {
                       </div>
                       <div className="cashier-sales-print-field">
                         <span>Payment Method</span>
-                        <strong>{paymentMethodLabel(row.payment_method)}</strong>
+                        <strong>
+                          {paymentMethodLabel(row.payment_method)}
+                        </strong>
                       </div>
                       <div className="cashier-sales-print-field">
                         <span>Processed By</span>
@@ -1077,7 +1610,9 @@ export default function SalesReports() {
                       <div className="cashier-sales-print-field">
                         <span>Paid After Payment</span>
                         <strong>
-                          {money(row.total_paid_after ?? row.lifetime_collected)}
+                          {money(
+                            row.total_paid_after ?? row.lifetime_collected,
+                          )}
                         </strong>
                       </div>
                       <div className="cashier-sales-print-field">
@@ -1098,9 +1633,9 @@ export default function SalesReports() {
           <section className="cashier-sales-print-section cashier-sales-print-products-section">
             <h3>4. Top Products by Included Order Value</h3>
             <p className="cashier-sales-print-section-note">
-              Top 20 item values from orders tied to the selected verified-payment
-              scope. Custom furniture may be priced as one complete project
-              instead of per item.
+              Top 20 item values from orders tied to the selected
+              verified-payment scope. Custom furniture may be priced as one
+              complete project instead of per item.
             </p>
             <table className="cashier-sales-print-table cashier-sales-print-products-table">
               <thead>
@@ -1121,7 +1656,9 @@ export default function SalesReports() {
                       Math.abs(Number(row.gross_order_value || 0)) > 0.009;
 
                     return (
-                      <tr key={"print-product-" + row.product_name + "-" + index}>
+                      <tr
+                        key={"print-product-" + row.product_name + "-" + index}
+                      >
                         <td>{row.product_name || "—"}</td>
                         <td>{Number(row.qty || 0).toLocaleString("en-PH")}</td>
                         <td>
@@ -1143,21 +1680,14 @@ export default function SalesReports() {
           </footer>
         </div>
       ) : null}
-
     </div>
   );
 }
 
 function FilterField({ label, htmlFor, children }) {
   return (
-    <label
-      className="cashier-sales-filter-field"
-      htmlFor={htmlFor}
-      style={fieldWrap}
-    >
-      <span className="cashier-sales-filter-label" style={fieldLabel}>
-        {label}
-      </span>
+    <label className="cashier-sales-filter-field" htmlFor={htmlFor}>
+      <span className="cashier-sales-filter-label">{label}</span>
       {children}
     </label>
   );
@@ -1165,15 +1695,13 @@ function FilterField({ label, htmlFor, children }) {
 
 function SectionHeader({ title, subtitle }) {
   return (
-    <div className="cashier-sales-section-header" style={sectionHeader}>
-      <h3 className="cashier-sales-section-title" style={sectionTitle}>
-        {title}
-      </h3>
-      {subtitle ? (
-        <p className="cashier-sales-section-subtitle" style={sectionSubtitle}>
-          {subtitle}
-        </p>
-      ) : null}
+    <div className="cashier-sales-section-header">
+      <div>
+        <h2 className="cashier-sales-section-title">{title}</h2>
+        {subtitle ? (
+          <p className="cashier-sales-section-subtitle">{subtitle}</p>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -1323,9 +1851,12 @@ const updatingBox = {
 };
 const metricGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
   gap: 10,
   marginBottom: 16,
+  width: "100%",
+  maxWidth: "100%",
+  minWidth: 0,
 };
 const metricCard = {
   background: "#fff",
@@ -1356,9 +1887,12 @@ const metricNote = {
 };
 const chartGrid = {
   display: "grid",
-  gridTemplateColumns: "minmax(420px, 1.35fr) minmax(320px, .85fr)",
+  gridTemplateColumns: "minmax(0, 1.35fr) minmax(0, .85fr)",
   gap: 14,
   marginBottom: 14,
+  width: "100%",
+  maxWidth: "100%",
+  minWidth: 0,
 };
 const card = {
   background: "#fff",
