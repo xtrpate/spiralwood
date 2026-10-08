@@ -92,6 +92,26 @@ const formatPeso = (value) =>
     maximumFractionDigits: 2,
   })}`;
 
+const toLocalPhilippinePhone = (value) => {
+  const digits = String(value || "")
+    .trim()
+    .replace(/\D/g, "");
+
+  // Stored canonical format: 639XXXXXXXXX
+  // Customer-facing format: 09XXXXXXXXX
+  if (/^639\d{9}$/.test(digits)) {
+    return `0${digits.slice(2)}`;
+  }
+
+  // Also support a bare 9XXXXXXXXX value.
+  if (/^9\d{9}$/.test(digits)) {
+    return `0${digits}`;
+  }
+
+  // Already local or otherwise leave the user's value unchanged.
+  return digits;
+};
+
 const toValidDeliveryPin = (lat, lng) => {
   const latMissing =
     lat === undefined || lat === null || String(lat).trim() === "";
@@ -175,7 +195,7 @@ export default function CheckoutPage() {
 
   const [form, setForm] = useState({
     name: user?.name || "",
-    phone: user?.phone || "",
+    phone: toLocalPhilippinePhone(user?.phone || ""),
     delivery_address: user?.address || "",
     payment_method: "",
     notes: "",
@@ -205,7 +225,9 @@ export default function CheckoutPage() {
     setForm((prev) => ({
       ...prev,
       name: user?.name || prev.name || "",
-      phone: user?.phone || prev.phone || "",
+      phone: user?.phone
+        ? toLocalPhilippinePhone(user.phone)
+        : prev.phone || "",
       delivery_address: userToggledRef.current
         ? prev.delivery_address
         : user?.address || prev.delivery_address || "",
