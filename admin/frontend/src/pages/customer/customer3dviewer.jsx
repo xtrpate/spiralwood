@@ -5084,6 +5084,40 @@ export default function Customer3DViewer({
               className="wisdom-roomle-sidebar-scroll"
               style={styles.sidebarScroll}
             >
+              {isCustomizable && !readOnly && editGroups.some((group) => group.kind === "drawer") ? (
+                <section style={styles.sidebarSection}>
+                  <label htmlFor="customer-drawer-selector" style={styles.label}>
+                    Select Individual Drawer
+                  </label>
+                  <select
+                    id="customer-drawer-selector"
+                    aria-label="Select individual drawer"
+                    style={styles.partGroupSelect}
+                    value={selectedEditGroup?.kind === "drawer" ? selectedEditGroup.key : ""}
+                    onChange={(event) => {
+                      const group = editGroups.find(
+                        (entry) => entry.kind === "drawer" && entry.key === event.target.value,
+                      );
+                      setSelectedCompIds(group?.ids || []);
+                      if (group?.ids?.length) {
+                        setSelectionMode(true);
+                        showCustomizeFeedback(`${group.label} selected.`);
+                      }
+                    }}
+                  >
+                    <option value="">Choose a drawer</option>
+                    {editGroups.filter((group) => group.kind === "drawer").map((group) => (
+                      <option key={group.key} value={group.key}>
+                        {group.label} ({group.ids.length} parts)
+                      </option>
+                    ))}
+                  </select>
+                  <div style={styles.helperTextMuted}>
+                    Select Drawer 1, Drawer 2, or the small drawer separately.
+                  </div>
+                </section>
+              ) : null}
+
               {partListVisible ? (
                 <>
                   <section className="wisdom-config-section wisdom-config-whole">
