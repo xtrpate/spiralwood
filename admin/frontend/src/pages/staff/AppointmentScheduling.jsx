@@ -753,6 +753,10 @@ export default function AppointmentScheduling() {
   const [rescheduleTime, setRescheduleTime] = useState("");
   const [rescheduleStaffId, setRescheduleStaffId] = useState("");
 
+  const [rejectionModal, setRejectionModal] = useState(null);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [rejectionLoading, setRejectionLoading] = useState(false);
+
   const openReschedule = (appointment, mode = "manage") => {
     setRescheduleMode(mode);
     setRescheduleModal(appointment);
@@ -776,6 +780,13 @@ export default function AppointmentScheduling() {
       setRescheduleDate("");
       setRescheduleTime("");
     }
+  };
+
+  const openRejectionModal = (appointment) => {
+    setRejectionModal(appointment);
+    setRejectionReason("");
+    setError("");
+    setSuccess("");
   };
 
   // for calendar schedule
@@ -2694,22 +2705,10 @@ export default function AppointmentScheduling() {
                         borderColor: "#fecaca",
                       }}
                       disabled={actionLoadingId === rescheduleModal.id}
-                      onClick={async () => {
-                        const rejected = await handleAction(
-                          rescheduleModal.id,
-                          { status: "rejected" },
-                          "Appointment request rejected.",
-                        );
-
-                        if (rejected) {
-                          setRescheduleModal(null);
-                        }
-                      }}
+                      onClick={() => openRejectionModal(rescheduleModal)}
                     >
                       <Ban size={14} />
-                      {actionLoadingId === rescheduleModal.id
-                        ? "Rejecting..."
-                        : "Reject"}
+                      Reject
                     </button>
                   ) : null}
 
@@ -2737,6 +2736,184 @@ export default function AppointmentScheduling() {
                 </div>
               </form>
             </SectionCard>
+          </div>
+        </div>
+      )}
+
+      {rejectionModal && (
+        <div
+          style={adminModalOverlayStyle}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !rejectionLoading) {
+              setRejectionModal(null);
+              setRejectionReason("");
+            }
+          }}
+        >
+          <div
+            style={{
+              ...adminModalShellStyle,
+              maxWidth: 500,
+            }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reject-appointment-title"
+          >
+            <button
+              type="button"
+              style={adminModalCloseStyle}
+              onClick={() => {
+                if (rejectionLoading) return;
+
+                setRejectionModal(null);
+                setRejectionReason("");
+              }}
+              disabled={rejectionLoading}
+              aria-label="Close rejection dialog"
+            >
+              &times;
+            </button>
+
+            <div style={{ padding: "24px" }}>
+              <h2
+                id="reject-appointment-title"
+                style={{
+                  margin: 0,
+                  paddingRight: 40,
+                  color: "#18181b",
+                  fontSize: 18,
+                  fontWeight: 700,
+                  lineHeight: 1.3,
+                }}
+              >
+                Reject Appointment
+              </h2>
+
+              <p
+                style={{
+                  margin: "7px 0 20px",
+                  color: "#71717a",
+                  fontSize: 12,
+                  lineHeight: 1.5,
+                }}
+              >
+                Please provide a reason for rejecting{" "}
+                <strong style={{ color: "#18181b" }}>
+                  {formatRequestNumber(rejectionModal.id)}
+                </strong>
+                .
+              </p>
+
+              <label htmlFor="appointment-rejection-reason" style={labelStyle}>
+                Rejection Message <span style={{ color: "#ef4444" }}>*</span>
+              </label>
+
+              <textarea
+                id="appointment-rejection-reason"
+                name="rejection_reason"
+                value={rejectionReason}
+                onChange={(event) => {
+                  if (event.target.value.length <= 1000) {
+                    setRejectionReason(event.target.value);
+                  }
+                }}
+                placeholder="Enter the reason for rejecting this appointment..."
+                maxLength={1000}
+                autoFocus
+                disabled={rejectionLoading}
+                style={{
+                  ...inputStyle,
+                  minHeight: 120,
+                  resize: "vertical",
+                  fontFamily: "inherit",
+                  lineHeight: 1.45,
+                }}
+              />
+
+              <div
+                style={{
+                  marginTop: 5,
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  color: "#71717a",
+                  fontSize: 10.5,
+                }}
+              >
+                {rejectionReason.length} / 1000
+              </div>
+
+              <div
+                style={{
+                  marginTop: 24,
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  alignItems: "center",
+                  gap: 10,
+                }}
+              >
+                <button
+                  type="button"
+                  style={btnGhost}
+                  disabled={rejectionLoading}
+                  onClick={() => {
+                    setRejectionModal(null);
+                    setRejectionReason("");
+                  }}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  style={{
+                    ...btnDanger,
+                    opacity:
+                      rejectionLoading || !rejectionReason.trim() ? 0.55 : 1,
+                    cursor:
+                      rejectionLoading || !rejectionReason.trim()
+                        ? "not-allowed"
+                        : "pointer",
+                  }}
+                  disabled={rejectionLoading || !rejectionReason.trim()}
+                  onClick={async () => {
+                    const reason = rejectionReason.trim();
+
+                    if (!reason) {
+                      setError(
+                        "Please provide a rejection reason before rejecting the appointment.",
+                      );
+                      return;
+                    }
+
+                    setRejectionLoading(true);
+                    setError("");
+                    setSuccess("");
+
+                    try {
+                      const rejected = await handleAction(
+                        rejectionModal.id,
+                        {
+                          status: "rejected",
+                          rejection_reason: reason,
+                        },
+                        "Appointment request rejected.",
+                      );
+
+                      if (rejected) {
+                        setRejectionModal(null);
+                        setRejectionReason("");
+                        setRescheduleModal(null);
+                      }
+                    } finally {
+                      setRejectionLoading(false);
+                    }
+                  }}
+                >
+                  <Ban size={14} />
+                  {rejectionLoading ? "Rejecting..." : "Reject Appointment"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
