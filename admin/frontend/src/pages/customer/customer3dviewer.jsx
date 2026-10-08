@@ -1022,19 +1022,29 @@ const getCustomerBayKey = (component = {}) => {
 };
 
 const isCustomerShelfStructure = (component = {}) => {
-  const role = String(component?.partRole ?? component?.part_role ?? "")
-    .trim()
-    .toLowerCase();
-  const type = String(component?.type || "")
-    .trim()
-    .toLowerCase();
+  // Templates may store the same semantic role in different metadata fields.
+  // Never treat an explicitly identified shelf as an unrestricted raw part.
+  const roles = [
+    component?.partRole,
+    component?.part_role,
+    component?.assemblyRole,
+    component?.assembly_role,
+    component?.shelfType,
+    component?.shelf_type,
+    component?.type,
+  ]
+    .map((value) => String(value ?? "").trim().toLowerCase())
+    .filter(Boolean);
 
-  return (
-    role === "shelf" ||
-    role.endsWith("_shelf") ||
-    type === "wr_shelf" ||
-    type === "wr_top_shelf" ||
-    type.endsWith("_shelf")
+  return roles.some(
+    (role) =>
+      role === "shelf" ||
+      role === "adjustable" ||
+      role === "fixed_shelf" ||
+      role.startsWith("shelf_") ||
+      role.endsWith("_shelf") ||
+      role === "wr_shelf" ||
+      role === "wr_top_shelf",
   );
 };
 
