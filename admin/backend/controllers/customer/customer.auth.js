@@ -12,6 +12,10 @@ const {
 const { verifyRecaptcha } = require("../../utils/verifyRecaptcha");
 const { sendSms } = require("../../services/semaphore.service");
 const {
+  buildOtpEmailHtml,
+  sendBrevoEmail,
+} = require("../../utils/emailHelper");
+const {
   normalizePhilippinePhone,
   getPhoneLookupVariants,
   phoneDigitsSql,
@@ -226,109 +230,42 @@ const buildResetFooterHtml = (footerText) => {
 };
 
 /* ── Brevo API Setup for Registration OTP ── */
+/* ── Brevo API Setup for Registration / Verification OTP ── */
 const sendOtpEmail = async (email, otp, name) => {
   try {
-    const footerText = await getGlobalEmailFooter();
-    const dynamicFooterHtml = buildFooterHtml(footerText);
+    const htmlContent = await buildOtpEmailHtml({
+      conn: db,
+      name,
+      otp,
 
-    const payload = {
-      sender: { name: "Spiral Wood Services", email: process.env.MAIL_USER },
-      to: [{ email: email, name: name }],
-      subject: "Your Spiral Wood Verification Code",
-      htmlContent: `
-        <!DOCTYPE html>
-        <html>
-          <body style="margin:0;padding:0;background:#f4f6f9;font-family:'Segoe UI',sans-serif;">
-            <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 0;">
-              <tr>
-                <td align="center">
-                  <table width="480" cellpadding="0" cellspacing="0"
-                    style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
-                    <tr>
-                      <td style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px;text-align:center;">
-                        <img
-  src="https://raw.githubusercontent.com/xtrpate/spiralwood/1dc5784752c1cf140a2241dd5dc1d1dd79d551cd/admin/frontend/src/assets/logo1.png"
-  alt="Spiral Wood Services"
-  width="56"
-  height="56"
-  style="width:56px;height:56px;object-fit:contain;display:inline-block;"
-/>
-                        <h1 style="color:#ffffff;font-size:20px;font-weight:800;margin:12px 0 4px;
-                                   letter-spacing:2px;">SPIRAL WOOD SERVICES</h1>
-                        <p style="color:rgba(255,255,255,0.5);font-size:13px;margin:0;">
-                          Email Verification
-                        </p>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td style="padding:36px 40px;">
-                        <p style="font-size:16px;color:#1a1a2e;margin:0 0 8px;">
-                          Hi <strong>${name}</strong>,
-                        </p>
-                        <p style="font-size:14px;color:#666;line-height:1.7;margin:0 0 28px;">
-                          Thank you for registering with Spiral Wood Services.
-                          Use the verification code below to verify your email address.
-                        </p>
-                        <div style="background:#fff3e0;border:2px dashed #D2691E;border-radius:12px;
-                                    padding:24px;text-align:center;margin-bottom:28px;">
-                          <p style="font-size:12px;color:#8B4513;font-weight:700;
-                                    letter-spacing:2px;margin:0 0 10px;text-transform:uppercase;">
-                            Your Verification Code
-                          </p>
-                          <div style="font-size:42px;font-weight:900;color:#8B4513;
-                                      letter-spacing:12px;font-family:'Courier New',monospace;">
-                            ${otp}
-                          </div>
-                          <p style="font-size:12px;color:#aaa;margin:10px 0 0;">
-                            Expires in <strong>${OTP_EXPIRY_MINUTES} minutes</strong>
-                          </p>
-                        </div>
-                        <p style="font-size:13px;color:#888;line-height:1.7;margin:0;">
-                          Enter this code on the verification page to finish creating your account.
-                          If you did not create an account, please ignore this email.
-                        </p>
-                      </td>
-                    </tr>
+      purpose: "Email Verification",
 
-                    ${dynamicFooterHtml}
+      codeLabel: "Verification Code",
 
-                    <tr>
-                      <td style="background:#f7f8fa;padding:20px 40px;text-align:center;
-                                 border-top:1px solid #eee;">
-                        <p style="font-size:12px;color:#aaa;margin:0;line-height:1.6;">
-                          © ${new Date().getFullYear()} Spiral Wood Services. All rights reserved.<br/>
-                          This is an automated email — please do not reply.
-                        </p>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-            </table>
-          </body>
-        </html>
-      `,
-    };
+      introText:
+        "Thank you for registering with Spiral Wood Services. Use the verification code below to verify your email address.",
 
-    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "api-key": process.env.BREVO_API_KEY,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(payload),
+      instructionText:
+        "Enter this code on the verification page to finish creating your account. If you did not create an account, please ignore this email.",
+
+      expiryMinutes: OTP_EXPIRY_MINUTES,
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error("[Brevo API Error]", errorData);
-      throw new Error(`BREVO_REJECTED: ${response.status}`);
+    const sent = await sendBrevoEmail({
+      toEmail: email,
+      toName: name,
+      subject: "Your Spiral Wood Verification Code",
+      htmlContent,
+    });
+
+    if (!sent) {
+      throw new Error("BREVO_SEND_FAILED");
     }
 
     console.log("Brevo API Success: Registration OTP Sent!");
   } catch (err) {
     console.error("CRITICAL: Failed to send verification email.", err.message);
+
     throw new Error("EMAIL_FAILED");
   }
 };

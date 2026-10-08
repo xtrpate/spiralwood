@@ -15,6 +15,11 @@ const {
   getPhoneLookupVariants,
   phoneDigitsSql,
 } = require("../../utils/phone");
+
+const {
+  buildOtpEmailHtml,
+  sendBrevoEmail,
+} = require("../../utils/emailHelper");
 require("dotenv").config();
 
 // ══════════════════════════════════════════════════════════════
@@ -27,40 +32,28 @@ const generateOtp = () => crypto.randomInt(100000, 1000000).toString();
 /* ── Brevo REST API Setup ── */
 const sendOtpEmail = async (email, otp, name) => {
   try {
-    const payload = {
-      sender: {
-        name: "Spiral Wood Services",
-        // CRITICAL: This must exactly match the verified email in your Brevo account
-        email: process.env.MAIL_USER,
-      },
-      to: [{ email: email, name: name }],
-      subject: "Your Spiral Wood Verification Code",
-      htmlContent: `
-        <div style="font-family:sans-serif; text-align:center; padding:20px;">
-          <h2>Spiral Wood Services</h2>
-          <p>Hi ${name},</p>
-          <p>Your account is not verified yet. Please use the code below to verify your email:</p>
-          <h1 style="color:#8B4513; letter-spacing:5px;">${otp}</h1>
-          <p>This code expires in ${OTP_EXPIRY_MINUTES} minutes.</p>
-        </div>
-      `,
-    };
-
-    // Utilizing native fetch for zero-dependency API calls
-    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "api-key": process.env.BREVO_API_KEY,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(payload),
+    const htmlContent = await buildOtpEmailHtml({
+      conn: pool,
+      name,
+      otp,
+      purpose: "Email Verification",
+      codeLabel: "Verification Code",
+      introText:
+        "Your account is not verified yet. Use the verification code below to verify your email address.",
+      instructionText:
+        "Enter this code on the verification page to finish verifying your account. If you did not request this verification, please ignore this email.",
+      expiryMinutes: OTP_EXPIRY_MINUTES,
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error("[Brevo API Error]", errorData);
-      throw new Error(`BREVO_REJECTED: ${response.status}`);
+    const sent = await sendBrevoEmail({
+      toEmail: email,
+      toName: name,
+      subject: "Your Spiral Wood Verification Code",
+      htmlContent,
+    });
+
+    if (!sent) {
+      throw new Error("BREVO_SEND_FAILED");
     }
   } catch (err) {
     console.error("Failed to send verification email.", err.message);

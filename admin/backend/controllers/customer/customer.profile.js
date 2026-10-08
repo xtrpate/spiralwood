@@ -10,6 +10,11 @@ const {
   phoneDigitsSql,
 } = require("../../utils/phone");
 
+const {
+  buildOtpEmailHtml,
+  sendBrevoEmail,
+} = require("../../utils/emailHelper");
+
 const PASSWORD_HISTORY_LIMIT = 3;
 
 const MAX_PROFILE_ADDRESS_LENGTH = 500;
@@ -319,36 +324,28 @@ exports.requestEmailChange = async (req, res) => {
       [otp, expires, normalizedRequestedEmail, req.user.id],
     );
 
-    const payload = {
-      sender: { name: "Spiral Wood Services", email: process.env.MAIL_USER },
-      to: [{ email: normalizedRequestedEmail, name: "Customer" }],
-      subject: "Verify your new email — Spiral Wood",
-      htmlContent: `
-        <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
-          <h2 style="color:#8B4513">Verify New Email</h2>
-          <p>Use this OTP to confirm your new email address. It expires in 15 minutes.</p>
-          <div style="font-size:36px;font-weight:900;letter-spacing:10px;
-                      color:#8B4513;background:#fff3e0;padding:20px;
-                      border-radius:10px;text-align:center;margin:20px 0">
-            ${otp}
-          </div>
-          <p style="color:#888;font-size:13px">If you didn't request this, ignore this email.</p>
-        </div>
-      `,
-    };
-
-    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "api-key": process.env.BREVO_API_KEY,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(payload),
+    const htmlContent = await buildOtpEmailHtml({
+      conn: db,
+      name: "Customer",
+      otp,
+      purpose: "Email Change Verification",
+      codeLabel: "Verification Code",
+      introText:
+        "Use the verification code below to confirm your new email address.",
+      instructionText:
+        "Enter this code on the verification page to confirm your new email address. If you did not request this change, please ignore this email.",
+      expiryMinutes: 15,
     });
 
-    if (!response.ok) {
-      throw new Error(`BREVO_REJECTED: ${response.status}`);
+    const sent = await sendBrevoEmail({
+      toEmail: normalizedRequestedEmail,
+      toName: "Customer",
+      subject: "Verify your new email — Spiral Wood",
+      htmlContent,
+    });
+
+    if (!sent) {
+      throw new Error("BREVO_SEND_FAILED");
     }
 
     res.json({ message: "OTP sent to new email." });
@@ -608,38 +605,28 @@ exports.requestPasswordChange = async (req, res) => {
       [otp, expires, req.user.id],
     );
 
-    const payload = {
-      sender: { name: "Spiral Wood Services", email: process.env.MAIL_USER },
-      to: [{ email: u.email, name: "Customer" }],
-      subject: "Confirm password change — Spiral Wood",
-      htmlContent: `
-        <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
-          <h2 style="color:#8B4513">Confirm Password Change</h2>
-          <p>Use this OTP to confirm your password change. Valid for 15 minutes.</p>
-          <div style="font-size:36px;font-weight:900;letter-spacing:10px;
-                      color:#8B4513;background:#fff3e0;padding:20px;
-                      border-radius:10px;text-align:center;margin:20px 0">
-            ${otp}
-          </div>
-          <p style="color:#c62828;font-size:13px">
-            ⚠ If you didn't request this, secure your account immediately.
-          </p>
-        </div>
-      `,
-    };
-
-    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "api-key": process.env.BREVO_API_KEY,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(payload),
+    const htmlContent = await buildOtpEmailHtml({
+      conn: db,
+      name: "Customer",
+      otp,
+      purpose: "Password Change Authorization",
+      codeLabel: "Password Change Code",
+      introText:
+        "Use the verification code below to confirm your password change.",
+      instructionText:
+        "Enter this code on the verification page to complete your password change. If you did not request this change, please secure your account immediately.",
+      expiryMinutes: 15,
     });
 
-    if (!response.ok) {
-      throw new Error(`BREVO_REJECTED: ${response.status}`);
+    const sent = await sendBrevoEmail({
+      toEmail: u.email,
+      toName: "Customer",
+      subject: "Confirm password change — Spiral Wood",
+      htmlContent,
+    });
+
+    if (!sent) {
+      throw new Error("BREVO_SEND_FAILED");
     }
 
     res.json({ message: "OTP sent to your email." });
@@ -1123,35 +1110,29 @@ exports.requestCurrentPhoneAuth = async (req, res) => {
 
     // ROUTE 2: User clicked "Lost Access", requested Email
     else if (method === "email") {
-      const payload = {
-        sender: { name: "Spiral Wood Services", email: process.env.MAIL_USER },
-        to: [{ email: u.email, name: "Customer" }],
-        subject: "Authorize Phone Number Change",
-        htmlContent: `
-          <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
-            <h2 style="color:#8B4513">Phone Update Request</h2>
-            <p>Use this OTP to authorize changing the phone number on your account.</p>
-            <div style="font-size:36px;font-weight:900;letter-spacing:10px;
-                        color:#8B4513;background:#fff3e0;padding:20px;
-                        border-radius:10px;text-align:center;margin:20px 0">
-              ${otp}
-            </div>
-            <p style="color:#c62828;font-size:13px">⚠ If you didn't request this, secure your account immediately.</p>
-          </div>
-        `,
-      };
-
-      const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-        method: "POST",
-        headers: {
-          accept: "application/json",
-          "api-key": process.env.BREVO_API_KEY,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(payload),
+      const htmlContent = await buildOtpEmailHtml({
+        conn: db,
+        name: "Customer",
+        otp,
+        purpose: "Phone Number Change Authorization",
+        codeLabel: "Authorization Code",
+        introText:
+          "Use the verification code below to authorize changing the phone number on your account.",
+        instructionText:
+          "Enter this code on the verification page to continue with the phone number change. If you did not request this change, please secure your account immediately.",
+        expiryMinutes: 15,
       });
 
-      if (!response.ok) throw new Error("Email sending failed");
+      const sent = await sendBrevoEmail({
+        toEmail: u.email,
+        toName: "Customer",
+        subject: "Authorize Phone Number Change",
+        htmlContent,
+      });
+
+      if (!sent) {
+        throw new Error("BREVO_SEND_FAILED");
+      }
 
       return res.json({ message: "Security OTP sent to your email address." });
     }
@@ -1249,35 +1230,29 @@ exports.requestCurrentEmailAuth = async (req, res) => {
 
     // ROUTE 1: User requested Email
     if (method === "email") {
-      const payload = {
-        sender: { name: "Spiral Wood Services", email: process.env.MAIL_USER },
-        to: [{ email: u.email, name: "Customer" }],
-        subject: "Authorize Email Address Change",
-        htmlContent: `
-          <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
-            <h2 style="color:#8B4513">Email Update Request</h2>
-            <p>Use this OTP to authorize changing the email address on your account.</p>
-            <div style="font-size:36px;font-weight:900;letter-spacing:10px;
-                        color:#8B4513;background:#fff3e0;padding:20px;
-                        border-radius:10px;text-align:center;margin:20px 0">
-              ${otp}
-            </div>
-            <p style="color:#c62828;font-size:13px">⚠ If you didn't request this, secure your account immediately.</p>
-          </div>
-        `,
-      };
-
-      const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-        method: "POST",
-        headers: {
-          accept: "application/json",
-          "api-key": process.env.BREVO_API_KEY,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(payload),
+      const htmlContent = await buildOtpEmailHtml({
+        conn: db,
+        name: "Customer",
+        otp,
+        purpose: "Email Address Change Authorization",
+        codeLabel: "Authorization Code",
+        introText:
+          "Use the verification code below to authorize changing the email address on your account.",
+        instructionText:
+          "Enter this code on the verification page to continue with the email address change. If you did not request this change, please secure your account immediately.",
+        expiryMinutes: 15,
       });
 
-      if (!response.ok) throw new Error("Email sending failed");
+      const sent = await sendBrevoEmail({
+        toEmail: u.email,
+        toName: "Customer",
+        subject: "Authorize Email Address Change",
+        htmlContent,
+      });
+
+      if (!sent) {
+        throw new Error("BREVO_SEND_FAILED");
+      }
       return res.json({ message: "Security OTP sent to your current email." });
     }
 
