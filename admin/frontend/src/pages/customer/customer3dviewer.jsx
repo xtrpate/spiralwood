@@ -2051,9 +2051,13 @@ export default function Customer3DViewer({
     [components],
   );
   const canSmartResizeWardrobeHeight =
-    overallWardrobeSizeProtected && wardrobeHeightDepthSupport.ok;
+    overallWardrobeSizeProtected &&
+    wardrobeHeightDepthSupport.ok &&
+    editable.height;
   const canSmartResizeWardrobeDepth =
-    overallWardrobeSizeProtected && wardrobeHeightDepthSupport.ok;
+    overallWardrobeSizeProtected &&
+    wardrobeHeightDepthSupport.ok &&
+    editable.depth;
 
   const wardrobeHeightPreview = useMemo(() => {
     if (!canSmartResizeWardrobeHeight ||
