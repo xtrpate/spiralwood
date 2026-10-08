@@ -27,6 +27,11 @@ import {
   getCustomerWardrobeWidthSupport,
   planCustomerWardrobeWidth,
 } from "../../utils/customerWardrobeWidth";
+import {
+  getCustomerWardrobeHeightDepthSupport,
+  planCustomerWardrobeHeight,
+  planCustomerWardrobeDepth,
+} from "../../utils/customerWardrobeHeightDepth";
 
 import { createFurnitureObject } from "../blueprints/3d/createFurnitureObjects";
 import { WOOD_FINISHES } from "../blueprints/data/furnitureTypes";
@@ -2039,6 +2044,41 @@ export default function Customer3DViewer({
     overallBounds.width_mm,
     overallDrafts.width,
     unit,
+  ]);
+
+  const wardrobeHeightDepthSupport = useMemo(
+    () => getCustomerWardrobeHeightDepthSupport(components),
+    [components],
+  );
+  const canSmartResizeWardrobeHeight =
+    overallWardrobeSizeProtected && wardrobeHeightDepthSupport.ok;
+  const canSmartResizeWardrobeDepth =
+    overallWardrobeSizeProtected && wardrobeHeightDepthSupport.ok;
+
+  const wardrobeHeightPreview = useMemo(() => {
+    if (!canSmartResizeWardrobeHeight ||
+        !String(overallDrafts.height).trim()) return null;
+    const candidate = convertUnitToMm(overallDrafts.height, unit);
+    if (!Number.isFinite(candidate) || candidate < 1) return null;
+    const wanted = Math.round(candidate);
+    if (wanted === Number(overallBounds.height_mm)) return null;
+    return planCustomerWardrobeHeight(components, wanted);
+  }, [
+    canSmartResizeWardrobeHeight, components, convertUnitToMm,
+    overallBounds.height_mm, overallDrafts.height, unit,
+  ]);
+
+  const wardrobeDepthPreview = useMemo(() => {
+    if (!canSmartResizeWardrobeDepth ||
+        !String(overallDrafts.depth).trim()) return null;
+    const candidate = convertUnitToMm(overallDrafts.depth, unit);
+    if (!Number.isFinite(candidate) || candidate < 1) return null;
+    const wanted = Math.round(candidate);
+    if (wanted === Number(overallBounds.depth_mm)) return null;
+    return planCustomerWardrobeDepth(components, wanted);
+  }, [
+    canSmartResizeWardrobeDepth, components, convertUnitToMm,
+    overallBounds.depth_mm, overallDrafts.depth, unit,
   ]);
 
   const viewMetadata = useMemo(() => {
@@ -4359,39 +4399,36 @@ export default function Customer3DViewer({
   const commitOverallDimension = (axis) => {
     if (!isCustomizable || readOnly) return;
     if (!Array.isArray(components) || !components.length) return;
-    // Wardrobe width only changes through Apply Width, but pressing Enter or
-    // leaving an invalid field must still show WHY the value was rejected.
-    // Height and depth stay locked until their verified planners exist.
+    // Verified wardrobe dimensions require an explicit Apply button.
+    // Enter/blur validates and reports errors without changing the 3D model.
     if (needsSafeWardrobeResize(components)) {
-      if (axis === "width" && canSmartResizeWardrobeWidth) {
-        const rawWidth = overallDrafts.width;
-        const fieldError = getDimensionFieldError(rawWidth, {
-          label: "Width",
-        });
-        const candidate = fieldError
-          ? { ok: false, error: fieldError }
-          : planCustomerWardrobeWidth(
-              components,
-              Math.round(convertUnitToMm(rawWidth, unit)),
-            );
+      const planning = axis === "width" && canSmartResizeWardrobeWidth
+        ? planCustomerWardrobeWidth
+        : axis === "height" && canSmartResizeWardrobeHeight
+          ? planCustomerWardrobeHeight
+          : axis === "depth" && canSmartResizeWardrobeDepth
+            ? planCustomerWardrobeDepth
+            : null;
 
-        if (!candidate.ok) {
-          const message = candidate.error || "Width cannot be resized safely.";
-          setOverallDimensionErrors((previous) => ({
-            ...previous,
-            width: message,
-          }));
-          showCustomizeFeedback(message);
-        } else {
-          setOverallDimensionErrors((previous) => ({
-            ...previous,
-            width: "",
-          }));
-        }
-      } else {
+      if (!planning) {
         showCustomizeFeedback(
-          "This overall furniture size is protected until safe resizing is ready.",
+          "This furniture size is protected until safe resizing is ready.",
         );
+        return;
+      }
+      const rawValue = overallDrafts?.[axis];
+      const fieldError = getDimensionFieldError(rawValue, {
+        label: axis.charAt(0).toUpperCase() + axis.slice(1),
+      });
+      const planned = fieldError
+        ? { ok: false, error: fieldError }
+        : planning(components, Math.round(convertUnitToMm(rawValue, unit)));
+      setOverallDimensionErrors((previous) => ({
+        ...previous,
+        [axis]: planned.ok ? "" : planned.error,
+      }));
+      if (!planned.ok) {
+        showCustomizeFeedback(planned.error || "Size cannot be changed safely.");
       }
       return;
     }
@@ -4487,6 +4524,39 @@ export default function Customer3DViewer({
     commitComponents(plan.parts);
     setCustomizeProgressStep((current) => Math.max(current, 3));
     showCustomizeFeedback("Wardrobe width updated. Check the new design.");
+  };
+
+  const applySmartWardrobeHeightDepth = (axis) => {
+    const planning = axis === "height" && canSmartResizeWardrobeHeight
+      ? planCustomerWardrobeHeight
+      : axis === "depth" && canSmartResizeWardrobeDepth
+        ? planCustomerWardrobeDepth
+        : null;
+    if (!isCustomizable || readOnly || !planning) return;
+    const raw = overallDrafts?.[axis];
+    const label = axis === "height" ? "Height" : "Depth";
+    const fieldError = getDimensionFieldError(raw, { label });
+    const candidate = fieldError
+      ? { ok: false, error: fieldError }
+      : planning(components, Math.round(convertUnitToMm(raw, unit)));
+
+    if (!candidate.ok) {
+      setOverallDimensionErrors((current) => ({
+        ...current,
+        [axis]: candidate.error || "Cannot resize this wardrobe safely.",
+      }));
+      return;
+    }
+    const currentSize = Number(
+      axis === "height" ? overallBounds.height_mm : overallBounds.depth_mm,
+    );
+    if (candidate[axis] === currentSize) return;
+    setOverallDimensionErrors((current) => ({ ...current, [axis]: "" }));
+    commitComponents(candidate.parts);
+    setCustomizeProgressStep((current) => Math.max(current, 3));
+    showCustomizeFeedback(
+      `Wardrobe ${axis} updated. Review the furniture parts.`,
+    );
   };
 
   const commitPartDimension = (axis, rawUnitValue) => {
