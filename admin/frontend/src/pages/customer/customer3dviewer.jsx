@@ -23,6 +23,10 @@ import {
 import api from "../../services/api";
 import OversizedDeliveryWarning from "../../components/OversizedDeliveryWarning";
 import { assessOversizedDelivery } from "../../utils/oversizedDelivery";
+import {
+  getCustomerWardrobeWidthSupport,
+  planCustomerWardrobeWidth,
+} from "../../utils/customerWardrobeWidth";
 
 import { createFurnitureObject } from "../blueprints/3d/createFurnitureObjects";
 import { WOOD_FINISHES } from "../blueprints/data/furnitureTypes";
@@ -2012,6 +2016,30 @@ export default function Customer3DViewer({
     () => needsSafeWardrobeResize(components),
     [components],
   );
+  const wardrobeWidthSupport = useMemo(
+    () => getCustomerWardrobeWidthSupport(components),
+    [components],
+  );
+  const canSmartResizeWardrobeWidth =
+    overallWardrobeSizeProtected && wardrobeWidthSupport.ok;
+
+  const wardrobeWidthPreview = useMemo(() => {
+    if (!canSmartResizeWardrobeWidth || !String(overallDrafts.width).trim()) {
+      return null;
+    }
+    const parsed = convertUnitToMm(overallDrafts.width, unit);
+    if (!Number.isFinite(parsed) || parsed < 1) return null;
+    const wanted = Math.round(parsed);
+    if (wanted === Number(overallBounds.width_mm)) return null;
+    return planCustomerWardrobeWidth(components, wanted);
+  }, [
+    canSmartResizeWardrobeWidth,
+    components,
+    convertUnitToMm,
+    overallBounds.width_mm,
+    overallDrafts.width,
+    unit,
+  ]);
 
   const viewMetadata = useMemo(() => {
     const firstComponent = Array.isArray(components)
@@ -4331,11 +4359,14 @@ export default function Customer3DViewer({
   const commitOverallDimension = (axis) => {
     if (!isCustomizable || readOnly) return;
     if (!Array.isArray(components) || !components.length) return;
-    // Guard the resize path, not only the disabled text fields.
+    // Wardrobe width only changes through the reviewed Apply Width button.
+    // Height and depth stay locked until their own verified planners exist.
     if (needsSafeWardrobeResize(components)) {
-      showCustomizeFeedback(
-        "Overall wardrobe size is protected until safe resizing is ready.",
-      );
+      if (axis !== "width" || !canSmartResizeWardrobeWidth) {
+        showCustomizeFeedback(
+          "This overall furniture size is protected until safe resizing is ready.",
+        );
+      }
       return;
     }
 
@@ -4407,6 +4438,29 @@ export default function Customer3DViewer({
 
     setCustomizeProgressStep((current) => Math.max(current, 3));
     showCustomizeFeedback("Size updated.");
+  };
+
+  const applySmartWardrobeWidth = () => {
+    if (!isCustomizable || readOnly || !canSmartResizeWardrobeWidth) return;
+    const rawWidth = overallDrafts.width;
+    const genericError = getDimensionFieldError(rawWidth, { label: "Width" });
+    const wanted = Math.round(convertUnitToMm(rawWidth, unit));
+    const plan = genericError
+      ? { ok: false, error: genericError }
+      : planCustomerWardrobeWidth(components, wanted);
+
+    if (!plan.ok) {
+      setOverallDimensionErrors((old) => ({
+        ...old,
+        width: plan.error || "Width could not be changed safely.",
+      }));
+      return;
+    }
+    if (plan.width === Number(overallBounds.width_mm)) return;
+    setOverallDimensionErrors((old) => ({ ...old, width: "" }));
+    commitComponents(plan.parts);
+    setCustomizeProgressStep((current) => Math.max(current, 3));
+    showCustomizeFeedback("Wardrobe width updated. Check the new design.");
   };
 
   const commitPartDimension = (axis, rawUnitValue) => {
@@ -6307,16 +6361,18 @@ export default function Customer3DViewer({
                     </label>
                     <span style={styles.pill}>
                       {overallWardrobeSizeProtected
-                        ? "Size protected"
+                        ? canSmartResizeWardrobeWidth
+                          ? "Smart width"
+                          : "Size protected"
                         : "Keeps proportions"}
                     </span>
                   </div>
 
                   {overallWardrobeSizeProtected ? (
                     <div style={styles.helperTextMuted} role="status">
-                      Overall wardrobe size is temporarily locked to protect
-                      the wood thickness and connected parts. You can still
-                      edit supported drawers, shelves, and finishes.
+                      {canSmartResizeWardrobeWidth
+                        ? `Width can change from ${wardrobeWidthSupport.minWidth} to ${wardrobeWidthSupport.maxWidth} mm. Preview the bay sizes and press Apply Width. Board thickness, drawer dimensions, and custom finishes stay unchanged. Height and Depth are still locked. Final sizes need shop review.`
+                        : "Overall wardrobe size is protected because this layout is not verified for safe resizing. Supported drawers, shelves, and finishes can still be edited."}
                     </div>
                   ) : null}
 
@@ -6329,7 +6385,11 @@ export default function Customer3DViewer({
                       <input
                         type="number"
                         value={overallDrafts.width}
-                        disabled={!isCustomizable || readOnly || overallWardrobeSizeProtected}
+                        disabled={
+                          !isCustomizable ||
+                          readOnly ||
+                          (overallWardrobeSizeProtected && !canSmartResizeWardrobeWidth)
+                        }
                         onChange={(e) =>
                           handleOverallDraftChange("width", e.target.value)
                         }
@@ -6441,6 +6501,47 @@ export default function Customer3DViewer({
                       ) : null}
                     </div>
                   </div>
+
+                  {canSmartResizeWardrobeWidth && wardrobeWidthPreview ? (
+                    <div style={{ marginTop: 8, display: "grid", gap: 7 }}>
+                      {wardrobeWidthPreview.ok ? (
+                        <>
+                          <div style={styles.helperTextMuted} role="status">
+                            Width preview: {overallBounds.width_mm} mm to{" "}
+                            {wardrobeWidthPreview.width} mm. Bay 1:{" "}
+                            {wardrobeWidthSupport.openings.bay1} to{" "}
+                            {wardrobeWidthPreview.openings.bay1} mm. Bay 4:{" "}
+                            {wardrobeWidthSupport.openings.bay4} to{" "}
+                            {wardrobeWidthPreview.openings.bay4} mm.
+                            Bay 2 and Bay 3, including drawers, keep their sizes.
+                            The 3D furniture updates only when you press Apply Width.
+                          </div>
+                          <button
+                            type="button"
+                            onClick={applySmartWardrobeWidth}
+                            disabled={!isCustomizable || readOnly}
+                            style={{
+                              background: "#111111",
+                              color: "#ffffff",
+                              border: "1px solid #111111",
+                              borderRadius: 0,
+                              padding: "10px 12px",
+                              fontFamily: "inherit",
+                              fontWeight: 700,
+                              fontSize: 11,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Apply Width
+                          </button>
+                        </>
+                      ) : (
+                        <div style={styles.fieldError} role="alert">
+                          {wardrobeWidthPreview.error}
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
                 </section>
               )}
 
