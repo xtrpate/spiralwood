@@ -23,6 +23,15 @@ import {
 import api from "../../services/api";
 import OversizedDeliveryWarning from "../../components/OversizedDeliveryWarning";
 import { assessOversizedDelivery } from "../../utils/oversizedDelivery";
+import {
+  getCustomerWardrobeWidthSupport,
+  planCustomerWardrobeWidth,
+} from "../../utils/customerWardrobeWidth";
+import {
+  getCustomerWardrobeHeightDepthSupport,
+  planCustomerWardrobeHeight,
+  planCustomerWardrobeDepth,
+} from "../../utils/customerWardrobeHeightDepth";
 
 import { createFurnitureObject } from "../blueprints/3d/createFurnitureObjects";
 import { WOOD_FINISHES } from "../blueprints/data/furnitureTypes";
@@ -966,6 +975,24 @@ const isCustomerCabinetStructuralPart = (part = {}) => {
   if (wardrobeTypes.has(type)) return true;
   return /^(?:WRC-(?:SIDE-[LR]|BACK|DIV-\d+)|WR-(?:SL|SR|BK|TOP|BOT))$/.test(code);
 };
+
+// Do not scale a wardrobe until a size change can keep every part safe.
+const needsSafeWardrobeResize = (items = []) =>
+  Array.isArray(items) &&
+  items.some((part) => {
+    if (!part) return false;
+    if (isCustomerCabinetStructuralPart(part)) return true;
+    const label = [
+      part?.templateType,
+      part?.template_type,
+      part?.assemblyName,
+      part?.groupLabel,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return /(^|[\s_-])(wardrobe|closet)([\s_-]|$)/.test(label);
+  });
 
 const getCustomerDrawerEditLabel = (reference = {}) => {
   const rawLabel = String(reference?.label || reference?.name || "").trim();
@@ -1989,6 +2016,74 @@ export default function Customer3DViewer({
       return current;
     return normalizeDimensions(initialDimensions || {});
   }, [components, initialDimensions]);
+
+  const overallWardrobeSizeProtected = useMemo(
+    () => needsSafeWardrobeResize(components),
+    [components],
+  );
+  const wardrobeWidthSupport = useMemo(
+    () => getCustomerWardrobeWidthSupport(components),
+    [components],
+  );
+  const canSmartResizeWardrobeWidth =
+    overallWardrobeSizeProtected && wardrobeWidthSupport.ok;
+
+  const wardrobeWidthPreview = useMemo(() => {
+    if (!canSmartResizeWardrobeWidth || !String(overallDrafts.width).trim()) {
+      return null;
+    }
+    const parsed = convertUnitToMm(overallDrafts.width, unit);
+    if (!Number.isFinite(parsed) || parsed < 1) return null;
+    const wanted = Math.round(parsed);
+    if (wanted === Number(overallBounds.width_mm)) return null;
+    return planCustomerWardrobeWidth(components, wanted);
+  }, [
+    canSmartResizeWardrobeWidth,
+    components,
+    convertUnitToMm,
+    overallBounds.width_mm,
+    overallDrafts.width,
+    unit,
+  ]);
+
+  const wardrobeHeightDepthSupport = useMemo(
+    () => getCustomerWardrobeHeightDepthSupport(components),
+    [components],
+  );
+  const canSmartResizeWardrobeHeight =
+    overallWardrobeSizeProtected &&
+    wardrobeHeightDepthSupport.ok &&
+    editable.height;
+  const canSmartResizeWardrobeDepth =
+    overallWardrobeSizeProtected &&
+    wardrobeHeightDepthSupport.ok &&
+    editable.depth;
+
+  const wardrobeHeightPreview = useMemo(() => {
+    if (!canSmartResizeWardrobeHeight ||
+        !String(overallDrafts.height).trim()) return null;
+    const candidate = convertUnitToMm(overallDrafts.height, unit);
+    if (!Number.isFinite(candidate) || candidate < 1) return null;
+    const wanted = Math.round(candidate);
+    if (wanted === Number(overallBounds.height_mm)) return null;
+    return planCustomerWardrobeHeight(components, wanted);
+  }, [
+    canSmartResizeWardrobeHeight, components, convertUnitToMm,
+    overallBounds.height_mm, overallDrafts.height, unit,
+  ]);
+
+  const wardrobeDepthPreview = useMemo(() => {
+    if (!canSmartResizeWardrobeDepth ||
+        !String(overallDrafts.depth).trim()) return null;
+    const candidate = convertUnitToMm(overallDrafts.depth, unit);
+    if (!Number.isFinite(candidate) || candidate < 1) return null;
+    const wanted = Math.round(candidate);
+    if (wanted === Number(overallBounds.depth_mm)) return null;
+    return planCustomerWardrobeDepth(components, wanted);
+  }, [
+    canSmartResizeWardrobeDepth, components, convertUnitToMm,
+    overallBounds.depth_mm, overallDrafts.depth, unit,
+  ]);
 
   const viewMetadata = useMemo(() => {
     const firstComponent = Array.isArray(components)
@@ -4308,6 +4403,39 @@ export default function Customer3DViewer({
   const commitOverallDimension = (axis) => {
     if (!isCustomizable || readOnly) return;
     if (!Array.isArray(components) || !components.length) return;
+    // Verified wardrobe dimensions require an explicit Apply button.
+    // Enter/blur validates and reports errors without changing the 3D model.
+    if (needsSafeWardrobeResize(components)) {
+      const planning = axis === "width" && canSmartResizeWardrobeWidth
+        ? planCustomerWardrobeWidth
+        : axis === "height" && canSmartResizeWardrobeHeight
+          ? planCustomerWardrobeHeight
+          : axis === "depth" && canSmartResizeWardrobeDepth
+            ? planCustomerWardrobeDepth
+            : null;
+
+      if (!planning) {
+        showCustomizeFeedback(
+          "This furniture size is protected until safe resizing is ready.",
+        );
+        return;
+      }
+      const rawValue = overallDrafts?.[axis];
+      const fieldError = getDimensionFieldError(rawValue, {
+        label: axis.charAt(0).toUpperCase() + axis.slice(1),
+      });
+      const planned = fieldError
+        ? { ok: false, error: fieldError }
+        : planning(components, Math.round(convertUnitToMm(rawValue, unit)));
+      setOverallDimensionErrors((previous) => ({
+        ...previous,
+        [axis]: planned.ok ? "" : planned.error,
+      }));
+      if (!planned.ok) {
+        showCustomizeFeedback(planned.error || "Size cannot be changed safely.");
+      }
+      return;
+    }
 
     const rawUnitValue = overallDrafts?.[axis];
     const parsedMmValue = convertUnitToMm(rawUnitValue, unit);
@@ -4377,6 +4505,62 @@ export default function Customer3DViewer({
 
     setCustomizeProgressStep((current) => Math.max(current, 3));
     showCustomizeFeedback("Size updated.");
+  };
+
+  const applySmartWardrobeWidth = () => {
+    if (!isCustomizable || readOnly || !canSmartResizeWardrobeWidth) return;
+    const rawWidth = overallDrafts.width;
+    const genericError = getDimensionFieldError(rawWidth, { label: "Width" });
+    const wanted = Math.round(convertUnitToMm(rawWidth, unit));
+    const plan = genericError
+      ? { ok: false, error: genericError }
+      : planCustomerWardrobeWidth(components, wanted);
+
+    if (!plan.ok) {
+      setOverallDimensionErrors((old) => ({
+        ...old,
+        width: plan.error || "Width could not be changed safely.",
+      }));
+      return;
+    }
+    if (plan.width === Number(overallBounds.width_mm)) return;
+    setOverallDimensionErrors((old) => ({ ...old, width: "" }));
+    commitComponents(plan.parts);
+    setCustomizeProgressStep((current) => Math.max(current, 3));
+    showCustomizeFeedback("Wardrobe width updated. Check the new design.");
+  };
+
+  const applySmartWardrobeHeightDepth = (axis) => {
+    const planning = axis === "height" && canSmartResizeWardrobeHeight
+      ? planCustomerWardrobeHeight
+      : axis === "depth" && canSmartResizeWardrobeDepth
+        ? planCustomerWardrobeDepth
+        : null;
+    if (!isCustomizable || readOnly || !planning) return;
+    const raw = overallDrafts?.[axis];
+    const label = axis === "height" ? "Height" : "Depth";
+    const fieldError = getDimensionFieldError(raw, { label });
+    const candidate = fieldError
+      ? { ok: false, error: fieldError }
+      : planning(components, Math.round(convertUnitToMm(raw, unit)));
+
+    if (!candidate.ok) {
+      setOverallDimensionErrors((current) => ({
+        ...current,
+        [axis]: candidate.error || "Cannot resize this wardrobe safely.",
+      }));
+      return;
+    }
+    const currentSize = Number(
+      axis === "height" ? overallBounds.height_mm : overallBounds.depth_mm,
+    );
+    if (candidate[axis] === currentSize) return;
+    setOverallDimensionErrors((current) => ({ ...current, [axis]: "" }));
+    commitComponents(candidate.parts);
+    setCustomizeProgressStep((current) => Math.max(current, 3));
+    showCustomizeFeedback(
+      `Wardrobe ${axis} updated. Review the furniture parts.`,
+    );
   };
 
   const commitPartDimension = (axis, rawUnitValue) => {
@@ -6275,8 +6459,26 @@ export default function Customer3DViewer({
                     <label style={styles.label}>
                       Furniture Size ({unit === "inches" ? "in" : unit})
                     </label>
-                    <span style={styles.pill}>Keeps proportions</span>
+                    <span style={styles.pill}>
+                      {overallWardrobeSizeProtected
+                        ? canSmartResizeWardrobeHeight && canSmartResizeWardrobeDepth
+                          ? "Smart sizing"
+                          : canSmartResizeWardrobeWidth
+                            ? "Smart width"
+                            : "Size protected"
+                        : "Keeps proportions"}
+                    </span>
                   </div>
+
+                  {overallWardrobeSizeProtected ? (
+                    <div style={styles.helperTextMuted} role="status">
+                      {canSmartResizeWardrobeWidth
+                        ? canSmartResizeWardrobeHeight && canSmartResizeWardrobeDepth
+                          ? `Width: ${wardrobeWidthSupport.minWidth}-${wardrobeWidthSupport.maxWidth} mm. Height: ${wardrobeHeightDepthSupport.minHeight}-${wardrobeHeightDepthSupport.maxHeight} mm. Depth: ${wardrobeHeightDepthSupport.minDepth}-${wardrobeHeightDepthSupport.maxDepth} mm. Enter one size, review the preview, then press Apply. Board thickness, edited drawer sizes, and finishes stay unchanged. These limits are provisional; the shop must review final sizes.`
+                          : `Width can change from ${wardrobeWidthSupport.minWidth} to ${wardrobeWidthSupport.maxWidth} mm. Preview the bay sizes and press Apply Width. Board thickness, drawer dimensions, and custom finishes stay unchanged. Height and Depth stay locked for this layout. Final sizes need shop review.`
+                        : "Overall wardrobe size is protected because this layout is not verified for safe resizing. Supported drawers, shelves, and finishes can still be edited."}
+                    </div>
+                  ) : null}
 
                   <div
                     className="wisdom-size-grid"
@@ -6287,18 +6489,32 @@ export default function Customer3DViewer({
                       <input
                         type="number"
                         value={overallDrafts.width}
-                        disabled={!isCustomizable || readOnly}
+                        disabled={
+                          !isCustomizable ||
+                          readOnly ||
+                          (overallWardrobeSizeProtected && !canSmartResizeWardrobeWidth)
+                        }
                         onChange={(e) =>
                           handleOverallDraftChange("width", e.target.value)
                         }
                         onBlur={() => commitOverallDimension("width")}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter")
+                          if (e.key === "Enter") {
+                            if (overallWardrobeSizeProtected) e.preventDefault();
                             commitOverallDimension("width");
+                          }
                         }}
-                        aria-invalid={Boolean(overallDimensionErrors.width)}
+                        aria-invalid={Boolean(
+                          overallDimensionErrors.width ||
+                            (canSmartResizeWardrobeWidth &&
+                              wardrobeWidthPreview &&
+                              !wardrobeWidthPreview.ok),
+                        )}
                         aria-describedby={
-                          overallDimensionErrors.width
+                          overallDimensionErrors.width ||
+                          (canSmartResizeWardrobeWidth &&
+                            wardrobeWidthPreview &&
+                            !wardrobeWidthPreview.ok)
                             ? "customer-overall-width-error"
                             : undefined
                         }
@@ -6310,15 +6526,6 @@ export default function Customer3DViewer({
                         }}
                       />
 
-                      {overallDimensionErrors.width ? (
-                        <span
-                          id="customer-overall-width-error"
-                          role="alert"
-                          style={styles.fieldError}
-                        >
-                          {overallDimensionErrors.width}
-                        </span>
-                      ) : null}
                     </div>
 
                     <div style={styles.inputGroup}>
@@ -6326,18 +6533,29 @@ export default function Customer3DViewer({
                       <input
                         type="number"
                         value={overallDrafts.height}
-                        disabled={!isCustomizable || readOnly}
+                        disabled={
+                          !isCustomizable || readOnly ||
+                          (overallWardrobeSizeProtected && !canSmartResizeWardrobeHeight)
+                        }
                         onChange={(e) =>
                           handleOverallDraftChange("height", e.target.value)
                         }
                         onBlur={() => commitOverallDimension("height")}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter")
+                          if (e.key === "Enter") {
+                            if (overallWardrobeSizeProtected) e.preventDefault();
                             commitOverallDimension("height");
+                          }
                         }}
-                        aria-invalid={Boolean(overallDimensionErrors.height)}
+                        aria-invalid={Boolean(
+                          overallDimensionErrors.height ||
+                          (canSmartResizeWardrobeHeight &&
+                            wardrobeHeightPreview && !wardrobeHeightPreview.ok),
+                        )}
                         aria-describedby={
-                          overallDimensionErrors.height
+                          overallDimensionErrors.height ||
+                          (canSmartResizeWardrobeHeight &&
+                            wardrobeHeightPreview && !wardrobeHeightPreview.ok)
                             ? "customer-overall-height-error"
                             : undefined
                         }
@@ -6349,15 +6567,6 @@ export default function Customer3DViewer({
                         }}
                       />
 
-                      {overallDimensionErrors.height ? (
-                        <span
-                          id="customer-overall-height-error"
-                          role="alert"
-                          style={styles.fieldError}
-                        >
-                          {overallDimensionErrors.height}
-                        </span>
-                      ) : null}
                     </div>
 
                     <div style={styles.inputGroup}>
@@ -6365,18 +6574,29 @@ export default function Customer3DViewer({
                       <input
                         type="number"
                         value={overallDrafts.depth}
-                        disabled={!isCustomizable || readOnly}
+                        disabled={
+                          !isCustomizable || readOnly ||
+                          (overallWardrobeSizeProtected && !canSmartResizeWardrobeDepth)
+                        }
                         onChange={(e) =>
                           handleOverallDraftChange("depth", e.target.value)
                         }
                         onBlur={() => commitOverallDimension("depth")}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter")
+                          if (e.key === "Enter") {
+                            if (overallWardrobeSizeProtected) e.preventDefault();
                             commitOverallDimension("depth");
+                          }
                         }}
-                        aria-invalid={Boolean(overallDimensionErrors.depth)}
+                        aria-invalid={Boolean(
+                          overallDimensionErrors.depth ||
+                          (canSmartResizeWardrobeDepth &&
+                            wardrobeDepthPreview && !wardrobeDepthPreview.ok),
+                        )}
                         aria-describedby={
-                          overallDimensionErrors.depth
+                          overallDimensionErrors.depth ||
+                          (canSmartResizeWardrobeDepth &&
+                            wardrobeDepthPreview && !wardrobeDepthPreview.ok)
                             ? "customer-overall-depth-error"
                             : undefined
                         }
@@ -6388,17 +6608,148 @@ export default function Customer3DViewer({
                         }}
                       />
 
-                      {overallDimensionErrors.depth ? (
-                        <span
-                          id="customer-overall-depth-error"
-                          role="alert"
-                          style={styles.fieldError}
-                        >
-                          {overallDimensionErrors.depth}
-                        </span>
-                      ) : null}
                     </div>
                   </div>
+
+                  {(overallDimensionErrors.width ||
+                    (canSmartResizeWardrobeWidth &&
+                      wardrobeWidthPreview &&
+                      !wardrobeWidthPreview.ok)) ? (
+                    <div
+                      id="customer-overall-width-error"
+                      role="alert"
+                      style={{
+                        boxSizing: "border-box",
+                        width: "100%",
+                        marginTop: 6,
+                        padding: "8px 10px",
+                        border: "1px solid #fecaca",
+                        background: "#fff5f5",
+                        color: "#b91c1c",
+                        fontSize: 11,
+                        lineHeight: 1.4,
+                        overflowWrap: "anywhere",
+                      }}
+                    >
+                      {overallDimensionErrors.width ||
+                        wardrobeWidthPreview?.error}
+                    </div>
+                  ) : null}
+
+                  {(["height", "depth"]).map((axis) => {
+                    const preview = axis === "height"
+                      ? wardrobeHeightPreview : wardrobeDepthPreview;
+                    const enabled = axis === "height"
+                      ? canSmartResizeWardrobeHeight : canSmartResizeWardrobeDepth;
+                    const message = overallDimensionErrors[axis] ||
+                      (enabled && preview && !preview.ok ? preview.error : "");
+                    return message ? (
+                      <div
+                        key={axis}
+                        id={`customer-overall-${axis}-error`}
+                        role="alert"
+                        style={{
+                          boxSizing: "border-box",
+                          width: "100%",
+                          marginTop: 6,
+                          padding: "8px 10px",
+                          border: "1px solid #fecaca",
+                          background: "#fff5f5",
+                          color: "#b91c1c",
+                          fontSize: 11,
+                          lineHeight: 1.4,
+                          overflowWrap: "anywhere",
+                        }}
+                      >
+                        {message}
+                      </div>
+                    ) : null;
+                  })}
+
+                  {canSmartResizeWardrobeWidth && wardrobeWidthPreview ? (
+                    <div style={{ marginTop: 8, display: "grid", gap: 7 }}>
+                      {wardrobeWidthPreview.ok ? (
+                        <>
+                          <div style={styles.helperTextMuted} role="status">
+                            Width preview: {overallBounds.width_mm} mm to{" "}
+                            {wardrobeWidthPreview.width} mm. Bay 1:{" "}
+                            {wardrobeWidthSupport.openings.bay1} to{" "}
+                            {wardrobeWidthPreview.openings.bay1} mm. Bay 4:{" "}
+                            {wardrobeWidthSupport.openings.bay4} to{" "}
+                            {wardrobeWidthPreview.openings.bay4} mm.
+                            Bay 2 and Bay 3, including drawers, keep their sizes.
+                            The 3D furniture updates only when you press Apply Width.
+                          </div>
+                          <button
+                            type="button"
+                            onClick={applySmartWardrobeWidth}
+                            disabled={!isCustomizable || readOnly}
+                            style={{
+                              background: "#111111",
+                              color: "#ffffff",
+                              border: "1px solid #111111",
+                              borderRadius: 0,
+                              padding: "10px 12px",
+                              fontFamily: "inherit",
+                              fontWeight: 700,
+                              fontSize: 11,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Apply Width
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {canSmartResizeWardrobeHeight && wardrobeHeightPreview?.ok ? (
+                    <div style={{ marginTop: 8, display: "grid", gap: 7 }}>
+                      <div style={styles.helperTextMuted} role="status">
+                        Height preview: {overallBounds.height_mm} mm to{" "}
+                        {wardrobeHeightPreview.height} mm. The base shelves and
+                        frame will move together. Drawers, upper shelves, and
+                        their wood finishes stay unchanged.
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => applySmartWardrobeHeightDepth("height")}
+                        disabled={!isCustomizable || readOnly}
+                        style={{
+                          background: "#111111", color: "#ffffff",
+                          border: "1px solid #111111", borderRadius: 0,
+                          padding: "10px 12px", fontFamily: "inherit",
+                          fontWeight: 700, fontSize: 11, cursor: "pointer",
+                        }}
+                      >
+                        Apply Height
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {canSmartResizeWardrobeDepth && wardrobeDepthPreview?.ok ? (
+                    <div style={{ marginTop: 8, display: "grid", gap: 7 }}>
+                      <div style={styles.helperTextMuted} role="status">
+                        Depth preview: {overallBounds.depth_mm} mm to{" "}
+                        {wardrobeDepthPreview.depth} mm. The cabinet panels
+                        and standard shelves adjust. Drawers move as complete
+                        assemblies, keeping their customized depths and finishes.
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => applySmartWardrobeHeightDepth("depth")}
+                        disabled={!isCustomizable || readOnly}
+                        style={{
+                          background: "#111111", color: "#ffffff",
+                          border: "1px solid #111111", borderRadius: 0,
+                          padding: "10px 12px", fontFamily: "inherit",
+                          fontWeight: 700, fontSize: 11, cursor: "pointer",
+                        }}
+                      >
+                        Apply Depth
+                      </button>
+                    </div>
+                  ) : null}
                 </section>
               )}
 
