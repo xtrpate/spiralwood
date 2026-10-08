@@ -2046,7 +2046,7 @@ export default function Customer3DViewer({
         Boolean(sampleSelectedPart) &&
         !Boolean(sampleSelectedPart?.locked) &&
         !isCustomerEditHardwareComponent(sampleSelectedPart) &&
-        !selectedGroup.some(isCustomerDoorPreviewComponent) &&
+        !selectedGroup.some((part) => isCustomerDoorPreviewComponent(part) || isCustomerDoorPanelComponent(part)) &&
         (!isCustomerShelfStructure(sampleSelectedPart) || Boolean(selectedShelfLimits));
 
   const selectedPartGroup = useMemo(
@@ -4340,7 +4340,7 @@ export default function Customer3DViewer({
       readOnly ||
       !selectedGroup.length ||
       !canResizeSelectedPart ||
-      selectedGroup.some(isCustomerDoorPreviewComponent) ||
+      selectedGroup.some((part) => isCustomerDoorPreviewComponent(part) || isCustomerDoorPanelComponent(part)) ||
       (selectedEditGroup?.kind !== "drawer" &&
         selectedGroup.some(isCustomerShelfStructure) && !selectedShelfLimits)
     ) {
@@ -5890,7 +5890,7 @@ export default function Customer3DViewer({
                         ? "Drawer selected, but its cabinet opening could not be detected safely."
                         : sampleSelectedPart?.locked
                           ? "This part is locked and cannot be resized."
-                          : selectedGroup.some(isCustomerDoorPreviewComponent)
+                          : selectedGroup.some((part) => isCustomerDoorPreviewComponent(part) || isCustomerDoorPanelComponent(part))
                             ? "Door size is locked until safe cabinet limits are ready. You can still change the finish."
                           : selectedGroup.some(isCustomerShelfStructure)
                             ? getCustomerShelfClassification(sampleSelectedPart) === "fixed"
