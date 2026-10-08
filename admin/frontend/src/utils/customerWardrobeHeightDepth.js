@@ -9,11 +9,11 @@ const MIN_DEPTH_MM = 580;
 const MAX_DEPTH_MM = 680;
 const EPSILON = 1;
 const close = (a, b) => Math.abs(Number(a) - Number(b)) <= EPSILON;
-const codeOf = (p) => String(p?.partCode || p?.part_code || p?.technicalId || "")
+const hdCodeOf = (p) => String(p?.partCode || p?.part_code || p?.technicalId || "")
   .trim().toUpperCase();
 const error = (message) => ({ ok: false, error: message });
 const findPart = (parts, suffix) =>
-  parts.find((p) => codeOf(p) === `WRC-${suffix}`);
+  parts.find((p) => hdCodeOf(p) === `WRC-${suffix}`);
 const isBaseShelf = (code) => /^WRC-B[1-4]-BASE$/.test(code);
 const isCabinetSide = (code) => code === "WRC-SIDE-L" || code === "WRC-SIDE-R";
 const isDivider = (code) => /^WRC-DIV-[123]$/.test(code);
@@ -37,7 +37,7 @@ export const getCustomerWardrobeHeightDepthSupport = (parts = []) => {
   const ledge = findPart(parts, "B3-LEDGE");
   const ledgeSupport = findPart(parts, "B3-LEDGE-SUP");
   const base = [1, 2, 3, 4].map((i) => findPart(parts, `B${i}-BASE`));
-  const rods = parts.filter((p) => isRod(codeOf(p)));
+  const rods = parts.filter((p) => isRod(hdCodeOf(p)));
   const minY = Number(left.y);
   const minZ = Number(ledge.z);
   const height = Number(left.height);
@@ -70,7 +70,7 @@ export const getCustomerWardrobeHeightDepthSupport = (parts = []) => {
   const baselineShelfDepth = depth - 68;
   const maxShelfDepth = depth - 44;
   for (const part of parts) {
-    const code = codeOf(part);
+    const code = hdCodeOf(part);
     if (isCabinetShelf(code)) {
       if (!close(part.z, minZ + 26) ||
           Number(part.depth) < 100 ||
@@ -145,7 +145,7 @@ export const planCustomerWardrobeHeight = (parts = [], targetHeight) => {
   }
   const diff = wanted - support.height;
   const next = parts.map((part) => {
-    const code = codeOf(part);
+    const code = hdCodeOf(part);
     if (isCabinetSide(code) || isDivider(code) || code === "WRC-BACK" ||
         code === "WRC-B3-LEDGE-SUP") {
       return { ...part, height: Number(part.height) + diff };
@@ -176,7 +176,7 @@ export const planCustomerWardrobeDepth = (parts = [], targetDepth) => {
   const minZ = Number(findPart(parts, "B3-LEDGE").z);
 
   const next = parts.map((part) => {
-    const code = codeOf(part);
+    const code = hdCodeOf(part);
     if (isCabinetSide(code) || isDivider(code) ||
         code === "WRC-B3-LEDGE" || code === "WRC-B3-LEDGE-SUP") {
       return { ...part, depth: Number(part.depth) + diff };
