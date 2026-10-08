@@ -1883,7 +1883,8 @@ export default function Customer3DViewer({
       : selectedGroup.length === 1 &&
         Boolean(sampleSelectedPart) &&
         !Boolean(sampleSelectedPart?.locked) &&
-        !isCustomerEditHardwareComponent(sampleSelectedPart);
+        !isCustomerEditHardwareComponent(sampleSelectedPart) &&
+        !isCustomerShelfStructure(sampleSelectedPart);
 
   const selectedPartGroup = useMemo(
     () =>
@@ -4173,7 +4174,9 @@ export default function Customer3DViewer({
       !isCustomizable ||
       readOnly ||
       !selectedGroup.length ||
-      !canResizeSelectedPart
+      !canResizeSelectedPart ||
+      (selectedEditGroup?.kind !== "drawer" &&
+        selectedGroup.some(isCustomerShelfStructure))
     ) {
       return;
     }
@@ -5551,7 +5554,9 @@ export default function Customer3DViewer({
                         ? "Drawer selected, but its cabinet opening could not be detected safely."
                         : sampleSelectedPart?.locked
                           ? "This part is locked and cannot be resized."
-                          : "This selection cannot be resized as one raw group."}
+                          : selectedGroup.some(isCustomerShelfStructure)
+                            ? "Shelf dimensions are protected until cabinet-wall bounds and structural supports can be verified. Finish customization remains available."
+                            : "This selection cannot be resized as one raw group."
                     </div>
                   ) : null}
 
