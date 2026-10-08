@@ -5759,7 +5759,7 @@ export default function Customer3DViewer({
                               : getCustomerShelfClassification(sampleSelectedPart) === "adjustable"
                                 ? "Adjustable shelf identified. Size and vertical position stay locked until cabinet boundaries and supports are verified."
                                 : "Shelf adjustability is unverified. Size and position remain locked for safety."
-                            : "This selection cannot be resized as one raw group."
+                            : "This selection cannot be resized as one raw group."}
                     </div>
                   ) : null}
 
