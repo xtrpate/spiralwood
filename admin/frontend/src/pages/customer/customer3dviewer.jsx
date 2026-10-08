@@ -1039,11 +1039,27 @@ const isCustomerShelfStructure = (component = {}) => {
 };
 
 const isCustomerDrawerRole = (component = {}, roleName = "") => {
-  const role = String(component?.partRole ?? component?.part_role ?? "")
-    .trim()
-    .toLowerCase();
+  // Saved wardrobe blueprints identify these parts by assemblyRole/type.
+  // partRole alone is not reliable for imported template components.
+  const roles = [
+    component?.assemblyRole,
+    component?.assembly_role,
+    component?.partRole,
+    component?.part_role,
+    component?.type,
+  ]
+    .map((value) => String(value ?? "").trim().toLowerCase())
+    .filter(Boolean);
 
-  return roleName ? role === `drawer_${roleName}` : role.startsWith("drawer_");
+  if (roleName) {
+    return roles.some(
+      (role) => role === `drawer_${roleName}` || role === `wr_drawer_${roleName}`,
+    );
+  }
+
+  return roles.some(
+    (role) => role.startsWith("drawer_") || role.startsWith("wr_drawer_"),
+  );
 };
 
 const resolveCustomerDrawerMetrics = (allComponents = [], editGroup = null) => {
