@@ -606,6 +606,7 @@ exports.getTasks = async (req, res) => {
              assignee.name AS assigned_to_name,
              assigner.name AS assigned_by_name,
              o.order_number,
+             o.status AS order_status,
              o.delivery_address,
              COALESCE(customer.name, o.walkin_customer_name, 'Walk-in Customer') AS customer_name
       FROM project_tasks t
@@ -1988,6 +1989,7 @@ exports.undoTaskCompletion = async (req, res) => {
 /* ── Update Task (Admin edit / Staff status update fallback) ── */
 exports.updateTask = async (req, res) => {
   const id = parseInt(req.params.id);
+  const taskId = id;
   const {
     order_id,
     blueprint_id,
