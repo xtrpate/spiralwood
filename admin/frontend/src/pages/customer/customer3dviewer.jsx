@@ -1702,6 +1702,8 @@ export default function Customer3DViewer({
     height: "",
     depth: "",
   });
+  const [shelfYDraft, setShelfYDraft] = useState("");
+  const [shelfYError, setShelfYError] = useState("");
 
   const [overallDimensionErrors, setOverallDimensionErrors] = useState({
     width: "",
@@ -2074,6 +2076,8 @@ export default function Customer3DViewer({
         height: "",
         depth: "",
       });
+      setShelfYDraft(convertMmToUnit(sampleSelectedPart.y, unit));
+      setShelfYError("");
     }
   }, [overallBounds, sampleSelectedPart, unit, convertMmToUnit]);
 
@@ -4403,6 +4407,31 @@ export default function Customer3DViewer({
     showCustomizeFeedback("Part size updated. Choose a finish when ready.");
   };
 
+  const commitShelfVerticalPosition = (rawValue) => {
+    if (!isCustomizable || readOnly || !selectedShelfLimits || !sampleSelectedPart) return;
+    const parsed = convertUnitToMm(rawValue, unit);
+    const value = Math.round(parsed);
+    if (!Number.isFinite(parsed) || parsed < selectedShelfLimits.min.y ||
+        parsed > selectedShelfLimits.max.y) {
+      setShelfYError("Vertical position is outside the verified cabinet limits.");
+      return;
+    }
+    if (value === Math.round(Number(sampleSelectedPart.y))) {
+      setShelfYError("");
+      return;
+    }
+    const candidate = {...sampleSelectedPart, y: value};
+    const error = validateShelfCandidate(components, sampleSelectedPart, candidate);
+    if (error) {
+      setShelfYError(error);
+      return;
+    }
+    setShelfYError("");
+    commitComponents((prev)=>prev.map((c)=> c.id === sampleSelectedPart.id ? candidate : c));
+    setCustomizeProgressStep((current)=>Math.max(current,4));
+    showCustomizeFeedback("Shelf moved within verified cabinet limits.");
+  };
+
   const handleFinishChange = (finishId, targetIdsOverride = null) => {
     if (!isCustomizable || readOnly || !editable.finish_color) return;
     setCustomizeProgressStep((current) => Math.max(current, 5));
@@ -5685,7 +5714,31 @@ export default function Customer3DViewer({
                   {selectedShelfLimits ? (
                     <div style={styles.helperTextMuted}>
                       Adjustable shelf: Width and Depth are editable; Thickness is fixed.
-                      Vertical position will only be unlocked when the verified supports and collision checks pass.
+                      Move it only within the verified cabinet limits; collisions are blocked.
+                    </div>
+                  ) : null}
+                  {selectedShelfLimits ? (
+                    <div style={styles.inputGroup}>
+                      <label style={styles.dimLabel}>Vertical Position ({unit})</label>
+                      <input
+                        type="number"
+                        value={shelfYDraft}
+                        min={convertMmToUnit(selectedShelfLimits.min.y, unit)}
+                        max={convertMmToUnit(selectedShelfLimits.max.y, unit)}
+                        onChange={(e) => {
+                          setShelfYDraft(e.target.value);
+                          setShelfYError("");
+                        }}
+                        onBlur={(e) => commitShelfVerticalPosition(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") commitShelfVerticalPosition(e.target.value);
+                        }}
+                        aria-invalid={Boolean(shelfYError)}
+                        style={{...styles.input, ...(shelfYError ? styles.inputError : {})}}
+                      />
+                      {shelfYError ? (
+                        <span role="alert" style={styles.fieldError}>{shelfYError}</span>
+                      ) : null}
                     </div>
                   ) : null}
                   {!canResizeSelectedPart ? (
