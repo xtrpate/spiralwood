@@ -820,32 +820,9 @@ export default function TransactionReportPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const requestedTab = searchParams.get("tab");
-  const initialReportType =
+
+  const reportType =
     requestedTab === "cancellations" ? "cancellations" : "orders";
-
-  // Core Selection
-  const [reportType, setReportType] = useState(initialReportType);
-
-  useEffect(() => {
-    const tab = searchParams.get("tab");
-    if (tab === "cancellations" || tab === "orders") {
-      if (tab !== reportType) {
-        setReportType(tab);
-        setSearch("");
-        setDebouncedSearch("");
-        setStatusFilter("all");
-        setChannelFilter("all");
-        setPage(1);
-      }
-    } else if (!tab && reportType !== "orders") {
-      setReportType("orders");
-      setSearch("");
-      setDebouncedSearch("");
-      setStatusFilter("all");
-      setChannelFilter("all");
-      setPage(1);
-    }
-  }, [searchParams, reportType]);
 
   // Filters
   const [search, setSearch] = useState("");
@@ -872,23 +849,6 @@ export default function TransactionReportPage() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [generatedAt, setGeneratedAt] = useState("");
-
-  useEffect(() => {
-    const tab = searchParams.get("tab");
-    if (tab === "cancellations" || tab === "orders") {
-      if (tab !== reportType) {
-        setReportType(tab);
-        setSearch("");
-        setDebouncedSearch("");
-        setPage(1);
-      }
-    } else if (!tab && reportType !== "orders") {
-      setReportType("orders");
-      setSearch("");
-      setDebouncedSearch("");
-      setPage(1);
-    }
-  }, [searchParams, reportType]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -1593,7 +1553,6 @@ export default function TransactionReportPage() {
             key={item.value}
             type="button"
             onClick={() => {
-              setReportType(item.value);
               setSearch("");
               setStatusFilter("all");
               setChannelFilter("all");

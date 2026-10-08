@@ -1271,11 +1271,9 @@ export default function OperationsReportPage({ fixedOperationType = null }) {
     (item) => item.value === requestedOperationType,
   );
 
-  const initialOperationType =
+  const operationType =
     fixedOperationType ||
     (validOperationType ? requestedOperationType : "tasks");
-
-  const [operationType, setOperationType] = useState(initialOperationType);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -1338,51 +1336,12 @@ export default function OperationsReportPage({ fixedOperationType = null }) {
   );
 
   useEffect(() => {
-    if (fixedOperationType) return;
-
-    const requestedType = searchParams.get("tab");
-
-    if (
-      requestedType &&
-      OPERATION_TYPES.some((item) => item.value === requestedType)
-    ) {
-      if (requestedType !== operationType) {
-        setOperationType(requestedType);
-        setSearch("");
-        setDebouncedSearch("");
-        setStatusFilter("all");
-        setPage(1);
-      }
-
-      return;
-    }
-
-    if (!requestedType && operationType !== "tasks") {
-      setOperationType("tasks");
-      setSearch("");
-      setDebouncedSearch("");
-      setStatusFilter("all");
-      setPage(1);
-    }
-  }, [fixedOperationType, searchParams, operationType]);
-
-  useEffect(() => {
     const timer = window.setTimeout(() => {
       setDebouncedSearch(search);
     }, 300);
 
     return () => window.clearTimeout(timer);
   }, [search]);
-
-  useEffect(() => {
-    if (!fixedOperationType || fixedOperationType === operationType) return;
-
-    setOperationType(fixedOperationType);
-    setSearch("");
-    setDebouncedSearch("");
-    setStatusFilter("all");
-    setPage(1);
-  }, [fixedOperationType, operationType]);
 
   const loadTaskReport = useCallback(async () => {
     const requestId = ++reportRequestIdRef.current;
@@ -2325,7 +2284,6 @@ export default function OperationsReportPage({ fixedOperationType = null }) {
               key={item.value}
               type="button"
               onClick={() => {
-                setOperationType(item.value);
                 setSearch("");
                 setDebouncedSearch("");
                 setStatusFilter("all");

@@ -847,11 +847,8 @@ export default function StockReportPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const requestedTab = searchParams.get("tab");
-  const initialReportType =
-    requestedTab === "transfers" ? "transfers" : "movements";
 
-  // Core Selection
-  const [reportType, setReportType] = useState(initialReportType);
+  const reportType = requestedTab === "transfers" ? "transfers" : "movements";
 
   // Filters
   const [search, setSearch] = useState("");
@@ -878,23 +875,6 @@ export default function StockReportPage() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [generatedAt, setGeneratedAt] = useState("");
-
-  useEffect(() => {
-    const tab = searchParams.get("tab");
-    if (tab === "transfers" || tab === "movements") {
-      if (tab !== reportType) {
-        setReportType(tab);
-        setSearch("");
-        setDebouncedSearch("");
-        setPage(1);
-      }
-    } else if (!tab && reportType !== "movements") {
-      setReportType("movements");
-      setSearch("");
-      setDebouncedSearch("");
-      setPage(1);
-    }
-  }, [searchParams, reportType]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -1419,7 +1399,6 @@ export default function StockReportPage() {
         <button
           type="button"
           onClick={() => {
-            setReportType("movements");
             setMovementType("");
             setInventoryType("");
             setSearch("");
@@ -1451,7 +1430,6 @@ export default function StockReportPage() {
         <button
           type="button"
           onClick={() => {
-            setReportType("transfers");
             setMovementType("");
             setInventoryType("");
             setSearch("");

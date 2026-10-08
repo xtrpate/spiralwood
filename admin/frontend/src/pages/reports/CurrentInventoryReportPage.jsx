@@ -287,23 +287,11 @@ export default function CurrentInventoryReportPage() {
   const [stockStatus, setStockStatus] = useState("");
 
   const requestedType = searchParams.get("tab");
-  const initialType =
+
+  const inventoryType =
     requestedType === "raw" || requestedType === "ready_made"
       ? requestedType
       : "";
-  const [inventoryType, setInventoryType] = useState(initialType);
-
-  useEffect(() => {
-    const typeParam = searchParams.get("tab");
-    const validParam =
-      typeParam === "raw" || typeParam === "ready_made" ? typeParam : "";
-
-    if (validParam !== inventoryType) {
-      setInventoryType(validParam);
-      setSearch("");
-      setStockStatus("");
-    }
-  }, [searchParams, inventoryType]);
 
   const loadReport = useCallback(async () => {
     const requestId = ++reportRequestIdRef.current;
@@ -851,7 +839,6 @@ export default function CurrentInventoryReportPage() {
         <button
           type="button"
           onClick={() => {
-            setInventoryType("");
             setSearch("");
             setStockStatus("");
             setSearchParams({}, { replace: true });
@@ -880,7 +867,6 @@ export default function CurrentInventoryReportPage() {
         <button
           type="button"
           onClick={() => {
-            setInventoryType("raw");
             setSearch("");
             setStockStatus("");
             setSearchParams({ tab: "raw" }, { replace: true });
@@ -909,7 +895,6 @@ export default function CurrentInventoryReportPage() {
         <button
           type="button"
           onClick={() => {
-            setInventoryType("ready_made");
             setSearch("");
             setStockStatus("");
             setSearchParams({ tab: "ready_made" }, { replace: true });

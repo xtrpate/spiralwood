@@ -445,6 +445,26 @@ function AppointmentCard({ appt, onCancel, focused = false }) {
   );
 }
 
+const toLocalPhilippinePhone = (value) => {
+  const digits = String(value || "")
+    .trim()
+    .replace(/\D/g, "");
+
+  // Canonical backend format: 639XXXXXXXXX
+  // Customer-facing format: 09XXXXXXXXX
+  if (/^639\d{9}$/.test(digits)) {
+    return `0${digits.slice(2)}`;
+  }
+
+  // Support 9XXXXXXXXX as well.
+  if (/^9\d{9}$/.test(digits)) {
+    return `0${digits}`;
+  }
+
+  // Already local or empty.
+  return digits;
+};
+
 export default function AppointmentPage() {
   const { user } = useAuthStore();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -458,7 +478,7 @@ export default function AppointmentPage() {
   const [preferred_date, setPreferredDate] = useState("");
   const [preferred_time, setPreferredTime] = useState("");
   const [contact_number, setContactNumber] = useState(
-    user?.phone || user?.contact_number || "",
+    toLocalPhilippinePhone(user?.phone || user?.contact_number || ""),
   );
   const [address, setAddress] = useState(user?.address || "");
   const [notes, setNotes] = useState("");
@@ -497,7 +517,9 @@ export default function AppointmentPage() {
 
   useEffect(() => {
     setAddress(user?.address || "");
-    setContactNumber(user?.phone || user?.contact_number || "");
+    setContactNumber(
+      toLocalPhilippinePhone(user?.phone || user?.contact_number || ""),
+    );
   }, [user]);
 
   useEffect(() => {
