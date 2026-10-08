@@ -413,7 +413,7 @@ export async function downloadProjectAgreementPdf({
     y += 6;
   };
 
-  const scopeWidths = [12, 72, 18, 14, 33, contentWidth - 149];
+  const scopeWidths = [18, 66, 18, 14, 33, contentWidth - 149];
   const drawScopeHeader = () => {
     const headers = ["ITEM", "DESCRIPTION", "UNIT", "QTY.", "UNIT PRICE", "TOTAL"];
     let x = margin;
