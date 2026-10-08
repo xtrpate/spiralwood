@@ -110,6 +110,19 @@ export const getCustomerWardrobeHeightDepthSupport = (parts = []) => {
     }
   }
 
+  // Rod positions are intentional assembly anchors. If an existing design
+  // moved them outside the known template positions, do not overwrite them.
+  const rodShift = Math.floor((depth - 620) / 2);
+  const rodOffsets = rods.map((p) =>
+    Math.round(Number(p.z) - minZ - rodShift),
+  ).sort((a, b) => a - b);
+  if (
+    JSON.stringify(rodOffsets) !== JSON.stringify([362, 362, 362, 414]) ||
+    rods.some((p) => !close(p.height, 16) || !close(p.depth, 16))
+  ) {
+    return error("Hanging rod positions are not verified for this depth change.");
+  }
+
   const extents = {
     minZ: Math.min(...parts.map((p) => Number(p.z))),
     maxZ: Math.max(...parts.map((p) => Number(p.z) + Number(p.depth))),
