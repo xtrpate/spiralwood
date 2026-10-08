@@ -368,7 +368,6 @@ export default function CancellationsPage() {
     <div style={pageShell}>
       <div style={headerRow}>
         <div>
-          <div style={eyebrow}>Sales & Orders</div>
           <h1 style={pageTitle}>Cancellations</h1>
           <p style={pageSubtitle}>
             Review ready-made cancellation history and custom furniture
@@ -847,14 +846,18 @@ const eyebrow = {
 
 const pageTitle = {
   margin: 0,
-  fontSize: 30,
-  lineHeight: 1.2,
+  fontSize: 24,
+  fontWeight: 700,
+  color: "#0a0a0a",
+  letterSpacing: "-0.02em",
 };
 
 const pageSubtitle = {
-  margin: "7px 0 0",
+  margin: "6px 0 0",
+  maxWidth: 850,
+  fontSize: 12,
+  lineHeight: 1.5,
   color: "#71717a",
-  maxWidth: 760,
 };
 
 const policyCard = {
