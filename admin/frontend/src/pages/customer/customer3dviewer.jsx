@@ -1048,6 +1048,14 @@ const isCustomerShelfStructure = (component = {}) => {
   );
 };
 
+// These two independent upper shelves in the supported wardrobe template
+// are configurable only after cabinet-wall and collision checks pass.
+// Top/base shelves, drawer supports and unnamed shelves stay protected.
+const CUSTOMER_WARDROBE_ADJUSTABLE_SHELF_CODES = new Set([
+  "WRC-B2-S1",
+  "WRC-B2-S2",
+]);
+
 // Shelf editing is opt-in. Generic "shelf" roles do not prove adjustability:
 // wardrobe drawer tops and load-bearing dividers often share that role.
 const getCustomerShelfClassification = (component = {}) => {
@@ -1062,11 +1070,16 @@ const getCustomerShelfClassification = (component = {}) => {
     component?.partRole,
     component?.part_role,
   ].map((value) => String(value ?? "").trim().toLowerCase());
+  const partCode = String(component?.partCode || component?.part_code || component?.technicalId || "").trim().toUpperCase();
+  const templateAdjustable =
+    CUSTOMER_WARDROBE_ADJUSTABLE_SHELF_CODES.has(partCode) &&
+    String(component?.type || "").toLowerCase() === "wr_shelf" &&
+    String(component?.partRole ?? component?.part_role ?? "shelf").toLowerCase() === "shelf";
   const explicitAdjustable =
     component?.isAdjustableShelf === true ||
     component?.is_adjustable_shelf === true ||
+    templateAdjustable ||
     attributes.some((value) => ["adjustable_shelf", "shelf_adjustable", "adjustable"].includes(value));
-  const partCode = String(component?.partCode || component?.part_code || component?.technicalId || "").trim().toUpperCase();
   const roleText = attributes.join(" ");
   const explicitlyFixed =
     component?.locked === true ||
@@ -1149,12 +1162,16 @@ const getVerifiedShelfLimits = (parts = [], shelf = null) => {
   const minY = Math.ceil(Math.max(lb.minY,rb.minY) + SHELF_TOLERANCE_MM);
   const maxY = Math.floor(Math.min(lb.maxY,rb.maxY)-shelf.height-SHELF_TOLERANCE_MM);
   const maxWidth=Math.floor(rb.minX-shelf.x);
+  // A shelf must still touch both side supports after customization.
+  // Without additional brackets, arbitrary width reduction is unsafe.
+  const minSupportedWidth=Math.max(20,maxWidth-SHELF_TOLERANCE_MM);
   const maxDepth=Math.floor(Math.min(lb.maxZ,rb.maxZ)-shelf.z);
-  if (minY>maxY || maxWidth<20 || maxDepth<20 ||
+  if (minY>maxY || maxWidth<20 || maxDepth<100 ||
       shelf.y<minY-SHELF_TOLERANCE_MM || shelf.y>maxY+SHELF_TOLERANCE_MM ||
+      shelf.width<minSupportedWidth-SHELF_TOLERANCE_MM ||
       shelf.width>maxWidth+SHELF_TOLERANCE_MM ||
       shelf.depth>maxDepth+SHELF_TOLERANCE_MM) return null;
-  return {min:{width:20,depth:20,y:minY},max:{width:maxWidth,depth:maxDepth,y:maxY}};
+  return {min:{width:minSupportedWidth,depth:100,y:minY},max:{width:maxWidth,depth:maxDepth,y:maxY}};
 };
 
 const validateShelfCandidate = (parts = [], shelf = null, proposed = null) => {
@@ -5776,8 +5793,9 @@ export default function Customer3DViewer({
 
                   {selectedShelfLimits ? (
                     <div style={styles.helperTextMuted}>
-                      Adjustable shelf: Width and Depth are editable; Thickness is fixed.
-                      Move it only within the verified cabinet limits; collisions are blocked.
+                      Adjustable shelf: Depth and Vertical Position are editable.
+                      Width stays fitted to both side supports; Thickness is fixed.
+                      Collisions and unsupported changes are blocked.
                     </div>
                   ) : null}
                   {selectedShelfLimits ? (
