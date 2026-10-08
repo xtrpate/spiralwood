@@ -256,10 +256,17 @@ const useAuthStore = create((set, get) => ({
   },
 
   verifyOtp: async (email, otp) => {
-    const { data } = await api.post("/customer/auth/verify-otp", {
-      email,
-      otp,
-    });
+    const { data } = await api.post(
+      "/customer/auth/verify-otp",
+      {
+        email,
+        otp,
+      },
+      {
+        suppressGlobalErrorToast: true,
+      },
+    );
+
     return data;
   },
 
@@ -287,32 +294,58 @@ const useAuthStore = create((set, get) => ({
   },
 
   verifyPhoneOtp: async (email, otp) => {
-    const { data } = await api.post("/customer/auth/verify-phone-otp", {
-      email,
-      otp,
-    });
+    const { data } = await api.post(
+      "/customer/auth/verify-phone-otp",
+      {
+        email,
+        otp,
+      },
+      {
+        suppressGlobalErrorToast: true,
+      },
+    );
 
     return data;
   },
 
   verifyResetOtp: async (identifier, otp) => {
-    const { data } = await api.post("/customer/auth/verify-reset-otp", {
-      identifier: String(identifier || "").trim(),
-      otp,
-    });
+    const { data } = await api.post(
+      "/customer/auth/verify-reset-otp",
+      {
+        identifier: String(identifier || "").trim(),
+        otp,
+      },
+      {
+        suppressGlobalErrorToast: true,
+      },
+    );
 
     return data;
   },
 
   resendOtp: async (email) => {
-    const { data } = await api.post("/customer/auth/resend-otp", { email });
+    const { data } = await api.post(
+      "/customer/auth/resend-otp",
+      { email },
+      {
+        suppressGlobalErrorToast: true,
+      },
+    );
+
     return data;
   },
 
   resendPhoneOtp: async (email) => {
-    const { data } = await api.post("/customer/auth/resend-phone-otp", {
-      email,
-    });
+    const { data } = await api.post(
+      "/customer/auth/resend-phone-otp",
+      {
+        email,
+      },
+      {
+        suppressGlobalErrorToast: true,
+      },
+    );
+
     return data;
   },
 
@@ -338,9 +371,15 @@ const useAuthStore = create((set, get) => ({
   },
 
   resendResetOtp: async (identifier) => {
-    const { data } = await api.post("/customer/auth/resend-reset-otp", {
-      identifier: String(identifier || "").trim(),
-    });
+    const { data } = await api.post(
+      "/customer/auth/resend-reset-otp",
+      {
+        identifier: String(identifier || "").trim(),
+      },
+      {
+        suppressGlobalErrorToast: true,
+      },
+    );
 
     return data;
   },

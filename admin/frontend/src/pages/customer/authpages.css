@@ -607,3 +607,13 @@
   border-bottom-left-radius: 0 !important;
   flex: 1;
 }
+
+.field-error-input {
+  border-color: #dc2626 !important;
+  box-shadow: 0 0 0 1px #dc2626 !important;
+}
+
+.field-error-input:focus {
+  border-color: #dc2626 !important;
+  box-shadow: 0 0 0 1px #dc2626 !important;
+}

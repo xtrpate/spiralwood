@@ -1189,7 +1189,7 @@ exports.verifyOtp = async (req, res) => {
 
     await sendSms({
       phone: user.phone,
-      message: `Your Spiral Wood Services phone verification code is ${phoneOtp}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
+      message: `Your Spiral Wood Services phone verification code is ${phoneOtp}. It expires in ${OTP_EXPIRY_MINUTES} minutes. Don't share your code with anyone.`,
     });
 
     await writeAuditLogSafe({
@@ -1802,7 +1802,7 @@ exports.resendPhoneOtp = async (req, res) => {
 
     await sendSms({
       phone: user.phone,
-      message: `Your Spiral Wood Services phone verification code is ${phoneOtp}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
+      message: `Your Spiral Wood Services phone verification code is ${phoneOtp}. It expires in ${OTP_EXPIRY_MINUTES} minutes. Don't share your code with anyone.`,
     });
 
     await writeAuditLogSafe({
@@ -2469,7 +2469,7 @@ exports.login = async (req, res) => {
 
       await sendSms({
         phone: user.phone,
-        message: `Your Spiral Wood Services phone verification code is ${phoneOtp}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
+        message: `Your Spiral Wood Services phone verification code is ${phoneOtp}. It expires in ${OTP_EXPIRY_MINUTES} minutes. Don't share your code with anyone.`,
       });
 
       await auditLogin({

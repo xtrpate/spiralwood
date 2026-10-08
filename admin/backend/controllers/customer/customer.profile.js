@@ -943,7 +943,7 @@ exports.requestPhoneChange = async (req, res) => {
 
     await sendSms({
       phone: normalizedPhone,
-      message: `Your Spiral Wood Services verification code to update your phone number is ${otp}. Valid for 15 minutes.`,
+      message: `Your Spiral Wood Services verification code to update your phone number is ${otp}. It expires in ${OTP_EXPIRY_MINUTES} minutes. Don't share your code with anyone.`,
     });
 
     return res.json({ message: "OTP sent to new phone number." });

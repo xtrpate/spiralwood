@@ -159,15 +159,23 @@ export default function VerifyOtpPage() {
           },
         });
       } else if (verificationStep === "email") {
+        // Trigger full-screen "Verifying..." overlay immediately
+        setUiState("verifying");
+
         await verifyOtp(email, code);
-        setSuccess("Email verified successfully.");
+
+        // Transition to "Verification successful" screen
+        setUiState("success");
+
         setTimeout(() => {
+          setUiState("form");
           setSuccess("");
           setOtp(["", "", "", "", "", ""]);
           setVerificationStep("phone");
           setResendCooldown(60);
+
           setTimeout(() => otpRefs.current[0]?.focus(), 100);
-        }, 1200);
+        }, 1500);
       } else if (verificationStep === "phone") {
         // Trigger full-screen "Verifying..." overlay immediately
         setUiState("verifying");

@@ -50,6 +50,9 @@ export default function RegisterPage() {
   const [showPw, setShowPw] = useState(false);
   const [showCPw, setShowCPw] = useState(false);
   const [error, setError] = useState("");
+  const [errorField, setErrorField] = useState("");
+
+  const fieldRefs = useRef({});
   const [loading, setLoading] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState("");
   const [captchaToken, setCaptchaToken] = useState("");
@@ -92,37 +95,66 @@ export default function RegisterPage() {
     return () => clearTimeout(t);
   }, [resendCooldown]);
 
+  const showFieldError = (field, message) => {
+    setError(message);
+    setErrorField(field);
+
+    requestAnimationFrame(() => {
+      const element = fieldRefs.current[field];
+
+      if (element) {
+        element.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+
+        element.focus();
+      }
+    });
+  };
+
   const handleNext = (e) => {
     e?.preventDefault();
+
     setError("");
+    setErrorField("");
 
     const nameRegex = /^[\p{L}]+(?:[ '\-][\p{L}]+)*$/u;
 
-    if (
-      !nameRegex.test(form.first_name.trim()) ||
-      !nameRegex.test(form.last_name.trim())
-    ) {
-      return setError(
-        "First Name and Last Name may contain letters, spaces, hyphens, and apostrophes only.",
+    if (!nameRegex.test(form.first_name.trim())) {
+      return showFieldError(
+        "first_name",
+        "First Name may contain letters, spaces, hyphens, and apostrophes only.",
+      );
+    }
+
+    if (!nameRegex.test(form.last_name.trim())) {
+      return showFieldError(
+        "last_name",
+        "Last Name may contain letters, spaces, hyphens, and apostrophes only.",
       );
     }
 
     if (!form.email.trim()) {
-      return setError("Email address is required.");
+      return showFieldError("email", "Email address is required.");
     }
 
     if (form.phone.length !== 10) {
-      return setError(
+      return showFieldError(
+        "phone",
         "Phone number must be exactly 10 digits after the +63 prefix.",
       );
     }
 
     if (form.password !== form.confirm_password) {
-      return setError("Passwords do not match.");
+      return showFieldError("confirm_password", "Passwords do not match.");
     }
 
     if (form.password.length < 8) {
-      return setError("Password must be at least 8 characters.");
+      return showFieldError(
+        "password",
+        "Password must be at least 8 characters.",
+      );
     }
 
     const hasUppercase = /[A-Z]/.test(form.password);
@@ -131,12 +163,14 @@ export default function RegisterPage() {
     const hasSpecial = /[^A-Za-z0-9]/.test(form.password);
 
     if (!hasUppercase || !hasLowercase || !hasNumber || !hasSpecial) {
-      return setError(
+      return showFieldError(
+        "password",
         "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character.",
       );
     }
 
     setError("");
+    setErrorField("");
     setStep("address");
   };
 
@@ -916,7 +950,16 @@ export default function RegisterPage() {
           </div>
 
           {step === "form" ? (
-            <form className="auth-form" onSubmit={handleNext}>
+            <form
+              className="auth-form"
+              onSubmit={handleNext}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  e.currentTarget.requestSubmit();
+                }
+              }}
+            >
               {error && <div className="alert alert-error">{error}</div>}
 
               <div className="form-row">
@@ -924,10 +967,19 @@ export default function RegisterPage() {
                   <label>First Name *</label>
                   <div className="field-input-wrap">
                     <input
+                      ref={(el) => (fieldRefs.current.first_name = el)}
                       type="text"
-                      className="no-icon"
+                      className={`no-icon ${
+                        errorField === "first_name" ? "field-error-input" : ""
+                      }`}
                       value={form.first_name}
-                      onChange={(e) => set("first_name", e.target.value)}
+                      onChange={(e) => {
+                        set("first_name", e.target.value);
+                        if (errorField === "first_name") {
+                          setErrorField("");
+                          setError("");
+                        }
+                      }}
                       placeholder="Juan"
                       maxLength={50}
                       required
@@ -939,10 +991,19 @@ export default function RegisterPage() {
                   <label>Last Name *</label>
                   <div className="field-input-wrap">
                     <input
+                      ref={(el) => (fieldRefs.current.last_name = el)}
                       type="text"
-                      className="no-icon"
+                      className={`no-icon ${
+                        errorField === "last_name" ? "field-error-input" : ""
+                      }`}
                       value={form.last_name}
-                      onChange={(e) => set("last_name", e.target.value)}
+                      onChange={(e) => {
+                        set("last_name", e.target.value);
+                        if (errorField === "last_name") {
+                          setErrorField("");
+                          setError("");
+                        }
+                      }}
                       placeholder="Dela Cruz"
                       maxLength={50}
                       required
@@ -955,10 +1016,19 @@ export default function RegisterPage() {
                 <label>Email Address *</label>
                 <div className="field-input-wrap">
                   <input
+                    ref={(el) => (fieldRefs.current.email = el)}
                     type="email"
-                    className="no-icon"
+                    className={`no-icon ${
+                      errorField === "email" ? "field-error-input" : ""
+                    }`}
                     value={form.email}
-                    onChange={(e) => set("email", e.target.value)}
+                    onChange={(e) => {
+                      set("email", e.target.value);
+                      if (errorField === "email") {
+                        setErrorField("");
+                        setError("");
+                      }
+                    }}
                     placeholder="youremail@example.com"
                     maxLength={254}
                     required
@@ -975,8 +1045,11 @@ export default function RegisterPage() {
                     </div>
 
                     <input
+                      ref={(el) => (fieldRefs.current.phone = el)}
                       type="tel"
-                      className="no-icon"
+                      className={`no-icon ${
+                        errorField === "phone" ? "field-error-input" : ""
+                      }`}
                       placeholder="9XXXXXXXXX"
                       value={form.phone}
                       maxLength={10}
@@ -992,6 +1065,11 @@ export default function RegisterPage() {
                         }
 
                         set("phone", val);
+
+                        if (errorField === "phone") {
+                          setErrorField("");
+                          setError("");
+                        }
                       }}
                       required
                     />
@@ -1003,10 +1081,19 @@ export default function RegisterPage() {
                 <label>Password *</label>
                 <div className="field-input-wrap">
                   <input
+                    ref={(el) => (fieldRefs.current.password = el)}
                     type={showPw ? "text" : "password"}
-                    className="no-icon"
+                    className={`no-icon ${
+                      errorField === "password" ? "field-error-input" : ""
+                    }`}
                     value={form.password}
-                    onChange={(e) => set("password", e.target.value)}
+                    onChange={(e) => {
+                      set("password", e.target.value);
+                      if (errorField === "password") {
+                        setErrorField("");
+                        setError("");
+                      }
+                    }}
                     placeholder="Enter your password"
                     maxLength={72}
                     required
@@ -1049,10 +1136,21 @@ export default function RegisterPage() {
 
                 <div className="field-input-wrap">
                   <input
+                    ref={(el) => (fieldRefs.current.confirm_password = el)}
                     type={showCPw ? "text" : "password"}
-                    className="no-icon"
+                    className={`no-icon ${
+                      errorField === "confirm_password"
+                        ? "field-error-input"
+                        : ""
+                    }`}
                     value={form.confirm_password}
-                    onChange={(e) => set("confirm_password", e.target.value)}
+                    onChange={(e) => {
+                      set("confirm_password", e.target.value);
+                      if (errorField === "confirm_password") {
+                        setErrorField("");
+                        setError("");
+                      }
+                    }}
                     placeholder="Re-enter your password"
                     maxLength={72}
                     required
