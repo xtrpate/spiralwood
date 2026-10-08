@@ -5398,6 +5398,23 @@ export default function Customer3DViewer({
                   >
                     Open / Close Selected Door
                   </button>
+                  {hasCustomerPreviewDoors ? (
+                    <button
+                      type="button"
+                      aria-pressed={doorsPreviewOpen}
+                      onClick={
+                        doorsPreviewOpen
+                          ? closeAllCustomerDoors
+                          : () => openAllCustomerDoors()
+                      }
+                      style={{
+                        ...styles.toolBtn,
+                        ...(doorsPreviewOpen ? styles.unitBtnActive : {}),
+                      }}
+                    >
+                      {doorsPreviewOpen ? "Close All Doors" : "Open All Doors"}
+                    </button>
+                  ) : null}
                 </section>
               ) : null}
 
