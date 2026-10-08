@@ -5840,7 +5840,7 @@ export default function Customer3DViewer({
                       </span>
                       <input
                         type="number"
-                        disabled={!canResizeSelectedPart}
+                        disabled={!canResizeSelectedPart || Boolean(selectedShelfLimits)}
                         min={
                           selectedEditGroup?.kind === "drawer"
                             ? convertMmToUnit(
