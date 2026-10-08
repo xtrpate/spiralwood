@@ -33,13 +33,11 @@ const InlineFieldError = ({ id, message }) =>
 const PAYMENT_METHODS = [
   {
     value: "cod",
-    icon: "💵",
     label: "Cash on Delivery",
     desc: "Pay when the order is delivered.",
   },
   {
     value: "paymongo",
-    icon: "💳",
     label: "Pay Online",
     desc: "Pay securely via Card, GCash, or Maya through PayMongo.",
   },
