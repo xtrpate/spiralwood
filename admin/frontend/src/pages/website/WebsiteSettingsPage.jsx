@@ -26,7 +26,9 @@ const SITE_LOGO_MIME_BY_EXTENSION = {
 const validateSiteLogoFile = async (file) => {
   if (!file) return "Choose a site logo file.";
 
-  const filename = String(file.name || "").trim().toLowerCase();
+  const filename = String(file.name || "")
+    .trim()
+    .toLowerCase();
   const extension = filename.includes(".")
     ? filename.slice(filename.lastIndexOf("."))
     : "";
@@ -103,28 +105,24 @@ const DELIVERY_LIMIT_KEYS = [
 const SECTION_META = {
   display: {
     label: "Website Details",
-    icon: "🖼️",
-    description: "Brand, storefront, checkout message, and public business information.",
+    description:
+      "Brand, storefront, checkout message, and public business information.",
   },
   payment: {
     label: "Payments",
-    icon: "💳",
     description:
       "Customer-facing payment methods for ready-made and blueprint orders.",
   },
   email: {
     label: "Email Notifications",
-    icon: "📧",
     description: "Admin alerts and customer email updates.",
   },
   policy: {
     label: "Warranty",
-    icon: "🛡️",
     description: "Configure warranty coverage period for customer orders.",
   },
   delivery: {
     label: "Truck Capacity",
-    icon: "🚚",
     description:
       "Usable internal measurements for the standard delivery truck.",
   },
@@ -222,14 +220,12 @@ const KEY_META = {
   blueprint_store_cash_enabled: {
     label: "Blueprint Cash at Store / Pickup",
     type: "toggle",
-    hint:
-      "Allow cash payments at the Spiral Wood store for blueprint orders, including pickup balances. Delivery rider cash collection remains available separately.",
+    hint: "Allow cash payments at the Spiral Wood store for blueprint orders, including pickup balances. Delivery rider cash collection remains available separately.",
   },
   paymongo_enabled: {
     label: "Online Payment (PayMongo)",
     type: "toggle",
-    hint:
-      "Allow secure online payment by Card, GCash, or Maya through PayMongo for ready-made and blueprint orders.",
+    hint: "Allow secure online payment by Card, GCash, or Maya through PayMongo for ready-made and blueprint orders.",
   },
 
   admin_alert_email: {
@@ -325,11 +321,7 @@ const TAB_KEYS = {
     "operating_hours",
     "checkout_note",
   ],
-  payment: [
-    "cod_enabled",
-    "blueprint_store_cash_enabled",
-    "paymongo_enabled",
-  ],
+  payment: ["cod_enabled", "blueprint_store_cash_enabled", "paymongo_enabled"],
   email: [
     "admin_alert_email",
     "email_order_confirmed",
