@@ -571,6 +571,8 @@ const isCustomerDoorPreviewComponent = (component = {}) => {
 
   const text = [
     component?.type,
+    component?.partRole,
+    component?.part_role,
     component?.label,
     component?.partCode,
     component?.category,
@@ -580,6 +582,10 @@ const isCustomerDoorPreviewComponent = (component = {}) => {
     .trim()
     .toLowerCase();
 
+  // Frames, handles, hinges, and rails must not open as separate doors.
+  if (/(^|[\s_-])(handle|hinge|knob|pull|frame|jamb|trim|rail)([\s_-]|$)/.test(text)) {
+    return false;
+  }
   return component?.type === "wr_door" || /(^|[\s_-])door([\s_-]|$)/.test(text);
 };
 
@@ -906,6 +912,59 @@ const isCustomerEditHardwareComponent = (component = {}) => {
   return /(^|[\s_-])(handle|knob|hardware|pull|slide|runner)([\s_-]|$)/.test(
     text,
   );
+};
+
+
+const isCustomerDoorPanelComponent = (component = {}) => {
+  if (!component?.id || isCustomerEditHardwareComponent(component)) return false;
+  const text = [
+    component?.type, component?.partRole, component?.part_role,
+    component?.label, component?.name, component?.partCode,
+  ].filter(Boolean).join(" ").toLowerCase();
+  // Frames, hinges, and rails are not independent door panels.
+  if (/(^|[\s_-])(frame|hinge|jamb|trim|rail)([\s_-]|$)/.test(text)) {
+    return false;
+  }
+  return isCustomerDoorPreviewComponent(component) ||
+    /(^|[\s_-])door([\s_-]|$)/.test(text);
+};
+
+// A selected door gets its own finish. Clicking the DOORS heading selects
+// the entire door group, so its finish choices still work on both doors.
+const getCustomerFinishGroupTargetIds = (
+  group = {},
+  selectedIds = [],
+  allParts = [],
+) => {
+  const groupIds = Array.isArray(group?.ids) ? group.ids : [];
+  if (group?.label !== "Doors" || selectedIds.length !== 1) {
+    return groupIds;
+  }
+  const selectedId = selectedIds[0];
+  if (!groupIds.includes(selectedId)) return groupIds;
+  const selectedDoor = allParts.find((part) => part?.id === selectedId);
+  return selectedDoor && isCustomerDoorPanelComponent(selectedDoor)
+    ? [selectedId]
+    : groupIds;
+};
+
+
+const isCustomerCabinetStructuralPart = (part = {}) => {
+  // Only protect known wardrobe frame parts. Table legs and other furniture
+  // groups must keep their existing edit behavior.
+  const type = String(part?.type || "").trim().toLowerCase();
+  const code = String(
+    part?.partCode || part?.part_code || part?.technicalId || "",
+  ).trim().toUpperCase();
+  const wardrobeTypes = new Set([
+    "wr_side_panel",
+    "wr_back_panel",
+    "wr_top_panel",
+    "wr_bottom_panel",
+    "wr_divider",
+  ]);
+  if (wardrobeTypes.has(type)) return true;
+  return /^(?:WRC-(?:SIDE-[LR]|BACK|DIV-\d+)|WR-(?:SL|SR|BK|TOP|BOT))$/.test(code);
 };
 
 const getCustomerDrawerEditLabel = (reference = {}) => {
@@ -2031,6 +2090,8 @@ export default function Customer3DViewer({
         Boolean(sampleSelectedPart) &&
         !Boolean(sampleSelectedPart?.locked) &&
         !isCustomerEditHardwareComponent(sampleSelectedPart) &&
+        !isCustomerCabinetStructuralPart(sampleSelectedPart) &&
+        !selectedGroup.some((part) => isCustomerDoorPreviewComponent(part) || isCustomerDoorPanelComponent(part)) &&
         (!isCustomerShelfStructure(sampleSelectedPart) || Boolean(selectedShelfLimits));
 
   const selectedPartGroup = useMemo(
@@ -4324,6 +4385,8 @@ export default function Customer3DViewer({
       readOnly ||
       !selectedGroup.length ||
       !canResizeSelectedPart ||
+      (selectedEditGroup?.kind !== "drawer" && selectedGroup.some(isCustomerCabinetStructuralPart)) ||
+      selectedGroup.some((part) => isCustomerDoorPreviewComponent(part) || isCustomerDoorPanelComponent(part)) ||
       (selectedEditGroup?.kind !== "drawer" &&
         selectedGroup.some(isCustomerShelfStructure) && !selectedShelfLimits)
     ) {
@@ -5275,6 +5338,107 @@ export default function Customer3DViewer({
               className="wisdom-roomle-sidebar-scroll"
               style={styles.sidebarScroll}
             >
+              {isCustomizable && !readOnly && components.some(isCustomerDoorPanelComponent) ? (
+                <section style={styles.sidebarSection}>
+                  <label htmlFor="customer-door-selector" style={styles.label}>
+                    Select Individual Door
+                  </label>
+                  <select
+                    id="customer-door-selector"
+                    aria-label="Select individual door"
+                    style={styles.partGroupSelect}
+                    value={
+                      selectedGroup.length === 1 &&
+                      sampleSelectedPart &&
+                      isCustomerDoorPanelComponent(sampleSelectedPart)
+                        ? String(sampleSelectedPart.id)
+                        : ""
+                    }
+                    onChange={(event) => {
+                      const door = components.find(
+                        (item) =>
+                          isCustomerDoorPanelComponent(item) &&
+                          String(item.id) === event.target.value,
+                      );
+                      setSelectedCompIds(door ? [door.id] : []);
+                      if (door) {
+                        setSelectionMode(true);
+                        showCustomizeFeedback((door.label || door.name || "Door") + " selected.");
+                      }
+                    }}
+                  >
+                    <option value="">Choose a door</option>
+                    {components.filter(isCustomerDoorPanelComponent).map((door) => (
+                      <option key={String(door.id)} value={String(door.id)}>
+                        {door.label || door.name || "Door"} — Size protected
+                      </option>
+                    ))}
+                  </select>
+                  <div style={styles.helperTextMuted}>
+                    Choose one door to change its finish or preview its movement.
+                    Door size stays locked until safe cabinet limits are available.
+                  </div>
+                  <button
+                    type="button"
+                    disabled={
+                      selectedGroup.length !== 1 ||
+                      !sampleSelectedPart ||
+                      !isCustomerDoorPreviewComponent(sampleSelectedPart)
+                    }
+                    onClick={() => {
+                      if (
+                        selectedGroup.length !== 1 ||
+                        !sampleSelectedPart ||
+                        !isCustomerDoorPreviewComponent(sampleSelectedPart)
+                      ) return;
+                      const selectedSet = buildCustomerDoorPreviewSets(components).find(
+                        (set) => set.members.some((part) => part.id === sampleSelectedPart.id),
+                      );
+                      if (!selectedSet) return;
+                      const alreadyOpen = (doorMotionPreviewRef.current || []).some(
+                        (preview) => preview.key === selectedSet.key,
+                      );
+                      if (toggleCustomerDoorFromComponentId(sampleSelectedPart.id)) {
+                        showCustomizeFeedback(
+                          alreadyOpen
+                            ? "Door closed for preview."
+                            : "Door opened for preview.",
+                        );
+                      }
+                    }}
+                    style={{
+                      ...styles.toolBtn,
+                      ...(
+                        selectedGroup.length !== 1 ||
+                        !sampleSelectedPart ||
+                        !isCustomerDoorPreviewComponent(sampleSelectedPart)
+                          ? styles.toolBtnDisabled
+                          : {}
+                      ),
+                    }}
+                  >
+                    Open / Close Selected Door
+                  </button>
+                  {hasCustomerPreviewDoors ? (
+                    <button
+                      type="button"
+                      aria-pressed={doorsPreviewOpen}
+                      onClick={
+                        doorsPreviewOpen
+                          ? closeAllCustomerDoors
+                          : () => openAllCustomerDoors()
+                      }
+                      style={{
+                        ...styles.toolBtn,
+                        ...(doorsPreviewOpen ? styles.unitBtnActive : {}),
+                      }}
+                    >
+                      {doorsPreviewOpen ? "Close All Doors" : "Open All Doors"}
+                    </button>
+                  ) : null}
+                </section>
+              ) : null}
+
               {isCustomizable && !readOnly && editGroups.some((group) => group.kind === "drawer") ? (
                 <section style={styles.sidebarSection}>
                   <label htmlFor="customer-drawer-selector" style={styles.label}>
@@ -5499,12 +5663,33 @@ export default function Customer3DViewer({
                         group.ids.includes(component.id),
                       ) || null;
 
-                    const groupFinishId = String(
-                      representative?.finish_id ||
-                        representative?.woodFinish ||
-                        representative?.finish ||
-                        "",
-                    ).trim();
+                    const finishTargetIds = getCustomerFinishGroupTargetIds(
+                      group,
+                      selectedCompIds,
+                      components,
+                    );
+                    const activeFinishParts = components.filter((component) =>
+                      finishTargetIds.includes(component.id),
+                    );
+                    const finishIds = activeFinishParts.map((component) =>
+                      String(
+                        component?.finish_id ||
+                          component?.woodFinish ||
+                          component?.finish ||
+                          "",
+                      ).trim(),
+                    );
+                    const groupFinishId =
+                      group.label === "Doors"
+                        ? finishIds.length && new Set(finishIds).size === 1
+                          ? finishIds[0]
+                          : "__mixed__"
+                        : String(
+                            representative?.finish_id ||
+                              representative?.woodFinish ||
+                              representative?.finish ||
+                              "",
+                          ).trim();
 
                     const groupSelected = group.ids.some((id) =>
                       selectedCompIds.includes(id),
@@ -5572,8 +5757,8 @@ export default function Customer3DViewer({
                               (!groupFinishId ? " is-active" : "")
                             }
                             onClick={() => {
-                              setSelectedCompIds(group.ids || []);
-                              handleFinishChange("", group.ids || []);
+                              setSelectedCompIds(finishTargetIds);
+                              handleFinishChange("", finishTargetIds);
                             }}
                           >
                             <span className="wisdom-finish-circle wisdom-finish-original">
@@ -5597,8 +5782,8 @@ export default function Customer3DViewer({
                                   : "")
                               }
                               onClick={() => {
-                                setSelectedCompIds(group.ids || []);
-                                handleFinishChange(finish.id, group.ids || []);
+                                setSelectedCompIds(finishTargetIds);
+                                handleFinishChange(finish.id, finishTargetIds);
                               }}
                             >
                               <span
@@ -5642,6 +5827,13 @@ export default function Customer3DViewer({
                             </button>
                           ) : null}
                         </div>
+                        {group.label === "Doors" ? (
+                          <div style={styles.helperTextMuted}>
+                            {finishTargetIds.length === 1
+                              ? "Finish changes only the selected door. Click DOORS to select both."
+                              : "Finish changes both doors. Choose one above for a single door."}
+                          </div>
+                        ) : null}
                       </section>
                     );
                   })}
@@ -5830,6 +6022,10 @@ export default function Customer3DViewer({
                         ? "Drawer selected, but its cabinet opening could not be detected safely."
                         : sampleSelectedPart?.locked
                           ? "This part is locked and cannot be resized."
+                          : selectedGroup.some((part) => isCustomerDoorPreviewComponent(part) || isCustomerDoorPanelComponent(part))
+                            ? "Door size is locked until safe cabinet limits are ready. You can still change the finish."
+                          : selectedGroup.some(isCustomerCabinetStructuralPart)
+                            ? "Cabinet frame part: size is protected. You can still change its finish."
                           : selectedGroup.some(isCustomerShelfStructure)
                             ? getCustomerShelfClassification(sampleSelectedPart) === "fixed"
                               ? "Fixed or structural shelf: size and position are protected. Finish customization remains available."
