@@ -582,8 +582,8 @@ const isCustomerDoorPreviewComponent = (component = {}) => {
     .trim()
     .toLowerCase();
 
-  // A door frame, handle, or hinge must never open as a separate door.
-  if (/(^|[\s_-])(handle|hinge|knob|pull|frame|jamb|trim)([\s_-]|$)/.test(text)) {
+  // Frames, handles, hinges, and rails must not open as separate doors.
+  if (/(^|[\s_-])(handle|hinge|knob|pull|frame|jamb|trim|rail)([\s_-]|$)/.test(text)) {
     return false;
   }
   return component?.type === "wr_door" || /(^|[\s_-])door([\s_-]|$)/.test(text);
