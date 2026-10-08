@@ -47,7 +47,7 @@ const errorResult = (message) => ({ ok: false, error: message });
 export const getCustomerWardrobeWidthSupport = (parts = []) => {
   const unsupported =
     "This wardrobe layout is not verified for width resizing. Its original size is protected.";
-  if (!Array.isArray(parts) || parts.length !== WARDROBE_PART_CODES.length) {
+  if (!Array.isArray(parts) || parts.length !== WARDROBE_PART_CODES.length + 1) {
     return errorResult(unsupported);
   }
   const map = new Map();
