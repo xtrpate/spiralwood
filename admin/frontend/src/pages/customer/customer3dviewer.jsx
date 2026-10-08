@@ -1066,13 +1066,18 @@ const getCustomerShelfClassification = (component = {}) => {
     component?.isAdjustableShelf === true ||
     component?.is_adjustable_shelf === true ||
     attributes.some((value) => ["adjustable_shelf", "shelf_adjustable", "adjustable"].includes(value));
+  const partCode = String(component?.partCode || component?.part_code || component?.technicalId || "").trim().toUpperCase();
+  const roleText = attributes.join(" ");
   const explicitlyFixed =
+    component?.locked === true ||
     component?.isAdjustableShelf === false ||
     component?.is_adjustable_shelf === false ||
+    /(?:^|-)(?:DTOP|BTM|BOTTOM|TOP)(?:-|$)/.test(partCode) ||
+    /(?:^|[_\\s-])(fixed|structural|support|drawer[_\\s-]?top)(?:[_\\s-]|$)/.test(roleText) ||
     attributes.some((value) =>
       ["fixed_shelf", "shelf_fixed", "structural_shelf", "drawer_support_shelf", "drawer_top_shelf"].includes(value),
     );
-  // Conflicting metadata is never sufficient to enable customization.
+  // Explicitly structural/locked parts take precedence over adjustable tags.
   if (explicitlyFixed) return "fixed";
   return explicitAdjustable ? "adjustable" : "unverified";
 };
