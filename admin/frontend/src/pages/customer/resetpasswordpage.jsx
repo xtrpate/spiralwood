@@ -3,6 +3,10 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Lock } from "lucide-react";
 import "./authpages.css";
 import useAuthStore from "../../store/authStore";
+import {
+  MotionFeedbackOverlay,
+  getMotionFeedbackDurations,
+} from "../../components/MotionFeedbackOverlay";
 
 const RESET_TOKEN_STORAGE_KEY = "wisdom_password_reset_token";
 
@@ -53,6 +57,10 @@ export default function ResetPasswordPage() {
   const [showCPw, setShowCPw] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [feedback, setFeedback] = useState({
+    open: false,
+    status: "loading",
+  });
   const strength = calcStrength(password);
 
   const handleSubmit = async (e) => {
@@ -88,12 +96,33 @@ export default function ResetPasswordPage() {
 
       sessionStorage.removeItem(RESET_TOKEN_STORAGE_KEY);
 
-      navigate("/login", {
-        replace: true,
-        state: {
-          message: "Password reset successful. You can now sign in.",
-        },
+      const durations = getMotionFeedbackDurations();
+
+      // Show the same loading animation used by Login.
+      setFeedback({
+        open: true,
+        status: "loading",
       });
+
+      // Transition from loading to success.
+      const successTimer = window.setTimeout(() => {
+        setFeedback({
+          open: true,
+          status: "success",
+        });
+      }, durations.loading);
+
+      // Navigate to Login after the success animation.
+      window.setTimeout(() => {
+        window.clearTimeout(successTimer);
+
+        navigate("/login", {
+          replace: true,
+          state: {
+            message: "Password changed successfully. You can now sign in.",
+          },
+        });
+      }, durations.loading + durations.success);
     } catch (err) {
       setError(
         err.response?.data?.message ||
@@ -106,6 +135,16 @@ export default function ResetPasswordPage() {
 
   return (
     <div className="auth-root">
+      <MotionFeedbackOverlay
+        open={feedback.open}
+        status={feedback.status}
+        message={
+          feedback.status === "success"
+            ? "Password changed"
+            : "Changing password..."
+        }
+        blocking
+      />
       <div className="auth-split">
         <div className="auth-card-panel">
           <button

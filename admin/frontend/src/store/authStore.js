@@ -346,10 +346,16 @@ const useAuthStore = create((set, get) => ({
   },
 
   resetPassword: async (resetToken, newPassword) => {
-    const { data } = await api.post("/customer/auth/reset-password", {
-      reset_token: resetToken,
-      new_password: newPassword,
-    });
+    const { data } = await api.post(
+      "/customer/auth/reset-password",
+      {
+        reset_token: resetToken,
+        new_password: newPassword,
+      },
+      {
+        suppressGlobalErrorToast: true,
+      },
+    );
 
     return data;
   },

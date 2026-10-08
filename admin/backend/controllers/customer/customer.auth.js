@@ -160,10 +160,13 @@ const sendOtpEmail = async (email, otp, name) => {
                     style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
                     <tr>
                       <td style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px;text-align:center;">
-                        <div style="width:56px;height:56px;background:linear-gradient(135deg,#8B4513,#D2691E);
-                                    border-radius:14px;display:inline-flex;align-items:center;justify-content:center;
-                                    font-size:26px;font-weight:900;color:white;font-family:Georgia,serif;
-                                    line-height:56px;">W</div>
+                        <img
+  src="https://raw.githubusercontent.com/xtrpate/spiralwood/1dc5784752c1cf140a2241dd5dc1d1dd79d551cd/admin/frontend/src/assets/logo1.png"
+  alt="Spiral Wood Services"
+  width="56"
+  height="56"
+  style="width:56px;height:56px;object-fit:contain;display:inline-block;"
+/>
                         <h1 style="color:#ffffff;font-size:20px;font-weight:800;margin:12px 0 4px;
                                    letter-spacing:2px;">SPIRAL WOOD SERVICES</h1>
                         <p style="color:rgba(255,255,255,0.5);font-size:13px;margin:0;">
