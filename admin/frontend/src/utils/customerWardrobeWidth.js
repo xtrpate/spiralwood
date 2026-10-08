@@ -121,6 +121,39 @@ const verifyWardrobePartGeometry = (parts, map) => {
       !frontFits("B2-D2", "B2-DTOP", map.get("WRC-B2-D1-F")) ||
       !frontFits("B3-D1", "B3-DTOP")) return false;
 
+  // Drawer panels form a joined assembly, even after individual resizing.
+  const drawerAligned = (group) => {
+    const part = (suffix) => map.get(`WRC-${group}-${suffix}`);
+    const front = part("F"), leftSide = part("SL"), rightSide = part("SR");
+    const back = part("BK"), bottom = part("BOT"), handle = part("HDL");
+    return near(leftSide.x, Number(front.x) + 12) &&
+      near(Number(rightSide.x) + Number(rightSide.width),
+        Number(front.x) + Number(front.width) - 12) &&
+      near(back.x, Number(leftSide.x) + Number(leftSide.width)) &&
+      near(back.width, Number(rightSide.x) - Number(back.x)) &&
+      near(bottom.x, back.x) && near(bottom.width, back.width) &&
+      near(leftSide.y, Number(front.y) + 22) &&
+      near(rightSide.y, leftSide.y) && near(back.y, leftSide.y) &&
+      near(rightSide.height, leftSide.height) &&
+      near(back.height, leftSide.height) &&
+      near(bottom.y, Number(leftSide.y) + Number(leftSide.height)) &&
+      near(Number(back.z) + Number(back.depth), leftSide.z) &&
+      near(rightSide.z, leftSide.z) && near(bottom.z, leftSide.z) &&
+      near(rightSide.depth, leftSide.depth) &&
+      near(bottom.depth, leftSide.depth) &&
+      near(Number(leftSide.z) + Number(leftSide.depth),
+        Number(front.z) - 2) &&
+      Number(handle.x) >= Number(front.x) - 2 &&
+      Number(handle.x) + Number(handle.width) <=
+        Number(front.x) + Number(front.width) + 2 &&
+      Number(handle.y) >= Number(front.y) - 2 &&
+      Number(handle.y) + Number(handle.height) <=
+        Number(front.y) + Number(front.height) + 2 &&
+      near(handle.z, Number(front.z) + 23);
+  };
+  if (!["B2-D1", "B2-D2", "B3-D1"].every(drawerAligned))
+    return false;
+
   const ledge = map.get("WRC-B3-LEDGE");
   const ledgeSupport = map.get("WRC-B3-LEDGE-SUP");
   if (!near(Number(ledge.x) + Number(ledge.width), d3.x) ||
