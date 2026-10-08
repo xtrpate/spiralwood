@@ -923,6 +923,25 @@ const isCustomerDoorPanelComponent = (component = {}) => {
     /(^|[\s_-])door([\s_-]|$)/.test(text);
 };
 
+// A selected door gets its own finish. Clicking the DOORS heading selects
+// the entire door group, so its finish choices still work on both doors.
+const getCustomerFinishGroupTargetIds = (
+  group = {},
+  selectedIds = [],
+  allParts = [],
+) => {
+  const groupIds = Array.isArray(group?.ids) ? group.ids : [];
+  if (group?.label !== "Doors" || selectedIds.length !== 1) {
+    return groupIds;
+  }
+  const selectedId = selectedIds[0];
+  if (!groupIds.includes(selectedId)) return groupIds;
+  const selectedDoor = allParts.find((part) => part?.id === selectedId);
+  return selectedDoor && isCustomerDoorPanelComponent(selectedDoor)
+    ? [selectedId]
+    : groupIds;
+};
+
 const getCustomerDrawerEditLabel = (reference = {}) => {
   const rawLabel = String(reference?.label || reference?.name || "").trim();
 
@@ -5559,12 +5578,26 @@ export default function Customer3DViewer({
                         group.ids.includes(component.id),
                       ) || null;
 
-                    const groupFinishId = String(
-                      representative?.finish_id ||
-                        representative?.woodFinish ||
-                        representative?.finish ||
-                        "",
-                    ).trim();
+                    const finishTargetIds = getCustomerFinishGroupTargetIds(
+                      group,
+                      selectedCompIds,
+                      components,
+                    );
+                    const activeFinishParts = components.filter((component) =>
+                      finishTargetIds.includes(component.id),
+                    );
+                    const finishIds = activeFinishParts.map((component) =>
+                      String(
+                        component?.finish_id ||
+                          component?.woodFinish ||
+                          component?.finish ||
+                          "",
+                      ).trim(),
+                    );
+                    const groupFinishId =
+                      finishIds.length && new Set(finishIds).size === 1
+                        ? finishIds[0]
+                        : "__mixed__";
 
                     const groupSelected = group.ids.some((id) =>
                       selectedCompIds.includes(id),
@@ -5632,8 +5665,8 @@ export default function Customer3DViewer({
                               (!groupFinishId ? " is-active" : "")
                             }
                             onClick={() => {
-                              setSelectedCompIds(group.ids || []);
-                              handleFinishChange("", group.ids || []);
+                              setSelectedCompIds(finishTargetIds);
+                              handleFinishChange("", finishTargetIds);
                             }}
                           >
                             <span className="wisdom-finish-circle wisdom-finish-original">
@@ -5657,8 +5690,8 @@ export default function Customer3DViewer({
                                   : "")
                               }
                               onClick={() => {
-                                setSelectedCompIds(group.ids || []);
-                                handleFinishChange(finish.id, group.ids || []);
+                                setSelectedCompIds(finishTargetIds);
+                                handleFinishChange(finish.id, finishTargetIds);
                               }}
                             >
                               <span
@@ -5702,6 +5735,13 @@ export default function Customer3DViewer({
                             </button>
                           ) : null}
                         </div>
+                        {group.label === "Doors" ? (
+                          <div style={styles.helperTextMuted}>
+                            {finishTargetIds.length === 1
+                              ? "Finish changes only the selected door. Click DOORS to select both."
+                              : "Finish changes both doors. Choose one above for a single door."}
+                          </div>
+                        ) : null}
                       </section>
                     );
                   })}
