@@ -908,6 +908,21 @@ const isCustomerEditHardwareComponent = (component = {}) => {
   );
 };
 
+
+const isCustomerDoorPanelComponent = (component = {}) => {
+  if (!component?.id || isCustomerEditHardwareComponent(component)) return false;
+  const text = [
+    component?.type, component?.partRole, component?.part_role,
+    component?.label, component?.name, component?.partCode,
+  ].filter(Boolean).join(" ").toLowerCase();
+  // Frames, hinges, and rails are not independent door panels.
+  if (/(^|[\s_-])(frame|hinge|jamb|trim|rail)([\s_-]|$)/.test(text)) {
+    return false;
+  }
+  return isCustomerDoorPreviewComponent(component) ||
+    /(^|[\s_-])door([\s_-]|$)/.test(text);
+};
+
 const getCustomerDrawerEditLabel = (reference = {}) => {
   const rawLabel = String(reference?.label || reference?.name || "").trim();
 
@@ -2031,6 +2046,7 @@ export default function Customer3DViewer({
         Boolean(sampleSelectedPart) &&
         !Boolean(sampleSelectedPart?.locked) &&
         !isCustomerEditHardwareComponent(sampleSelectedPart) &&
+        !selectedGroup.some(isCustomerDoorPreviewComponent) &&
         (!isCustomerShelfStructure(sampleSelectedPart) || Boolean(selectedShelfLimits));
 
   const selectedPartGroup = useMemo(
@@ -4324,6 +4340,7 @@ export default function Customer3DViewer({
       readOnly ||
       !selectedGroup.length ||
       !canResizeSelectedPart ||
+      selectedGroup.some(isCustomerDoorPreviewComponent) ||
       (selectedEditGroup?.kind !== "drawer" &&
         selectedGroup.some(isCustomerShelfStructure) && !selectedShelfLimits)
     ) {
@@ -5275,6 +5292,49 @@ export default function Customer3DViewer({
               className="wisdom-roomle-sidebar-scroll"
               style={styles.sidebarScroll}
             >
+              {isCustomizable && !readOnly && components.some(isCustomerDoorPanelComponent) ? (
+                <section style={styles.sidebarSection}>
+                  <label htmlFor="customer-door-selector" style={styles.label}>
+                    Select Individual Door
+                  </label>
+                  <select
+                    id="customer-door-selector"
+                    aria-label="Select individual door"
+                    style={styles.partGroupSelect}
+                    value={
+                      selectedGroup.length === 1 &&
+                      sampleSelectedPart &&
+                      isCustomerDoorPanelComponent(sampleSelectedPart)
+                        ? String(sampleSelectedPart.id)
+                        : ""
+                    }
+                    onChange={(event) => {
+                      const door = components.find(
+                        (item) =>
+                          isCustomerDoorPanelComponent(item) &&
+                          String(item.id) === event.target.value,
+                      );
+                      setSelectedCompIds(door ? [door.id] : []);
+                      if (door) {
+                        setSelectionMode(true);
+                        showCustomizeFeedback((door.label || door.name || "Door") + " selected.");
+                      }
+                    }}
+                  >
+                    <option value="">Choose a door</option>
+                    {components.filter(isCustomerDoorPanelComponent).map((door) => (
+                      <option key={String(door.id)} value={String(door.id)}>
+                        {door.label || door.name || "Door"} — Size protected
+                      </option>
+                    ))}
+                  </select>
+                  <div style={styles.helperTextMuted}>
+                    Choose one door to change its finish. Door size stays locked
+                    until safe cabinet limits are available.
+                  </div>
+                </section>
+              ) : null}
+
               {isCustomizable && !readOnly && editGroups.some((group) => group.kind === "drawer") ? (
                 <section style={styles.sidebarSection}>
                   <label htmlFor="customer-drawer-selector" style={styles.label}>
@@ -5830,6 +5890,8 @@ export default function Customer3DViewer({
                         ? "Drawer selected, but its cabinet opening could not be detected safely."
                         : sampleSelectedPart?.locked
                           ? "This part is locked and cannot be resized."
+                          : selectedGroup.some(isCustomerDoorPreviewComponent)
+                            ? "Door size is locked until safe cabinet limits are ready. You can still change the finish."
                           : selectedGroup.some(isCustomerShelfStructure)
                             ? getCustomerShelfClassification(sampleSelectedPart) === "fixed"
                               ? "Fixed or structural shelf: size and position are protected. Finish customization remains available."
