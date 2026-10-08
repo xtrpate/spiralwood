@@ -5290,6 +5290,63 @@ export default function Customer3DViewer({
                 </section>
               ) : null}
 
+              {isCustomizable && !readOnly && components.some(isCustomerShelfStructure) ? (
+                <section style={styles.sidebarSection}>
+                  <label htmlFor="customer-shelf-selector" style={styles.label}>
+                    Select Individual Shelf
+                  </label>
+                  <select
+                    id="customer-shelf-selector"
+                    aria-label="Select individual shelf"
+                    style={styles.partGroupSelect}
+                    value={
+                      selectedGroup.length === 1 &&
+                      sampleSelectedPart &&
+                      isCustomerShelfStructure(sampleSelectedPart)
+                        ? String(sampleSelectedPart.id)
+                        : ""
+                    }
+                    onChange={(event) => {
+                      const shelf = components.find(
+                        (item) =>
+                          isCustomerShelfStructure(item) &&
+                          String(item.id) === event.target.value,
+                      );
+                      setSelectedCompIds(shelf ? [shelf.id] : []);
+                      if (shelf) {
+                        setSelectionMode(true);
+                        setCustomizeProgressStep((current) => Math.max(current, 3));
+                        showCustomizeFeedback(`${shelf.label || shelf.name || "Shelf"} selected.`);
+                      }
+                    }}
+                  >
+                    <option value="">Choose one shelf</option>
+                    {components.filter(isCustomerShelfStructure).map((shelf) => {
+                      const classification = getCustomerShelfClassification(shelf);
+                      const status =
+                        classification === "fixed"
+                          ? "Fixed / protected"
+                          : classification === "adjustable"
+                            ? getVerifiedShelfLimits(components, shelf)
+                              ? "Adjustable"
+                              : "Adjustable / supports unverified"
+                            : "Unverified / protected";
+                      return (
+                        <option key={String(shelf.id)} value={String(shelf.id)}>
+                          {shelf.label || shelf.name || "Shelf"}
+                          {shelf.partCode ? ` (${shelf.partCode})` : ""}
+                          {" — "}{status}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <div style={styles.helperTextMuted}>
+                    Choose one shelf, not the whole Shelves finish group.
+                    Fixed and unverified shelves cannot be resized.
+                  </div>
+                </section>
+              ) : null}
+
               {partListVisible ? (
                 <>
                   <section className="wisdom-config-section wisdom-config-whole">
