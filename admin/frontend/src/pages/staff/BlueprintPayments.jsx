@@ -19,8 +19,8 @@ import {
 } from "../customer/customerBlueprintPreviewCache";
 import "./BlueprintPayments.css";
 
-const CustomerBlueprintViewer = lazy(() =>
-  import("../customer/CustomerBlueprintViewer"),
+const CustomerBlueprintViewer = lazy(
+  () => import("../customer/CustomerBlueprintViewer"),
 );
 
 const BLUEPRINT_PAYMENT_PREVIEW_PRESET = "isometric";
@@ -223,9 +223,7 @@ function BlueprintPreview({ blueprint, title, size = "list" }) {
   );
 
   const [cachedStaticPreview, setCachedStaticPreview] = useState(() =>
-    isListPreview
-      ? readGeneratedCompactPreview(listPreviewCacheKey)
-      : "",
+    isListPreview ? readGeneratedCompactPreview(listPreviewCacheKey) : "",
   );
   const [previewEligible, setPreviewEligible] = useState(!isListPreview);
   const [remoteBlueprint, setRemoteBlueprint] = useState(null);
@@ -234,9 +232,7 @@ function BlueprintPreview({ blueprint, title, size = "list" }) {
   useEffect(() => {
     if (!isListPreview) return;
 
-    setCachedStaticPreview(
-      readGeneratedCompactPreview(listPreviewCacheKey),
-    );
+    setCachedStaticPreview(readGeneratedCompactPreview(listPreviewCacheKey));
     setRemoteBlueprint(null);
     setPreviewResolved(false);
     setPreviewEligible(false);
@@ -299,9 +295,7 @@ function BlueprintPreview({ blueprint, title, size = "list" }) {
     let active = true;
 
     api
-      .get(
-        `/pos/blueprint-cash-payments/${blueprint.order_id}/preview`,
-      )
+      .get(`/pos/blueprint-cash-payments/${blueprint.order_id}/preview`)
       .then(({ data }) => {
         if (!active) return;
         setRemoteBlueprint(data?.blueprint_preview || null);
@@ -326,9 +320,7 @@ function BlueprintPreview({ blueprint, title, size = "list" }) {
   ]);
 
   const liveBlueprint = useMemo(
-    () =>
-      embeddedBlueprint ||
-      buildBlueprintViewerData(remoteBlueprint, title),
+    () => embeddedBlueprint || buildBlueprintViewerData(remoteBlueprint, title),
     [embeddedBlueprint, remoteBlueprint, title],
   );
 
@@ -373,9 +365,7 @@ function BlueprintPreview({ blueprint, title, size = "list" }) {
         >
           <CustomerBlueprintViewer
             blueprint={liveBlueprint}
-            compactCacheKey={
-              isListPreview ? listPreviewCacheKey : ""
-            }
+            compactCacheKey={isListPreview ? listPreviewCacheKey : ""}
             readOnly
             showHumanControls={false}
             compact
@@ -895,8 +885,7 @@ export default function BlueprintPayments() {
   return (
     <div
       className={
-        "bp-payments-page" +
-        (selectedOrderNumber ? " has-mobile-detail" : "")
+        "bp-payments-page" + (selectedOrderNumber ? " has-mobile-detail" : "")
       }
     >
       <header className="bp-page-header">
@@ -961,7 +950,7 @@ export default function BlueprintPayments() {
           onClick={() => loadOrders()}
           disabled={listLoading}
         >
-          <RefreshCw size={15} />
+          {/* <RefreshCw size={15} /> */}
           {listLoading ? "Loading" : "Refresh"}
         </button>
 

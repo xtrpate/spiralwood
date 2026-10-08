@@ -261,15 +261,15 @@
 
 .build-materials-view-button,
 .build-materials-primary-button {
-  min-height: 32px;
-  padding: 0 11px;
+  min-height: 36px;
+  padding: 0 18px;
   border: 1px solid #18181b;
   border-radius: 2px;
   background: #18181b;
   color: #ffffff;
   cursor: pointer;
   font: inherit;
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
 }

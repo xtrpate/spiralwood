@@ -78,9 +78,7 @@ const getPhilippineDateKey = (value = new Date()) => {
 };
 
 const shiftDateKey = (dateKey, days) => {
-  const [year, month, day] = String(dateKey)
-    .split("-")
-    .map(Number);
+  const [year, month, day] = String(dateKey).split("-").map(Number);
 
   return new Date(Date.UTC(year, month - 1, day + days))
     .toISOString()
@@ -686,7 +684,7 @@ export default function RawMaterialsPage() {
               opacity: refreshing ? 0.65 : 1,
             }}
           >
-            <RefreshCw size={14} />
+            {/* <RefreshCw size={14} /> */}
             {refreshing ? "Refreshing..." : "Refresh"}
           </button>
 

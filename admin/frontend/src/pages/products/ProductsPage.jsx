@@ -21,8 +21,8 @@ import {
   readGeneratedCompactPreview,
 } from "../customer/customerBlueprintPreviewCache";
 
-const CustomerBlueprintViewer = React.lazy(() =>
-  import("../customer/CustomerBlueprintViewer"),
+const CustomerBlueprintViewer = React.lazy(
+  () => import("../customer/CustomerBlueprintViewer"),
 );
 
 // WISDOM PRODUCT MANAGEMENT PROFESSIONAL UI V2
@@ -281,8 +281,7 @@ function ProductThumbnail({ product }) {
     const hasLiveBlueprintPreview =
       Boolean(blueprint?.design_data) ||
       Boolean(blueprint?.view_3d_data) ||
-      (Array.isArray(blueprint?.components) &&
-        blueprint.components.length > 0);
+      (Array.isArray(blueprint?.components) && blueprint.components.length > 0);
 
     return (
       <div style={blueprintImage}>
@@ -740,14 +739,14 @@ export default function ProductsPage() {
               cursor: loading ? "wait" : "pointer",
             }}
           >
-            <RefreshCw
+            {/* <RefreshCw
               size={14}
               strokeWidth={1.8}
               aria-hidden="true"
               style={{
                 animation: loading ? "spin 1s linear infinite" : "none",
               }}
-            />
+            /> */}
             {loading ? "Refreshing..." : "Refresh"}
           </button>
         </div>
@@ -932,7 +931,9 @@ export default function ProductsPage() {
                     <td style={{ ...td, textAlign: "center" }}>
                       <input
                         type="checkbox"
-                        checked={!isBlueprint && selectedIds.includes(product.id)}
+                        checked={
+                          !isBlueprint && selectedIds.includes(product.id)
+                        }
                         disabled={isBlueprint}
                         onChange={(event) =>
                           handleSelectOne(product.id, event.target.checked)

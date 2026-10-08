@@ -421,7 +421,7 @@ export default function BuildMaterialsPage() {
               cursor: refreshing ? "wait" : "pointer",
             }}
           >
-            <RefreshCw size={14} />
+            {/* <RefreshCw size={14} /> */}
             {refreshing ? "Refreshing..." : "Refresh"}
           </button>
 
@@ -430,7 +430,7 @@ export default function BuildMaterialsPage() {
             className="build-materials-primary-button"
             onClick={() => navigate("/admin/inventory/build/new")}
           >
-            + Add item
+            Add item
           </button>
         </div>
       </div>

@@ -1584,7 +1584,7 @@ export default function AppointmentScheduling() {
                 setSuccess("");
               }}
             >
-              <Plus size={16} />
+              {/* <Plus size={16} /> */}
               New appointment
             </button>
           </div>
@@ -2402,7 +2402,7 @@ export default function AppointmentScheduling() {
                     Cancel
                   </button>
                   <button style={btnPrimary} type="submit" disabled={loading}>
-                    <Plus size={16} />
+                    {/* <Plus size={16} /> */}
                     {loading ? "Saving..." : "Save appointment"}
                   </button>
                 </div>

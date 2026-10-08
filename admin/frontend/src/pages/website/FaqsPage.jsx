@@ -276,7 +276,7 @@ export default function FaqsPage() {
           onClick={openAdd}
           className="website-btn website-btn-primary"
         >
-          <Plus size={15} strokeWidth={2} />
+          {/* <Plus size={15} strokeWidth={2} /> */}
           Add FAQ
         </button>
       </header>

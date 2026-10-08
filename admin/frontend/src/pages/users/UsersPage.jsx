@@ -599,7 +599,7 @@ export default function UsersPage() {
             className="um-btn um-btn-primary um-add-account-btn"
             onClick={openAdd}
           >
-            <Plus size={14} strokeWidth={2.1} />
+            {/* <Plus size={14} strokeWidth={2.1} /> */}
             <span>Add Account</span>
           </button>
         )}

@@ -1108,7 +1108,7 @@ export default function DeliveryScheduling() {
                 : btnPrimary
             }
           >
-            <Plus size={16} />
+            {/* <Plus size={16} /> */}
             {openingScheduleForm ? "Loading..." : "Schedule delivery"}
           </button>
         </div>

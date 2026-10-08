@@ -1194,7 +1194,7 @@ export default function TasksPage() {
             }}
             onClick={openProductionOrderPicker}
           >
-            <Plus size={16} />
+            {/* <Plus size={16} /> */}
             Assign production staff
           </button>
         )}
