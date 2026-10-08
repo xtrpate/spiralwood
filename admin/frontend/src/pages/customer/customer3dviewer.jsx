@@ -285,6 +285,13 @@ const toCustomerPartTitle = (value = "") =>
     .replace(/\b\w/g, (match) => match.toUpperCase());
 
 const getCustomerPartGroupLabel = (component = {}) => {
+  const type = String(component?.type || "")
+    .trim()
+    .toLowerCase();
+  const role = String(component?.partRole ?? component?.part_role ?? "")
+    .trim()
+    .toLowerCase();
+
   const text = [
     component?.type,
     component?.label,
@@ -301,9 +308,20 @@ const getCustomerPartGroupLabel = (component = {}) => {
     .trim()
     .toLowerCase();
 
-  if (!text) return "Other Parts";
+  if (!text && !type && !role) return "Other Parts";
+
+  const isHardware =
+    role.includes("handle") ||
+    role.includes("hardware") ||
+    role.includes("knob") ||
+    role.includes("pull") ||
+    type.includes("handle") ||
+    type.includes("hardware") ||
+    type.includes("knob") ||
+    type.includes("pull");
 
   if (
+    isHardware ||
     text.includes("handle") ||
     text.includes("knob") ||
     text.includes("hardware") ||
@@ -312,6 +330,33 @@ const getCustomerPartGroupLabel = (component = {}) => {
     return "Handles & Hardware";
   }
 
+  // Strong structural metadata wins over descriptive names.
+  const isShelf =
+    role === "shelf" ||
+    role.endsWith("_shelf") ||
+    type === "wr_shelf" ||
+    type === "wr_top_shelf" ||
+    type.endsWith("_shelf");
+
+  if (isShelf) return "Shelves";
+
+  const isDrawer =
+    role.startsWith("drawer_") ||
+    type === "drawer_front_panel" ||
+    type.startsWith("wr_drawer_") ||
+    type.startsWith("drawer_");
+
+  if (isDrawer) return "Drawers";
+
+  const isDoor =
+    role === "door" ||
+    role.startsWith("door_") ||
+    type === "wr_door" ||
+    type.startsWith("door_");
+
+  if (isDoor) return "Doors";
+
+  // Legacy fallback for older generic parts without reliable role/type data.
   if (/(^|[\s_-])drawer([\s_-]|$)/.test(text) || text.includes("drw")) {
     return "Drawers";
   }
@@ -844,6 +889,577 @@ const buildCustomerDrawerPreviewSets = (items = []) => {
     .filter((set) => set.movableMembers.length > 0 && set.reference);
 };
 
+const isCustomerEditHardwareComponent = (component = {}) => {
+  const text = [
+    component?.type,
+    component?.label,
+    component?.name,
+    component?.partRole,
+    component?.part_role,
+    component?.partCode,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim()
+    .toLowerCase();
+
+  return /(^|[\s_-])(handle|knob|hardware|pull|slide|runner)([\s_-]|$)/.test(
+    text,
+  );
+};
+
+const getCustomerDrawerEditLabel = (reference = {}) => {
+  const rawLabel = String(reference?.label || reference?.name || "").trim();
+
+  const cleaned = rawLabel
+    .replace(
+      /\s+(front|left\s+side|right\s+side|side|back|bottom|handle)$/i,
+      "",
+    )
+    .trim();
+
+  return cleaned || "Drawer";
+};
+
+const buildCustomerEditGroups = (items = []) => {
+  const source = Array.isArray(items) ? items.filter(Boolean) : [];
+  const drawerGroupByMemberId = new Map();
+
+  buildCustomerDrawerPreviewSets(source).forEach((set) => {
+    const drawerMembers = (set?.movableMembers || []).filter(
+      (item) => !isCustomerEditHardwareComponent(item),
+    );
+
+    if (drawerMembers.length < 2) return;
+
+    const group = {
+      key: `drawer:${set.key}`,
+      drawerKey: set.key,
+      label: getCustomerDrawerEditLabel(set.reference),
+      ids: drawerMembers.map((item) => item.id),
+      allIds: (set?.allMembers || []).map((item) => item.id),
+      referenceId: set?.reference?.id || "",
+      kind: "drawer",
+    };
+
+    drawerMembers.forEach((item) => {
+      drawerGroupByMemberId.set(item.id, group);
+    });
+  });
+
+  const emittedDrawerGroups = new Set();
+  const groups = [];
+
+  source.forEach((component) => {
+    if (!component?.id) return;
+
+    const drawerGroup = drawerGroupByMemberId.get(component.id);
+
+    if (drawerGroup) {
+      if (!emittedDrawerGroups.has(drawerGroup.key)) {
+        emittedDrawerGroups.add(drawerGroup.key);
+        groups.push(drawerGroup);
+      }
+      return;
+    }
+
+    groups.push({
+      key: `part:${component.id}`,
+      label:
+        String(component?.label || component?.name || "").trim() ||
+        getCustomerPartGroupLabel(component),
+      ids: [component.id],
+      kind: "part",
+    });
+  });
+
+  return groups;
+};
+
+const CUSTOMER_DRAWER_MIN_CLEAR_SPAN_MM = 20;
+const CUSTOMER_DRAWER_GEOMETRY_EPSILON_MM = 2;
+
+const getCustomerPartBounds = (component = {}) => {
+  const x = Number(component?.x || 0);
+  const y = Number(component?.y || 0);
+  const z = Number(component?.z || 0);
+  const width = Number(component?.width || 0);
+  const height = Number(component?.height || 0);
+  const depth = Number(component?.depth || 0);
+
+  return {
+    minX: x,
+    maxX: x + width,
+    minY: y,
+    maxY: y + height,
+    minZ: z,
+    maxZ: z + depth,
+  };
+};
+
+const getCustomerAssemblyBounds = (items = []) => {
+  const extents = getComponentExtents(items);
+  if (!extents) return null;
+
+  return {
+    ...extents,
+    width: Math.max(1, extents.maxX - extents.minX),
+    height: Math.max(1, extents.maxY - extents.minY),
+    depth: Math.max(1, extents.maxZ - extents.minZ),
+  };
+};
+
+const getCustomerBayKey = (component = {}) => {
+  const code = String(component?.partCode || component?.technicalId || "")
+    .trim()
+    .toUpperCase();
+  const codeMatch = code.match(/(?:^|-)(B\d+)(?:-|$)/i);
+  if (codeMatch?.[1]) return codeMatch[1].toUpperCase();
+
+  const label = String(component?.label || component?.name || "");
+  const labelMatch = label.match(/\bbay\s*(\d+)\b/i);
+  return labelMatch?.[1] ? `B${labelMatch[1]}` : "";
+};
+
+const isCustomerShelfStructure = (component = {}) => {
+  const role = String(component?.partRole ?? component?.part_role ?? "")
+    .trim()
+    .toLowerCase();
+  const type = String(component?.type || "")
+    .trim()
+    .toLowerCase();
+
+  return (
+    role === "shelf" ||
+    role.endsWith("_shelf") ||
+    type === "wr_shelf" ||
+    type === "wr_top_shelf" ||
+    type.endsWith("_shelf")
+  );
+};
+
+const isCustomerDrawerRole = (component = {}, roleName = "") => {
+  // Saved wardrobe blueprints identify these parts by assemblyRole/type.
+  // partRole alone is not reliable for imported template components.
+  const roles = [
+    component?.assemblyRole,
+    component?.assembly_role,
+    component?.partRole,
+    component?.part_role,
+    component?.type,
+  ]
+    .map((value) => String(value ?? "").trim().toLowerCase())
+    .filter(Boolean);
+
+  if (roleName) {
+    return roles.some(
+      (role) => role === `drawer_${roleName}` || role === `wr_drawer_${roleName}`,
+    );
+  }
+
+  return roles.some(
+    (role) => role.startsWith("drawer_") || role.startsWith("wr_drawer_"),
+  );
+};
+
+const resolveCustomerDrawerMetrics = (allComponents = [], editGroup = null) => {
+  if (!editGroup || editGroup.kind !== "drawer") return null;
+
+  const selectedIds = new Set(editGroup.ids || []);
+  const selected = allComponents.filter((item) => selectedIds.has(item.id));
+  const bounds = getCustomerAssemblyBounds(selected);
+
+  if (!bounds || selected.length < 2) return null;
+
+  const front =
+    allComponents.find((item) => item.id === editGroup.referenceId) ||
+    selected.find(isCustomerDrawerPreviewFrontComponent) ||
+    selected[0] ||
+    null;
+
+  if (!front) return null;
+
+  const bayKey = getCustomerBayKey(front);
+  const centerX = (bounds.minX + bounds.maxX) / 2;
+
+  const bayShelves = allComponents
+    .filter((item) => {
+      if (!item?.id || selectedIds.has(item.id)) return false;
+      if (!isCustomerShelfStructure(item)) return false;
+      if (bayKey && getCustomerBayKey(item) !== bayKey) return false;
+
+      const itemBounds = getCustomerPartBounds(item);
+      return (
+        itemBounds.minX - CUSTOMER_DRAWER_GEOMETRY_EPSILON_MM <= centerX &&
+        itemBounds.maxX + CUSTOMER_DRAWER_GEOMETRY_EPSILON_MM >= centerX
+      );
+    })
+    .map((item) => ({ item, bounds: getCustomerPartBounds(item) }));
+
+  const shelfAbove = bayShelves
+    .filter(
+      ({ bounds: itemBounds }) =>
+        itemBounds.maxY <=
+        bounds.minY + CUSTOMER_DRAWER_GEOMETRY_EPSILON_MM,
+    )
+    .sort((a, b) => b.bounds.maxY - a.bounds.maxY)[0];
+
+  if (!shelfAbove?.bounds) {
+    // If we cannot identify the opening safely, keep the drawer locked.
+    return null;
+  }
+
+  const shelfBelow = bayShelves
+    .filter(
+      ({ bounds: itemBounds }) =>
+        itemBounds.minY >=
+        bounds.maxY - CUSTOMER_DRAWER_GEOMETRY_EPSILON_MM,
+    )
+    .sort((a, b) => a.bounds.minY - b.bounds.minY)[0];
+
+  const siblingDrawers = buildCustomerDrawerPreviewSets(allComponents)
+    .filter((set) => set.key !== editGroup.drawerKey)
+    .map((set) => {
+      const members = (set.movableMembers || []).filter(
+        (item) => !isCustomerEditHardwareComponent(item),
+      );
+
+      return {
+        bayKey: getCustomerBayKey(set.reference),
+        bounds: getCustomerAssemblyBounds(members),
+      };
+    })
+    .filter(
+      (entry) =>
+        entry.bounds &&
+        (!bayKey || entry.bayKey === bayKey),
+    );
+
+  const nextDrawer = siblingDrawers
+    .filter(
+      ({ bounds: siblingBounds }) =>
+        siblingBounds.minY >=
+        bounds.maxY - CUSTOMER_DRAWER_GEOMETRY_EPSILON_MM,
+    )
+    .sort((a, b) => a.bounds.minY - b.bounds.minY)[0];
+
+  const lowerStops = [
+    shelfBelow?.bounds?.minY,
+    nextDrawer?.bounds?.minY,
+  ].filter(Number.isFinite);
+
+  const frontBounds = getCustomerPartBounds(front);
+
+  // The shelf immediately above the drawer defines the horizontal/depth
+  // opening. This keeps the small Bay 3 drawer inside its smaller compartment.
+  const openingMinX = shelfAbove.bounds.minX;
+  const openingMaxX = shelfAbove.bounds.maxX;
+  const openingMinZ = shelfAbove.bounds.minZ;
+  const openingMaxY = lowerStops.length
+    ? Math.min(...lowerStops)
+    : bounds.maxY;
+
+  const sides = selected
+    .filter((item) => isCustomerDrawerRole(item, "side"))
+    .sort((a, b) => Number(a.x || 0) - Number(b.x || 0));
+  const leftSide = sides[0] || null;
+  const rightSide = sides[sides.length - 1] || null;
+  const back = selected.find((item) => isCustomerDrawerRole(item, "back"));
+  const bottom = selected.find((item) => isCustomerDrawerRole(item, "bottom"));
+
+  const leftInset = leftSide
+    ? Math.max(0, Number(leftSide.x || 0) - bounds.minX)
+    : 0;
+  const rightInset = rightSide
+    ? Math.max(
+        0,
+        bounds.maxX -
+          (Number(rightSide.x || 0) + Number(rightSide.width || 0)),
+      )
+    : 0;
+
+  const minWidth = Math.ceil(
+    leftInset +
+      Number(leftSide?.width || 0) +
+      Number(rightSide?.width || 0) +
+      rightInset +
+      CUSTOMER_DRAWER_MIN_CLEAR_SPAN_MM,
+  );
+
+  const frontTop = Number(front.y || bounds.minY);
+  const frontBottom = frontTop + Number(front.height || bounds.height);
+  let minHeight = CUSTOMER_DRAWER_MIN_CLEAR_SPAN_MM;
+
+  [leftSide, rightSide, back].filter(Boolean).forEach((item) => {
+    const topInset = Math.max(0, Number(item.y || 0) - frontTop);
+    const bottomGap = Math.max(
+      0,
+      frontBottom -
+        (Number(item.y || 0) + Number(item.height || 0)),
+    );
+
+    minHeight = Math.max(
+      minHeight,
+      Math.ceil(topInset + bottomGap + CUSTOMER_DRAWER_MIN_CLEAR_SPAN_MM),
+    );
+  });
+
+  if (bottom) {
+    const bottomGap = Math.max(
+      0,
+      frontBottom -
+        (Number(bottom.y || 0) + Number(bottom.height || 0)),
+    );
+
+    minHeight = Math.max(
+      minHeight,
+      Math.ceil(
+        bottomGap +
+          Number(bottom.height || 0) +
+          CUSTOMER_DRAWER_MIN_CLEAR_SPAN_MM,
+      ),
+    );
+  }
+
+  const depthBody = leftSide || rightSide || bottom || null;
+  const frontGap = depthBody
+    ? Math.max(
+        0,
+        Number(front.z || 0) -
+          (Number(depthBody.z || 0) + Number(depthBody.depth || 0)),
+      )
+    : 0;
+
+  const minDepth = Math.ceil(
+    Number(front.depth || 0) +
+      Number(back?.depth || 0) +
+      frontGap +
+      CUSTOMER_DRAWER_MIN_CLEAR_SPAN_MM,
+  );
+
+  const maxWidth = Math.floor(openingMaxX - openingMinX);
+  const maxHeight = Math.floor(openingMaxY - frontTop);
+  const maxDepth = Math.floor(frontBounds.maxZ - openingMinZ);
+
+  if (
+    maxWidth < Math.ceil(bounds.width) ||
+    maxHeight < Math.ceil(bounds.height) ||
+    maxDepth < Math.ceil(bounds.depth)
+  ) {
+    return null;
+  }
+
+  return {
+    bounds,
+    front,
+    leftSide,
+    rightSide,
+    back,
+    bottom,
+    min: {
+      width: Math.max(1, minWidth),
+      height: Math.max(1, minHeight),
+      depth: Math.max(1, minDepth),
+    },
+    max: {
+      width: maxWidth,
+      height: maxHeight,
+      depth: maxDepth,
+    },
+  };
+};
+
+const resizeCustomerDrawerAssembly = (
+  allComponents = [],
+  editGroup = null,
+  metrics = null,
+  axis = "",
+  nextValueMm = 0,
+) => {
+  if (!editGroup || !metrics) return allComponents;
+
+  const followerIds = new Set(editGroup.allIds || editGroup.ids || []);
+  const {
+    bounds,
+    front,
+    leftSide,
+    rightSide,
+    back,
+    bottom,
+  } = metrics;
+
+  if (axis === "width") {
+    const oldWidth = Math.max(1, bounds.width);
+    const oldCenterX = (bounds.minX + bounds.maxX) / 2;
+    const nextMinX = oldCenterX - nextValueMm / 2;
+    const nextMaxX = oldCenterX + nextValueMm / 2;
+
+    const leftInset = leftSide
+      ? Number(leftSide.x || 0) - bounds.minX
+      : 0;
+    const rightInset = rightSide
+      ? bounds.maxX -
+        (Number(rightSide.x || 0) + Number(rightSide.width || 0))
+      : 0;
+
+    const nextLeftX = leftSide ? nextMinX + leftInset : null;
+    const nextRightX = rightSide
+      ? nextMaxX - rightInset - Number(rightSide.width || 0)
+      : null;
+
+    const innerMinX =
+      leftSide && Number.isFinite(nextLeftX)
+        ? nextLeftX + Number(leftSide.width || 0)
+        : nextMinX;
+    const innerMaxX =
+      rightSide && Number.isFinite(nextRightX)
+        ? nextRightX
+        : nextMaxX;
+
+    return allComponents.map((item) => {
+      if (!followerIds.has(item.id)) return item;
+      if (isCustomerDrawerPreviewFixedHardware(item)) return item;
+
+      if (item.id === front.id) {
+        return { ...item, x: nextMinX, width: nextValueMm };
+      }
+
+      if (leftSide && item.id === leftSide.id) {
+        return { ...item, x: nextLeftX };
+      }
+
+      if (rightSide && item.id === rightSide.id) {
+        return { ...item, x: nextRightX };
+      }
+
+      if (
+        (back && item.id === back.id) ||
+        (bottom && item.id === bottom.id)
+      ) {
+        return {
+          ...item,
+          x: innerMinX,
+          width: Math.max(1, innerMaxX - innerMinX),
+        };
+      }
+
+      const itemCenterX =
+        Number(item.x || 0) + Number(item.width || 0) / 2;
+      const ratio = (itemCenterX - bounds.minX) / oldWidth;
+      const nextCenterX = nextMinX + ratio * nextValueMm;
+
+      return {
+        ...item,
+        x: nextCenterX - Number(item.width || 0) / 2,
+      };
+    });
+  }
+
+  if (axis === "height") {
+    const frontTop = Number(front.y || bounds.minY);
+    const oldFrontHeight = Math.max(1, Number(front.height || bounds.height));
+    const oldFrontBottom = frontTop + oldFrontHeight;
+
+    return allComponents.map((item) => {
+      if (!followerIds.has(item.id)) return item;
+      if (isCustomerDrawerPreviewFixedHardware(item)) return item;
+
+      if (item.id === front.id) {
+        return { ...item, y: frontTop, height: nextValueMm };
+      }
+
+      if (
+        (leftSide && item.id === leftSide.id) ||
+        (rightSide && item.id === rightSide.id) ||
+        (back && item.id === back.id)
+      ) {
+        const topInset = Math.max(0, Number(item.y || 0) - frontTop);
+        const bottomGap = Math.max(
+          0,
+          oldFrontBottom -
+            (Number(item.y || 0) + Number(item.height || 0)),
+        );
+
+        return {
+          ...item,
+          y: frontTop + topInset,
+          height: Math.max(1, nextValueMm - topInset - bottomGap),
+        };
+      }
+
+      if (bottom && item.id === bottom.id) {
+        const bottomGap = Math.max(
+          0,
+          oldFrontBottom -
+            (Number(bottom.y || 0) + Number(bottom.height || 0)),
+        );
+
+        return {
+          ...item,
+          y:
+            frontTop +
+            nextValueMm -
+            bottomGap -
+            Number(bottom.height || 0),
+        };
+      }
+
+      const itemCenterY =
+        Number(item.y || 0) + Number(item.height || 0) / 2;
+      const ratio = (itemCenterY - frontTop) / oldFrontHeight;
+      const nextCenterY = frontTop + ratio * nextValueMm;
+
+      return {
+        ...item,
+        y: nextCenterY - Number(item.height || 0) / 2,
+      };
+    });
+  }
+
+  if (axis === "depth") {
+    const frontBounds = getCustomerPartBounds(front);
+    const nextBackZ = frontBounds.maxZ - nextValueMm;
+    const backDepth = Number(back?.depth || 0);
+    const bodyStartZ = nextBackZ + backDepth;
+
+    return allComponents.map((item) => {
+      if (!followerIds.has(item.id)) return item;
+      if (isCustomerDrawerPreviewFixedHardware(item)) return item;
+
+      if (item.id === front.id) return item;
+
+      if (back && item.id === back.id) {
+        return { ...item, z: nextBackZ };
+      }
+
+      if (
+        (leftSide && item.id === leftSide.id) ||
+        (rightSide && item.id === rightSide.id) ||
+        (bottom && item.id === bottom.id)
+      ) {
+        const frontGap = Math.max(
+          0,
+          Number(front.z || 0) -
+            (Number(item.z || 0) + Number(item.depth || 0)),
+        );
+
+        return {
+          ...item,
+          z: bodyStartZ,
+          depth: Math.max(
+            1,
+            Number(front.z || 0) - frontGap - bodyStartZ,
+          ),
+        };
+      }
+
+      return item;
+    });
+  }
+
+  return allComponents;
+};
+
 const MAX_CUSTOM_QUANTITY = 100;
 
 export default function Customer3DViewer({
@@ -1085,6 +1701,11 @@ export default function Customer3DViewer({
     });
   }, [components]);
 
+  const editGroups = useMemo(
+    () => buildCustomerEditGroups(components),
+    [components],
+  );
+
   const pushHistorySnapshot = useCallback((snapshot) => {
     historyRef.current.past.push(cloneDeep(snapshot));
     if (historyRef.current.past.length > MAX_HISTORY) {
@@ -1239,6 +1860,31 @@ export default function Customer3DViewer({
   }, [components, selectedCompIds]);
 
   const sampleSelectedPart = selectedGroup[0] || null;
+  const selectedEditGroup = useMemo(
+    () =>
+      editGroups.find((group) =>
+        group.ids.some((id) => selectedCompIds.includes(id)),
+      ) || null,
+    [editGroups, selectedCompIds],
+  );
+  const selectedDrawerMetrics = useMemo(
+    () =>
+      selectedEditGroup?.kind === "drawer"
+        ? resolveCustomerDrawerMetrics(components, selectedEditGroup)
+        : null,
+    [components, selectedEditGroup],
+  );
+  const selectedAssemblyBounds =
+    selectedDrawerMetrics?.bounds ||
+    (selectedGroup.length > 1 ? getCustomerAssemblyBounds(selectedGroup) : null);
+  const canResizeSelectedPart =
+    selectedEditGroup?.kind === "drawer"
+      ? Boolean(selectedDrawerMetrics)
+      : selectedGroup.length === 1 &&
+        Boolean(sampleSelectedPart) &&
+        !Boolean(sampleSelectedPart?.locked) &&
+        !isCustomerEditHardwareComponent(sampleSelectedPart);
+
   const selectedPartGroup = useMemo(
     () =>
       partGroups.find((group) =>
@@ -1291,10 +1937,15 @@ export default function Customer3DViewer({
     });
 
     if (sampleSelectedPart) {
+      const draftSource =
+        selectedEditGroup?.kind === "drawer" && selectedAssemblyBounds
+          ? selectedAssemblyBounds
+          : sampleSelectedPart;
+
       setPartDrafts({
-        width: convertMmToUnit(sampleSelectedPart.width, unit),
-        height: convertMmToUnit(sampleSelectedPart.height, unit),
-        depth: convertMmToUnit(sampleSelectedPart.depth, unit),
+        width: convertMmToUnit(draftSource.width, unit),
+        height: convertMmToUnit(draftSource.height, unit),
+        depth: convertMmToUnit(draftSource.depth, unit),
       });
 
       setPartDimensionErrors({
@@ -1616,7 +2267,7 @@ export default function Customer3DViewer({
       startY = e.clientY;
     };
     const onPointerUp = (event) => {
-      if (readOnly) return;
+      if (readOnly || !selectionMode) return;
 
       const dragDist = Math.hypot(
         event.clientX - startX,
@@ -1641,11 +2292,11 @@ export default function Customer3DViewer({
           const clickedId = obj.userData.id;
           const target = components.find((c) => c.id === clickedId);
           if (target) {
-            const semanticGroup = partGroups.find((group) =>
+            const editGroup = editGroups.find((group) =>
               group.ids.includes(clickedId),
             );
             setSelectedCompIds(
-              semanticGroup?.ids?.length ? semanticGroup.ids : [clickedId],
+              editGroup?.ids?.length ? editGroup.ids : [clickedId],
             );
           }
         }
@@ -1665,7 +2316,7 @@ export default function Customer3DViewer({
     selectionMode,
     readOnly,
     components,
-    partGroups,
+    editGroups,
     doorsPreviewOpen,
     drawersPreviewOpen,
   ]);
@@ -3518,14 +4169,34 @@ export default function Customer3DViewer({
   };
 
   const commitPartDimension = (axis, rawUnitValue) => {
-    if (!isCustomizable || readOnly || !selectedGroup.length) return;
+    if (
+      !isCustomizable ||
+      readOnly ||
+      !selectedGroup.length ||
+      !canResizeSelectedPart
+    ) {
+      return;
+    }
 
     const parsedMmValue = convertUnitToMm(rawUnitValue, unit);
-    const currentValueMm = Number(sampleSelectedPart?.[axis] || 0);
+    const isDrawerSelection = selectedEditGroup?.kind === "drawer";
+    const currentValueMm = isDrawerSelection
+      ? Number(selectedAssemblyBounds?.[axis] || 0)
+      : Number(sampleSelectedPart?.[axis] || 0);
 
-    /* Invalid part input must never reach commitComponents. Restore the
-       selected part's last valid dimension and show one clear message. */
-    const validationMessage = getDimensionFieldError(rawUnitValue);
+    const minMm = isDrawerSelection
+      ? Number(selectedDrawerMetrics?.min?.[axis] || 1)
+      : 1;
+    const maxMm = isDrawerSelection
+      ? Number(selectedDrawerMetrics?.max?.[axis] || Infinity)
+      : Infinity;
+
+    const validationMessage = getDimensionFieldError(rawUnitValue, {
+      minMm,
+      maxMm,
+      label:
+        axis === "width" ? "Width" : axis === "height" ? "Height" : "Depth",
+    });
 
     if (
       validationMessage ||
@@ -3545,23 +4216,44 @@ export default function Customer3DViewer({
     }));
 
     const nextValueMm = Math.max(1, Math.round(parsedMmValue));
-    if (nextValueMm === currentValueMm) return;
+    if (nextValueMm === Math.round(currentValueMm)) return;
+
+    if (isDrawerSelection) {
+      commitComponents((prev) =>
+        resizeCustomerDrawerAssembly(
+          prev,
+          selectedEditGroup,
+          selectedDrawerMetrics,
+          axis,
+          nextValueMm,
+        ),
+      );
+
+      setCustomizeProgressStep((current) => Math.max(current, 4));
+      showCustomizeFeedback("Drawer size updated within its cabinet opening.");
+      return;
+    }
 
     commitComponents((prev) =>
       prev.map((c) => {
         if (!selectedCompIds.includes(c.id)) return c;
-        if (axis === "width")
+
+        if (axis === "width") {
           return {
             ...c,
             x: c.x - (nextValueMm - c.width) / 2,
             width: nextValueMm,
           };
-        if (axis === "height")
+        }
+
+        if (axis === "height") {
           return {
             ...c,
             y: c.y - (nextValueMm - c.height) / 2,
             height: nextValueMm,
           };
+        }
+
         return {
           ...c,
           z: c.z - (nextValueMm - c.depth) / 2,
@@ -4392,6 +5084,40 @@ export default function Customer3DViewer({
               className="wisdom-roomle-sidebar-scroll"
               style={styles.sidebarScroll}
             >
+              {isCustomizable && !readOnly && editGroups.some((group) => group.kind === "drawer") ? (
+                <section style={styles.sidebarSection}>
+                  <label htmlFor="customer-drawer-selector" style={styles.label}>
+                    Select Individual Drawer
+                  </label>
+                  <select
+                    id="customer-drawer-selector"
+                    aria-label="Select individual drawer"
+                    style={styles.partGroupSelect}
+                    value={selectedEditGroup?.kind === "drawer" ? selectedEditGroup.key : ""}
+                    onChange={(event) => {
+                      const group = editGroups.find(
+                        (entry) => entry.kind === "drawer" && entry.key === event.target.value,
+                      );
+                      setSelectedCompIds(group?.ids || []);
+                      if (group?.ids?.length) {
+                        setSelectionMode(true);
+                        showCustomizeFeedback(`${group.label} selected.`);
+                      }
+                    }}
+                  >
+                    <option value="">Choose a drawer</option>
+                    {editGroups.filter((group) => group.kind === "drawer").map((group) => (
+                      <option key={group.key} value={group.key}>
+                        {group.label} ({group.ids.length} parts)
+                      </option>
+                    ))}
+                  </select>
+                  <div style={styles.helperTextMuted}>
+                    Select Drawer 1, Drawer 2, or the small drawer separately.
+                  </div>
+                </section>
+              ) : null}
+
               {partListVisible ? (
                 <>
                   <section className="wisdom-config-section wisdom-config-whole">
@@ -4738,7 +5464,7 @@ export default function Customer3DViewer({
                       value={
                         selectedCompIds.length
                           ? String(
-                              partGroups.findIndex((group) =>
+                              editGroups.findIndex((group) =>
                                 group.ids.some((id) =>
                                   selectedCompIds.includes(id),
                                 ),
@@ -4753,7 +5479,7 @@ export default function Customer3DViewer({
                           return;
                         }
 
-                        const group = partGroups[index];
+                        const group = editGroups[index];
                         setSelectedCompIds(group?.ids || []);
                         if (group?.ids?.length) {
                           showCustomizeFeedback("Furniture part selected.");
@@ -4762,7 +5488,7 @@ export default function Customer3DViewer({
                       style={styles.partGroupSelect}
                     >
                       <option value="">Choose a furniture part</option>
-                      {partGroups.map((group, index) => (
+                      {editGroups.map((group, index) => (
                         <option key={`${group.label}_${index}`} value={index}>
                           {group.label} ({group.ids.length})
                         </option>
@@ -4788,7 +5514,12 @@ export default function Customer3DViewer({
                 >
                   <div style={styles.sectionRow}>
                     <label style={styles.label}>
-                      Selected Parts: {selectedGroup.length}
+                      {selectedEditGroup?.label ||
+                        sampleSelectedPart?.label ||
+                        "Selected Part"}
+                      {selectedGroup.length > 1
+                        ? ` (${selectedGroup.length} parts)`
+                        : ""}
                     </label>
 
                     <button
@@ -4800,6 +5531,30 @@ export default function Customer3DViewer({
                     </button>
                   </div>
 
+                  {selectedEditGroup?.kind === "drawer" &&
+                  selectedDrawerMetrics ? (
+                    <div style={styles.helperTextMuted}>
+                      Allowed size:{" "}
+                      {convertMmToUnit(selectedDrawerMetrics.min.width, unit)}–
+                      {convertMmToUnit(selectedDrawerMetrics.max.width, unit)} ×{" "}
+                      {convertMmToUnit(selectedDrawerMetrics.min.height, unit)}–
+                      {convertMmToUnit(selectedDrawerMetrics.max.height, unit)} ×{" "}
+                      {convertMmToUnit(selectedDrawerMetrics.min.depth, unit)}–
+                      {convertMmToUnit(selectedDrawerMetrics.max.depth, unit)}{" "}
+                      {unit === "inches" ? "in" : unit}
+                    </div>
+                  ) : null}
+
+                  {!canResizeSelectedPart ? (
+                    <div style={styles.helperTextMuted}>
+                      {selectedEditGroup?.kind === "drawer"
+                        ? "Drawer selected, but its cabinet opening could not be detected safely."
+                        : sampleSelectedPart?.locked
+                          ? "This part is locked and cannot be resized."
+                          : "This selection cannot be resized as one raw group."}
+                    </div>
+                  ) : null}
+
                   <div
                     className="wisdom-size-grid"
                     style={styles.dimensionGrid}
@@ -4810,6 +5565,26 @@ export default function Customer3DViewer({
                       </span>
                       <input
                         type="number"
+                        disabled={!canResizeSelectedPart}
+                        min={
+                          selectedEditGroup?.kind === "drawer"
+                            ? convertMmToUnit(
+                                selectedDrawerMetrics?.min?.width || 1,
+                                unit,
+                              )
+                            : undefined
+                        }
+                        max={
+                          selectedEditGroup?.kind === "drawer" &&
+                          Number.isFinite(
+                            Number(selectedDrawerMetrics?.max?.width),
+                          )
+                            ? convertMmToUnit(
+                                selectedDrawerMetrics.max.width,
+                                unit,
+                              )
+                            : undefined
+                        }
                         value={partDrafts.width}
                         onChange={(e) => {
                           const value = e.target.value;
@@ -4863,6 +5638,26 @@ export default function Customer3DViewer({
                       </span>
                       <input
                         type="number"
+                        disabled={!canResizeSelectedPart}
+                        min={
+                          selectedEditGroup?.kind === "drawer"
+                            ? convertMmToUnit(
+                                selectedDrawerMetrics?.min?.height || 1,
+                                unit,
+                              )
+                            : undefined
+                        }
+                        max={
+                          selectedEditGroup?.kind === "drawer" &&
+                          Number.isFinite(
+                            Number(selectedDrawerMetrics?.max?.height),
+                          )
+                            ? convertMmToUnit(
+                                selectedDrawerMetrics.max.height,
+                                unit,
+                              )
+                            : undefined
+                        }
                         value={partDrafts.height}
                         onChange={(e) => {
                           const value = e.target.value;
@@ -4916,6 +5711,26 @@ export default function Customer3DViewer({
                       </span>
                       <input
                         type="number"
+                        disabled={!canResizeSelectedPart}
+                        min={
+                          selectedEditGroup?.kind === "drawer"
+                            ? convertMmToUnit(
+                                selectedDrawerMetrics?.min?.depth || 1,
+                                unit,
+                              )
+                            : undefined
+                        }
+                        max={
+                          selectedEditGroup?.kind === "drawer" &&
+                          Number.isFinite(
+                            Number(selectedDrawerMetrics?.max?.depth),
+                          )
+                            ? convertMmToUnit(
+                                selectedDrawerMetrics.max.depth,
+                                unit,
+                              )
+                            : undefined
+                        }
                         value={partDrafts.depth}
                         onChange={(e) => {
                           const value = e.target.value;
