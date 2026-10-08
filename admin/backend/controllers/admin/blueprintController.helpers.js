@@ -417,6 +417,21 @@ async function buildAutoEstimationDraft(conn, blueprintId) {
   const customization =
     safeJsonParse(linkedOrder?.customization_json, {}) || {};
 
+  // Prefer the exact submitted furniture parts for an order-linked custom
+  // request. Catalog BOM and inherited cut lists may describe the original
+  // furniture instead of the customer's edited design.
+  // Keep the existing priorities for standalone and legacy blueprints.
+  const submittedComponents = Array.isArray(designData?.components)
+    ? designData.components
+    : [];
+  const submittedOrderId = Number(designData?.customer_request?.order_id);
+  const linkedOrderId = Number(linkedOrder?.order_id);
+  const hasCustomerSubmittedParts =
+    Number.isSafeInteger(submittedOrderId) &&
+    submittedOrderId > 0 &&
+    linkedOrderId === submittedOrderId &&
+    submittedComponents.length > 0;
+
   // ── FIXED: Added empty array [] ──
   const [rawMaterialRows] = await conn.query(
     `SELECT id, name, unit, unit_cost
@@ -442,7 +457,7 @@ async function buildAutoEstimationDraft(conn, blueprintId) {
     }
   }
 
-  if (resolvedProductId) {
+  if (resolvedProductId && !hasCustomerSubmittedParts) {
     const [bomRows] = await conn.query(
       `SELECT
           bom.raw_material_id,
@@ -562,7 +577,7 @@ async function buildAutoEstimationDraft(conn, blueprintId) {
     [parseInt(blueprintId)],
   );
 
-  if (componentRows.length) {
+  if (componentRows.length && !hasCustomerSubmittedParts) {
     const items = componentRows.map((row, index) => {
       const quantity = (Number(row.component_quantity) || 0) * orderQty;
       const unitCost = Number(row.unit_cost) || 0;
@@ -606,7 +621,7 @@ async function buildAutoEstimationDraft(conn, blueprintId) {
     ? designData.conversionCutListRows
     : [];
 
-  if (cutListRows.length) {
+  if (cutListRows.length && !hasCustomerSubmittedParts) {
     const groupedItems = groupDraftItems(
       cutListRows.map((row, index) => {
         const materialName =
@@ -751,8 +766,9 @@ async function buildAutoEstimationDraft(conn, blueprintId) {
         source: "design_data_components",
         status: "draft",
         version: 0,
-        notes:
-          "Auto-generated from blueprint component data. Review and adjust before saving.",
+        notes: hasCustomerSubmittedParts
+          ? "Auto-generated from the customer's submitted furniture parts. Review part dimensions, material pricing units, sheet yield, labor, and overhead before sending a quotation."
+          : "Auto-generated from blueprint component data. Review and adjust before saving.",
         items: groupedItems,
         ...totals,
       };
