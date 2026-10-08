@@ -2,13 +2,225 @@
 const cron = require("node-cron");
 const pool = require("../config/db");
 const { runDatabaseBackup } = require("./databaseBackupService");
-const {
-  isDatabaseRestoreInProgress,
-} = require("./databaseRestoreService");
+const { isDatabaseRestoreInProgress } = require("./databaseRestoreService");
 const { runPosQrCleanupBatch } = require("./posQrCleanupService");
 const {
   cleanupUnverifiedCustomers,
 } = require("./unverifiedCustomerCleanupService");
+const {
+  sendCustomerAppointmentNotificationSafe,
+} = require("./customerAppointmentNotificationService");
+const { writeAuditLogSafe } = require("../middleware/auditLog");
+
+const APPOINTMENT_AUTO_CANCEL_AFTER_MINUTES = 30;
+
+const APPOINTMENT_AUTO_CANCEL_STATUSES = new Set([
+  "confirmed",
+  "awaiting_staff_acceptance",
+]);
+
+const getPhilippineWallClock = (date) => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+
+  const values = Object.fromEntries(
+    parts
+      .filter(({ type }) => type !== "literal")
+      .map(({ type, value }) => [type, value]),
+  );
+
+  return `${values.year}-${values.month}-${values.day} ${values.hour}:${values.minute}:${values.second}`;
+};
+
+const runAppointmentAutoCancellation = async ({ io = null } = {}) => {
+  if (isDatabaseRestoreInProgress()) {
+    console.log(
+      "[CRON] Skipping appointment auto-cancellation during database restore.",
+    );
+
+    return {
+      scanned: 0,
+      cancelled: 0,
+      skipped: true,
+    };
+  }
+
+  /*
+   * Business rule:
+   *
+   * An appointment becomes eligible for automatic cancellation
+   * 30 minutes after its scheduled appointment time.
+   *
+   * All appointment wall-clock calculations use Asia/Manila.
+   */
+  const cutoffDate = new Date(
+    Date.now() - APPOINTMENT_AUTO_CANCEL_AFTER_MINUTES * 60 * 1000,
+  );
+
+  const cutoffWallClock = getPhilippineWallClock(cutoffDate);
+
+  const [[clock]] = await pool.query(`
+  SELECT
+    NOW() AS db_now,
+    UTC_TIMESTAMP() AS utc_now,
+    @@session.time_zone AS session_timezone,
+    @@global.time_zone AS global_timezone
+`);
+
+  console.log("[CRON DEBUG] Database clock:", clock);
+
+  console.log("[CRON DEBUG] Appointment cutoff:", cutoffWallClock);
+
+  const [candidates] = await pool.query(
+    `
+      SELECT
+        id,
+        customer_id,
+        assigned_staff_id,
+        scheduled_date,
+        status
+      FROM appointments
+      WHERE status IN ('confirmed', 'awaiting_staff_acceptance')
+        AND scheduled_date <= ?
+      ORDER BY scheduled_date ASC, id ASC
+      LIMIT 100
+    `,
+    [cutoffWallClock],
+  );
+
+  if (candidates.length === 0) {
+    console.log(
+      "[CRON] Appointment auto-cancellation check: no eligible appointments.",
+    );
+
+    return {
+      scanned: 0,
+      cancelled: 0,
+      skipped: false,
+    };
+  }
+
+  let cancelled = 0;
+
+  for (const candidate of candidates) {
+    const candidateStatus = String(candidate.status || "")
+      .trim()
+      .toLowerCase();
+
+    if (!APPOINTMENT_AUTO_CANCEL_STATUSES.has(candidateStatus)) {
+      continue;
+    }
+
+    /*
+     * Atomic/idempotent status transition.
+     *
+     * If an admin/staff member changes the appointment between the
+     * SELECT above and this UPDATE, affectedRows will be 0 and the
+     * automatic cancellation will not overwrite the newer state.
+     */
+    const [result] = await pool.query(
+      `
+        UPDATE appointments
+        SET
+          status = 'cancelled',
+          updated_at = NOW()
+        WHERE id = ?
+          AND status = ?
+          AND scheduled_date <= ?
+      `,
+      [candidate.id, candidate.status, cutoffWallClock],
+    );
+
+    if (result.affectedRows !== 1) {
+      continue;
+    }
+
+    cancelled += 1;
+
+    const appointmentId = Number(candidate.id);
+
+    /*
+     * System audit record.
+     */
+    await writeAuditLogSafe({
+      action: "auto_cancel_appointment",
+      tableName: "appointments",
+      recordId: appointmentId,
+      oldValues: {
+        status: candidateStatus,
+        scheduled_date: candidate.scheduled_date || null,
+      },
+      newValues: {
+        status: "cancelled",
+        cancellation_type: "automatic",
+        cancellation_reason:
+          "Appointment remained active more than 30 minutes after its scheduled time.",
+      },
+      actorType: "system",
+    });
+
+    /*
+     * Update connected customer/admin/staff clients immediately.
+     */
+    if (io) {
+      const socketPayload = {
+        appointment_id: appointmentId,
+        customer_id: candidate.customer_id
+          ? Number(candidate.customer_id)
+          : null,
+        assigned_staff_id: candidate.assigned_staff_id
+          ? Number(candidate.assigned_staff_id)
+          : null,
+        status: "cancelled",
+        scheduled_date: candidate.scheduled_date || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      try {
+        if (socketPayload.customer_id) {
+          io.to(`user:${socketPayload.customer_id}`).emit(
+            "appointment:updated",
+            socketPayload,
+          );
+        }
+
+        io.to("staff-updates").emit("appointment:updated", socketPayload);
+      } catch (socketError) {
+        console.error(
+          "[CRON] Appointment auto-cancellation socket update failed:",
+          socketError?.message || socketError,
+        );
+      }
+    }
+
+    /*
+     * Reuse the existing appointment cancellation
+     * email/SMS notification system.
+     */
+    await sendCustomerAppointmentNotificationSafe(pool, {
+      appointmentId,
+      event: "cancelled",
+    });
+  }
+
+  console.log(
+    `[CRON] Appointment auto-cancellation check: scanned=${candidates.length}, cancelled=${cancelled}, cutoff=${cutoffWallClock} Asia/Manila.`,
+  );
+
+  return {
+    scanned: candidates.length,
+    cancelled,
+    skipped: false,
+  };
+};
 
 async function runBackup(type = "auto") {
   return runDatabaseBackup({ type });
@@ -94,6 +306,26 @@ function startCronJobs(io = null) {
     { timezone: "Asia/Manila" },
   );
 
+  // Appointment auto-cancellation — every 5 minutes.
+  //
+  // Business rule:
+  // Cancel confirmed/awaiting-staff appointments when they are
+  // at least 30 minutes past their scheduled appointment time.
+  cron.schedule(
+    "*/5 * * * *",
+    async () => {
+      try {
+        await runAppointmentAutoCancellation({ io });
+      } catch (err) {
+        console.error(
+          "[CRON] Appointment auto-cancellation failed:",
+          err?.message || err,
+        );
+      }
+    },
+    { timezone: "Asia/Manila" },
+  );
+
   // Abandoned customer registration cleanup — once daily at 2:30 AM.
   cron.schedule(
     "30 2 * * *",
@@ -165,8 +397,12 @@ function startCronJobs(io = null) {
   );
 
   console.log(
-    "✅  Cron jobs started: auto-backup at 12:00 AM and 12:00 PM daily; POS QR cleanup every 5 minutes; unverified registration cleanup at 2:30 AM; ticket auto-close at 12:00 AM.",
+    "✅ Cron jobs started: auto-backup at 12:00 AM and 12:00 PM daily; POS QR cleanup every 5 minutes; appointment auto-cancellation every 5 minutes; unverified registration cleanup at 2:30 AM; ticket auto-close at 12:00 AM.",
   );
 }
 
-module.exports = { startCronJobs, runBackup };
+module.exports = {
+  startCronJobs,
+  runBackup,
+  runAppointmentAutoCancellation,
+};

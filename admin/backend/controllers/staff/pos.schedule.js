@@ -11,6 +11,7 @@ const APPOINTMENT_STATUSES = [
   "confirmed",
   "in_progress",
   "completed",
+  "rejected",
   "cancelled",
 ];
 
@@ -28,6 +29,14 @@ const APPOINTMENT_ACTIVE_STATUSES = new Set([
   "confirmed",
   "in_progress",
 ]);
+
+const ADMIN_APPOINTMENT_ALLOWED_TRANSITIONS = {
+  pending: new Set(["pending", "confirmed", "rejected", "cancelled"]),
+
+  confirmed: new Set(["confirmed", "pending", "cancelled"]),
+
+  in_progress: new Set(["in_progress", "cancelled"]),
+};
 
 const APPOINTMENT_SLOT_LOCK_PREFIX = "wisdom:appointment-slot:";
 
@@ -1975,6 +1984,31 @@ exports.updateAppointment = async (req, res) => {
       status === "confirmed"
     ) {
       status = assignedStaffId ? "confirmed" : "pending";
+    }
+
+    const effectiveCurrentStatus =
+      currentStatus === "awaiting_staff_acceptance"
+        ? "confirmed"
+        : currentStatus;
+
+    const effectiveNextStatus =
+      status === "awaiting_staff_acceptance" ? "confirmed" : status;
+
+    const allowedAdminTransitions =
+      ADMIN_APPOINTMENT_ALLOWED_TRANSITIONS[effectiveCurrentStatus];
+
+    if (
+      allowedAdminTransitions &&
+      !allowedAdminTransitions.has(effectiveNextStatus)
+    ) {
+      await conn.rollback();
+      transactionActive = false;
+
+      return res.status(400).json({
+        message:
+          `Invalid appointment status transition: ` +
+          `${effectiveCurrentStatus} → ${effectiveNextStatus}.`,
+      });
     }
 
     // Evaluate the NEW business wall-clock date using Asia/Manila semantics.

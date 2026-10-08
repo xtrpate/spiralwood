@@ -2679,8 +2679,40 @@ export default function AppointmentScheduling() {
                     display: "flex",
                     gap: 12,
                     justifyContent: "flex-end",
+                    alignItems: "center",
                   }}
                 >
+                  {adminActiveTab === "new" &&
+                  rescheduleMode === "manage" &&
+                  String(rescheduleModal.status || "").toLowerCase() ===
+                    "pending" ? (
+                    <button
+                      type="button"
+                      style={{
+                        ...btnGhost,
+                        color: "#991b1b",
+                        borderColor: "#fecaca",
+                      }}
+                      disabled={actionLoadingId === rescheduleModal.id}
+                      onClick={async () => {
+                        const rejected = await handleAction(
+                          rescheduleModal.id,
+                          { status: "rejected" },
+                          "Appointment request rejected.",
+                        );
+
+                        if (rejected) {
+                          setRescheduleModal(null);
+                        }
+                      }}
+                    >
+                      <Ban size={14} />
+                      {actionLoadingId === rescheduleModal.id
+                        ? "Rejecting..."
+                        : "Reject"}
+                    </button>
+                  ) : null}
+
                   <button
                     style={btnGhost}
                     type="button"
@@ -2689,6 +2721,7 @@ export default function AppointmentScheduling() {
                   >
                     Cancel
                   </button>
+
                   <button
                     style={btnPrimary}
                     type="submit"
