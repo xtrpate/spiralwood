@@ -48,3 +48,10 @@ export function materialAssignmentPatch(materials, value) {
     // Intentionally does not change finish, color or geometry/thickness.
   };
 }
+
+export function materialMatchesPartThickness(entry, component) {
+  if (!entry || !component) return false;
+  const dimensions = [component.width, component.height, component.depth].map(Number);
+  if (dimensions.some((size) => !Number.isFinite(size) || size <= 0)) return false;
+  return Math.abs(Math.min(...dimensions) - Number(entry.thickness_mm)) < 0.1;
+}
