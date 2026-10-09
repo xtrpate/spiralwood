@@ -295,8 +295,6 @@ io.on("connection", (socket) => {
       isTyping: Boolean(payload?.isTyping),
     });
   });
-
-  socket.on("disconnect", (reason) => {});
 });
 
 app.set("trust proxy", 1);
