@@ -1787,6 +1787,18 @@ exports.updateStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid status." });
     }
 
+    if (nextStatus === "cancelled" && !cancellationReason) {
+      return res.status(400).json({
+        message: "A reason is required to cancel this order.",
+      });
+    }
+
+    if (nextStatus === "cancelled" && cancellationReason.length > 1000) {
+      return res.status(400).json({
+        message: "Cancellation reason must be 1000 characters or fewer.",
+      });
+    }
+
     await conn.beginTransaction();
 
     const [[order]] = await conn.query(
@@ -2259,12 +2271,22 @@ exports.updateStatus = async (req, res) => {
       );
     }
 
-    const [statusUpdateResult] = await conn.query(
-      `UPDATE orders
-       SET status = ?
-       WHERE id = ? AND status = ?`,
-      [nextStatus, orderId, currentStatus],
-    );
+    const [statusUpdateResult] =
+      nextStatus === "cancelled"
+        ? await conn.query(
+            `UPDATE orders
+         SET status = ?,
+             cancellation_reason = ?,
+             cancelled_at = NOW()
+         WHERE id = ? AND status = ?`,
+            [nextStatus, cancellationReason, orderId, currentStatus],
+          )
+        : await conn.query(
+            `UPDATE orders
+         SET status = ?
+         WHERE id = ? AND status = ?`,
+            [nextStatus, orderId, currentStatus],
+          );
 
     // Guard against a race condition where another request already
     // changed this order's status between the SELECT above and this

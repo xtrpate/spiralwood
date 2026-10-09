@@ -495,6 +495,7 @@ export default function OrderDetailPage() {
   const [statusModal, setStatusModal] = useState(false);
   const [newStatus, setNewStatus] = useState("");
   const [statusModalMode, setStatusModalMode] = useState("general");
+  const [cancellationReason, setCancellationReason] = useState("");
   // Guards against double-submit: without this, a fast double-click (or a
   // slow network) can fire handleStatusUpdate twice concurrently — the
   // first call succeeds, then the second arrives after the status has
@@ -791,16 +792,35 @@ export default function OrderDetailPage() {
       return;
     }
 
+    const isCancellingOrder = nextStatus === "cancelled";
+    const normalizedCancellationReason = cancellationReason.trim();
+
+    if (isCancellingOrder && !normalizedCancellationReason) {
+      toast.error("Please provide a reason for cancelling this order.");
+      return;
+    }
+
+    if (isCancellingOrder && normalizedCancellationReason.length > 1000) {
+      toast.error("Cancellation reason must be 1000 characters or fewer.");
+      return;
+    }
+
     setUpdatingStatus(true);
     try {
       await api.patch(
         `/orders/${id}/status`,
-        { status: nextStatus },
+        {
+          status: nextStatus,
+          ...(isCancellingOrder
+            ? { reason: normalizedCancellationReason }
+            : {}),
+        },
         { suppressGlobalErrorToast: true },
       );
       toast.success(`Status updated to "${titleCase(nextStatus)}".`);
       setStatusModal(false);
       setStatusModalMode("general");
+      setCancellationReason("");
       await load({ silent: true });
     } catch (err) {
       toast.error(
@@ -1104,8 +1124,7 @@ export default function OrderDetailPage() {
       await load({ silent: true });
     } catch (err) {
       toast.error(
-        err?.response?.data?.message ||
-          "Failed to reassign production staff.",
+        err?.response?.data?.message || "Failed to reassign production staff.",
       );
     } finally {
       setReassigning(false);
@@ -1203,8 +1222,7 @@ export default function OrderDetailPage() {
       requiredBlueprintTaskBuckets
         .get(role)
         .some(
-          (task) =>
-            Number(task?.blueprint_id) !== Number(order?.blueprint_id),
+          (task) => Number(task?.blueprint_id) !== Number(order?.blueprint_id),
         ),
     );
 
@@ -1696,14 +1714,13 @@ export default function OrderDetailPage() {
 
   const needsCustomRequestAdminReview =
     hasCustomRequestItems && normalizedOrderStatus === "pending";
-  const productionTasksSummary =
-    shouldShowProductionPacketIntegrityWarning
-      ? "Requires Review"
-      : hasBlueprintTasks
-        ? `${completedBlueprintTasks.length}/${blueprintTasks.length}`
-        : normalizedOrderStatus === "contract_released"
-          ? "Ready to assign"
-          : "Waiting";
+  const productionTasksSummary = shouldShowProductionPacketIntegrityWarning
+    ? "Requires Review"
+    : hasBlueprintTasks
+      ? `${completedBlueprintTasks.length}/${blueprintTasks.length}`
+      : normalizedOrderStatus === "contract_released"
+        ? "Ready to assign"
+        : "Waiting";
   const summaryCards = [
     {
       label: "Payment",
@@ -1841,15 +1858,15 @@ export default function OrderDetailPage() {
             {canAdminManageOrders &&
               normalizedOrderStatus === "pending" &&
               isOnlineStandardOrder && (
-              <>
-                <button onClick={handleAccept} style={btnAccept}>
-                  Accept
-                </button>
-                <button onClick={handleDecline} style={btnDecline}>
-                  Decline
-                </button>
-              </>
-            )}
+                <>
+                  <button onClick={handleAccept} style={btnAccept}>
+                    Accept
+                  </button>
+                  <button onClick={handleDecline} style={btnDecline}>
+                    Decline
+                  </button>
+                </>
+              )}
 
             {canEditBlueprints &&
               isBlueprintOrder &&
@@ -1897,7 +1914,6 @@ export default function OrderDetailPage() {
                       Generate Contract
                     </button>
                   )}
-
                 </>
               )}
 
@@ -1923,6 +1939,7 @@ export default function OrderDetailPage() {
                 onClick={() => {
                   setStatusModalMode("general");
                   setNewStatus(selectableNextStatuses[0] || currentOrderStatus);
+                  setCancellationReason("");
                   setStatusModal(true);
                 }}
                 style={btnPrimary}
@@ -2383,7 +2400,9 @@ export default function OrderDetailPage() {
 
                               return (
                                 <a
-                                  key={photo.id || `${item.id}-reference-${index}`}
+                                  key={
+                                    photo.id || `${item.id}-reference-${index}`
+                                  }
                                   href={src}
                                   target="_blank"
                                   rel="noreferrer"
@@ -3248,48 +3267,50 @@ export default function OrderDetailPage() {
               {canAdminManageOrders &&
                 canAssignBlueprintStaff &&
                 !hasBlueprintTasks && (
-                <div style={{ marginTop: 12 }}>
-                  <button
-                    onClick={openAssignModal}
-                    disabled={!blueprintId}
-                    style={{
-                      ...btnPrimary,
-                      opacity: !blueprintId ? 0.75 : 1,
-                      cursor: !blueprintId ? "not-allowed" : "pointer",
-                    }}
-                    title="Open Task Assignments and assign production staff"
-                  >
-                    Assign Indoor Staff
-                  </button>
-                </div>
-              )}
+                  <div style={{ marginTop: 12 }}>
+                    <button
+                      onClick={openAssignModal}
+                      disabled={!blueprintId}
+                      style={{
+                        ...btnPrimary,
+                        opacity: !blueprintId ? 0.75 : 1,
+                        cursor: !blueprintId ? "not-allowed" : "pointer",
+                      }}
+                      title="Open Task Assignments and assign production staff"
+                    >
+                      Assign Indoor Staff
+                    </button>
+                  </div>
+                )}
 
               {canAdminManageOrders &&
                 canAssignBlueprintStaff &&
                 hasBlueprintTasks && (
-                <div style={{ marginTop: 12 }}>
-                  {allBlueprintTasksCompleted ? (
-                    <span style={mutedBadge}>
-                      All production steps for this order are completed.
-                    </span>
-                  ) : (
-                    <button
-                      onClick={openReassignModal}
-                      disabled={loadingReassignable}
-                      style={{
-                        ...btnPrimary,
-                        opacity: loadingReassignable ? 0.75 : 1,
-                        cursor: loadingReassignable ? "not-allowed" : "pointer",
-                      }}
-                      title="Reassign primary indoor staff"
-                    >
-                      {loadingReassignable
-                        ? "Loading Staff..."
-                        : "Reassign Production Staff"}
-                    </button>
-                  )}
-                </div>
-              )}
+                  <div style={{ marginTop: 12 }}>
+                    {allBlueprintTasksCompleted ? (
+                      <span style={mutedBadge}>
+                        All production steps for this order are completed.
+                      </span>
+                    ) : (
+                      <button
+                        onClick={openReassignModal}
+                        disabled={loadingReassignable}
+                        style={{
+                          ...btnPrimary,
+                          opacity: loadingReassignable ? 0.75 : 1,
+                          cursor: loadingReassignable
+                            ? "not-allowed"
+                            : "pointer",
+                        }}
+                        title="Reassign primary indoor staff"
+                      >
+                        {loadingReassignable
+                          ? "Loading Staff..."
+                          : "Reassign Production Staff"}
+                      </button>
+                    )}
+                  </div>
+                )}
             </Section>
           )}
         </>
@@ -3463,23 +3484,76 @@ export default function OrderDetailPage() {
             </div>
 
             {normalize(newStatus) === "cancelled" && (
-              <div style={alertWarning}>
-                {hasVerifiedCustomerPayment ? (
-                  <>
-                    This order has a verified customer payment of{" "}
-                    <strong>{formatMoney(verifiedPaymentTotal)}</strong>.{" "}
-                    Cancelling will not refund, reverse, or remove that payment.
-                    The payment record will remain, while only unused blueprint
-                    material reservations will be released.
-                  </>
-                ) : (
-                  <>
-                    Cancelling will close this order and release any unused
-                    blueprint material reservations. No refund transaction will
-                    be created.
-                  </>
-                )}
-              </div>
+              <>
+                <div style={alertWarning}>
+                  {hasVerifiedCustomerPayment ? (
+                    <>
+                      This order has a verified customer payment of{" "}
+                      <strong>{formatMoney(verifiedPaymentTotal)}</strong>.{" "}
+                      Cancelling will not refund, reverse, or remove that
+                      payment. The payment record will remain, while only unused
+                      blueprint material reservations will be released.
+                    </>
+                  ) : (
+                    <>
+                      Cancelling will close this order and release any unused
+                      blueprint material reservations. No refund transaction
+                      will be created.
+                    </>
+                  )}
+                </div>
+
+                <div
+                  style={{
+                    padding: 12,
+                    marginTop: 12,
+                    marginBottom: 16,
+                    border: "1px solid #fecaca",
+                    borderRadius: 6,
+                    background: "#fef2f2",
+                    color: "#991b1b",
+                  }}
+                >
+                  <strong>Confirm order cancellation</strong>
+                  <p style={{ margin: "6px 0 0" }}>
+                    Are you sure you want to cancel this order? Please provide
+                    the reason for cancellation before confirming.
+                  </p>
+                </div>
+
+                <label style={labelSm} htmlFor="order-cancellation-reason">
+                  Reason for Cancellation{" "}
+                  <span style={{ color: "#dc2626" }}>*</span>
+                </label>
+
+                <textarea
+                  id="order-cancellation-reason"
+                  value={cancellationReason}
+                  onChange={(e) => setCancellationReason(e.target.value)}
+                  placeholder="Explain why this order is being cancelled..."
+                  maxLength={1000}
+                  required
+                  disabled={updatingStatus}
+                  rows={4}
+                  style={{
+                    ...inputFull,
+                    minHeight: 100,
+                    resize: "vertical",
+                    marginBottom: 6,
+                  }}
+                />
+
+                <div
+                  style={{
+                    textAlign: "right",
+                    fontSize: 12,
+                    color: "#71717a",
+                    marginBottom: 16,
+                  }}
+                >
+                  {cancellationReason.length}/1000 characters
+                </div>
+              </>
             )}
 
             {hasBlueprintTasks && !allBlueprintTasksCompleted && (
@@ -3648,6 +3722,7 @@ export default function OrderDetailPage() {
                     onClick={() => {
                       setStatusModal(false);
                       setStatusModalMode("general");
+                      setCancellationReason("");
                     }}
                     style={btnGhost}
                     disabled={updatingStatus}
@@ -3660,7 +3735,9 @@ export default function OrderDetailPage() {
                     disabled={
                       !statusModalStatuses.length ||
                       updatingStatus ||
-                      newStatusBlocked
+                      newStatusBlocked ||
+                      (normalize(newStatus) === "cancelled" &&
+                        !cancellationReason.trim())
                     }
                   >
                     {updatingStatus
