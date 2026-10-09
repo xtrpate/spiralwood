@@ -487,7 +487,8 @@ export function FurnitureLibraryPanel({
 
     const mergedGroups = [
       ...COMPONENT_LIBRARY_GROUPS.filter(
-        (group) => group.label !== "Chair Parts",
+        (group) =>
+          !["Chair Parts", "Custom Shape Parts", "Custom Shapes"].includes(group.label),
       ),
       ...getTemplateLibraryPartGroups(),
     ];
@@ -706,7 +707,7 @@ export function FurnitureLibraryPanel({
               marginBottom: 0,
             }}
           >
-            {LIBRARY_TABS.map((tab) => (
+            {LIBRARY_TABS.filter((tab) => tab.key !== "custom").map((tab) => (
               <button
                 key={tab.key}
                 type="button"
