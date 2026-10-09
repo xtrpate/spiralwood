@@ -36,7 +36,7 @@ import {
 import { createFurnitureObject } from "../blueprints/3d/createFurnitureObjects";
 import { WOOD_FINISHES } from "../blueprints/data/furnitureTypes";
 import { applyWoodFinish, isWoodLikeMaterial } from "../blueprints/data/componentUtils";
-import { useBlueprintMaterialCatalog, materialAssignmentPatch, materialMatchesPartThickness } from "../blueprints/data/useBlueprintMaterialCatalog";
+import { useBlueprintMaterialCatalog, materialAssignmentPatch, materialFitsPart } from "../blueprints/data/useBlueprintMaterialCatalog";
 import "./customer3dviewer-roomle-complete.css";
 
 const WORLD_W = 6400;
@@ -4724,7 +4724,7 @@ export default function Customer3DViewer({
       const text = String(part.material || part.wood_type || "");
       if ((!isWoodLikeMaterial(text) && !part.raw_material_id) ||
           /metal|upholstery|fabric|glass|leather/i.test(text)) return false;
-      return materialMatchesPartThickness(entry, part);
+      return materialFitsPart(entry, part);
     });
     if (!allowed.length) {
       showCustomizeFeedback("Selected material thickness does not match any eligible part. No changes made.");
