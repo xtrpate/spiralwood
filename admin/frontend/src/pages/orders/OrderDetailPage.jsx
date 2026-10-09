@@ -1532,13 +1532,22 @@ export default function OrderDetailPage() {
       usesManagedDeliveryFlow &&
       ["shipping", "delivered"].includes(normalizedStatus);
 
+    // A confirmed, fully paid standard order cannot be cancelled
+    // through the general Update Status modal.
+    const blockedByPaidConfirmedCancellation =
+      !isBlueprintOrder &&
+      currentOrderStatus === "confirmed" &&
+      paymentBalance <= 0 &&
+      normalizedStatus === "cancelled";
+
     return !(
       blockedByIncompleteTasks ||
       blockedByMissingReceipt ||
       blockedByUnsettledPayment ||
       blockedByStandardFullPayment ||
       blockedByBlueprintDownPayment ||
-      blockedByManagedDelivery
+      blockedByManagedDelivery ||
+      blockedByPaidConfirmedCancellation
     );
   });
 
@@ -3652,7 +3661,6 @@ export default function OrderDetailPage() {
                   normalizedStatus === "production" &&
                   !hasRequiredBlueprintDownPayment;
 
-                // 👉 NEW: Block manual shipping/delivered for ALL managed deliveries
                 const blockedByManagedDelivery =
                   usesManagedDeliveryFlow &&
                   ["shipping", "delivered"].includes(normalizedStatus);

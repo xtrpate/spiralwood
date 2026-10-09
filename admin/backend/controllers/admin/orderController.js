@@ -2031,6 +2031,21 @@ exports.updateStatus = async (req, res) => {
     const isFullyPaid =
       totalAmount > 0 && verifiedPaymentTotal >= totalAmount - 0.01;
 
+    // Prevent cancellation of a confirmed, fully paid standard order.
+    // Blueprint orders continue to follow their separate cancellation workflow.
+    if (
+      nextStatus === "cancelled" &&
+      !isBlueprintOrder &&
+      currentStatus === "confirmed" &&
+      isFullyPaid
+    ) {
+      await conn.rollback();
+      return res.status(409).json({
+        message:
+          "This confirmed order is fully paid and cannot be cancelled through Update Status. Use the appropriate cancellation review process if cancellation is necessary.",
+      });
+    }
+
     const lifecycleGatedStatuses = [
       "contract_released",
       "production",
