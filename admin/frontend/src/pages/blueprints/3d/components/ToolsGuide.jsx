@@ -23,7 +23,6 @@ const guideSections = [
     items: [
       ["Select Whole Furniture", "Select the entire current assembly."],
       ["Align", "Line up selected parts on X, Y, or Z."],
-      ["Flush Snap", "Snap parts to selection boundaries."],
       ["Apply Gap", "Apply a gap between selected parts on X, Y, or Z."],
     ],
   },
