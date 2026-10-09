@@ -46,6 +46,24 @@ assert(
   "Custom shape groups must be hidden from All, Search, and Custom tabs",
 );
 assert(
+  !library.includes("getTemplateLibraryPartGroups") &&
+    library.includes('item.type === "template_closet_wardrobe"'),
+  "Hide redundant template-part collections and alternative Wardrobe option only in the picker",
+);
+const arrangeBlock = panel.split('{activeToolTab === "arrange" ? (')[1]?.split('{activeToolTab === "resize" ? (')[0] || "";
+const flushAt = arrangeBlock.indexOf('>Flush Snap</div>');
+const advancedAt = arrangeBlock.lastIndexOf("{SHOW_ADVANCED_ARRANGE_TOOLS ? (", flushAt);
+assert(
+  flushAt > 0 && advancedAt >= 0 &&
+    arrangeBlock.slice(advancedAt, flushAt).includes('>'),
+  "Flush Snap must remain implemented but inaccessible in the simplified Arrange UI",
+);
+assert(
+  guide.includes('["Align"') &&
+    !guide.includes('["Flush Snap"'),
+  "Tools guide must match the new visible Arrange controls",
+);
+assert(
   !/key:\s*"(?:copy|check)"/.test(guide),
   "Tools guide must not advertise hidden tools",
 );
