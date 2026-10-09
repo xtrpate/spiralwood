@@ -1,4 +1,4 @@
-import { Outlet, NavLink } from "react-router-dom";
+import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import {
   Home,
   LayoutDashboard,
@@ -26,6 +26,7 @@ import {
 } from "../../components/MotionFeedbackOverlay";
 
 export default function POSLayout() {
+  const navigate = useNavigate();
   const { user, logout, hasPermission } = useAuthStore();
 
   // WISDOM STAFF MOBILE SHELL PHASE A R3
@@ -255,9 +256,7 @@ export default function POSLayout() {
     }
 
     let additionalItems = [];
-    const authorityLevel = String(
-      user?.authority_level || "",
-    ).toLowerCase();
+    const authorityLevel = String(user?.authority_level || "").toLowerCase();
 
     if (authorityLevel === "manager") {
       additionalItems = permissionNavItems
@@ -432,7 +431,7 @@ export default function POSLayout() {
         setLogoutFeedbackStatus("loading");
         logout();
         clearCart(false);
-        window.location.href = "/login";
+        navigate("/login", { replace: true });
       }, durations.success);
     }, durations.loading);
   };
@@ -532,7 +531,11 @@ export default function POSLayout() {
                         aria-hidden="true"
                       />
                       <span>{item.label}</span>
-                      <ChevronRight size={16} strokeWidth={1.8} aria-hidden="true" />
+                      <ChevronRight
+                        size={16}
+                        strokeWidth={1.8}
+                        aria-hidden="true"
+                      />
                     </NavLink>
                   ))}
                 </nav>
