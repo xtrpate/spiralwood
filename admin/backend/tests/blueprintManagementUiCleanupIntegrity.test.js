@@ -11,6 +11,7 @@ const panel = read(base + "3d/components/FurnitureToolsPanel.jsx");
 const library = read(base + "3d/components/FurnitureLibraryPanel.jsx");
 const guide = read(base + "3d/components/ToolsGuide.jsx");
 const publishing = read(base + "components/BlueprintPublishModal.jsx");
+const creationPage = read(base + "BlueprintsPage.jsx");
 const persistence = read(base + "hooks/useBlueprintPersistence.js");
 const keyboard = read(base + "hooks/useBlueprintKeyboardShortcuts.js");
 const output = read(base + "export/exportBuilders.js");
@@ -92,4 +93,12 @@ for (const guard of [
 for (const shortcut of ['key === "c"', 'key === "v"', 'key === "d"']) {
   assert(keyboard.includes(shortcut), "Copy/duplicate shortcut missing: " + shortcut);
 }
+assert(
+  creationPage.includes("Blueprint Title *") &&
+    creationPage.includes("handleCreateBlueprint") &&
+    !creationPage.includes(">Description</label>") &&
+    !creationPage.includes("Add a short note about the furniture design") &&
+    creationPage.includes("description: cleanedDescription || null,"),
+  "Create Blueprint must request only the title while preserving optional description handling",
+);
 console.log("PASS: Blueprint Management UI cleanup static integrity checks passed.");
