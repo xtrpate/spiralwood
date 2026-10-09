@@ -54,8 +54,6 @@ const emitCustomerAppointmentSocketUpdate = ({
         payload,
       );
     }
-
-    console.log("[CUSTOMER APPOINTMENT SOCKET] appointment:updated", payload);
   } catch (err) {
     console.error("[CUSTOMER APPOINTMENT SOCKET EMIT]", err?.message || err);
   }

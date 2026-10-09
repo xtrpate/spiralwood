@@ -489,8 +489,6 @@ const emitAppointmentSocketUpdate = (req, appointment) => {
      * sockets inside the "staff-updates" room.
      */
     io.to("staff-updates").emit("appointment:updated", payload);
-
-    console.log("[APPOINTMENT SOCKET] appointment:updated", payload);
   } catch (err) {
     console.error("[APPOINTMENT SOCKET EMIT]", err?.message || err);
   }

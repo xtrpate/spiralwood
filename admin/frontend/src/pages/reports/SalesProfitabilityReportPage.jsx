@@ -268,8 +268,6 @@ export default function SalesProfitabilityReportPage() {
   };
 
   const openDetail = async (row) => {
-    console.log("[SalesProfitability] openDetail called with row:", row);
-
     if (!row || row.order_id === undefined || row.order_id === null) {
       console.error(
         "[SalesProfitability] row.order_id is missing — check that the " +
