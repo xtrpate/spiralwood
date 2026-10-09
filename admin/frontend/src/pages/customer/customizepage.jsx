@@ -726,6 +726,7 @@ const slimComponentForKey = (component = {}) => ({
   finish_color: stableText(component?.finish_color),
   finish: stableText(component?.finish),
   material: stableText(component?.material),
+  raw_material_id: Number(component?.raw_material_id) || null,
   qty: Math.max(1, Number(component?.qty || 1)),
 });
 
