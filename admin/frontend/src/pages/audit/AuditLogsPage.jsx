@@ -1217,77 +1217,85 @@ export default function AuditLogsPage() {
         </div>
 
         <div style={filterGrid}>
-          <FilterField label="Search" wide>
-            <input
-              placeholder="Search person, IP, browser, location, request ID, activity..."
-              value={searchInput}
-              onChange={(event) => setSearchInput(event.target.value)}
-              style={inputBase}
-            />
-          </FilterField>
+          <div style={filterRow}>
+            <FilterField label="Search">
+              <input
+                placeholder="Search person, IP, browser, location, request ID, activity..."
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                style={inputBase}
+              />
+            </FilterField>
 
-          <FilterField label="Action">
-            <select
-              value={filters.action}
-              onChange={(event) => setFilter("action", event.target.value)}
-              style={inputBase}
-            >
-              <option value="">All Actions</option>
-              {KNOWN_ACTIONS.map((action) => (
-                <option key={action} value={action}>
-                  {formatActionLabel(action)}
-                </option>
-              ))}
-            </select>
-          </FilterField>
+            <FilterField label="Action">
+              <select
+                value={filters.action}
+                onChange={(event) => setFilter("action", event.target.value)}
+                style={inputBase}
+              >
+                <option value="">All Actions</option>
+                {KNOWN_ACTIONS.map((action) => (
+                  <option key={action} value={action}>
+                    {formatActionLabel(action)}
+                  </option>
+                ))}
+              </select>
+            </FilterField>
 
-          <FilterField label="Area">
-            <select
-              value={filters.table_name}
-              onChange={(event) => setFilter("table_name", event.target.value)}
-              style={inputBase}
-            >
-              <option value="">All Areas</option>
-              {KNOWN_TABLES.map((tableName) => (
-                <option key={tableName} value={tableName}>
-                  {formatModuleLabel(tableName)}
-                </option>
-              ))}
-            </select>
-          </FilterField>
+            <FilterField label="Area">
+              <select
+                value={filters.table_name}
+                onChange={(event) =>
+                  setFilter("table_name", event.target.value)
+                }
+                style={inputBase}
+              >
+                <option value="">All Areas</option>
+                {KNOWN_TABLES.map((tableName) => (
+                  <option key={tableName} value={tableName}>
+                    {formatModuleLabel(tableName)}
+                  </option>
+                ))}
+              </select>
+            </FilterField>
 
-          <FilterField label="Actor">
-            <select
-              value={filters.actor_type}
-              onChange={(event) => setFilter("actor_type", event.target.value)}
-              style={inputBase}
-            >
-              <option value="">All Actors</option>
-              {KNOWN_ACTORS.map((actorType) => (
-                <option key={actorType} value={actorType}>
-                  {formatActorType(actorType)}
-                </option>
-              ))}
-            </select>
-          </FilterField>
+            <FilterField label="Actor">
+              <select
+                value={filters.actor_type}
+                onChange={(event) =>
+                  setFilter("actor_type", event.target.value)
+                }
+                style={inputBase}
+              >
+                <option value="">All Actors</option>
+                {KNOWN_ACTORS.map((actorType) => (
+                  <option key={actorType} value={actorType}>
+                    {formatActorType(actorType)}
+                  </option>
+                ))}
+              </select>
+            </FilterField>
+          </div>
 
-          <FilterField label="From Date">
-            <input
-              type="date"
-              value={filters.date_from}
-              onChange={(event) => setFilter("date_from", event.target.value)}
-              style={inputBase}
-            />
-          </FilterField>
+          <div style={filterRowSecondary}>
+            <FilterField label="From Date">
+              <input
+                type="date"
+                value={filters.date_from}
+                onChange={(event) => setFilter("date_from", event.target.value)}
+                style={inputBase}
+              />
+            </FilterField>
 
-          <FilterField label="To Date">
-            <input
-              type="date"
-              value={filters.date_to}
-              onChange={(event) => setFilter("date_to", event.target.value)}
-              style={inputBase}
-            />
-          </FilterField>
+            <FilterField label="To Date">
+              <input
+                type="date"
+                value={filters.date_to}
+                onChange={(event) => setFilter("date_to", event.target.value)}
+                style={inputBase}
+              />
+            </FilterField>
+          </div>
         </div>
 
         <div style={filtersMeta}>
@@ -1480,9 +1488,9 @@ export default function AuditLogsPage() {
   );
 }
 
-function FilterField({ label, wide = false, children }) {
+function FilterField({ label, children }) {
   return (
-    <label style={{ ...filterField, ...(wide ? filterFieldWide : {}) }}>
+    <label style={filterField}>
       <span style={filterLabel}>{label}</span>
       {children}
     </label>
@@ -1869,9 +1877,21 @@ const filterSubtitle = {
 };
 
 const filterGrid = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 12,
+};
+
+const filterRow = {
   display: "grid",
-  gridTemplateColumns:
-    "minmax(280px, 1.6fr) minmax(165px, 0.9fr) minmax(155px, 0.85fr) minmax(145px, 0.75fr) minmax(135px, 0.7fr) minmax(135px, 0.7fr)",
+  gridTemplateColumns: "minmax(280px, 2fr) repeat(3, minmax(160px, 1fr))",
+  gap: 10,
+  alignItems: "end",
+};
+
+const filterRowSecondary = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 220px))",
   gap: 10,
   alignItems: "end",
 };
@@ -1881,10 +1901,6 @@ const filterField = {
   display: "flex",
   flexDirection: "column",
   gap: 6,
-};
-
-const filterFieldWide = {
-  minWidth: 260,
 };
 
 const filterLabel = {
