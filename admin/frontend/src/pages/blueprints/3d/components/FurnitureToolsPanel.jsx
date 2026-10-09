@@ -653,6 +653,8 @@ export function FurnitureToolsPanel({
             </div>
           </div>
 
+          {SHOW_ADVANCED_ARRANGE_TOOLS ? (
+            <>
           <div style={sectionCardStyle}>
             <div style={S.smartActionsSectionLabel}>Flush Snap</div>
             <div style={sectionHintStyle}>
@@ -735,6 +737,9 @@ export function FurnitureToolsPanel({
               </button>
             </div>
           </div>
+
+            </>
+          ) : null}
 
           <div style={sectionCardStyle}>
             <div style={S.smartActionsSectionLabel}>Spacing & Layout</div>
