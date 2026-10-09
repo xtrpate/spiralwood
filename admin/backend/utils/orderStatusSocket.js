@@ -17,8 +17,6 @@ const emitOrderStatusUpdate = (
     }
 
     io.to("staff-updates").emit("order:status_updated", payload);
-
-    console.log("[SOCKET EMIT] Sending order status:", payload);
   } catch (socketErr) {
     console.error(
       "[ORDER STATUS SOCKET EMIT]",
@@ -50,8 +48,6 @@ const emitOrderCreated = (
 
   try {
     io.to("staff-updates").emit("order:created", payload);
-
-    console.log("[SOCKET EMIT] Sending new order:", payload);
   } catch (socketErr) {
     console.error(
       "[ORDER CREATED SOCKET EMIT]",
@@ -90,8 +86,6 @@ const emitOrderPaymentUpdate = (
     }
 
     io.to("staff-updates").emit("order:payment_updated", payload);
-
-    console.log("[SOCKET EMIT] Sending order payment update:", payload);
   } catch (socketErr) {
     console.error(
       "[ORDER PAYMENT SOCKET EMIT]",
@@ -140,8 +134,6 @@ const emitDeliveryUpdate = (
     if (driverId && notifyDriver) {
       io.to(`user:${driverId}`).emit("delivery:updated", payload);
     }
-
-    console.log("[SOCKET EMIT] Sending delivery update:", payload);
   } catch (socketErr) {
     console.error("[DELIVERY SOCKET EMIT]", socketErr?.message || socketErr);
   }
@@ -206,8 +198,6 @@ const emitTaskUpdate = (
     for (const recipientId of new Set(recipientIds)) {
       io.to(`user:${recipientId}`).emit("task:updated", payload);
     }
-
-    console.log("[SOCKET EMIT] Sending task update:", payload);
   } catch (socketErr) {
     console.error("[TASK SOCKET EMIT]", socketErr?.message || socketErr);
   }
@@ -240,8 +230,6 @@ const emitBlueprintUpdate = (
     if (customerId && notifyCustomer) {
       io.to(`user:${customerId}`).emit("blueprint:updated", payload);
     }
-
-    console.log("[SOCKET EMIT] Sending blueprint update:", payload);
   } catch (socketErr) {
     console.error("[BLUEPRINT SOCKET EMIT]", socketErr?.message || socketErr);
   }
@@ -255,11 +243,6 @@ const emitDiscussionMessage = (io, { orderId, discussionMessage } = {}) => {
       "discussion:message",
       discussionMessage,
     );
-
-    console.log("[SOCKET EMIT] Sending discussion message:", {
-      order_id: Number(orderId),
-      message_id: discussionMessage?.id || null,
-    });
   } catch (socketErr) {
     console.error("[DISCUSSION SOCKET EMIT]", socketErr?.message || socketErr);
   }
@@ -289,8 +272,6 @@ const emitDeliveryAssigned = ({
     };
 
     io.to(`user:${driverId}`).emit("delivery:assigned", payload);
-
-    console.log("[SOCKET EMIT] Delivery assigned:", payload);
   } catch (socketErr) {
     console.error(
       "[DELIVERY ASSIGNMENT SOCKET EMIT]",
@@ -325,8 +306,6 @@ const emitDeliveryUnassigned = ({
     };
 
     io.to(`user:${previousDriverId}`).emit("delivery:unassigned", payload);
-
-    console.log("[SOCKET EMIT] Delivery unassigned:", payload);
   } catch (socketErr) {
     console.error(
       "[DELIVERY UNASSIGNMENT SOCKET EMIT]",

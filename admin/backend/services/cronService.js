@@ -67,18 +67,6 @@ const runAppointmentAutoCancellation = async ({ io = null } = {}) => {
 
   const cutoffWallClock = getPhilippineWallClock(cutoffDate);
 
-  const [[clock]] = await pool.query(`
-  SELECT
-    NOW() AS db_now,
-    UTC_TIMESTAMP() AS utc_now,
-    @@session.time_zone AS session_timezone,
-    @@global.time_zone AS global_timezone
-`);
-
-  console.log("[CRON DEBUG] Database clock:", clock);
-
-  console.log("[CRON DEBUG] Appointment cutoff:", cutoffWallClock);
-
   const [candidates] = await pool.query(
     `
       SELECT

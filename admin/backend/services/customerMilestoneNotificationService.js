@@ -32,9 +32,7 @@ const formatScheduleDate = (value) => {
   if (!match) return raw;
 
   const [, year, month, day] = match;
-  const date = new Date(
-    Date.UTC(Number(year), Number(month) - 1, Number(day)),
-  );
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
 
   if (Number.isNaN(date.getTime())) return raw;
 
@@ -81,8 +79,7 @@ const getMilestoneContent = ({ event, orderLabel, scheduledDate }) => {
         emailMessage:
           `${orderLabel} has been delivered. ` +
           "Thank you for choosing Spiral Wood Services.",
-        smsMessage:
-          `Spiral Wood Services: ${orderLabel} has been delivered. Thank you.`,
+        smsMessage: `Spiral Wood Services: ${orderLabel} has been delivered. Thank you.`,
       };
 
     case "delivery_failed":
@@ -140,7 +137,12 @@ const loadOrderContact = async (db, orderId) => {
   return row || null;
 };
 
-const buildEmailHtml = ({ customerName, orderLabel, heading, emailMessage }) => {
+const buildEmailHtml = ({
+  customerName,
+  orderLabel,
+  heading,
+  emailMessage,
+}) => {
   const safeName = escapeHtml(customerName || "Customer");
   const safeOrder = escapeHtml(orderLabel);
   const safeHeading = escapeHtml(heading);
@@ -248,10 +250,6 @@ const sendCustomerMilestoneNotificationSafe = async (
         );
       }
     }
-
-    console.log(
-      `[CustomerMilestoneNotification] event=${event} order_id=${numericOrderId} email=${emailSent ? "sent" : "not_sent"} sms=${smsSent ? "sent" : "not_sent"}`,
-    );
 
     return {
       email: emailSent,

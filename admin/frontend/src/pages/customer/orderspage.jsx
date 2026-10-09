@@ -612,7 +612,6 @@ function OrderModal({
 
   useEffect(() => {
     const handleOrderStatusUpdated = (payload) => {
-      console.log("[SOCKET RECEIVED] order:status_updated", payload);
       const updatedOrderId = Number(payload?.order_id);
 
       if (
@@ -646,8 +645,6 @@ function OrderModal({
     };
 
     const handleOrderPaymentUpdated = (payload) => {
-      console.log("[SOCKET RECEIVED] order:payment_updated", payload);
-
       const updatedOrderId = Number(payload?.order_id);
 
       if (
@@ -714,8 +711,6 @@ function OrderModal({
     };
 
     const handleDeliveryUpdated = (payload) => {
-      console.log("[SOCKET RECEIVED] delivery:updated", payload);
-
       const updatedOrderId = Number(payload?.order_id);
 
       if (
@@ -842,7 +837,9 @@ function OrderModal({
 
       window.location.replace(data.payment_url);
     } catch (err) {
-      console.error("[OrdersPage Pay Now]", err?.response?.data || err);
+      if (process.env.NODE_ENV === "development") {
+        console.error("[OrdersPage Pay Now]", err?.message);
+      }
 
       onFeedback?.({
         type: "error",
@@ -1378,7 +1375,6 @@ export default function OrdersPage() {
 
   useEffect(() => {
     const handleOrderStatusUpdated = (payload) => {
-      console.log("[SOCKET RECEIVED] order:status_updated", payload);
       const orderId = Number(payload?.order_id);
 
       if (!Number.isInteger(orderId)) {
@@ -1401,8 +1397,6 @@ export default function OrdersPage() {
     };
 
     const handleOrderPaymentUpdated = (payload) => {
-      console.log("[SOCKET RECEIVED] order:payment_updated", payload);
-
       const orderId = Number(payload?.order_id);
 
       if (!Number.isInteger(orderId)) {
@@ -1447,8 +1441,6 @@ export default function OrdersPage() {
     };
 
     const handleDeliveryUpdated = (payload) => {
-      console.log("[SOCKET RECEIVED] delivery:updated", payload);
-
       const updatedOrderId = Number(payload?.order_id);
 
       if (!Number.isInteger(updatedOrderId)) {

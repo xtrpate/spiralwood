@@ -1029,17 +1029,10 @@ export default function CustomRequestDetailPage() {
         return;
       }
 
-      console.log(
-        "[SOCKET RECEIVED] custom request order:status_updated",
-        payload,
-      );
-
       loadRequestDetail(false);
     };
 
     const handleOrderPaymentUpdated = (payload) => {
-      console.log("[SOCKET RECEIVED] order:payment_updated", payload);
-
       const updatedOrderId = Number(payload?.order_id);
 
       if (!Number.isInteger(updatedOrderId) || updatedOrderId !== Number(id)) {
@@ -1056,17 +1049,10 @@ export default function CustomRequestDetailPage() {
         return;
       }
 
-      console.log(
-        "[SOCKET RECEIVED] custom request blueprint:updated",
-        payload,
-      );
-
       loadRequestDetail(false);
     };
 
     const handleDeliveryUpdated = (payload) => {
-      console.log("[SOCKET RECEIVED] delivery:updated", payload);
-
       const updatedOrderId = Number(payload?.order_id);
 
       if (!Number.isInteger(updatedOrderId) || updatedOrderId !== Number(id)) {

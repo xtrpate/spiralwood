@@ -101,9 +101,7 @@ io.use(async (socket, next) => {
 //     socket.join(`user:${userId}`);
 //   }
 
-//   console.log(
-//     `[SOCKET CONNECTED] user=${socket.user?.id} role=${socket.user?.role}`,
-//   );
+//
 // });
 
 const toDiscussionOrderId = (value) => {
@@ -243,16 +241,6 @@ io.on("connection", (socket) => {
     socket.join("staff-updates");
   }
 
-  console.log(
-    `[SOCKET ROOM] user=${socket.user?.id} role=${role} rooms=${[
-      ...socket.rooms,
-    ].join(",")}`,
-  );
-
-  console.log(
-    `[SOCKET CONNECTED] user=${socket.user?.id} role=${socket.user?.role}`,
-  );
-
   socket.on("discussion:join", async (payload = {}, acknowledge) => {
     const reply = typeof acknowledge === "function" ? acknowledge : () => {};
     const orderId = toDiscussionOrderId(payload?.orderId);
@@ -308,11 +296,7 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("disconnect", (reason) => {
-    console.log(
-      `[SOCKET DISCONNECTED] user=${socket.user?.id} reason=${reason}`,
-    );
-  });
+  socket.on("disconnect", (reason) => {});
 });
 
 app.set("trust proxy", 1);

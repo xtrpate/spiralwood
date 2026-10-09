@@ -18,8 +18,8 @@ import { Package2, Search } from "lucide-react";
 import useAuthStore from "../../store/authStore";
 import "./OrdersPage.css";
 
-const CustomerBlueprintViewer = React.lazy(() =>
-  import("../customer/CustomerBlueprintViewer"),
+const CustomerBlueprintViewer = React.lazy(
+  () => import("../customer/CustomerBlueprintViewer"),
 );
 
 const ADMIN_ORDER_PREVIEW_PRESET = "isometric";
@@ -266,9 +266,7 @@ const AdminOrderBlueprintPreview = ({
 
   const previewMetadata = useMemo(
     () => ({
-      id:
-        order?.blueprint_id ||
-        `order-draft-${order?.id || "preview"}`,
+      id: order?.blueprint_id || `order-draft-${order?.id || "preview"}`,
       preview_revision:
         order?.blueprint_preview_revision ||
         order?.created_at ||
@@ -299,9 +297,7 @@ const AdminOrderBlueprintPreview = ({
   const [blueprint, setBlueprint] = useState(null);
 
   useEffect(() => {
-    setCachedStaticPreview(
-      readGeneratedCompactPreview(compactPreviewCacheKey),
-    );
+    setCachedStaticPreview(readGeneratedCompactPreview(compactPreviewCacheKey));
     setBlueprint(null);
     setPreviewEligible(false);
   }, [compactPreviewCacheKey]);
@@ -359,19 +355,10 @@ const AdminOrderBlueprintPreview = ({
         window.clearTimeout(timerId);
       }
     };
-  }, [
-    cachedStaticPreview,
-    order?.id,
-    preloadDelayMs,
-  ]);
+  }, [cachedStaticPreview, order?.id, preloadDelayMs]);
 
   useEffect(() => {
-    if (
-      cachedStaticPreview ||
-      !previewEligible ||
-      !order?.id ||
-      blueprint
-    ) {
+    if (cachedStaticPreview || !previewEligible || !order?.id || blueprint) {
       return undefined;
     }
 
@@ -392,12 +379,7 @@ const AdminOrderBlueprintPreview = ({
     return () => {
       active = false;
     };
-  }, [
-    blueprint,
-    cachedStaticPreview,
-    order?.id,
-    previewEligible,
-  ]);
+  }, [blueprint, cachedStaticPreview, order?.id, previewEligible]);
 
   if (cachedStaticPreview) {
     return (
@@ -426,12 +408,7 @@ const AdminOrderBlueprintPreview = ({
         aria-label={title || "Furniture preview"}
       >
         <React.Suspense
-          fallback={
-            <OrderThumbnail
-              src={order?.thumbnail_url}
-              alt={title}
-            />
-          }
+          fallback={<OrderThumbnail src={order?.thumbnail_url} alt={title} />}
         >
           <CustomerBlueprintViewer
             blueprint={blueprint}
@@ -454,10 +431,7 @@ const AdminOrderBlueprintPreview = ({
       className="orders-blueprint-preview orders-blueprint-preview-r7"
       style={ADMIN_ORDER_PREVIEW_SHELL_STYLE}
     >
-      <OrderThumbnail
-        src={order?.thumbnail_url}
-        alt={title}
-      />
+      <OrderThumbnail src={order?.thumbnail_url} alt={title} />
     </div>
   );
 };
@@ -613,8 +587,6 @@ export default function OrdersPage() {
         return;
       }
 
-      console.log("[SOCKET RECEIVED] order:created", payload);
-
       load({ silent: true });
     };
 
@@ -755,9 +727,7 @@ export default function OrdersPage() {
     if (filters.page <= totalPages) return;
 
     setFilters((previous) =>
-      previous.page > totalPages
-        ? { ...previous, page: totalPages }
-        : previous,
+      previous.page > totalPages ? { ...previous, page: totalPages } : previous,
     );
   }, [filters.page, totalPages]);
 

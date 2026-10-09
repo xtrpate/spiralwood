@@ -2,9 +2,7 @@
 
 const crypto = require("crypto");
 const db = require("../../config/db");
-const {
-  retrieveCheckoutSession,
-} = require("../../services/paymongoService");
+const { retrieveCheckoutSession } = require("../../services/paymongoService");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const {
   emitOrderStatusUpdate,
@@ -344,8 +342,7 @@ const extractBlueprintWebhookPaidAmount = (session) => {
     ok: true,
     reason: null,
     paidCents,
-    paymentMethodSnapshot:
-      resolvePaymongoReceiptMethod(successfulPayment),
+    paymentMethodSnapshot: resolvePaymongoReceiptMethod(successfulPayment),
   };
 };
 
@@ -734,8 +731,7 @@ const processBlueprintPayMongoWebhook = async (
     }
 
     paymentAmountCents = analysis.paidCents;
-    paymentMethodSnapshot =
-      analysis.paymentMethodSnapshot || "paymongo";
+    paymentMethodSnapshot = analysis.paymentMethodSnapshot || "paymongo";
   } else {
     /*
      * Remaining balance:
@@ -784,8 +780,7 @@ const processBlueprintPayMongoWebhook = async (
     }
 
     paymentAmountCents = remainingCents;
-    paymentMethodSnapshot =
-      providerResult.paymentMethodSnapshot || "paymongo";
+    paymentMethodSnapshot = providerResult.paymentMethodSnapshot || "paymongo";
   }
 
   if (!Number.isSafeInteger(paymentAmountCents) || paymentAmountCents <= 0) {
@@ -1074,14 +1069,11 @@ exports.handlePaymongoWebhook = async (req, res) => {
       /^cs_[A-Za-z0-9]+$/.test(sessionId)
     ) {
       try {
-        const retrievedSession = await retrieveCheckoutSession(
-          sessionId,
-          { timeoutMs: 10000 },
-        );
+        const retrievedSession = await retrieveCheckoutSession(sessionId, {
+          timeoutMs: 10000,
+        });
 
-        if (
-          String(retrievedSession?.id || "").trim() === sessionId
-        ) {
+        if (String(retrievedSession?.id || "").trim() === sessionId) {
           const retrievedMethod =
             resolvePaymongoReceiptMethodFromSession(retrievedSession);
 
@@ -1129,12 +1121,6 @@ exports.handlePaymongoWebhook = async (req, res) => {
       if (webhookEventResult.alreadyProcessed) {
         await conn.rollback();
 
-        console.log(
-          `[PayMongo Webhook] Duplicate event ignored. ` +
-            `event_id=${eventId} ` +
-            `status=${webhookEventResult.status}`,
-        );
-
         return res.status(200).json({
           received: true,
           processed: false,
@@ -1158,12 +1144,6 @@ exports.handlePaymongoWebhook = async (req, res) => {
         await markPaymongoWebhookEventProcessed(conn, eventId);
 
         await conn.commit();
-
-        console.log(
-          `[PayMongo Webhook] Attempt event recorded. ` +
-            `event_id=${eventId} ` +
-            `event_type=${eventType}`,
-        );
 
         return res.status(200).json({
           received: true,
@@ -1418,13 +1398,14 @@ exports.handlePaymongoWebhook = async (req, res) => {
 
       const providerAmountCents = getPaymongoAmountCents(session);
 
-      const successfulProviderPayment =
-        Array.isArray(session?.attributes?.payments)
-          ? session.attributes.payments.find(
-              (payment) =>
-                normalizeWebhookValue(payment?.attributes?.status) === "paid",
-            ) || null
-          : null;
+      const successfulProviderPayment = Array.isArray(
+        session?.attributes?.payments,
+      )
+        ? session.attributes.payments.find(
+            (payment) =>
+              normalizeWebhookValue(payment?.attributes?.status) === "paid",
+          ) || null
+        : null;
 
       const providerPaymentId =
         String(successfulProviderPayment?.id || "").trim() || null;
@@ -1578,13 +1559,6 @@ exports.handlePaymongoWebhook = async (req, res) => {
         actorType: "webhook",
         responseStatus: 200,
       });
-
-      console.log(
-        `[PayMongo Webhook] Payment confirmed. ` +
-          `order=${order.order_number} ` +
-          `order_id=${order.id} ` +
-          `session=${sessionId}`,
-      );
 
       return res.status(200).json({
         received: true,

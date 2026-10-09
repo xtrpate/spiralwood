@@ -17,7 +17,13 @@ function validate(req, res, next) {
  */
 function errorHandler(err, req, res, next) {
   // eslint-disable-line no-unused-vars
-  console.error(`[${new Date().toISOString()}] ${err.stack || err.message}`);
+  if (process.env.NODE_ENV === "production") {
+    console.error(
+      `[${new Date().toISOString()}] ${err.message || "Internal server error"}`,
+    );
+  } else {
+    console.error(`[${new Date().toISOString()}] ${err.stack || err.message}`);
+  }
 
   // Multer errors
   if (err.code === "LIMIT_FILE_SIZE") {

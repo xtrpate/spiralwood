@@ -261,8 +261,6 @@ const sendOtpEmail = async (email, otp, name) => {
     if (!sent) {
       throw new Error("BREVO_SEND_FAILED");
     }
-
-    console.log("Brevo API Success: Registration OTP Sent!");
   } catch (err) {
     console.error("CRITICAL: Failed to send verification email.", err.message);
 
@@ -583,8 +581,6 @@ const sendResetOtpEmail = async (email, otp, name) => {
 
       throw new Error(`BREVO_REJECTED: ${response.status}`);
     }
-
-    console.log("Brevo API Success: Password Reset OTP Sent!");
   } catch (err) {
     console.error(
       "CRITICAL: Failed to send password reset email.",
@@ -1182,11 +1178,6 @@ exports.verifyOtp = async (req, res) => {
       [phoneOtpHash, phoneOtpExpires, user.id],
     );
 
-    // Now send the SMS!
-    console.log("[OTP] Sending registration phone verification SMS.", {
-      userId: user.id,
-    });
-
     await sendSms({
       phone: user.phone,
       message: `Your Spiral Wood Services phone verification code is ${phoneOtp}. It expires in ${OTP_EXPIRY_MINUTES} minutes. Don't share your code with anyone.`,
@@ -1322,13 +1313,6 @@ exports.changeRegistrationPhone = async (req, res) => {
       WHERE id = ?
       `,
       [normalizedPhone, phoneOtpHash, phoneOtpExpires, user.id],
-    );
-
-    console.log(
-      "[OTP] Sending replacement registration phone verification SMS.",
-      {
-        userId: user.id,
-      },
     );
 
     // Send the new OTP to the new phone number.
@@ -1796,10 +1780,6 @@ exports.resendPhoneOtp = async (req, res) => {
       [phoneOtpHash, phoneOtpExpires, user.id],
     );
 
-    console.log("[OTP] Sending registration phone verification SMS.", {
-      userId: user.id,
-    });
-
     await sendSms({
       phone: user.phone,
       message: `Your Spiral Wood Services phone verification code is ${phoneOtp}. It expires in ${OTP_EXPIRY_MINUTES} minutes. Don't share your code with anyone.`,
@@ -1899,10 +1879,6 @@ exports.forgotPassword = async (req, res) => {
     const firstName = user.name ? String(user.name).split(" ")[0] : "Customer";
 
     if (isPhoneRecovery) {
-      console.log("[forgot-password] Sending password reset SMS.", {
-        userId: user.id,
-      });
-
       await sendSms({
         phone: user.phone,
         message: `Your Spiral Wood Services password reset code is ${resetOtp}. It expires in ${RESET_OTP_EXPIRY_MINUTES} minutes.`,
@@ -1978,10 +1954,6 @@ exports.resendResetOtp = async (req, res) => {
     const firstName = user.name ? String(user.name).split(" ")[0] : "Customer";
 
     if (isPhoneRecovery) {
-      console.log("[resend-reset-otp] Sending password reset SMS.", {
-        userId: user.id,
-      });
-
       await sendSms({
         phone: user.phone,
         message: `Your Spiral Wood Services password reset code is ${resetOtp}. It expires in ${RESET_OTP_EXPIRY_MINUTES} minutes.`,
@@ -2462,10 +2434,6 @@ exports.login = async (req, res) => {
         `,
         [phoneOtpHash, phoneOtpExpires, user.id],
       );
-
-      console.log("[OTP] Sending login phone verification SMS.", {
-        userId: user.id,
-      });
 
       await sendSms({
         phone: user.phone,
