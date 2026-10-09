@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 
 // ── Data & Types ──────────────────────────────────────────────────────────────
 import { VIEWS, EXPORT_VIEWS, WOOD_FINISHES } from "./data/furnitureTypes";
+import { useBlueprintMaterialCatalog, materialAssignmentPatch, materialFitsPart } from "./data/useBlueprintMaterialCatalog";
 import {
   normalizeComponent,
   applyWoodFinish,
@@ -75,6 +76,7 @@ export default function BlueprintDesign() {
 
   const [blueprint, setBlueprint] = useState(null);
   const [components, setComponents] = useState([]);
+  const { materials: approvedMaterials, loading: catalogLoading, error: catalogError } = useBlueprintMaterialCatalog();
   const [selectedId, setSelectedId] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
   const [clipboardObject, setClipboardObject] = useState(null);
@@ -1294,43 +1296,39 @@ export default function BlueprintDesign() {
                 </div>
               ) : (
                 <>
-                  <div style={{ marginBottom: 7 }}>
-                    <label style={S.propLabel}>Material</label>
-                    <input
-                      value={selectedComp.material || ""}
-                      disabled={
-                        editorMode !== "editable" || isLocked(selectedComp)
-                      }
-                      onChange={(e) =>
-                        updateComp(selectedComp.id, {
-                          material: e.target.value,
-                        })
-                      }
-                      style={S.propInput}
-                    />
-                  </div>
-
-                  <div style={{ marginBottom: 7 }}>
-                    <label style={S.propLabel}>Fill Color</label>
-                    <input
-                      type="color"
-                      value={selectedComp.fill || "#d9c2a5"}
-                      disabled={
-                        editorMode !== "editable" || isLocked(selectedComp)
-                      }
-                      onChange={(e) =>
-                        updateComp(selectedComp.id, {
-                          fill: e.target.value,
-                          finish: "",
-                        })
-                      }
-                      style={{
-                        ...S.propInput,
-                        padding: 2,
-                        height: 36,
-                      }}
-                    />
-                  </div>
+                  {(isWoodLikeMaterial(selectedComp.material) || selectedComp.raw_material_id) ? (
+                    <div style={{ marginBottom: 7 }}>
+                      <label style={S.propLabel}>Actual Board Material</label>
+                      <select
+                        value={selectedComp.raw_material_id || ""}
+                        disabled={editorMode !== "editable" || isLocked(selectedComp) || catalogLoading || !!catalogError}
+                        onChange={(e) => {
+                          const patch = materialAssignmentPatch(approvedMaterials, e.target.value);
+                          if (patch && materialFitsPart(approvedMaterials.find((entry) => Number(entry.raw_material_id) === Number(e.target.value)), selectedComp)) updateComp(selectedComp.id, patch);
+                        }}
+                        style={S.propInput}
+                      >
+                        <option value="">Legacy / unlinked material (unchanged)</option>
+                        {selectedComp.raw_material_id && !approvedMaterials.some(
+                          (entry) => Number(entry.raw_material_id) === Number(selectedComp.raw_material_id)
+                        ) && <option value={selectedComp.raw_material_id}>Saved material #{selectedComp.raw_material_id} (unavailable)</option>}
+                        {approvedMaterials.map((entry) => (
+                          <option key={entry.key} value={entry.raw_material_id || ""} disabled={entry.status !== "available" || !materialFitsPart(entry, selectedComp)}>
+                            {entry.label}{entry.status !== "available" ? " — not in inventory" : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <div style={{ color: "#94a3b8", fontSize: 10, marginTop: 5 }}>
+                        {catalogError || (catalogLoading ? "Loading materials..." :
+                          selectedComp.raw_material_id ? "Inventory-linked. No stock deduction on edit." :
+                          `Existing: ${selectedComp.material || "Unspecified"}`)}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ color: "#94a3b8", fontSize: 10, marginBottom: 7 }}>
+                      Non-wood material preserved: {selectedComp.material || "Unspecified"}
+                    </div>
+                  )}
 
                   {(isWoodLikeMaterial(selectedComp.material) ||
                     selectedComp.finish !== undefined) && (

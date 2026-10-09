@@ -289,7 +289,7 @@ function getWoodFinish(finishId = "") {
 }
 
 function isWoodLikeMaterial(material = "") {
-  return /wood|oak|teak|walnut|mahogany|pine|maple|beech|ash|veneer|plywood|marine/i.test(
+  return /wood|oak|teak|walnut|mahogany|pine|maple|beech|ash|veneer|plywood|marine|particle|mdf|versaboard|blockboard|laminated/i.test(
     String(material),
   );
 }
@@ -467,6 +467,10 @@ function normalizeComponent(c) {
     fill: resolvedFill,
     color: explicitColor || resolvedFill,
     material: resolvedMaterial,
+    // Exact inventory identity travels with the design and is NOT a billable estimate row.
+    raw_material_id: Number.isSafeInteger(Number(c.raw_material_id)) && Number(c.raw_material_id) > 0
+      ? Number(c.raw_material_id)
+      : null,
     wood_type: String(c.wood_type || rawMaterial).trim() || rawMaterial,
     finish: resolvedFinishId,
     finish_id: resolvedFinishId,

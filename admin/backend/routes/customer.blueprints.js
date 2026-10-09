@@ -18,6 +18,9 @@ router.get(
   deliveryConfigController.getDeliveryConfig,
 );
 
+// Must precede /:id; read-only and safe for both Admin and Customer editors.
+router.get("/material-catalog", blueprintController.getMaterialCatalog);
+
 router.get("/:id", blueprintController.getBlueprintById);
 
 module.exports = router;

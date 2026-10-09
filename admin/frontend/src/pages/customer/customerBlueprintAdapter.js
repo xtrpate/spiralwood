@@ -95,6 +95,11 @@ const normalizeComponent = (raw = {}, index = 0) => {
     finish_id: String(raw.finish_id ?? finishCandidate).trim(),
     woodFinish: String(raw.woodFinish ?? finishCandidate).trim(),
     material: raw.material || raw.wood_type || "",
+    raw_material_id:
+      Number.isSafeInteger(Number(raw.raw_material_id)) &&
+      Number(raw.raw_material_id) > 0
+        ? Number(raw.raw_material_id)
+        : null,
     wood_type: raw.wood_type || raw.material || "",
     finish_color: finishColorCandidate || resolvedFill,
     color_mode: colorMode,
