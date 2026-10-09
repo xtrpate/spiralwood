@@ -35,7 +35,8 @@ import {
 
 import { createFurnitureObject } from "../blueprints/3d/createFurnitureObjects";
 import { WOOD_FINISHES } from "../blueprints/data/furnitureTypes";
-import { applyWoodFinish } from "../blueprints/data/componentUtils";
+import { applyWoodFinish, isWoodLikeMaterial } from "../blueprints/data/componentUtils";
+import { useBlueprintMaterialCatalog, materialAssignmentPatch } from "../blueprints/data/useBlueprintMaterialCatalog";
 import "./customer3dviewer-roomle-complete.css";
 
 const WORLD_W = 6400;
@@ -1747,6 +1748,7 @@ export default function Customer3DViewer({
   const [components, setComponents] = useState(() =>
     normalizeViewerComponents(initialComponents),
   );
+  const { materials: approvedMaterials, loading: catalogLoading, error: catalogError } = useBlueprintMaterialCatalog();
   const [selectedCompIds, setSelectedCompIds] = useState([]);
   const [doorsPreviewOpen, setDoorsPreviewOpen] = useState(false);
   const [drawersPreviewOpen, setDrawersPreviewOpen] = useState(false);
@@ -4704,6 +4706,43 @@ export default function Customer3DViewer({
     showCustomizeFeedback("Shelf moved within verified cabinet limits.");
   };
 
+  // Phase A: change only the purchasing-material identity. Do not resize parts,
+  // alter finishes, or silently replace thin backing with 18 mm boards.
+  const handleApprovedMaterialChange = (materialId) => {
+    if (!isCustomizable || readOnly || catalogError || catalogLoading) return;
+    const entry = approvedMaterials.find(
+      (item) => item.status === "available" &&
+        Number(item.raw_material_id) === Number(materialId),
+    );
+    const patch = materialAssignmentPatch(approvedMaterials, materialId);
+    if (!entry || !patch) return;
+    const targetIds = selectedCompIds.length
+      ? selectedCompIds
+      : components.map((c) => c.id);
+    const allowed = components.filter((part) => {
+      if (!targetIds.includes(part.id)) return false;
+      const text = String(part.material || part.wood_type || "");
+      if ((!isWoodLikeMaterial(text) && !part.raw_material_id) ||
+          /metal|upholstery|fabric|glass|leather/i.test(text)) return false;
+      const dimensions = [part.width, part.height, part.depth].map(Number);
+      if (dimensions.some((n) => !Number.isFinite(n) || n <= 0)) return false;
+      const thickness = Math.min(...dimensions);
+      return Math.abs(thickness - Number(entry.thickness_mm)) < 0.1;
+    });
+    if (!allowed.length) {
+      showCustomizeFeedback("Selected material thickness does not match any eligible part. No changes made.");
+      return;
+    }
+    const ids = new Set(allowed.map((part) => part.id));
+    commitComponents((prev) => prev.map((part) =>
+      ids.has(part.id) ? { ...part, ...patch } : part,
+    ));
+    setCustomizeProgressStep((current) => Math.max(current, 5));
+    showCustomizeFeedback(
+      `Material applied to ${allowed.length} compatible part(s). Other thicknesses unchanged.`,
+    );
+  };
+
   const handleFinishChange = (finishId, targetIdsOverride = null) => {
     if (!isCustomizable || readOnly || !editable.finish_color) return;
     setCustomizeProgressStep((current) => Math.max(current, 5));
@@ -6766,6 +6805,34 @@ export default function Customer3DViewer({
                     : {}),
                 }}
               >
+                <div style={{ ...styles.inputGroup, marginBottom: 12 }}>
+                  <span style={styles.dimLabel}>Actual Furniture Material</span>
+                  <select
+                    aria-label="Actual Furniture Material"
+                    value={(() => {
+                      const targets = selectedGroup.length ? selectedGroup : components;
+                      const ids = [...new Set(targets.filter((part) =>
+                        isWoodLikeMaterial(part.material) || part.raw_material_id,
+                      ).map((part) => Number(part.raw_material_id) || 0))];
+                      return ids.length === 1 ? ids[0] || "" : "";
+                    })()}
+                    disabled={readOnly || !isCustomizable || catalogLoading || !!catalogError}
+                    onChange={(e) => handleApprovedMaterialChange(e.target.value)}
+                    style={{ width: "100%", padding: "10px", border: "1px solid #d4d4d8", background: "#fff", color: "#18181b" }}
+                  >
+                    <option value="">Original / mixed materials (unchanged)</option>
+                    {approvedMaterials.map((entry) => (
+                      <option key={entry.key} value={entry.raw_material_id || ""} disabled={entry.status !== "available"}>
+                        {entry.label}{entry.status === "available" ? "" : " — not in inventory"}
+                      </option>
+                    ))}
+                  </select>
+                  <span style={{ ...styles.helperTextMuted, fontSize: 10 }}>
+                    {catalogError || (catalogLoading ? "Loading materials..." :
+                      "Only matching-thickness wooden parts change. Back panels and visual finish are preserved.")}
+                  </span>
+                </div>
+
                 <div style={styles.sectionRow}>
                   <label style={styles.label}>Wood Finish</label>
                   {selectedGroup.length > 0 ? (
