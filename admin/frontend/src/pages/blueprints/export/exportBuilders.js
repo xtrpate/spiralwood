@@ -2021,16 +2021,8 @@ function buildAllExportPages({
     ),
   );
 
-  pages.push(
-    ...buildMaterialsPagesHtml({
-      selectedComponents: exportComponents,
-      selectedLabel: resolvedObjectLabel,
-      selectedDimsText,
-      selectedMaterialText,
-      blueprintTitle,
-      unit,
-    }),
-  );
+  // The exploded parts schedule already lists part codes, cut sizes, and materials.
+  // Do not repeat the same inventory information on a separate Cut List sheet.
 
   return pages;
 }
