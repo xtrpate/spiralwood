@@ -43,6 +43,8 @@ const hook = read(base + "data/useBlueprintMaterialCatalog.js");
 const route = read("admin/backend/routes/customer.blueprints.js");
 const controller = read("admin/backend/controllers/customer/customer.blueprints.js");
 const estimate = read("admin/backend/controllers/admin/blueprintController.estimation.js");
+const customerAdapter = read("admin/frontend/src/pages/customer/customerBlueprintAdapter.js");
+const customerBackend = read("admin/backend/controllers/customer/customer.customorders.js");
 
 assert(component.includes("raw_material_id: Number.isSafeInteger"), "Save/Reload normalization must preserve material IDs");
 assert(signature.includes("raw_material_id: Number(component.raw_material_id)"), "Unsaved changes must track material IDs");
@@ -54,6 +56,13 @@ assert(customer.includes("handleApprovedMaterialChange") && customer.includes("m
 assert(hook.includes("/customer/blueprints/material-catalog"), "Admin and Customer must use the same catalog endpoint");
 assert(route.indexOf('"/material-catalog"') < route.indexOf('"/:id"'), "Catalog route must precede dynamic blueprint ID");
 assert(controller.includes("buildBlueprintMaterialCatalog(rows)"), "Public catalog must use exact inventory matching");
+assert(customerAdapter.includes("raw_material_id:") &&
+  customerAdapter.includes("Number(raw.raw_material_id)"), 
+  "Customer Blueprint scene adapter must preserve material identity from Admin design");
+const submitSanitizer = customerBackend.split("const sanitizeEditorSnapshotForStorage =")[1]?.split("const sanitizeCustomizationSnapshotForStorage =")[0] || "";
+assert(submitSanitizer.includes("raw_material_id:") &&
+  submitSanitizer.includes("Number(comp.raw_material_id)"),
+  "Customer submitted order snapshot sanitizer must preserve actual material ID");
 assert(estimate.includes('inventory_pricing_mode: "tracking_only"'),
   "Existing non-billable inventory material estimation mode must remain unchanged");
 console.log("PASS: Phase A catalog identity, compatibility and no-pricing-regression static checks.");
