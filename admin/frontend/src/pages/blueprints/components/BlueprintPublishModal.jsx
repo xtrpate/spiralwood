@@ -192,46 +192,6 @@ export function BlueprintPublishModal({
                 letterSpacing: "0.09em",
               }}
             >
-              Customer description
-            </label>
-            <textarea
-              required
-              rows={4}
-              value={publishForm.description}
-              onChange={(e) =>
-                setPublishForm({
-                  ...publishForm,
-                  description: e.target.value,
-                })
-              }
-              placeholder="Describe the furniture design and its intended use"
-              style={{
-                width: "100%",
-                padding: "12px 14px",
-                border: "1px solid #cfd6df",
-                borderRadius: 2,
-                boxSizing: "border-box",
-                outline: "none",
-                fontSize: 13,
-                lineHeight: 1.6,
-                color: "#0f172a",
-                resize: "vertical",
-              }}
-            />
-          </div>
-
-          <div style={{ marginBottom: 18 }}>
-            <label
-              style={{
-                display: "block",
-                fontSize: 11,
-                fontWeight: 800,
-                marginBottom: 7,
-                color: "#334155",
-                textTransform: "uppercase",
-                letterSpacing: "0.09em",
-              }}
-            >
               Category <span style={{ color: "#b42318" }}>*</span>
             </label>
             <select
