@@ -56,7 +56,9 @@ assert(customer.includes("handleApprovedMaterialChange") && customer.includes("m
 assert(hook.includes("/customer/blueprints/material-catalog"), "Admin and Customer must use the same catalog endpoint");
 assert(hook.includes("export function materialFitsPart("), "Material selector must check actual stock dimensions");
 assert(admin2d.includes("materialFitsPart") && admin3d.includes("materialFitsPart"), "Admin assignment must reject uncuttable components");
-assert(route.indexOf('"/material-catalog"') < route.indexOf('"/:id"'), "Catalog route must precede dynamic blueprint ID");
+assert(route.indexOf('router.get("/material-catalog",') >= 0 &&
+  route.indexOf('router.get("/material-catalog",') < route.indexOf('router.get("/:id",'),
+  "Catalog route must precede dynamic blueprint ID");
 assert(controller.includes("buildBlueprintMaterialCatalog(rows)"), "Public catalog must use exact inventory matching");
 assert(customerAdapter.includes("raw_material_id:") &&
   customerAdapter.includes("Number(raw.raw_material_id)"), 
