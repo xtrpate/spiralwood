@@ -492,6 +492,15 @@ const sanitizeEditorSnapshotForStorage = (snapshot = null) => {
         rotationZ: Number(comp?.rotationZ || 0) || 0,
 
         material: toTrimmedStringOrNull(comp?.material),
+        // Phase A: preserve approved design material ID in the submitted
+        // customer production snapshot. Null means legacy/unlinked part.
+        // Stored metadata only: never use this unverified client field for
+        // inventory reservation or financial pricing without server checks.
+        raw_material_id:
+          Number.isSafeInteger(Number(comp?.raw_material_id)) &&
+          Number(comp?.raw_material_id) > 0
+            ? Number(comp.raw_material_id)
+            : null,
         wood_type: toTrimmedStringOrNull(comp?.wood_type),
         finish: toTrimmedStringOrNull(comp?.finish),
         finish_id: toTrimmedStringOrNull(comp?.finish_id),
