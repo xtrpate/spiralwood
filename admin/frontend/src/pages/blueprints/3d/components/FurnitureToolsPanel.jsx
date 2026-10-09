@@ -928,7 +928,8 @@ export function FurnitureToolsPanel({
               >
                 Row Z
               </button>
-            </div>              </>
+            </div>
+              </>
             ) : null}
 
           </div>
@@ -3937,7 +3938,8 @@ export function FurnitureToolsPanel({
               </button>
 
             </div>
-          </div>            </>
+          </div>
+            </>
           ) : null}
 
         </>
