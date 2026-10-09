@@ -5344,7 +5344,6 @@ export function PropertiesPanel({
             <div style={inspectorSectionTitleStyle}>
               Material & Finish
             </div>
-
             <div style={{ marginBottom: 6 }}>
               <label style={S.floatingLabel}>Fill Color</label>
               <input
@@ -5367,7 +5366,7 @@ export function PropertiesPanel({
                 list="blueprint-production-materials"
                 value={selectedComp.material || ""}
                 disabled={editorMode !== "editable" || isLocked(selectedComp)}
-                onChange={(e) => applyStyleChange({ material: e.target.value })}
+                onChange={(e) => applyStyleChange({ material: e.target.value, raw_material_id: null })}
                 style={inputStyle}
               />
               <datalist id="blueprint-production-materials">

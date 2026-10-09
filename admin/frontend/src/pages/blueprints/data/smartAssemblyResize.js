@@ -239,11 +239,11 @@ function classifyTablePart(item, dimension, bounds) {
     type.includes("apron_short") || code === "DT-AL" || code === "DT-AR2";
 
   const isLeft =
-    /-(FL|BL|AL)$/.test(code) ||
+    /-(FL|BL|AL|ASL)$/.test(code) ||
     text.includes("left leg") ||
     text.includes("left apron");
   const isRight =
-    /-(FR|BR|AR2)$/.test(code) ||
+    /-(FR|BR|AR2|ASR)$/.test(code) ||
     text.includes("right leg") ||
     text.includes("right apron");
   const isFront =
@@ -780,6 +780,66 @@ function buildSmartAssemblyResizePlan(items = [], options = {}) {
       };
     },
   );
+
+  // Keep split wardrobe backing joined during controlled assembly resize.
+  // Existing single-piece WR-BK designs retain their previous behavior.
+  if (analysis.assemblyType === "wardrobe") {
+    const byCode = (code) =>
+      items.find(
+        (item) => String(item.partCode || "").toUpperCase() === code,
+      );
+
+    const backLeft = byCode("WR-BKL");
+    const backRight = byCode("WR-BKR");
+    const seamSupport = byCode("WR-BKS");
+
+    if (backLeft && backRight && seamSupport) {
+      const effective = (item, key) =>
+        Number(changesById[item.id]?.[key] ?? item[key]);
+
+      const override = (item, change) => {
+        changesById[item.id] = {
+          ...changesById[item.id],
+          ...change,
+        };
+      };
+
+      if (dimension === "width") {
+        const leftSide = byCode("WR-SL");
+        const rightSide = byCode("WR-SR");
+
+        if (leftSide && rightSide) {
+          const innerLeft = nextBounds.min + effective(leftSide, "width");
+          const innerRight = nextBounds.max - effective(rightSide, "width");
+          const halfWidth = roundToPrecision((innerRight - innerLeft) / 2);
+          const seamX = roundToPrecision(innerLeft + halfWidth);
+
+          override(backLeft, {
+            x: roundToPrecision(innerLeft),
+            width: halfWidth,
+          });
+          override(backRight, {
+            x: seamX,
+            width: halfWidth,
+          });
+          override(seamSupport, {
+            x: roundToPrecision(seamX - effective(seamSupport, "width") / 2),
+          });
+        }
+      } else if (dimension === "height") {
+        override(seamSupport, {
+          y: effective(backLeft, "y"),
+          height: effective(backLeft, "height"),
+        });
+      } else if (dimension === "depth") {
+        override(seamSupport, {
+          z: roundToPrecision(
+            effective(backLeft, "z") + effective(backLeft, "depth"),
+          ),
+        });
+      }
+    }
+  }
 
   const result = {
     ...analysis,

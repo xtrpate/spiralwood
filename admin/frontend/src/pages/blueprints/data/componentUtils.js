@@ -289,7 +289,7 @@ function getWoodFinish(finishId = "") {
 }
 
 function isWoodLikeMaterial(material = "") {
-  return /wood|oak|teak|walnut|mahogany|pine|maple|beech|ash|veneer|plywood|marine/i.test(
+  return /wood|oak|teak|walnut|mahogany|pine|maple|beech|ash|veneer|plywood|marine|particle|mdf|versaboard|blockboard|laminated/i.test(
     String(material),
   );
 }
@@ -363,6 +363,14 @@ function normalizeComponent(c) {
   // Material and finish are separate production properties.
   // A visual oak/walnut/etc. finish must not overwrite the saved substrate.
   const resolvedMaterial = rawMaterial;
+
+  const requestedConstructionMethod = String(c.constructionMethod || "single");
+  const constructionMethod = [
+    "single", "laminated_plywood", "joined_wood", "machined_stock",
+  ].includes(requestedConstructionMethod)
+    ? requestedConstructionMethod
+    : "single";
+
 
   const structure = normalizeFurnitureStructureFields(c);
   const productionMetadata = normalizeProductionMetadata({
@@ -467,7 +475,25 @@ function normalizeComponent(c) {
     fill: resolvedFill,
     color: explicitColor || resolvedFill,
     material: resolvedMaterial,
+    // Exact inventory identity travels with the design and is NOT a billable estimate row.
+    raw_material_id: constructionMethod === "single" &&
+      Number.isSafeInteger(Number(c.raw_material_id)) && Number(c.raw_material_id) > 0
+      ? Number(c.raw_material_id)
+      : null,
     wood_type: String(c.wood_type || rawMaterial).trim() || rawMaterial,
+    // Fabrication specification only; not an inventory deduction or estimate.
+    constructionMethod,
+    constructionLayerCount: Math.max(
+      2,
+      Math.min(12, Math.trunc(Number(c.constructionLayerCount) || 2)),
+    ),
+    constructionStockId:
+      ["laminated_plywood", "machined_stock"].includes(constructionMethod) &&
+      Number.isSafeInteger(Number(c.constructionStockId)) &&
+      Number(c.constructionStockId) > 0
+        ? Number(c.constructionStockId)
+        : null,
+    constructionNotes: String(c.constructionNotes || "").slice(0, 500),
     finish: resolvedFinishId,
     finish_id: resolvedFinishId,
     woodFinish: resolvedFinishId,

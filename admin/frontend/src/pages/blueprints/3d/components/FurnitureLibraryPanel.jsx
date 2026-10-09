@@ -500,13 +500,16 @@ export function FurnitureLibraryPanel({
           const haystack =
             `${item.label || ""} ${item.type || ""} ${item.category || ""} ${item.material || ""}`.toLowerCase();
 
-          // Keep saved template types supported, but hide the alternative
-          // Closet / Wardrobe preset from this compact furniture picker.
-          const isHiddenAlternateWardrobe =
-            group.label === "Furniture Templates" &&
-            item.type === "template_closet_wardrobe";
+          // Preserve legacy templates; show only three in this picker.
+          const showTemplateInPicker =
+            group.label !== "Furniture Templates" ||
+            [
+              "template_dining_table",
+              "template_wardrobe",
+              "template_coffee_table",
+            ].includes(item.type);
           const searchMatches = !query || haystack.includes(query);
-          return tabMatches && searchMatches && !isHiddenAlternateWardrobe;
+          return tabMatches && searchMatches && showTemplateInPicker;
         });
 
         return { ...group, items };

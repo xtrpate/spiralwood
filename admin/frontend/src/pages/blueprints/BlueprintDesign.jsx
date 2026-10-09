@@ -1304,6 +1304,7 @@ export default function BlueprintDesign() {
                       onChange={(e) =>
                         updateComp(selectedComp.id, {
                           material: e.target.value,
+                          raw_material_id: null,
                         })
                       }
                       style={S.propInput}

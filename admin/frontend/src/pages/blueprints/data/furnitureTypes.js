@@ -942,7 +942,7 @@ const FURNITURE_TEMPLATE_TYPES = [
     blueprintStyle: "assembly_template",
     cornerRadius: 0,
     thumbnailPng: "/library-thumbs/wooden-coffee-table.png",
-    w: 1200,
+    w: 1000,
     h: 450,
     d: 600,
   },
