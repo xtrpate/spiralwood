@@ -3,6 +3,11 @@ import S from "../../styles/blueprintStyles";
 import { VIEWER_UI } from "../viewerUi";
 import { ToolsGuide } from "./ToolsGuide";
 
+// Keep advanced actions implemented for existing Blueprint compatibility,
+// but only present the production-essential controls in the Admin UI.
+const SHOW_ADVANCED_BUILD_TOOLS = false;
+const SHOW_ADVANCED_ARRANGE_TOOLS = false;
+
 export function FurnitureToolsPanel({
   canUseSmartActions,
   smartSelectionCount = 0,
@@ -12,10 +17,7 @@ export function FurnitureToolsPanel({
   onApplySmartWidthResize,
   onAlignSelection,
   onFlushSelection,
-  onMirrorDuplicate,
   onSelectAssembly,
-  onDuplicateAssembly,
-  onArrayDuplicate,
   onDistributeSelection,
   onGapSelection,
   onBuildLineSelection,
@@ -46,7 +48,6 @@ export function FurnitureToolsPanel({
   canBuildCabinetFrontPreset = false,
   canBuildCabinetCustomBayFronts = false,
   canBuildCabinetCustomCellFronts = false,
-  designValidationReport = null,
 
   isDocked = false,
   activeToolTab: activeToolTabProp = undefined,
@@ -66,8 +67,7 @@ export function FurnitureToolsPanel({
     },
     [onChangeToolTab],
   );
-  const [arrayCount, setArrayCount] = useState(2);
-  const [arraySpacing, setArraySpacing] = useState(0);
+  const [showCabinetVariants, setShowCabinetVariants] = useState(false);
   const [gapValue, setGapValue] = useState(100);
   const [anchorMode, setAnchorMode] = useState("preserve-first");
   const [smartResizeDimension, setSmartResizeDimension] = useState("width");
@@ -166,12 +166,6 @@ export function FurnitureToolsPanel({
     "door",
     "door",
   ]);
-  const [validationReviewer, setValidationReviewer] = useState("");
-  const [validationReviewDate, setValidationReviewDate] = useState(() =>
-    new Date().toISOString().slice(0, 10),
-  );
-  const [validationProductionNotes, setValidationProductionNotes] = useState("");
-  const [validationRunAt, setValidationRunAt] = useState("");
 
   useEffect(() => {
     if (!smartWidthResizeContext?.supported) {
@@ -223,8 +217,6 @@ export function FurnitureToolsPanel({
   ]);
 
   const canPairActions = canUseSmartActions && smartSelectionCount > 1;
-  const canMirror = canUseSmartActions && smartSelectionCount > 0;
-  const canAssemblyActions = canUseSmartActions && smartSelectionCount > 0;
   const canDistribute = canUseSmartActions && smartSelectionCount > 2;
   const canGapActions = canUseSmartActions && smartSelectionCount > 1;
   const canBuilderHelpers = canUseSmartActions && smartSelectionCount > 0;
@@ -288,11 +280,6 @@ export function FurnitureToolsPanel({
     e.stopPropagation();
   };
 
-  const handleRunDesignValidation = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setValidationRunAt(new Date().toLocaleString());
-  };
 
   const makeHandler =
     (enabled, fn, ...args) =>
@@ -439,16 +426,6 @@ export function FurnitureToolsPanel({
       label: "Resize",
       hint: "Change assembly width, height, or depth safely.",
     },
-    {
-      key: "duplicate",
-      label: "Copy",
-      hint: "Duplicate, mirror, or repeat selected parts.",
-    },
-    {
-      key: "validate",
-      label: "Check",
-      hint: "Review the design for common production problems.",
-    },
   ];
 
   const sectionCardStyle = {
@@ -548,287 +525,15 @@ export function FurnitureToolsPanel({
         <div style={{ fontSize: 10, color: "#cbd5e1" }}>{activeTabHint}</div>
       </div>
 
-      {activeToolTab === "validate" ? (
-        <>
-          <div style={sectionCardStyle}>
-            <div style={S.smartActionsSectionLabel}>Production Readiness Check</div>
-            <div style={sectionHintStyle}>
-              Check the current design for common production issues. Automated checks help
-              with review, but final approval must still be done by an experienced carpenter.
-            </div>
-
-            <button
-              type="button"
-              onClick={handleRunDesignValidation}
-              style={getBtnStyle(Boolean(designValidationReport))}
-            >
-              Run Validation
-            </button>
-
-            {validationRunAt ? (
-              <div
-                style={{
-                  marginTop: 8,
-                  fontSize: 9,
-                  color: "#94a3b8",
-                }}
-              >
-                Last checked: {validationRunAt}
-              </div>
-            ) : null}
-          </div>
-
-          <div style={sectionCardStyle}>
-            <div style={S.smartActionsSectionLabel}>Validation Summary</div>
-
-            <div
-              style={{
-                ...S.infoCard,
-                marginBottom: 10,
-                padding: "9px 10px",
-                borderColor: designValidationReport?.passed
-                  ? designValidationReport?.warnings?.length
-                    ? "rgba(251,191,36,.55)"
-                    : "rgba(74,222,128,.55)"
-                  : "rgba(248,113,113,.62)",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 900,
-                  color: designValidationReport?.passed
-                    ? designValidationReport?.warnings?.length
-                      ? "#fde68a"
-                      : "#86efac"
-                    : "#fca5a5",
-                }}
-              >
-                {designValidationReport?.passed
-                  ? "Validation Passed"
-                  : "Validation Blocked"}
-              </div>
-              <div
-                style={{
-                  marginTop: 3,
-                  fontSize: 9,
-                  color: "#cbd5e1",
-                  lineHeight: 1.45,
-                }}
-              >
-                {designValidationReport?.summary?.totalParts || 0}{" "}{(designValidationReport?.summary?.totalParts || 0) === 1 ? "Part" : "Parts"} |{" "}
-                {designValidationReport?.summary?.assemblyCount || 0}{" "}{(designValidationReport?.summary?.assemblyCount || 0) === 1 ? "Assembly" : "Assemblies"}
-                | {designValidationReport?.summary?.errorCount || 0}{" "}{(designValidationReport?.summary?.errorCount || 0) === 1 ? "Error" : "Errors"} |{" "}
-                {designValidationReport?.summary?.warningCount || 0}{" "}{(designValidationReport?.summary?.warningCount || 0) === 1 ? "Warning" : "Warnings"}
-              </div>
-            </div>
-
-            {(designValidationReport?.errors || []).length ? (
-              <div style={{ marginBottom: 10 }}>
-                <div
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 800,
-                    color: "#fca5a5",
-                    marginBottom: 5,
-                  }}
-                >
-                  Critical Errors
-                </div>
-                <div
-                  style={{
-                    display: "grid",
-                    gap: 6,
-                    maxHeight: 190,
-                    overflowY: "auto",
-                  }}
-                >
-                  {designValidationReport.errors.map((issue, index) => (
-                    <div
-                      key={`${issue.code}-${issue.componentId || issue.assemblyId || index}`}
-                      style={{
-                        ...S.infoCard,
-                        padding: "7px 8px",
-                        borderColor: "rgba(248,113,113,.42)",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 9,
-                          fontWeight: 800,
-                          color: "#fecaca",
-                        }}
-                      >
-                        {issue.title}
-                      </div>
-                      <div
-                        style={{
-                          marginTop: 2,
-                          fontSize: 9,
-                          color: "#cbd5e1",
-                          lineHeight: 1.4,
-                        }}
-                      >
-                        {issue.message}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {(designValidationReport?.warnings || []).length ? (
-              <div style={{ marginBottom: 10 }}>
-                <div
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 800,
-                    color: "#fde68a",
-                    marginBottom: 5,
-                  }}
-                >
-                  Warnings
-                </div>
-                <div
-                  style={{
-                    display: "grid",
-                    gap: 6,
-                    maxHeight: 170,
-                    overflowY: "auto",
-                  }}
-                >
-                  {designValidationReport.warnings.map((issue, index) => (
-                    <div
-                      key={`${issue.code}-${issue.componentId || issue.assemblyId || index}`}
-                      style={{
-                        ...S.infoCard,
-                        padding: "7px 8px",
-                        borderColor: "rgba(251,191,36,.35)",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 9,
-                          fontWeight: 800,
-                          color: "#fde68a",
-                        }}
-                      >
-                        {issue.title}
-                      </div>
-                      <div
-                        style={{
-                          marginTop: 2,
-                          fontSize: 9,
-                          color: "#cbd5e1",
-                          lineHeight: 1.4,
-                        }}
-                      >
-                        {issue.message}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {!designValidationReport?.errors?.length &&
-            !designValidationReport?.warnings?.length ? (
-              <div
-                style={{
-                  ...S.infoCard,
-                  color: "#86efac",
-                  fontSize: 10,
-                  lineHeight: 1.5,
-                }}
-              >
-                No critical errors or warnings were found by the current
-                automated checks.
-              </div>
-            ) : null}
-          </div>
-
-          <div style={sectionCardStyle}>
-            <div style={S.smartActionsSectionLabel}>Final Production Review</div>
-            <div style={sectionHintStyle}>
-              Record the reviewer and notes for this validation. Final carpenter
-              approval is required before production.
-            </div>
-
-            <label style={{ ...fieldStyle, display: "block", marginBottom: 8 }}>
-              <span style={{ fontSize: 10, color: "#94a3b8" }}>Reviewer</span>
-              <input
-                type="text"
-                value={validationReviewer}
-                onMouseDown={(e) => e.stopPropagation()}
-                onPointerDown={(e) => e.stopPropagation()}
-                onChange={(e) => setValidationReviewer(e.target.value)}
-                placeholder="Enter reviewer name"
-                style={actionInputStyle}
-              />
-            </label>
-
-            <label style={{ ...fieldStyle, display: "block", marginBottom: 8 }}>
-              <span style={{ fontSize: 10, color: "#94a3b8" }}>Review Date</span>
-              <input
-                type="date"
-                value={validationReviewDate}
-                onMouseDown={(e) => e.stopPropagation()}
-                onPointerDown={(e) => e.stopPropagation()}
-                onChange={(e) => setValidationReviewDate(e.target.value)}
-                style={actionInputStyle}
-              />
-            </label>
-
-            <label style={{ ...fieldStyle, display: "block" }}>
-              <span style={{ fontSize: 10, color: "#94a3b8" }}>
-                Review Notes
-              </span>
-              <textarea
-                value={validationProductionNotes}
-                onMouseDown={(e) => e.stopPropagation()}
-                onPointerDown={(e) => e.stopPropagation()}
-                onChange={(e) => setValidationProductionNotes(e.target.value)}
-                rows={4}
-                placeholder="Add notes for final production review"
-                style={{
-                  ...actionInputStyle,
-                  resize: "vertical",
-                  minHeight: 76,
-                  paddingTop: 8,
-                }}
-              />
-            </label>
-          </div>
-
-          {(designValidationReport?.notices || []).length ? (
-            <div style={sectionCardStyle}>
-              <div style={S.smartActionsSectionLabel}>Review Notices</div>
-              <div style={{ display: "grid", gap: 6 }}>
-                {designValidationReport.notices.map((notice) => (
-                  <div
-                    key={notice.code}
-                    style={{
-                      ...S.infoCard,
-                      padding: "7px 8px",
-                      fontSize: 9,
-                      lineHeight: 1.45,
-                      color: "#cbd5e1",
-                    }}
-                  >
-                    <strong style={{ color: "#93c5fd" }}>
-                      {notice.title}
-                    </strong>
-                    <div style={{ marginTop: 2 }}>{notice.message}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </>
-      ) : null}
-
       {activeToolTab === "arrange" ? (
         <>
+          <button
+            type="button"
+            onClick={makeHandler(canUseSmartActions && smartSelectionCount > 0, onSelectAssembly)}
+            style={{ ...getBtnStyle(canUseSmartActions && smartSelectionCount > 0), marginBottom: 10 }}
+          >
+            Select Whole Furniture
+          </button>
           <div style={sectionCardStyle}>
             <div style={S.smartActionsSectionLabel}>Align</div>
             <div style={sectionHintStyle}>
@@ -1034,8 +739,7 @@ export function FurnitureToolsPanel({
           <div style={sectionCardStyle}>
             <div style={S.smartActionsSectionLabel}>Spacing & Layout</div>
             <div style={sectionHintStyle}>
-              Control the gap, anchor rule, distribute spacing, and build clean
-              rows or stacks.
+              Set spacing between selected parts. Choose X, Y, or Z to apply.
             </div>
 
             <div style={S.smartActionsFieldsRow}>
@@ -1061,6 +765,8 @@ export function FurnitureToolsPanel({
               </label>
             </div>
 
+            {SHOW_ADVANCED_ARRANGE_TOOLS ? (
+              <>
             <div style={S.smartActionsSectionLabel}>Anchor Mode</div>
             <div style={{ ...S.smartActionsGrid, marginBottom: 8 }}>
               <button
@@ -1134,7 +840,9 @@ export function FurnitureToolsPanel({
               </button>
             </div>
 
-            <div style={S.smartActionsSectionLabel}>Equal Gap</div>
+              </>
+            ) : null}
+            <div style={S.smartActionsSectionLabel}>Apply Gap</div>
             <div style={{ ...S.smartActionsGrid, marginBottom: 8 }}>
               <button
                 type="button"
@@ -1177,6 +885,8 @@ export function FurnitureToolsPanel({
               </button>
             </div>
 
+            {SHOW_ADVANCED_ARRANGE_TOOLS ? (
+              <>
             <div style={S.smartActionsSectionLabel}>Row / Stack</div>
             <div style={S.smartActionsGrid}>
               <button
@@ -1218,7 +928,9 @@ export function FurnitureToolsPanel({
               >
                 Row Z
               </button>
-            </div>
+            </div>              </>
+            ) : null}
+
           </div>
         </>
       ) : null}
@@ -1964,6 +1676,15 @@ export function FurnitureToolsPanel({
               </button>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => setShowCabinetVariants((current) => !current)}
+            style={{ ...S.libraryTabBtn, width: "100%", marginBottom: 10 }}
+          >
+            {showCabinetVariants ? "Hide Wall / Tall Cabinet" : "More Cabinet Types (Wall / Tall)"}
+          </button>
+          {showCabinetVariants ? (
+            <>
           <div style={sectionCardStyle}>
             <div style={S.smartActionsSectionLabel}>Wall Cabinet Builder</div>
             <div style={sectionHintStyle}>
@@ -2438,6 +2159,8 @@ export function FurnitureToolsPanel({
               </button>
             </div>
           </div>
+            </>
+          ) : null}
           <div style={sectionCardStyle}>
             <div style={S.smartActionsSectionLabel}>Wardrobe Builder</div>
             <div style={sectionHintStyle}>
@@ -2732,6 +2455,8 @@ export function FurnitureToolsPanel({
               </button>
             </div>
           </div>
+          {SHOW_ADVANCED_BUILD_TOOLS ? (
+            <>
           <div style={sectionCardStyle}>
             <div style={S.smartActionsSectionLabel}>Quick Cabinet Builder</div>
             <div style={sectionHintStyle}>
@@ -2896,6 +2621,8 @@ export function FurnitureToolsPanel({
           </div>
 
 
+            </>
+          ) : null}
           <div style={sectionCardStyle}>
             <div style={S.smartActionsSectionLabel}>Shelf Layout</div>
             <div style={sectionHintStyle}>
@@ -2966,6 +2693,8 @@ export function FurnitureToolsPanel({
             </div>
           </div>
 
+          {SHOW_ADVANCED_BUILD_TOOLS ? (
+            <>
           <div style={sectionCardStyle}>
             <div style={S.smartActionsSectionLabel}>
               Interior Layout Presets
@@ -3035,6 +2764,8 @@ export function FurnitureToolsPanel({
           </div>
 
 
+            </>
+          ) : null}
           <div style={sectionCardStyle}>
             <div style={S.smartActionsSectionLabel}>Door Builder</div>
             <div style={sectionHintStyle}>
@@ -3416,6 +3147,8 @@ export function FurnitureToolsPanel({
               </button>
             </div>
           </div>
+          {SHOW_ADVANCED_BUILD_TOOLS ? (
+            <>
           <div style={sectionCardStyle}>
             <div style={S.smartActionsSectionLabel}>Front Builder Presets</div>
             <div style={sectionHintStyle}>
@@ -4204,145 +3937,13 @@ export function FurnitureToolsPanel({
               </button>
 
             </div>
-          </div>
+          </div>            </>
+          ) : null}
+
         </>
       ) : null}
 
-      {activeToolTab === "duplicate" ? (
-        <>
-          <div style={sectionCardStyle}>
-            <div style={S.smartActionsSectionLabel}>Mirror Duplicate</div>
-            <div style={sectionHintStyle}>
-              Create mirrored copies of the current selection along X or Z.
-            </div>
-            <div style={S.smartActionsGrid}>
-              <button
-                type="button"
-                onClick={makeHandler(canMirror, onMirrorDuplicate, "x")}
-                style={getBtnStyle(canMirror, true)}
-              >
-                Mirror X
-              </button>
-              <button
-                type="button"
-                onClick={makeHandler(canMirror, onMirrorDuplicate, "z")}
-                style={getBtnStyle(canMirror, true)}
-              >
-                Mirror Z
-              </button>
-            </div>
-          </div>
-
-          <div style={sectionCardStyle}>
-            <div style={S.smartActionsSectionLabel}>Assembly</div>
-            <div style={sectionHintStyle}>
-              Select a full grouped assembly or duplicate the entire assembly in
-              one click.
-            </div>
-            <div style={S.smartActionsWideGrid}>
-              <button
-                type="button"
-                onClick={makeHandler(canAssemblyActions, onSelectAssembly)}
-                style={getBtnStyle(canAssemblyActions)}
-              >
-                Whole Select
-              </button>
-              <button
-                type="button"
-                onClick={makeHandler(canAssemblyActions, onDuplicateAssembly)}
-                style={getBtnStyle(canAssemblyActions, true)}
-              >
-                Whole Duplicate
-              </button>
-            </div>
-          </div>
-
-          <div style={sectionCardStyle}>
-            <div style={S.smartActionsSectionLabel}>Repeat / Array</div>
-            <div style={sectionHintStyle}>
-              Create repeated copies of the current object or assembly using
-              count and spacing.
-            </div>
-            <div style={S.smartActionsFieldsRow}>
-              <label style={fieldStyle}>
-                <span style={{ fontSize: 10, color: "#94a3b8" }}>Copies</span>
-                <input
-                  type="number"
-                  min="1"
-                  max="20"
-                  value={arrayCount}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onChange={(e) =>
-                    setArrayCount(
-                      Math.max(1, Math.min(20, Number(e.target.value) || 1)),
-                    )
-                  }
-                  style={actionInputStyle}
-                />
-              </label>
-              <label style={fieldStyle}>
-                <span style={{ fontSize: 10, color: "#94a3b8" }}>
-                  Spacing (mm)
-                </span>
-                <input
-                  type="number"
-                  min="0"
-                  step="10"
-                  value={arraySpacing}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onChange={(e) =>
-                    setArraySpacing(Math.max(0, Number(e.target.value) || 0))
-                  }
-                  style={actionInputStyle}
-                />
-              </label>
-            </div>
-            <div style={S.smartActionsGrid}>
-              <button
-                type="button"
-                onClick={makeHandler(
-                  canAssemblyActions,
-                  onArrayDuplicate,
-                  "x",
-                  arrayCount,
-                  arraySpacing,
-                )}
-                style={getBtnStyle(canAssemblyActions)}
-              >
-                Array X
-              </button>
-              <button
-                type="button"
-                onClick={makeHandler(
-                  canAssemblyActions,
-                  onArrayDuplicate,
-                  "y",
-                  arrayCount,
-                  arraySpacing,
-                )}
-                style={getBtnStyle(canAssemblyActions)}
-              >
-                Array Y
-              </button>
-              <button
-                type="button"
-                onClick={makeHandler(
-                  canAssemblyActions,
-                  onArrayDuplicate,
-                  "z",
-                  arrayCount,
-                  arraySpacing,
-                )}
-                style={getBtnStyle(canAssemblyActions)}
-              >
-                Array Z
-              </button>
-            </div>
-          </div>
-        </>
-      ) : null}
+      
     </div>
   );
 }
