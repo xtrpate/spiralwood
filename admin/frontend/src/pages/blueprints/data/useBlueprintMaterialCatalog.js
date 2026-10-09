@@ -49,9 +49,18 @@ export function materialAssignmentPatch(materials, value) {
   };
 }
 
-export function materialMatchesPartThickness(entry, component) {
+// Conservative single-stock-piece fit. A part is not automatically
+// joinable/laminated across sheets or planks in Phase A.
+export function materialFitsPart(entry, component) {
   if (!entry || !component) return false;
-  const dimensions = [component.width, component.height, component.depth].map(Number);
+  const dimensions = [component.width, component.height, component.depth]
+    .map(Number).sort((a, b) => a - b);
   if (dimensions.some((size) => !Number.isFinite(size) || size <= 0)) return false;
-  return Math.abs(Math.min(...dimensions) - Number(entry.thickness_mm)) < 0.1;
+  const thickness = Number(entry.thickness_mm);
+  const stockSides = [entry.length_mm, entry.width_mm].map(Number)
+    .sort((a, b) => a - b);
+  if (stockSides.some((size) => !Number.isFinite(size) || size <= 0)) return false;
+  return Math.abs(dimensions[0] - thickness) < 0.1 &&
+    dimensions[1] <= stockSides[0] + 0.01 &&
+    dimensions[2] <= stockSides[1] + 0.01;
 }
