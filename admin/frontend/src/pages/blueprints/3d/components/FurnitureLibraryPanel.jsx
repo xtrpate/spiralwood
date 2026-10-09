@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { getTemplateLibraryPartGroups } from "../../data/templateComponents";
 import { COMPONENT_LIBRARY_GROUPS } from "../../data/furnitureTypes";
 import S from "../../styles/blueprintStyles";
 import {
@@ -490,7 +489,6 @@ export function FurnitureLibraryPanel({
         (group) =>
           !["Chair Parts", "Custom Shape Parts", "Custom Shapes"].includes(group.label),
       ),
-      ...getTemplateLibraryPartGroups(),
     ];
 
     return mergedGroups
@@ -502,8 +500,13 @@ export function FurnitureLibraryPanel({
           const haystack =
             `${item.label || ""} ${item.type || ""} ${item.category || ""} ${item.material || ""}`.toLowerCase();
 
+          // Keep saved template types supported, but hide the alternative
+          // Closet / Wardrobe preset from this compact furniture picker.
+          const isHiddenAlternateWardrobe =
+            group.label === "Furniture Templates" &&
+            item.type === "template_closet_wardrobe";
           const searchMatches = !query || haystack.includes(query);
-          return tabMatches && searchMatches;
+          return tabMatches && searchMatches && !isHiddenAlternateWardrobe;
         });
 
         return { ...group, items };
@@ -702,7 +705,7 @@ export function FurnitureLibraryPanel({
           <div
             style={{
               ...S.libraryTabsRow,
-              gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
               marginTop: 10,
               marginBottom: 0,
             }}
