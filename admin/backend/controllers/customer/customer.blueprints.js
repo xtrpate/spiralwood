@@ -1,5 +1,22 @@
 // controllers/customer/customer.blueprints.js
 const db = require("../../config/db");
+const { buildBlueprintMaterialCatalog } = require("../../utils/blueprintMaterialCatalog");
+
+// Public catalog exposes IDs and physical specifications only: no supplier,
+// purchase prices, stock counts, or internal reservation information.
+exports.getMaterialCatalog = async (_req, res) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT id, name, unit, material_form, length_mm, width_mm,
+              thickness_mm, is_active
+         FROM raw_materials WHERE is_active = 1`,
+    );
+    return res.json({ materials: buildBlueprintMaterialCatalog(rows) });
+  } catch (error) {
+    console.error("[customer.blueprints/material-catalog]", error);
+    return res.status(500).json({ message: "Material catalog is unavailable." });
+  }
+};
 
 const IMAGE_FILE_TYPES = new Set(["png", "jpg", "jpeg", "webp", "svg"]);
 
