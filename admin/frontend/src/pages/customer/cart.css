@@ -1011,8 +1011,6 @@
 }
 
 .checkout-page .place-order-btn {
-  width: 100%;
-  padding: 15px;
   background: linear-gradient(135deg, #8b4513, #d2691e);
   color: white;
   border: none;
