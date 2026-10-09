@@ -536,10 +536,7 @@ export default function SalesReportPage() {
 
       const exCollectionTotal = Number(exSummary.actual_collected || 0);
 
-      const periodLabel =
-        exportScope === "all"
-          ? "All Time (Complete History)"
-          : reportDateRangeLabel;
+      const periodLabel = reportDateRangeLabel;
 
       const channelLabel =
         CHANNELS.find((item) => item.key === appliedChannel)?.label ||
@@ -688,9 +685,9 @@ export default function SalesReportPage() {
       };
 
       const filterText = [
-        `Scope: ${exportScope === "all" ? "All Sales" : "Current Filters"}`,
-        `Channel: ${exportScope === "all" ? "All Channels" : channelLabel}`,
-        `Payment: ${exportScope === "all" ? "All Payments" : paymentLabel}`,
+        "Scope: Current Filters",
+        `Channel: ${channelLabel}`,
+        `Payment: ${paymentLabel}`,
         `Date Filter: ${periodLabel}`,
       ].join("    |    ");
 
