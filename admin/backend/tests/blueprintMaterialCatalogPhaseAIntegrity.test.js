@@ -51,9 +51,11 @@ assert(signature.includes("raw_material_id: Number(component.raw_material_id)"),
 assert(cart.includes("raw_material_id: Number(component?.raw_material_id)"), "Custom-cart identity must include selected material IDs");
 assert(admin3d.includes("materialAssignmentPatch") && admin2d.includes("materialAssignmentPatch"),
   "Admin 2D/3D must share approved material selection");
-assert(customer.includes("handleApprovedMaterialChange") && customer.includes("materialMatchesPartThickness"),
+assert(customer.includes("handleApprovedMaterialChange") && customer.includes("materialFitsPart"),
   "Customer must preserve other thicknesses while selecting material");
 assert(hook.includes("/customer/blueprints/material-catalog"), "Admin and Customer must use the same catalog endpoint");
+assert(hook.includes("export function materialFitsPart("), "Material selector must check actual stock dimensions");
+assert(admin2d.includes("materialFitsPart") && admin3d.includes("materialFitsPart"), "Admin assignment must reject uncuttable components");
 assert(route.indexOf('"/material-catalog"') < route.indexOf('"/:id"'), "Catalog route must precede dynamic blueprint ID");
 assert(controller.includes("buildBlueprintMaterialCatalog(rows)"), "Public catalog must use exact inventory matching");
 assert(customerAdapter.includes("raw_material_id:") &&
