@@ -971,7 +971,9 @@ export default function AppointmentPage() {
     setProjectDescription("");
     setPreferredDate("");
     setPreferredTime("");
-    setContactNumber(user?.phone || user?.contact_number || "");
+    setContactNumber(
+      toLocalPhilippinePhone(user?.phone || user?.contact_number || ""),
+    );
     setAddress(user?.address || "");
     setNotes("");
     setSubmitted(false);
