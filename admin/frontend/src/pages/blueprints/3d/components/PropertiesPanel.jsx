@@ -3320,12 +3320,6 @@ export function PropertiesPanel({
     ...VIEWER_UI.compactInfoCard,
   };
 
-  const colorInputStyle = {
-    ...inputStyle,
-    padding: 2,
-    height: 36,
-  };
-
   const inspectorSectionStyle = {
     marginBottom: 10,
     padding: 10,
