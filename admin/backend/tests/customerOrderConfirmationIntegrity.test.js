@@ -412,7 +412,7 @@ async function run() {
   for (const nextMode of ["generic_error", "connection_error"]) {
     const { res } = await invokeSilenced(controller, nextMode);
     assert.equal(res.statusCode, 500);
-    assert.deepEqual(res.body, { message: "Server error." });
+    assert.deepEqual(res.body, { message: "Server error. Please try again." });
   }
 
   console.log("✅ Customer order confirmation integrity tests passed.");

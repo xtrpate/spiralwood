@@ -1080,23 +1080,6 @@ export default function BlueprintsPage() {
                 />
               </div>
 
-              <div style={{ marginBottom: 16 }}>
-                <label style={labelSm}>Description</label>
-                <textarea
-                  value={createForm.description}
-                  onChange={(e) =>
-                    updateCreateForm("description", e.target.value)
-                  }
-                  style={{
-                    ...inputFull,
-                    minHeight: 100,
-                    resize: "vertical",
-                    fontFamily: "inherit",
-                  }}
-                  placeholder="Add a short note about the furniture design"
-                />
-              </div>
-
               <div
                 style={{
                   marginBottom: 24,
