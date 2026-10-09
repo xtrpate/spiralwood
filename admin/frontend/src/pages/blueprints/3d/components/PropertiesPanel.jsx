@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { WOOD_FINISHES } from "../../data/furnitureTypes";
 import { applyWoodFinish, isWoodLikeMaterial } from "../../data/componentUtils";
-import { useBlueprintMaterialCatalog, materialAssignmentPatch } from "../../data/useBlueprintMaterialCatalog";
+import { useBlueprintMaterialCatalog, materialAssignmentPatch, materialMatchesPartThickness } from "../../data/useBlueprintMaterialCatalog";
 import {
   GRAIN_DIRECTION_OPTIONS,
 } from "../../data/productionMetadata";
@@ -5354,7 +5354,7 @@ export function PropertiesPanel({
                   disabled={editorMode !== "editable" || isLocked(selectedComp) || catalogLoading || !!catalogError}
                   onChange={(e) => {
                     const patch = materialAssignmentPatch(approvedMaterials, e.target.value);
-                    if (patch) applyStyleChange(patch);
+                    if (patch && materialMatchesPartThickness(approvedMaterials.find((entry) => Number(entry.raw_material_id) === Number(e.target.value)), selectedComp)) onChange(selectedComp.id, patch);
                   }}
                   style={inputStyle}
                 >
@@ -5363,7 +5363,7 @@ export function PropertiesPanel({
                     (entry) => Number(entry.raw_material_id) === Number(selectedComp.raw_material_id)
                   ) && <option value={selectedComp.raw_material_id}>Saved material #{selectedComp.raw_material_id} (unavailable)</option>}
                   {approvedMaterials.map((entry) => (
-                    <option key={entry.key} value={entry.raw_material_id || ""} disabled={entry.status !== "available"}>
+                    <option key={entry.key} value={entry.raw_material_id || ""} disabled={entry.status !== "available" || !materialMatchesPartThickness(entry, selectedComp)}>
                       {entry.label}{entry.status !== "available" ? " — not in inventory" : ""}
                     </option>
                   ))}
