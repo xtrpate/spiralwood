@@ -543,6 +543,28 @@ function normalizeComponent(c) {
     ...(Number(c.smartResizeVersion) > 0
       ? { smartResizeVersion: Number(c.smartResizeVersion) }
       : {}),
+    // WISDOM D1-D GENERATED DRAWER IDENTITY
+    // Keep builder-specific IDs and fit settings through normalize/save/reload.
+    // Only generated drawer parts receive these optional fields.
+    ...((c.drawerBuilderGenerated === true || String(c.drawerAssemblyId || c.drawer_assembly_id || '').trim())
+      ? {
+          drawerBuilderGenerated: c.drawerBuilderGenerated === true,
+          drawerBuilderVersion: Number(c.drawerBuilderVersion) || 0,
+          drawerAssemblyId: String(c.drawerAssemblyId || c.drawer_assembly_id || '').trim(),
+          drawerIndex: Number(c.drawerIndex) || 0,
+          drawerTargetScope: String(c.drawerTargetScope || ''),
+          drawerTargetBayIndex: Number(c.drawerTargetBayIndex) || 0,
+          drawerTargetRowIndex: Number(c.drawerTargetRowIndex) || 0,
+          drawerDepth: Number(c.drawerDepth) || 0,
+          drawerLeftClearance: Number(c.drawerLeftClearance) || 0,
+          drawerRightClearance: Number(c.drawerRightClearance) || 0,
+          drawerBottomClearance: Number(c.drawerBottomClearance) || 0,
+          drawerFrontOverlay: Number(c.drawerFrontOverlay) || 0,
+          drawerGap: Number(c.drawerGap) || 0,
+          drawerSide: String(c.drawerSide || ''),
+          parentDrawerId: String(c.parentDrawerId || ''),
+        }
+      : {}),
     qty: Math.max(1, Number(c.qty) || 1),
     locked: !!c.locked,
     cornerRadius: normalizeCornerRadius(c.cornerRadius),

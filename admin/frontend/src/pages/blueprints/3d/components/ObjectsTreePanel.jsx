@@ -423,10 +423,9 @@ export function ObjectsTreePanel({
             flex: "1 1 0",
             height: 0,
             minHeight: 0,
-            display: "grid",
-            gap: 7,
+            display: "block",
             marginTop: 10,
-            overflowY: "scroll",
+            overflowY: "auto",
             overflowX: "hidden",
             scrollbarGutter: "stable",
             scrollbarWidth: "auto",
@@ -593,14 +592,18 @@ export function ObjectsTreePanel({
                 {!collapsed ? (
                   <div
                     className="blueprint-assembly-parts-scroll"
+                    tabIndex={0}
+                    aria-label={`${group.label} parts. Scroll to view all ${group.items.length} parts.`}
+                    onWheel={(event) => event.stopPropagation()}
                     style={{
                       padding: "6px 8px 7px 6px",
                       display: "flex",
                       flexDirection: "column",
                       gap: 4,
                       borderTop: "1px solid rgba(51,65,85,.45)",
-                      maxHeight: "none",
-                      overflowY: "visible",
+                      maxHeight: "clamp(160px, calc(100vh - 475px), 410px)",
+                      minHeight: 0,
+                      overflowY: "auto",
                       overflowX: "hidden",
                       scrollbarGutter: "stable",
                       scrollbarWidth: "auto",

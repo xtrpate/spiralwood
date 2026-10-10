@@ -9,6 +9,8 @@ import {
   normalizeComponent,
 } from "../data/componentUtils";
 import { clamp, makeGroupId, snap } from "../data/utils";
+import { planCompleteDrawerBoxGeometry } from "../data/drawerBoxGeometry";
+import { planDrawerOpeningTargets } from "../data/drawerOpeningPlan";
 
 export function useBlueprintBuilderActions({
   components,
@@ -2703,50 +2705,21 @@ export function useBlueprintBuilderActions({
           ? Number(Number(value).toFixed(3))
           : 0;
 
-      const fullBayRects = (ctx.bayRects || []).map((bay, index) => ({
-        ...bay,
-        bayIndex: bay.bayIndex || index + 1,
-        y: ctx.overallRect.y,
-        height: ctx.overallRect.height,
-      }));
-
-      let targets = [];
-
-      if (scope === "opening") {
-        targets = [...(ctx.openingRects || [])]
-          .sort(
-            (a, b) =>
-              (a.rowIndex || 0) - (b.rowIndex || 0) ||
-              (a.bayIndex || 0) - (b.bayIndex || 0),
-          )
-          .map((opening, index) => ({
-            ...opening,
-            targetIndex: index + 1,
-          }));
-
-        if (!targets.length) {
-          toast.error(
-            "No cabinet openings found. Build a shelf/interior layout first or use Whole / Per Bay scope.",
-          );
-          return;
-        }
-      } else if (scope === "bay") {
-        targets = fullBayRects.length
-          ? fullBayRects
-          : [
-              {
-                ...ctx.overallRect,
-                bayIndex: 1,
-              },
-            ];
-      } else {
-        targets = [
-          {
-            ...ctx.overallRect,
-            bayIndex: 1,
-          },
-        ];
+      // D1: Existing shelves/dividers cannot be cut through by full drawer boxes.
+      // With one bay and matching opening count, fit one complete drawer per
+      // unobstructed shelf opening, preserving every cabinet shelf.
+      const openingPlan = planDrawerOpeningTargets({
+        scope, drawerCount, overallRect: ctx.overallRect,
+        bayRects: ctx.bayRects, openingRects: ctx.openingRects,
+        shelfParts: ctx.shelfParts, dividerParts: ctx.dividerParts,
+        drawerGap, frontOverlay,
+      });
+      if (!openingPlan.ok) {
+        toast.error(openingPlan.reason);
+        return;
       }
+      const targets = openingPlan.targets;
+      const effectiveFrontOverlay = openingPlan.frontOverlay;
 
       const sideThickness = roundMm(
         Math.max(12, Math.min(20, Number(ctx.thickness) || 18)),
@@ -2764,6 +2737,7 @@ export function useBlueprintBuilderActions({
       let drawerAssemblyCount = 0;
 
       const buildTargetDrawers = (rect) => {
+        const countForTarget = Number(rect.targetDrawerCount) || drawerCount;
         const rectWidth = roundMm(Number(rect.width) || 0);
         const rectHeight = roundMm(Number(rect.height) || 0);
         const rectDepth = roundMm(Number(rect.depth) || 0);
@@ -2780,9 +2754,9 @@ export function useBlueprintBuilderActions({
           };
         }
 
-        const totalGap = drawerGap * Math.max(0, drawerCount - 1);
+        const totalGap = drawerGap * Math.max(0, countForTarget - 1);
         const slotHeight = roundMm(
-          (rectHeight - totalGap) / drawerCount,
+          (rectHeight - totalGap) / countForTarget,
         );
 
         if (slotHeight < 80) {
@@ -2829,13 +2803,13 @@ export function useBlueprintBuilderActions({
           };
         }
 
-        const frontTotalHeight = roundMm(rectHeight + frontOverlay * 2);
+        const frontTotalHeight = roundMm(rectHeight + effectiveFrontOverlay * 2);
         const frontEachHeight = roundMm(
-          (frontTotalHeight - totalGap) / drawerCount,
+          (frontTotalHeight - totalGap) / countForTarget,
         );
-        const frontWidth = roundMm(rectWidth + frontOverlay * 2);
-        const frontX = roundMm(Number(rect.x) - frontOverlay);
-        const firstFrontY = roundMm(Number(rect.y) - frontOverlay);
+        const frontWidth = roundMm(rectWidth + effectiveFrontOverlay * 2);
+        const frontX = roundMm(Number(rect.x) - effectiveFrontOverlay);
+        const firstFrontY = roundMm(Number(rect.y) - effectiveFrontOverlay);
 
         if (frontEachHeight <= 20 || frontWidth <= 20) {
           return {
@@ -2847,14 +2821,18 @@ export function useBlueprintBuilderActions({
         const bayIndex = Number(rect.bayIndex) || 1;
         const rowIndex = Number(rect.rowIndex) || 1;
         const targetPrefix =
-          scope === "whole"
-            ? "CAB-DRW"
+          openingPlan.shelfFitted
+            ? `CAB-B${bayIndex}-R${rowIndex}-DRW`
+            : scope === "whole"
+              ? "CAB-DRW"
             : scope === "bay"
               ? `CAB-B${bayIndex}-DRW`
               : `CAB-B${bayIndex}-R${rowIndex}-DRW`;
 
-        for (let index = 0; index < drawerCount; index += 1) {
-          const drawerNumber = index + 1;
+        for (let index = 0; index < countForTarget; index += 1) {
+          const drawerNumber = openingPlan.shelfFitted
+            ? drawerAssemblyCount + 1
+            : index + 1;
           const drawerSuffix = String(drawerNumber).padStart(2, "0");
           const drawerAssemblyId = makeGroupId();
           const slotY = roundMm(
@@ -2863,6 +2841,23 @@ export function useBlueprintBuilderActions({
           const frontY = roundMm(
             firstFrontY + index * (frontEachHeight + drawerGap),
           );
+
+          // D1-C: An underlaid, full-width bottom supports both side walls
+          // and the rear wall. Coordinate Y increases downward in blueprint
+          // data, so the bottom belongs at the LOWER end of the drawer body.
+          const drawerBox = planCompleteDrawerBoxGeometry({
+            boxX,
+            boxZ,
+            boxWidth,
+            drawerDepth: safeDrawerDepth,
+            slotY,
+            bodyHeight: sideHeight,
+            sideThickness,
+            bottomThickness,
+          });
+          if (!drawerBox.ok) {
+            return { supported: false, reason: drawerBox.reason };
+          }
 
           const common = {
             drawerBuilderGenerated: true,
@@ -2876,7 +2871,7 @@ export function useBlueprintBuilderActions({
             drawerLeftClearance: roundMm(leftClearance),
             drawerRightClearance: roundMm(rightClearance),
             drawerBottomClearance: roundMm(bottomClearance),
-            drawerFrontOverlay: roundMm(frontOverlay),
+            drawerFrontOverlay: roundMm(effectiveFrontOverlay),
             drawerGap: roundMm(drawerGap),
             unitPrice: 0,
             groupUnitPrice: 0,
@@ -2905,12 +2900,7 @@ export function useBlueprintBuilderActions({
             drawerSide: "left",
             label: `Drawer Side L ${drawerNumber}`,
             partCode: `${targetPrefix}-${drawerSuffix}-SL`,
-            x: boxX,
-            y: slotY,
-            z: boxZ,
-            width: sideThickness,
-            height: sideHeight,
-            depth: safeDrawerDepth,
+            ...drawerBox.leftSide,
           });
 
           const rightSide = ctx.buildPart({
@@ -2920,12 +2910,7 @@ export function useBlueprintBuilderActions({
             drawerSide: "right",
             label: `Drawer Side R ${drawerNumber}`,
             partCode: `${targetPrefix}-${drawerSuffix}-SR`,
-            x: roundMm(boxX + boxWidth - sideThickness),
-            y: slotY,
-            z: boxZ,
-            width: sideThickness,
-            height: sideHeight,
-            depth: safeDrawerDepth,
+            ...drawerBox.rightSide,
           });
 
           const back = ctx.buildPart({
@@ -2934,12 +2919,7 @@ export function useBlueprintBuilderActions({
             partRole: "drawer_back",
             label: `Drawer Back ${drawerNumber}`,
             partCode: `${targetPrefix}-${drawerSuffix}-B`,
-            x: roundMm(boxX + sideThickness),
-            y: slotY,
-            z: boxZ,
-            width: innerBoxWidth,
-            height: sideHeight,
-            depth: sideThickness,
+            ...drawerBox.back,
           });
 
           const bottom = ctx.buildPart({
@@ -2948,12 +2928,7 @@ export function useBlueprintBuilderActions({
             partRole: "drawer_bottom",
             label: `Drawer Bottom ${drawerNumber}`,
             partCode: `${targetPrefix}-${drawerSuffix}-BT`,
-            x: roundMm(boxX + sideThickness),
-            y: roundMm(slotY + sideHeight - bottomThickness),
-            z: roundMm(boxZ + sideThickness),
-            width: innerBoxWidth,
-            height: bottomThickness,
-            depth: innerBoxDepth,
+            ...drawerBox.bottom,
           });
 
           const handleWidth = roundMm(
@@ -3043,6 +3018,30 @@ export function useBlueprintBuilderActions({
         }
       }
 
+      // Fail closed if any intended full drawer lacks its front, walls,
+      // floor, handle, or slide records. Never save a partial generated box.
+      const expectedRoles = [
+        "drawer_front", "drawer_side", "drawer_side", "drawer_back",
+        "drawer_bottom", "drawer_handle", "drawer_slide", "drawer_slide",
+      ].sort().join("|");
+      const byDrawer = new Map();
+      nextDrawerParts.forEach((part) => {
+        const key = String(part.drawerAssemblyId || "");
+        if (!byDrawer.has(key)) byDrawer.set(key, []);
+        byDrawer.get(key).push(part);
+      });
+      if (
+        byDrawer.size !== drawerAssemblyCount ||
+        byDrawer.has("") ||
+        [...byDrawer.values()].some((parts) =>
+          parts.length !== 8 ||
+          parts.map((part) => String(part.partRole || "")).sort().join("|") !== expectedRoles
+        )
+      ) {
+        toast.error("Drawer generation stopped: one or more drawer boxes are incomplete.");
+        return;
+      }
+
       const signature = (item) =>
         JSON.stringify({
           type: item?.type || "",
@@ -3111,7 +3110,7 @@ export function useBlueprintBuilderActions({
             : "whole opening";
 
       toast.success(
-        `${drawerAssemblyCount} drawer assembl${drawerAssemblyCount === 1 ? "y" : "ies"} applied ${scopeLabel} (${nextDrawerParts.length} parts).`,
+        `${drawerAssemblyCount} drawer assembl${drawerAssemblyCount === 1 ? "y" : "ies"} applied ${scopeLabel} (${nextDrawerParts.length} parts).${openingPlan.shelfFitted ? " Fitted one per existing shelf opening." : ""}${openingPlan.overlayReduced ? ` Front overlay limited to ${effectiveFrontOverlay} mm to prevent overlap.` : ""}`,
       );
     },
     [

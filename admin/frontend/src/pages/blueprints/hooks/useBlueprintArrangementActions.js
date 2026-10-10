@@ -1381,15 +1381,30 @@ export function useBlueprintArrangementActions({
       return item?.type === "wr_bottom_panel" || text.includes("bottom");
     };
 
+    // Drawer box sides, bottoms and backs are not cabinet structural
+    // panels. Reapplying the builder must never use them to measure the shell.
+    const isDrawerStructurePart = (item) => {
+      const type = String(item?.type || "").trim().toLowerCase();
+      const role = String(item?.partRole || "").trim().toLowerCase();
+      if (item?.drawerBuilderGenerated === true ||
+          Number(item?.drawerBuilderVersion) === 1) return true;
+      // A cabinet's drawer-support shelf remains a structural shelf.
+      if (type.includes("shelf") || role.includes("shelf")) return false;
+      return Boolean(item?.drawerAssemblyId || item?.drawer_assembly_id) ||
+        type.startsWith("drawer_") || type.startsWith("wr_drawer_") ||
+        role.startsWith("drawer_") ||
+        /^(?:drawer[\s_-]+(?:front|side|back|bottom|handle|slide|runner|\d+))/i.test(String(item?.label || ""));
+    };
+    const structuralParts = assemblyItems.filter((item) => !isDrawerStructurePart(item));
     const frontParts = assemblyItems.filter(isFrontLike);
-    const dividerParts = assemblyItems.filter(isDividerLike);
-    const shelfParts = assemblyItems.filter(isShelfLike);
-    const backParts = assemblyItems.filter(isBackLike);
-    const sideParts = assemblyItems.filter(isSideLike);
-    const topParts = assemblyItems.filter(isTopLike);
-    const bottomParts = assemblyItems.filter(isBottomLike);
+    const dividerParts = structuralParts.filter(isDividerLike);
+    const shelfParts = structuralParts.filter(isShelfLike);
+    const backParts = structuralParts.filter(isBackLike);
+    const sideParts = structuralParts.filter(isSideLike);
+    const topParts = structuralParts.filter(isTopLike);
+    const bottomParts = structuralParts.filter(isBottomLike);
 
-    const bodyParts = assemblyItems.filter(
+    const bodyParts = structuralParts.filter(
       (item) => !frontParts.some((f) => f.id === item.id),
     );
     const shellParts = bodyParts.filter(
