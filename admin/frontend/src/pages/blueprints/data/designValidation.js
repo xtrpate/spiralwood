@@ -1061,23 +1061,56 @@ function buildDesignValidationReport({
       );
     }
 
+    // A repeated production code can represent multiple identical cuts.
+    // Keep a warning when that code refers to different manufacturing specs.
+    const getComparableCutSpec = (item) => {
+      const dimensions = [item.width, item.height, item.depth].map(Number);
+      if (dimensions.some((value) => !Number.isFinite(value) || value <= 0)) {
+        return null;
+      }
+      // Complex/profiled or machined parts need individual verification.
+      if (
+        isWoodworkingProfileComponent(item) ||
+        hasUniversalMachiningMetadata(item) ||
+        cleanText(item.profileKind || item.profile_kind) ||
+        (Array.isArray(item.profileContourPoints) && item.profileContourPoints.length) ||
+        (Array.isArray(item.profileCutouts) && item.profileCutouts.length) ||
+        (Array.isArray(item.profileEdgeNotches) && item.profileEdgeNotches.length) ||
+        (Array.isArray(item.woodworkingOperations) && item.woodworkingOperations.length)
+      ) {
+        return null;
+      }
+      return JSON.stringify({
+        type: cleanText(item.type).toLowerCase(),
+        dimensions: dimensions.map((value) => roundMetric(value, 3)),
+        material: cleanText(item.material || item.wood_type).toLowerCase(),
+        grain: cleanText(item.grainDirection || item.grain_direction).toLowerCase(),
+        finish: cleanText(item.finish || item.finish_id).toLowerCase(),
+        construction: cleanText(item.constructionMethod || "single").toLowerCase(),
+        layers: Number(item.constructionLayerCount) || 2,
+      });
+    };
     const seenPartCodes = new Map();
     assemblyItems.forEach((item) => {
       const code = getPartCode(item).toUpperCase();
       if (!code) return;
+      const specification = getComparableCutSpec(item);
       if (!seenPartCodes.has(code)) {
-        seenPartCodes.set(code, item);
+        seenPartCodes.set(code, { specification, reported: false });
         return;
       }
-
+      const first = seenPartCodes.get(code);
+      if (specification && first.specification === specification) return;
+      if (first.reported) return;
+      first.reported = true;
       warnings.push(
         makeIssue({
           severity: "warning",
-          code: "DUPLICATE_PART_CODE",
-          title: "Duplicate part code",
-          message: `${code} is used more than once in ${
+          code: "PART_CODE_CUT_SPEC_CONFLICT",
+          title: "Part code used for different cut specifications",
+          message: `${code} is assigned to parts with different cut sizes, materials, or manufacturing specifications in ${
             getAssemblyName(item) || "the same assembly"
-          }.`,
+          }. Assign separate codes to different cuts; identical cuts can share a code.`,
           componentId: item.id || null,
           assemblyId,
           partCode: code,

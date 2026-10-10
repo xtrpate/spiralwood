@@ -6,6 +6,7 @@ import {
   GRAIN_DIRECTION_OPTIONS,
 } from "../../data/productionMetadata";
 import { displayToMm, formatDim, formatDims, mmToDisplay } from "../../data/utils";
+import { getInspectorPartThickness } from "../../data/inspectorPartThickness";
 import S from "../../styles/blueprintStyles";
 import { VIEWER_UI } from "../viewerUi";
 import {
@@ -2945,6 +2946,93 @@ const createManualMotionGroupId = (partFunction = "part") => {
   return `manual-${partFunction}-${timestamp}-${random}`;
 };
 
+// Part Code is production metadata, not geometry. Edit only the selected part.
+// Shared codes are allowed for identical cuts; existing validation catches cut conflicts.
+function normalizeEditablePartCode(value) {
+  const code = String(value ?? "").trim().toUpperCase();
+  return /^[A-Z0-9][A-Z0-9_-]{0,39}$/.test(code) ? code : null;
+}
+
+function PartCodeEditor({ component, disabled, onCommit }) {
+  const originalCode = String(component?.partCode || "");
+  const [draft, setDraft] = useState(originalCode);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setDraft(originalCode);
+    setError("");
+  }, [component?.id, originalCode]);
+
+  const commit = () => {
+    if (disabled) return;
+    const nextCode = normalizeEditablePartCode(draft);
+    if (!nextCode) {
+      setError("Use 1–40 characters: A–Z, 0–9, - or _.");
+      return;
+    }
+    if (nextCode !== originalCode) onCommit(nextCode);
+    setDraft(nextCode);
+    setError("");
+  };
+
+  return (
+    <div
+      style={{
+        marginTop: 8,
+        paddingTop: 8,
+        borderTop: "1px solid rgba(71,85,105,.52)",
+      }}
+    >
+      <label
+        style={{
+          display: "block",
+          color: "#93a8c4",
+          fontSize: 9,
+          fontWeight: 700,
+          letterSpacing: ".08em",
+          marginBottom: 5,
+        }}
+      >
+        PART CODE
+      </label>
+      <input
+        type="text"
+        aria-label="Part Code"
+        value={draft}
+        maxLength={40}
+        disabled={disabled}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          if (error) setError("");
+        }}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") event.currentTarget.blur();
+        }}
+        style={{
+          width: "100%",
+          boxSizing: "border-box",
+          borderRadius: 0,
+          padding: "7px 8px",
+          background: "rgba(15,23,42,.85)",
+          border: "1px solid rgba(100,116,139,.65)",
+          color: "#e2e8f0",
+          fontSize: 11,
+        }}
+      />
+      {error ? (
+        <div role="alert" style={{ color: "#fca5a5", fontSize: 9, marginTop: 4 }}>
+          {error}
+        </div>
+      ) : (
+        <div style={{ color: "#94a3b8", fontSize: 9, marginTop: 4 }}>
+          Same cuts may share a code; different cuts need separate codes.
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function PropertiesPanel({
   selectedComp: committedSelectedComp,
   liveSelectedComp = null,
@@ -3176,6 +3264,7 @@ export function PropertiesPanel({
   });
 
   const unitLabel = unit === "inch" ? "in" : "mm";
+  const partThickness = getInspectorPartThickness(selectedComp);
 
   const isRoundedBox = selectedComp?.type === "rounded_box";
   const isWoodworkingProfile = isWoodworkingProfileComponent(selectedComp);
@@ -3821,21 +3910,14 @@ export function PropertiesPanel({
                 </span>
               </div>
 
-              {selectedComp.partCode ? (
-                <div
-                  style={{
-                    marginTop: 8,
-                    paddingTop: 8,
-                    borderTop: "1px solid rgba(71,85,105,.52)",
-                    color: "#93a8c4",
-                    fontSize: 9,
-                    fontWeight: 700,
-                    letterSpacing: ".08em",
-                  }}
-                >
-                  PART CODE | {selectedComp.partCode}
-                </div>
-              ) : null}
+              <PartCodeEditor
+                key={selectedComp.id}
+                component={selectedComp}
+                disabled={editorMode !== "editable" || isLocked(selectedComp)}
+                onCommit={(partCode) =>
+                  onChange(selectedComp.id, { partCode })
+                }
+              />
 
               {selectedComp.partRole ? (
                 <div
@@ -4076,6 +4158,28 @@ export function PropertiesPanel({
                   </div>
                 ))}
               </div>
+              {partThickness ? (
+                <div
+                  style={{
+                    marginTop: 9,
+                    padding: "8px 9px",
+                    border: "1px solid rgba(71,85,105,.76)",
+                    background: "rgba(15,23,42,.55)",
+                  }}
+                >
+                  <label style={S.floatingLabel}>{partThickness.label}</label>
+                  <div style={{ color: "#e5eefc", fontSize: 12, fontWeight: 800 }}>
+                    {partThickness.kind === "section"
+                      ? `${formatDim(partThickness.widthMm, unit)} \u00d7 ${formatDim(partThickness.depthMm, unit)}`
+                      : partThickness.kind === "thickness"
+                        ? formatDim(partThickness.thicknessMm, unit)
+                        : "Not specified"}
+                  </div>
+                  <div style={{ marginTop: 3, color: "#91a4bf", fontSize: 9, lineHeight: 1.5 }}>
+                    {partThickness.explanation}
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div style={inspectorSectionStyle}>

@@ -21,6 +21,30 @@ function hasMeaningfulRotation(component = {}) {
   ].some((value) => Math.abs(toFinite(value, 0)) > ROTATION_EPSILON_DEGREES);
 }
 
+// Only plain rectangular Apron / Rail parts turned by a right angle around Y
+// can be represented exactly by the current axis-aligned technical drawings.
+// Arbitrary-angle, other-axis, custom-profile, and other part rotations remain blocked.
+function isSupportedRightAngleRailRotation(component = {}) {
+  if (String(component?.type || '').trim().toLowerCase() !== 'furniture_apron_rail') {
+    return false;
+  }
+  if (String(component?.partRole || component?.part_role || 'apron_rail').trim().toLowerCase() !== 'apron_rail') {
+    return false;
+  }
+  if (hasCustomProfileGeometry(component)) return false;
+  if (Math.abs(toFinite(component?.cornerRadius, 0)) > ROTATION_EPSILON_DEGREES) return false;
+
+  const x = Number(component.rotationX ?? component.rotation_x ?? 0);
+  const y = Number(component.rotationY ?? component.rotation_y ?? 0);
+  const z = Number(component.rotationZ ?? component.rotation_z ?? 0);
+  if (![x, y, z].every(Number.isFinite)) return false;
+  if (Math.abs(x) > ROTATION_EPSILON_DEGREES || Math.abs(z) > ROTATION_EPSILON_DEGREES) return false;
+  const normalized = ((y % 360) + 360) % 360;
+  if (![90, 270].some((angle) => Math.abs(normalized - angle) <= ROTATION_EPSILON_DEGREES)) return false;
+  const dims = [component.width, component.height, component.depth].map(Number);
+  return dims.every((dimension) => Number.isFinite(dimension) && dimension > 0);
+}
+
 function hasCustomProfileGeometry(component = {}) {
   const type = String(component?.type || "").trim().toLowerCase();
   if (type.startsWith("wood_profile_")) return true;
@@ -43,7 +67,7 @@ function getOfficialOutputFidelityIssues(components = []) {
     if (!component || component.type === "reference_proxy") return [];
 
     const reasons = [];
-    if (hasMeaningfulRotation(component)) reasons.push("rotation");
+    if (hasMeaningfulRotation(component) && !isSupportedRightAngleRailRotation(component)) reasons.push("rotation");
     if (hasCustomProfileGeometry(component)) reasons.push("custom_profile");
 
     if (!reasons.length) return [];
@@ -160,6 +184,7 @@ export {
   MATERIALS_SUMMARY_ROWS_PER_PAGE,
   MATERIALS_CONTINUATION_PART_LIMIT,
   hasMeaningfulRotation,
+  isSupportedRightAngleRailRotation,
   hasCustomProfileGeometry,
   getOfficialOutputFidelityIssues,
   buildMaterialsPaginationPlan,

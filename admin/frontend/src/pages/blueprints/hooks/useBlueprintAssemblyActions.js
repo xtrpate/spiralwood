@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import toast from "react-hot-toast";
 
 import { makeGroupId } from "../data/utils";
+import { planManualAssemblyMerge } from "../data/manualAssemblyMerge";
 
 function hasExistingAssemblyMembership(component) {
   if (!component) return false;
@@ -112,6 +113,29 @@ export function useBlueprintAssemblyActions({
     isLocked,
   ]);
 
+  const mergeSelectedIntoAssembly = useCallback((targetAssemblyId) => {
+    if (editorMode !== "editable") {
+      toast.error("Switch to Editable Mode to merge parts.");
+      return;
+    }
+    const plan = planManualAssemblyMerge({
+      components,
+      selectedIds: selectedPartIds,
+      targetAssemblyId,
+      isLocked,
+    });
+    if (!plan.ok) {
+      toast.error(plan.reason);
+      return;
+    }
+    if (!window.confirm(
+      `Add ${plan.count} selected part(s) to ${plan.assemblyName}? Existing geometry will not change.`,
+    )) return;
+
+    updateManyComps(plan.changesById);
+    toast.success(`Merged ${plan.count} part(s) into ${plan.assemblyName}. Save the blueprint to persist.`);
+  }, [components, selectedPartIds, editorMode, isLocked, updateManyComps]);
+
   const suggestedAssemblyName = useMemo(
     () => getNextCustomAssemblyName(components),
     [components],
@@ -183,5 +207,6 @@ export function useBlueprintAssemblyActions({
     createAssemblyHint: assemblyCreateState.reason,
     createAssemblySelectionCount: selectedParts.length,
     createAssemblyFromSelection,
+    mergeSelectedIntoAssembly,
   };
 }

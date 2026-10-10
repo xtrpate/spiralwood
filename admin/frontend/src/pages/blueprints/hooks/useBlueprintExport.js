@@ -163,12 +163,20 @@ export function useBlueprintExport({
         )
       : [];
 
-    if (
-      warnings.length &&
-      !window.confirm(
-        `Blueprint validation found ${warnings.length} ${warnings.length === 1 ? "warning" : "warnings"}. Continue with the official output?`,
+    // Show the actual warning details so Admin can review before output.
+    const warningDetails = warnings
+      .slice(0, 8)
+      .map((warning, index) =>
+        `${index + 1}. ${warning?.message || warning?.title || warning?.code || "Unknown warning"}`,
       )
-    ) {
+      .join("\n");
+    const remainingWarnings = warnings.length > 8
+      ? `\n...and ${warnings.length - 8} more warning(s).`
+      : "";
+    const confirmMessage = `Blueprint validation found ${warnings.length} ${
+      warnings.length === 1 ? "warning" : "warnings"
+    }.\n\n${warningDetails}${remainingWarnings}\n\nContinue with the official output?`;
+    if (warnings.length && !window.confirm(confirmMessage)) {
       return false;
     }
 

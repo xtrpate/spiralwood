@@ -133,8 +133,24 @@ export function useBlueprintDuplicateActions({
       { copies = 1, offsetX = 0, offsetY = 0, offsetZ = 0 } = {},
     ) => {
       const clones = [];
+      const usedAssemblyNames = new Set(
+        (components || []).map((part) =>
+          String(part.assemblyName || part.groupLabel || "").trim().toLowerCase(),
+        ).filter(Boolean),
+      );
+      const getUniqueCopyName = (name) => {
+        const base = String(name || "Furniture Assembly").trim();
+        let number = 1;
+        while (usedAssemblyNames.has(`${base} Copy ${number}`.toLowerCase())) number += 1;
+        const unique = `${base} Copy ${number}`;
+        usedAssemblyNames.add(unique.toLowerCase());
+        return unique;
+      };
 
       const getCloneAssemblyKey = (item) => {
+        if (item.groupId || item.assemblyId) {
+          return `group:${item.groupId || item.assemblyId}`;
+        }
         const hasSharedLabelAssembly =
           item.groupLabel &&
           sourceItems.filter(
@@ -147,10 +163,6 @@ export function useBlueprintDuplicateActions({
           return `label:${item.groupType || "group"}:${item.groupLabel}`;
         }
 
-        if (item.groupId) {
-          return `group:${item.groupId}`;
-        }
-
         return null;
       };
 
@@ -160,6 +172,7 @@ export function useBlueprintDuplicateActions({
         copyIndex += 1
       ) {
         const groupIdMap = new Map();
+        const groupNameMap = new Map();
 
         // WISDOM MANUAL MOVING GROUPS V1.1.0
         // Every duplicate gets fresh object ids and fresh moving-group ids.
@@ -226,10 +239,12 @@ export function useBlueprintDuplicateActions({
         }
 
         sourceItems.forEach((item) => {
-          const cloneGroupKey =
-            getCloneAssemblyKey(item);
-          let nextGroupId =
-            item.groupId || null;
+          // A single cloned part becomes standalone rather than creating a
+          // misleading one-part assembly with the original assembly name.
+          const cloneGroupKey = sourceItems.length === 1
+            ? null
+            : getCloneAssemblyKey(item);
+          let nextGroupId = null;
 
           if (cloneGroupKey) {
             if (!groupIdMap.has(cloneGroupKey)) {
@@ -240,7 +255,15 @@ export function useBlueprintDuplicateActions({
             }
             nextGroupId =
               groupIdMap.get(cloneGroupKey);
+            if (!groupNameMap.has(cloneGroupKey)) {
+              groupNameMap.set(cloneGroupKey, getUniqueCopyName(
+                item.assemblyName || item.groupLabel,
+              ));
+            }
           }
+          const nextGroupName = cloneGroupKey
+            ? groupNameMap.get(cloneGroupKey)
+            : "";
 
           const nextId =
             objectIdMap.get(item.id) ||
@@ -276,6 +299,10 @@ export function useBlueprintDuplicateActions({
               id: nextId,
               groupId: nextGroupId,
               assemblyId: nextGroupId,
+              groupLabel: nextGroupName,
+              assemblyName: nextGroupName,
+              groupType: cloneGroupKey ? item.groupType : null,
+              assemblyType: cloneGroupKey ? item.assemblyType : "",
               motionGroupId: nextMotionGroupId,
               motionReferencePartId:
                 nextMotionReferencePartId,
@@ -299,7 +326,7 @@ export function useBlueprintDuplicateActions({
 
       return clones;
     },
-    [],
+    [components],
   );
 
   const selectWholeAssembly = useCallback(() => {

@@ -251,19 +251,17 @@ function getChairExplodedBox(comp, groupComponents) {
 function isDiningTableGroup(groupComponents = []) {
   if (!Array.isArray(groupComponents) || groupComponents.length < 6)
     return false;
+  // Generic manual Legs and Apron / Rails are not built-in Dining Table parts.
+  // Only a strong set of explicit template identifiers can use fixed DT slots.
   const matches = groupComponents.filter((comp) => {
     const partCode = compactText(comp?.partCode);
     const type = compactText(comp?.type);
-    const groupLabel = compactText(comp?.groupLabel);
     const templateType = compactText(comp?.templateType);
-    const label = compactText(comp?.label);
 
     return (
       /^DT[-_]/i.test(partCode) ||
       /^dt_/i.test(type) ||
-      /dining table/i.test(groupLabel) ||
-      /dining table/i.test(templateType) ||
-      /top panel|apron|leg/i.test(label)
+      /^(?:template_dining_table|dining[_ -]table)$/i.test(templateType)
     );
   }).length;
 

@@ -21,6 +21,8 @@ export function ObjectsTreePanel({
   createAssemblyHint = "",
   createAssemblySelectionCount = 0,
   onCreateAssembly,
+  onMergeSelectionIntoAssembly,
+  canMergeAssemblies = false,
   isOpen,
   onToggle,
   isLocked3D,
@@ -155,6 +157,16 @@ export function ObjectsTreePanel({
 
     const ids = (group.allItems || group.items).map((item) => item.id).filter(Boolean);
     if (!ids.length) return;
+
+    if (event.shiftKey) {
+      const existing = Array.isArray(selectedIds) ? selectedIds : [];
+      const entireGroupSelected = ids.every((id) => existing.includes(id));
+      const next = entireGroupSelected
+        ? existing.filter((id) => !ids.includes(id))
+        : Array.from(new Set([...existing, ...ids]));
+      onSelect?.(next, next[0] || null);
+      return;
+    }
 
     onSelect?.(ids, ids[0]);
   };
@@ -435,6 +447,11 @@ export function ObjectsTreePanel({
               assemblyIds.length > 0 &&
               assemblyIds.every((id) => selectedSet.has(id));
 
+            const mergeEnabled =
+              canMergeAssemblies &&
+              (group.type === "custom" || group.type === "assembly") &&
+              selectedIds.some((id) => !group.items.some((part) => part.id === id));
+
             return (
               <div
                 key={group.id}
@@ -453,7 +470,9 @@ export function ObjectsTreePanel({
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "28px minmax(0,1fr)",
+                    gridTemplateColumns: mergeEnabled
+                      ? "28px minmax(0,1fr) 50px"
+                      : "28px minmax(0,1fr)",
                     alignItems: "stretch",
                   }}
                 >
@@ -549,23 +568,39 @@ export function ObjectsTreePanel({
                         : ""}
                     </span>
                   </button>
+                  {mergeEnabled ? (
+                    <button
+                      type="button"
+                      aria-label={`Merge selected parts into ${group.label}`}
+                      title="Move selected parts into this assembly (requires full source assembly selection)"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onMergeSelectionIntoAssembly?.(group.id);
+                      }}
+                      style={{
+                        background: "rgba(30,64,175,.28)",
+                        border: "1px solid rgba(96,165,250,.35)",
+                        color: "#bfdbfe",
+                        fontSize: 10,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Merge
+                    </button>
+                  ) : null}
                 </div>
 
                 {!collapsed ? (
                   <div
                     className="blueprint-assembly-parts-scroll"
-                    onWheel={(event) => {
-                      // Keep scrolling inside the expanded assembly parts list.
-                      event.stopPropagation();
-                    }}
                     style={{
                       padding: "6px 8px 7px 6px",
                       display: "flex",
                       flexDirection: "column",
                       gap: 4,
                       borderTop: "1px solid rgba(51,65,85,.45)",
-                      maxHeight: "430px",
-                      overflowY: "scroll",
+                      maxHeight: "none",
+                      overflowY: "visible",
                       overflowX: "hidden",
                       scrollbarGutter: "stable",
                       scrollbarWidth: "auto",

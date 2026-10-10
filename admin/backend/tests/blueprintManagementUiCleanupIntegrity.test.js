@@ -46,10 +46,22 @@ assert(
     library.includes('tab.key !== "custom"'),
   "Custom shape groups must be hidden from All, Search, and Custom tabs",
 );
+const templatePickerMatch = library.match(
+  /const showTemplateInPicker\s*=\s*group\.label\s*!==\s*"Furniture Templates"\s*\|\|\s*\[([\s\S]*?)\]\.includes\(item\.type\)/,
+);
+const expectedPickerTemplates = [
+  "template_dining_table",
+  "template_wardrobe",
+  "template_coffee_table",
+];
+const actualPickerTemplates = templatePickerMatch
+  ? [...templatePickerMatch[1].matchAll(/"([^"]+)"/g)].map((match) => match[1])
+  : [];
 assert(
   !library.includes("getTemplateLibraryPartGroups") &&
-    library.includes('item.type === "template_closet_wardrobe"'),
-  "Hide redundant template-part collections and alternative Wardrobe option only in the picker",
+    JSON.stringify(actualPickerTemplates) === JSON.stringify(expectedPickerTemplates) &&
+    library.includes("return tabMatches && searchMatches && showTemplateInPicker;"),
+  "Picker must show only Dining Table, Wooden Wardrobe, and Coffee Table without removing legacy templates from the data source",
 );
 const arrangeBlock = panel.split('{activeToolTab === "arrange" ? (')[1]?.split('{activeToolTab === "resize" ? (')[0] || "";
 const flushAt = arrangeBlock.indexOf('>Flush Snap</div>');

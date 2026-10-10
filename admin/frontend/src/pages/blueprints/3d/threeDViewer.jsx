@@ -544,6 +544,8 @@ function ThreeDViewer({
   createAssemblyHint = "",
   createAssemblySelectionCount = 0,
   onCreateAssembly,
+  onMergeSelectionIntoAssembly,
+  canMergeAssemblies = false,
   onArrayDuplicate,
   onDistributeSelection,
   onGapSelection,
@@ -3997,6 +3999,8 @@ function ThreeDViewer({
         createAssemblyHint={createAssemblyHint}
         createAssemblySelectionCount={createAssemblySelectionCount}
         onCreateAssembly={onCreateAssembly}
+        onMergeSelectionIntoAssembly={onMergeSelectionIntoAssembly}
+        canMergeAssemblies={canMergeAssemblies}
         isOpen={activeLeftPanel === "objects"}
         onToggle={() =>
           setActiveLeftPanel((prev) => (prev === "objects" ? null : "objects"))

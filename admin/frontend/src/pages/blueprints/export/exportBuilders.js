@@ -63,7 +63,9 @@ import {
   formatDimsForTitleBlock,
 } from "./exportSheetUtils";
 import { buildWoodworkingVisualCallouts } from "./woodworkingVisualCallouts";
+import { getRotatedComponentBounds3D } from "../data/rotationBounds";
 import {
+  isSupportedRightAngleRailRotation,
   buildMaterialsPaginationPlan,
   getSafeVerticalDimensionPlacement,
 } from "../data/technicalOutputUtils";
@@ -932,7 +934,21 @@ function build3DViewPageSvg({
   pageH = EXPORT_PAGE_H,
 }) {
   const drawingArea = getExportDrawingArea(pageW, pageH);
-  const bounds = getComponentsBounds3D(selectedComponents);
+  // A 90/-90-degree Y rotation of a rectangular rail is precisely another
+  // axis-aligned cuboid. Render its rotated bounds, not its unrotated box.
+  // Do not alter actual part geometry, cut sizes, or persistent component data.
+  const isometricComponents = (selectedComponents || []).map((component) => {
+    if (!isSupportedRightAngleRailRotation(component)) return component;
+    const rotated = getRotatedComponentBounds3D(component);
+    if (!rotated) return component;
+    return {
+      ...component,
+      x: rotated.minX, y: rotated.minY, z: rotated.minZ,
+      width: rotated.width, height: rotated.height, depth: rotated.depth,
+      rotationX: 0, rotationY: 0, rotationZ: 0,
+    };
+  });
+  const bounds = getComponentsBounds3D(isometricComponents);
 
   const resolvedProjectTitle = resolveExportProjectTitle({
     blueprintTitle,
@@ -981,7 +997,7 @@ function build3DViewPageSvg({
 
   const allCorners = [];
 
-  selectedComponents.forEach((comp) => {
+  isometricComponents.forEach((comp) => {
     const pts = [
       iso(comp.x, comp.y, comp.z),
       iso(comp.x + comp.width, comp.y, comp.z),
@@ -1018,7 +1034,7 @@ function build3DViewPageSvg({
     };
   };
 
-  const sortedComponents = [...selectedComponents].sort((a, b) => {
+  const sortedComponents = [...isometricComponents].sort((a, b) => {
     const depthA = a.x + a.z - a.y * 0.35;
     const depthB = b.x + b.z - b.y * 0.35;
     return depthA - depthB;

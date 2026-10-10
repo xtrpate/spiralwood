@@ -552,6 +552,7 @@ export default function BlueprintDesign() {
     createAssemblyHint,
     createAssemblySelectionCount,
     createAssemblyFromSelection,
+    mergeSelectedIntoAssembly,
   } = useBlueprintAssemblyActions({
     components,
     selectedId,
@@ -763,6 +764,8 @@ export default function BlueprintDesign() {
             createAssemblyHint={createAssemblyHint}
             createAssemblySelectionCount={createAssemblySelectionCount}
             onCreateAssembly={createAssemblyFromSelection}
+            onMergeSelectionIntoAssembly={mergeSelectedIntoAssembly}
+            canMergeAssemblies={editorMode === "editable"}
             onArrayDuplicate={arrayDuplicateSelection}
             onDistributeSelection={distributeSelection3D}
             onGapSelection={applySelectionGap3D}
