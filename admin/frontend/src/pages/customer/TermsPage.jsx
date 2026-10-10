@@ -51,7 +51,7 @@ const sections = [
       "When placing an order, you must provide correct order details, contact information, delivery information, and payment information.",
       "The payment process may depend on the product or project. Standard products may require full payment or another payment option shown during checkout.",
       "Custom or blueprint projects may require a down payment before production and a remaining balance at a later stage.",
-      "Uploading payment proof does not mean the payment is already verified. Payment is considered verified only after the required review or confirmation is completed.",
+      "For online payments, follow the instructions on the payment page and complete the required steps using your selected payment method. Make sure to authorize and complete the transaction before leaving the payment page. Your order will be marked as paid once successful payment confirmation is received.",
     ],
   },
   {
@@ -66,10 +66,11 @@ const sections = [
   {
     title: "8. Cancellations, Refunds and Changes",
     paragraphs: [
-      "Cancellation, refund, and order-change options may depend on the order type, payment status, production stage, delivery status, and any agreement connected to the order.",
-      "For standard products, a cancellation or refund may also depend on the condition and status of the item.",
-      "For custom furniture, verified payments remain recorded and are not refunded by the WISDOM cancellation workflow. Once production starts or project-specific materials are committed or consumed, a customer withdrawal may stop avoidable future work but does not automatically erase the remaining agreed contract balance. Any policy remains subject to customer rights and remedies that cannot legally be waived.",
-      "These Terms do not remove any customer right or remedy that cannot legally be waived, including rights that may apply to defective or misrepresented goods or services.",
+      "Please carefully review your order details, product or project specifications, total amount due, and selected payment method before confirming your purchase. By proceeding with payment, you confirm that you understand the amount you are authorizing and intend to complete the transaction.",
+      "Order cancellation through WISDOM is available only while the order remains unpaid. Once successful payment is confirmed and WISDOM marks the order as paid, cancellation is no longer available through the system.",
+      "WISDOM does not provide an in-system refund request or refund-processing workflow. A change of mind, duplicate order, incorrect selection, or other customer-requested change does not automatically qualify for a refund. If you have a concern about a paid order, contact Spiral Wood Services directly. Any request will be considered according to the circumstances, applicable agreements, business policies, and applicable law.",
+      "For custom furniture and blueprint projects, once production has started or project-specific materials have been committed or consumed, cancellation or withdrawal may not remove the customer's remaining contractual obligations.",
+      "Nothing in these Terms excludes or limits any customer right or remedy that cannot legally be waived, including remedies that may apply to defective, misrepresented, or non-conforming goods or services.",
     ],
   },
   {
