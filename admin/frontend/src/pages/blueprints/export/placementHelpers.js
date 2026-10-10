@@ -7,6 +7,7 @@ import {
   getNextChairOrigin,
   isChairPartType,
 } from "../data/componentUtils";
+import { sortOrthographicPartsByDepth } from "./orthographicDrawOrder";
 
 const FLOOR_OFFSET = 40;
 const EXPORT_PAGE_W = 1200;
@@ -440,9 +441,11 @@ function getExportRawItems(selectedComponents, view) {
     })
     .filter(Boolean);
 
-  const bounds = get2DBounds(projected);
+  // ADM-B3E1: painter order follows depth, so back panel covers front doors in Back View.
+  const orderedProjected = sortOrthographicPartsByDepth(projected, view);
+  const bounds = get2DBounds(orderedProjected);
 
-  return projected.map((item) => ({
+  return orderedProjected.map((item) => ({
     ...item,
     box: getMirroredBox(item.box, bounds, view),
   }));

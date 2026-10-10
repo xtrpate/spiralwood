@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import toast from "react-hot-toast";
+import { planBaseCabinetInsetPair } from "../../../utils/adminBaseCabinetInsetDoors";
 
 import {
   applyWoodFinish,
@@ -2295,6 +2296,74 @@ export function useBlueprintBuilderActions({
         toast.error(
           `Door Builder blocked: this cabinet already contains drawer fronts (${sampleDrawer}). Use a cabinet opening without drawers, or clear/change the drawer layout first.`,
         );
+        return;
+      }
+
+      // ADM-B3B: Explicit, Admin-only inset pair for an unmodified 2-shelf Base Cabinet.
+      // The generic Door Builder modes below are intentionally unchanged.
+      if (String(options.doorMode || '').toLowerCase() === 'inset_pair') {
+        if (String(options.scope || 'whole').toLowerCase() !== 'whole') {
+          toast.error('Inset Pair only supports Whole Cabinet Opening.');
+          return;
+        }
+        const plan = planBaseCabinetInsetPair(ctx.assemblyItems, {
+          reveal: options.reveal,
+          centerGap: options.frontGap,
+          doorThickness: options.frontThickness,
+        });
+        if (!plan.supported) {
+          toast.error(plan.reason || 'This cabinet is not eligible for Safe Inset Pair.');
+          return;
+        }
+        const nextDoorParts = plan.doors.map((door) => ctx.buildPart({
+          type: 'door_front_panel',
+          partRole: 'door',
+          partFunction: 'door',
+          doorLayoutMode: 'inset_pair',
+          doorLayoutScope: 'whole',
+          doorReveal: Number(options.reveal ?? 10),
+          doorGap: Number(options.frontGap ?? 10),
+          unitPrice: 0,
+          groupUnitPrice: 0,
+          qty: 1,
+          locked: false,
+          ...door,
+        }));
+        const previousDoors = (ctx.frontParts || []).filter((item) =>
+          item?.type === 'door_front_panel' ||
+          String(item?.partRole || '').toLowerCase() === 'door'
+        );
+        const updatedShelfDepth = new Map(plan.shelfUpdates.map((item) => [String(item.id), item.depth]));
+        const shelfNeedsUpdate = (ctx.shelfParts || []).some((item) =>
+          updatedShelfDepth.has(String(item.id)) &&
+          Math.abs(Number(item.depth) - updatedShelfDepth.get(String(item.id))) > 0.001
+        );
+        const doorSignature = (item) => JSON.stringify([
+          item?.partCode, item?.type, item?.doorLeaf,
+          Number(item?.x), Number(item?.y), Number(item?.z),
+          Number(item?.width), Number(item?.height), Number(item?.depth),
+        ]);
+        const hasIdenticalDoors = previousDoors.length === 2 &&
+          [...previousDoors].map(doorSignature).sort().join('|') ===
+          [...nextDoorParts].map(doorSignature).sort().join('|');
+        if (!shelfNeedsUpdate && hasIdenticalDoors) {
+          toast.success('Safe Inset Pair already matches the saved cabinet geometry.');
+          return;
+        }
+
+        const oldDoorIds = new Set(previousDoors.map((item) => String(item.id)));
+        pushHistory(Array.isArray(components) ? components.map((item) => normalizeComponent(item)) : []);
+        setComponents((previous) => previous
+          .filter((item) => !oldDoorIds.has(String(item.id)))
+          .map((item) => updatedShelfDepth.has(String(item.id))
+            ? { ...item, depth: updatedShelfDepth.get(String(item.id)) }
+            : item)
+          .concat(nextDoorParts));
+        setSelectedIds(nextDoorParts.map((item) => item.id));
+        setSelectedId(nextDoorParts[0].id);
+        setEdit3DId(nextDoorParts[0].id);
+        setTransformMode('translate');
+        toast.success('Safe Inset Pair applied. Verify door movement, dimensions, and hinge clearance before publishing.');
         return;
       }
 

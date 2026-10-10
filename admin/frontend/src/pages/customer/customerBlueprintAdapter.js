@@ -100,6 +100,19 @@ const normalizeComponent = (raw = {}, index = 0) => {
     color_mode: colorMode,
     hardware: raw.hardware || "",
     partCode: raw.partCode || "",
+    // CUST-B3 FIX1: Preserve Admin-authored structural and moving-part identity.
+    // The Customer resize gate checks these fields against exact saved geometry;
+    // never infer a valid assembly from template name or only visible dimensions.
+    assemblyId: raw.assemblyId,
+    assemblyName: raw.assemblyName,
+    assemblyType: raw.assemblyType,
+    groupId: raw.groupId,
+    groupLabel: raw.groupLabel,
+    groupType: raw.groupType,
+    partRole: raw.partRole,
+    partFunction: raw.partFunction,
+    doorHinge: raw.doorHinge,
+    locked: raw.locked === true,
 
     // WISDOM CUSTOMER MACHINING FIDELITY R1
     // Preserve the exact saved machining plan until componentUtils performs

@@ -33,6 +33,10 @@ import {
   planCustomerWardrobeDepth,
 } from "../../utils/customerWardrobeHeightDepth";
 
+import { getCustomerBookshelfResizeSupport, planCustomerBookshelfResize }
+  from "../../utils/customerBookshelfResize";
+import { getCustomerCabinetResizeSupport, planCustomerCabinetResize }
+  from "../../utils/customerCabinetSafeResize";
 import { createFurnitureObject } from "../blueprints/3d/createFurnitureObjects";
 import { WOOD_FINISHES } from "../blueprints/data/furnitureTypes";
 import { applyWoodFinish } from "../blueprints/data/componentUtils";
@@ -70,10 +74,10 @@ const CUSTOMIZE_GUIDE_STEPS = [
       "Enter the width, height, and depth that fit your room or available space.",
   },
   {
-    label: "Edit Parts",
-    title: "Edit parts",
+    label: "Review Parts",
+    title: "Review the parts",
     instruction:
-      "Click Edit Design, then click a part of the furniture if you want to change only that part.",
+      "Inspect the furniture parts and measurements. Structural sizes and thickness are handled by Admin.",
   },
   {
     label: "Choose Finish",
@@ -1684,6 +1688,9 @@ const resizeCustomerDrawerAssembly = (
   return allComponents;
 };
 
+// CUST-A: Raw component geometry is Admin-controlled; only approved
+// whole-furniture sizing and finish options remain customer-facing.
+const CUSTOMER_PART_GEOMETRY_EDITING_ENABLED = false;
 const MAX_CUSTOM_QUANTITY = 100;
 
 export default function Customer3DViewer({
@@ -2017,6 +2024,64 @@ export default function Customer3DViewer({
     return normalizeDimensions(initialDimensions || {});
   }, [components, initialDimensions]);
 
+  // CUST-B2: Only the verified ten-part bookshelf shape is resizable.
+  const bookshelfSupport = useMemo(
+    () => getCustomerBookshelfResizeSupport(components), [components]);
+  const canResizeBookshelf = axis => bookshelfSupport.ok && editable[axis] === true;
+  const planBookshelf = useCallback((axis, mm) => {
+    if (editable[axis] !== true) return {ok:false,error:"This size is not editable."};
+    const limits=customizationRules?.dimensions?.[axis] || {};
+    const min=Number(limits.min ?? limits.min_mm);
+    const max=Number(limits.max ?? limits.max_mm);
+    if ((limits.min != null || limits.min_mm != null) && Number.isFinite(min) && mm < min)
+      return {ok:false,error:"Size must be at least " + min + " mm."};
+    if ((limits.max != null || limits.max_mm != null) && Number.isFinite(max) && mm > max)
+      return {ok:false,error:"Size must be " + max + " mm or less."};
+    return planCustomerBookshelfResize(components, axis, mm);
+  }, [components, editable, customizationRules]);
+  const bookshelfPreviews = useMemo(() => {
+    const result={};
+    for (const axis of ["width","height","depth"]) {
+      if (!bookshelfSupport.ok || !editable[axis]) continue;
+      const text=String(overallDrafts[axis] ?? "").trim();
+      if (!text) continue;
+      const mm=Math.round(convertUnitToMm(text,unit));
+      if (mm === Number(overallBounds[axis+"_mm"])) continue;
+      result[axis]=Number.isFinite(mm) ? planBookshelf(axis,mm)
+        : {ok:false,error:"Enter a valid dimension."};
+    }
+    return result;
+  }, [bookshelfSupport.ok, editable, overallDrafts, overallBounds,
+      planBookshelf, convertUnitToMm, unit]);
+  // CUST-B3: strictly validated 10-part Base Cabinet; never generic resize.
+  const cabinetSupport = useMemo(
+    () => getCustomerCabinetResizeSupport(components), [components]);
+  const canResizeCabinet = axis => cabinetSupport.ok && editable[axis] === true;
+  const planCabinet = useCallback((axis, mm) => {
+    if (editable[axis] !== true) return {ok:false,error:"This size is not editable."};
+    const limits=customizationRules?.dimensions?.[axis] || {};
+    const min=Number(limits.min ?? limits.min_mm);
+    const max=Number(limits.max ?? limits.max_mm);
+    if ((limits.min != null || limits.min_mm != null) && Number.isFinite(min) && mm < min)
+      return {ok:false,error:"Size must be at least " + min + " mm."};
+    if ((limits.max != null || limits.max_mm != null) && Number.isFinite(max) && mm > max)
+      return {ok:false,error:"Size must be " + max + " mm or less."};
+    return planCustomerCabinetResize(components, axis, mm);
+  }, [components, editable, customizationRules]);
+  const cabinetPreviews = useMemo(() => {
+    const result={};
+    for (const axis of ["width","height","depth"]) {
+      if (!cabinetSupport.ok || !editable[axis]) continue;
+      const text=String(overallDrafts[axis] ?? "").trim();
+      if (!text) continue;
+      const mm=Math.round(convertUnitToMm(text,unit));
+      if (mm === Number(overallBounds[axis+"_mm"])) continue;
+      result[axis]=Number.isFinite(mm) ? planCabinet(axis,mm)
+        : {ok:false,error:"Enter a valid dimension."};
+    }
+    return result;
+  }, [cabinetSupport.ok, editable, overallDrafts, overallBounds,
+      planCabinet, convertUnitToMm, unit]);
   const overallWardrobeSizeProtected = useMemo(
     () => needsSafeWardrobeResize(components),
     [components],
@@ -2026,7 +2091,7 @@ export default function Customer3DViewer({
     [components],
   );
   const canSmartResizeWardrobeWidth =
-    overallWardrobeSizeProtected && wardrobeWidthSupport.ok;
+    overallWardrobeSizeProtected && wardrobeWidthSupport.ok && editable.width;
 
   const wardrobeWidthPreview = useMemo(() => {
     if (!canSmartResizeWardrobeWidth || !String(overallDrafts.width).trim()) {
@@ -4403,6 +4468,22 @@ export default function Customer3DViewer({
   const commitOverallDimension = (axis) => {
     if (!isCustomizable || readOnly) return;
     if (!Array.isArray(components) || !components.length) return;
+    if (bookshelfSupport.ok) {
+      const value=overallDrafts?.[axis];
+      const error=getDimensionFieldError(value, {label:axis.charAt(0).toUpperCase()+axis.slice(1)});
+      const result=error ? {ok:false,error} : planBookshelf(axis,Math.round(convertUnitToMm(value,unit)));
+      setOverallDimensionErrors(old => ({...old,[axis]:result.ok ? "" : result.error}));
+      if (!result.ok) showCustomizeFeedback(result.error || "Invalid bookshelf size.");
+      return;
+    }
+    if (cabinetSupport.ok) {
+      const value=overallDrafts?.[axis];
+      const error=getDimensionFieldError(value, {label:axis.charAt(0).toUpperCase()+axis.slice(1)});
+      const result=error ? {ok:false,error} : planCabinet(axis,Math.round(convertUnitToMm(value,unit)));
+      setOverallDimensionErrors(old => ({...old,[axis]:result.ok ? "" : result.error}));
+      if (!result.ok) showCustomizeFeedback(result.error || "Invalid cabinet size.");
+      return;
+    }
     // Verified wardrobe dimensions require an explicit Apply button.
     // Enter/blur validates and reports errors without changing the 3D model.
     if (needsSafeWardrobeResize(components)) {
@@ -4437,76 +4518,47 @@ export default function Customer3DViewer({
       return;
     }
 
-    const rawUnitValue = overallDrafts?.[axis];
-    const parsedMmValue = convertUnitToMm(rawUnitValue, unit);
-
-    const currentValueMm =
-      axis === "width"
-        ? Number(overallBounds.width_mm || 0)
-        : axis === "height"
-          ? Number(overallBounds.height_mm || 0)
-          : Number(overallBounds.depth_mm || 0);
-
-    /* WISDOM INPUT VALIDATION BATCH 2 V1.0.0
-       Never rebuild/deform the model from invalid overall dimensions. */
-    const validationMessage = getDimensionFieldError(rawUnitValue);
-
-    if (
-      validationMessage ||
-      !Number.isFinite(parsedMmValue) ||
-      currentValueMm <= 0
-    ) {
-      setOverallDimensionErrors((prev) => ({
-        ...prev,
-        [axis]:
-          validationMessage || "The current furniture size is unavailable.",
-      }));
-      return;
-    }
-
-    setOverallDimensionErrors((prev) => ({
-      ...prev,
-      [axis]: "",
+    // CUST-B1: No verified structural planner exists for other furniture.
+    // Reject any generic scaling: it can change board/leg thickness, door fit,
+    // and drawer geometry. Customer may request sizing in Order Details notes.
+    setOverallDimensionErrors((previous) => ({
+      ...previous,
+      [axis]: "Automatic resizing is not verified for this furniture.",
     }));
-
-    const nextValueMm = Math.max(1, Math.round(parsedMmValue));
-    if (nextValueMm === currentValueMm) return;
-
-    const scale = nextValueMm / currentValueMm;
-    const extents = getComponentExtents(components);
-
-    if (!extents || !Number.isFinite(scale) || scale <= 0) return;
-
-    const centerX = (extents.minX + extents.maxX) / 2;
-    const centerZ = (extents.minZ + extents.maxZ) / 2;
-    const bottomY = extents.maxY;
-
-    commitComponents((prev) =>
-      prev.map((c) => {
-        if (axis === "width")
-          return {
-            ...c,
-            x: Math.round(centerX + (Number(c.x || 0) - centerX) * scale),
-            width: Math.max(1, Math.round(Number(c.width || 0) * scale)),
-          };
-        if (axis === "height")
-          return {
-            ...c,
-            y: Math.round(bottomY - (bottomY - Number(c.y || 0)) * scale),
-            height: Math.max(1, Math.round(Number(c.height || 0) * scale)),
-          };
-        return {
-          ...c,
-          z: Math.round(centerZ + (Number(c.z || 0) - centerZ) * scale),
-          depth: Math.max(1, Math.round(Number(c.depth || 0) * scale)),
-        };
-      }),
-    );
-
-    setCustomizeProgressStep((current) => Math.max(current, 3));
-    showCustomizeFeedback("Size updated.");
+    showCustomizeFeedback("Size protected. Request measurements in Order Details.");
   };
 
+  const applySmartBookshelf = axis => {
+    if (!isCustomizable || readOnly || !canResizeBookshelf(axis)) return;
+    const value=overallDrafts?.[axis];
+    const error=getDimensionFieldError(value,{label:axis.charAt(0).toUpperCase()+axis.slice(1)});
+    const next=error ? {ok:false,error} : planBookshelf(axis,Math.round(convertUnitToMm(value,unit)));
+    if (!next.ok) {
+      setOverallDimensionErrors(old => ({...old,[axis]:next.error}));
+      showCustomizeFeedback(next.error || "Invalid bookshelf size.");return;
+    }
+    if (next[axis] === Number(overallBounds[axis+"_mm"])) return;
+    setOverallDimensionErrors(old=>({...old,[axis]:""}));
+    commitComponents(next.parts);
+    setCustomizeProgressStep(current=>Math.max(current,3));
+    showCustomizeFeedback("Bookshelf size updated. Check the design.");
+  };
+  const applySmartCabinet = axis => {
+    if (!isCustomizable || readOnly || !canResizeCabinet(axis)) return;
+    const value=overallDrafts?.[axis];
+    const error=getDimensionFieldError(value,{label:axis.charAt(0).toUpperCase()+axis.slice(1)});
+    const next=error ? {ok:false,error} : planCabinet(axis,Math.round(convertUnitToMm(value,unit)));
+    if (!next.ok) {
+      setOverallDimensionErrors(old=>({...old,[axis]:next.error}));
+      showCustomizeFeedback(next.error || "Invalid cabinet size.");
+      return;
+    }
+    if (next[axis] === Number(overallBounds[axis+"_mm"])) return;
+    setOverallDimensionErrors(old=>({...old,[axis]:""}));
+    commitComponents(next.parts);
+    setCustomizeProgressStep(current=>Math.max(current,3));
+    showCustomizeFeedback("Cabinet size updated. Review all 10 parts and door clearances.");
+  };
   const applySmartWardrobeWidth = () => {
     if (!isCustomizable || readOnly || !canSmartResizeWardrobeWidth) return;
     const rawWidth = overallDrafts.width;
@@ -4564,6 +4616,7 @@ export default function Customer3DViewer({
   };
 
   const commitPartDimension = (axis, rawUnitValue) => {
+    if (!CUSTOMER_PART_GEOMETRY_EDITING_ENABLED) return;
     if (
       !isCustomizable ||
       readOnly ||
@@ -4680,6 +4733,7 @@ export default function Customer3DViewer({
   };
 
   const commitShelfVerticalPosition = (rawValue) => {
+    if (!CUSTOMER_PART_GEOMETRY_EDITING_ENABLED) return;
     if (!isCustomizable || readOnly || !selectedShelfLimits || !sampleSelectedPart) return;
     const parsed = convertUnitToMm(rawValue, unit);
     const value = Math.round(parsed);
@@ -5522,197 +5576,10 @@ export default function Customer3DViewer({
               className="wisdom-roomle-sidebar-scroll"
               style={styles.sidebarScroll}
             >
-              {isCustomizable && !readOnly && components.some(isCustomerDoorPanelComponent) ? (
-                <section style={styles.sidebarSection}>
-                  <label htmlFor="customer-door-selector" style={styles.label}>
-                    Select Individual Door
-                  </label>
-                  <select
-                    id="customer-door-selector"
-                    aria-label="Select individual door"
-                    style={styles.partGroupSelect}
-                    value={
-                      selectedGroup.length === 1 &&
-                      sampleSelectedPart &&
-                      isCustomerDoorPanelComponent(sampleSelectedPart)
-                        ? String(sampleSelectedPart.id)
-                        : ""
-                    }
-                    onChange={(event) => {
-                      const door = components.find(
-                        (item) =>
-                          isCustomerDoorPanelComponent(item) &&
-                          String(item.id) === event.target.value,
-                      );
-                      setSelectedCompIds(door ? [door.id] : []);
-                      if (door) {
-                        setSelectionMode(true);
-                        showCustomizeFeedback((door.label || door.name || "Door") + " selected.");
-                      }
-                    }}
-                  >
-                    <option value="">Choose a door</option>
-                    {components.filter(isCustomerDoorPanelComponent).map((door) => (
-                      <option key={String(door.id)} value={String(door.id)}>
-                        {door.label || door.name || "Door"} — Size protected
-                      </option>
-                    ))}
-                  </select>
-                  <div style={styles.helperTextMuted}>
-                    Choose one door to change its finish or preview its movement.
-                    Door size stays locked until safe cabinet limits are available.
-                  </div>
-                  <button
-                    type="button"
-                    disabled={
-                      selectedGroup.length !== 1 ||
-                      !sampleSelectedPart ||
-                      !isCustomerDoorPreviewComponent(sampleSelectedPart)
-                    }
-                    onClick={() => {
-                      if (
-                        selectedGroup.length !== 1 ||
-                        !sampleSelectedPart ||
-                        !isCustomerDoorPreviewComponent(sampleSelectedPart)
-                      ) return;
-                      const selectedSet = buildCustomerDoorPreviewSets(components).find(
-                        (set) => set.members.some((part) => part.id === sampleSelectedPart.id),
-                      );
-                      if (!selectedSet) return;
-                      const alreadyOpen = (doorMotionPreviewRef.current || []).some(
-                        (preview) => preview.key === selectedSet.key,
-                      );
-                      if (toggleCustomerDoorFromComponentId(sampleSelectedPart.id)) {
-                        showCustomizeFeedback(
-                          alreadyOpen
-                            ? "Door closed for preview."
-                            : "Door opened for preview.",
-                        );
-                      }
-                    }}
-                    style={{
-                      ...styles.toolBtn,
-                      ...(
-                        selectedGroup.length !== 1 ||
-                        !sampleSelectedPart ||
-                        !isCustomerDoorPreviewComponent(sampleSelectedPart)
-                          ? styles.toolBtnDisabled
-                          : {}
-                      ),
-                    }}
-                  >
-                    Open / Close Selected Door
-                  </button>
-                  {hasCustomerPreviewDoors ? (
-                    <button
-                      type="button"
-                      aria-pressed={doorsPreviewOpen}
-                      onClick={
-                        doorsPreviewOpen
-                          ? closeAllCustomerDoors
-                          : () => openAllCustomerDoors()
-                      }
-                      style={{
-                        ...styles.toolBtn,
-                        ...(doorsPreviewOpen ? styles.unitBtnActive : {}),
-                      }}
-                    >
-                      {doorsPreviewOpen ? "Close All Doors" : "Open All Doors"}
-                    </button>
-                  ) : null}
-                </section>
-              ) : null}
 
-              {isCustomizable && !readOnly && editGroups.some((group) => group.kind === "drawer") ? (
-                <section style={styles.sidebarSection}>
-                  <label htmlFor="customer-drawer-selector" style={styles.label}>
-                    Select Individual Drawer
-                  </label>
-                  <select
-                    id="customer-drawer-selector"
-                    aria-label="Select individual drawer"
-                    style={styles.partGroupSelect}
-                    value={selectedEditGroup?.kind === "drawer" ? selectedEditGroup.key : ""}
-                    onChange={(event) => {
-                      const group = editGroups.find(
-                        (entry) => entry.kind === "drawer" && entry.key === event.target.value,
-                      );
-                      setSelectedCompIds(group?.ids || []);
-                      if (group?.ids?.length) {
-                        setSelectionMode(true);
-                        showCustomizeFeedback(`${group.label} selected.`);
-                      }
-                    }}
-                  >
-                    <option value="">Choose a drawer</option>
-                    {editGroups.filter((group) => group.kind === "drawer").map((group) => (
-                      <option key={group.key} value={group.key}>
-                        {group.label} ({group.ids.length} parts)
-                      </option>
-                    ))}
-                  </select>
-                  <div style={styles.helperTextMuted}>
-                    Select Drawer 1, Drawer 2, or the small drawer separately.
-                  </div>
-                </section>
-              ) : null}
 
-              {isCustomizable && !readOnly && components.some(isCustomerShelfStructure) ? (
-                <section style={styles.sidebarSection}>
-                  <label htmlFor="customer-shelf-selector" style={styles.label}>
-                    Select Individual Shelf
-                  </label>
-                  <select
-                    id="customer-shelf-selector"
-                    aria-label="Select individual shelf"
-                    style={styles.partGroupSelect}
-                    value={
-                      selectedGroup.length === 1 &&
-                      sampleSelectedPart &&
-                      isCustomerShelfStructure(sampleSelectedPart)
-                        ? String(sampleSelectedPart.id)
-                        : ""
-                    }
-                    onChange={(event) => {
-                      const shelf = components.find(
-                        (item) =>
-                          isCustomerShelfStructure(item) &&
-                          String(item.id) === event.target.value,
-                      );
-                      setSelectedCompIds(shelf ? [shelf.id] : []);
-                      if (shelf) {
-                        setSelectionMode(true);
-                        setCustomizeProgressStep((current) => Math.max(current, 3));
-                        showCustomizeFeedback(`${shelf.label || shelf.name || "Shelf"} selected.`);
-                      }
-                    }}
-                  >
-                    <option value="">Choose one shelf</option>
-                    {components.filter(isCustomerShelfStructure).map((shelf) => {
-                      const classification = getCustomerShelfClassification(shelf);
-                      const status =
-                        classification === "fixed"
-                          ? "Fixed / protected"
-                          : classification === "adjustable"
-                            ? getVerifiedShelfLimits(components, shelf)
-                              ? "Adjustable"
-                              : "Adjustable / supports unverified"
-                            : "Unverified / protected";
-                      return (
-                        <option key={String(shelf.id)} value={String(shelf.id)}>
-                          {shelf.label || shelf.name || "Shelf"}
-                          {shelf.partCode ? ` (${shelf.partCode})` : ""}
-                          {" — "}{status}
-                        </option>
-                      );
-                    })}
-                  </select>
-                  <div style={styles.helperTextMuted}>
-                    Choose one shelf, not the whole Shelves finish group.
-                    Fixed and unverified shelves cannot be resized.
-                  </div>
-                </section>
-              ) : null}
+
+
 
               {partListVisible ? (
                 <>
@@ -6029,105 +5896,16 @@ export default function Customer3DViewer({
                 style={styles.customizeOptionalToolsHeading}
               >
                 <span style={styles.customizeOptionalToolsTitle}>
-                  Optional Tools
+                  Furniture Options
                 </span>
                 <span style={styles.customizeOptionalToolsNote}>
-                  Use only when needed
+                  Choose size and finish
                 </span>
               </div>
 
-              <section
-                className="wisdom-legacy-part-editor"
-                style={{
-                  ...styles.sidebarSection,
-                  ...styles.customizeOptionalSection,
-                  ...(showCustomizeGuide && customizeGuideStep + 1 === 3
-                    ? styles.customizeActiveSection
-                    : {}),
-                }}
-              >
-                <div style={styles.sectionRow}>
-                  <label style={styles.label}>Edit Individual Parts</label>
 
-                  <button
-                    type="button"
-                    aria-pressed={selectionMode}
-                    onClick={() => {
-                      const nextEnabled = !selectionMode;
-                      setSelectionMode(nextEnabled);
 
-                      if (nextEnabled) {
-                        setCustomizeProgressStep((current) =>
-                          Math.max(current, 3),
-                        );
-                        showCustomizeFeedback(
-                          "Edit mode is on. Select a furniture part.",
-                        );
-                      } else {
-                        setSelectedCompIds([]);
-                        showCustomizeFeedback("Edit mode is off.");
-                      }
-                    }}
-                    style={{
-                      ...styles.editDesignBtn,
-                      ...(selectionMode ? styles.editDesignBtnActive : {}),
-                    }}
-                  >
-                    {selectionMode ? "EDITING ON" : "EDIT DESIGN"}
-                  </button>
-                </div>
-
-                {selectionMode ? (
-                  <>
-                    <div style={styles.helperText}>
-                      Editing mode is on. Select a part in the 3D preview, or
-                      choose one from the list below.
-                    </div>
-
-                    <select
-                      value={
-                        selectedCompIds.length
-                          ? String(
-                              editGroups.findIndex((group) =>
-                                group.ids.some((id) =>
-                                  selectedCompIds.includes(id),
-                                ),
-                              ),
-                            )
-                          : ""
-                      }
-                      onChange={(e) => {
-                        const index = Number(e.target.value);
-                        if (!Number.isInteger(index) || index < 0) {
-                          setSelectedCompIds([]);
-                          return;
-                        }
-
-                        const group = editGroups[index];
-                        setSelectedCompIds(group?.ids || []);
-                        if (group?.ids?.length) {
-                          showCustomizeFeedback("Furniture part selected.");
-                        }
-                      }}
-                      style={styles.partGroupSelect}
-                    >
-                      <option value="">Choose a furniture part</option>
-                      {editGroups.map((group, index) => (
-                        <option key={`${group.label}_${index}`} value={index}>
-                          {group.label} ({group.ids.length})
-                        </option>
-                      ))}
-                    </select>
-                  </>
-                ) : (
-                  <div style={styles.helperTextMuted}>
-                    Need to change a leg, shelf, or panel? Choose Edit Design,
-                    then select the part you want to adjust.
-                  </div>
-                )}
-              </section>
-
-              {selectedGroup.length > 0 && sampleSelectedPart ? (
+              {CUSTOMER_PART_GEOMETRY_EDITING_ENABLED && selectedGroup.length > 0 && sampleSelectedPart ? (
                 <section
                   style={{
                     ...styles.sidebarSection,
@@ -6460,23 +6238,49 @@ export default function Customer3DViewer({
                       Furniture Size ({unit === "inches" ? "in" : unit})
                     </label>
                     <span style={styles.pill}>
-                      {overallWardrobeSizeProtected
+                      {bookshelfSupport.ok ? "Smart bookshelf" : cabinetSupport.ok ? "Smart cabinet" : overallWardrobeSizeProtected
                         ? canSmartResizeWardrobeHeight && canSmartResizeWardrobeDepth
                           ? "Smart sizing"
                           : canSmartResizeWardrobeWidth
                             ? "Smart width"
                             : "Size protected"
-                        : "Keeps proportions"}
+                        : "Size protected"}
                     </span>
                   </div>
 
-                  {overallWardrobeSizeProtected ? (
+                  {bookshelfSupport.ok ? (
+                    <div style={styles.helperTextMuted} role="status">
+                      Width {bookshelfSupport.minWidth}-{bookshelfSupport.maxWidth} mm;
+                      Height {bookshelfSupport.minHeight}-{bookshelfSupport.maxHeight} mm;
+                      Depth {bookshelfSupport.minDepth}-{bookshelfSupport.maxDepth} mm.
+                      All 18 mm boards stay the same thickness. Admin reviews final specifications.
+                    </div>
+                  ) : null}
+                  {cabinetSupport.ok ? (
+                    <div style={styles.helperTextMuted} role="status">
+                      Width {cabinetSupport.minWidth}-{cabinetSupport.maxWidth} mm;
+                      Height {cabinetSupport.minHeight}-{cabinetSupport.maxHeight} mm;
+                      Depth {cabinetSupport.minDepth}-{cabinetSupport.maxDepth} mm.
+                      The two inset doors, shelf clearances and original panel thicknesses stay aligned.
+                      Admin must review final construction specifications.
+                    </div>
+                  ) : null}
+                  {!bookshelfSupport.ok && !cabinetSupport.ok && overallWardrobeSizeProtected ? (
                     <div style={styles.helperTextMuted} role="status">
                       {canSmartResizeWardrobeWidth
                         ? canSmartResizeWardrobeHeight && canSmartResizeWardrobeDepth
                           ? `Width: ${wardrobeWidthSupport.minWidth}-${wardrobeWidthSupport.maxWidth} mm. Height: ${wardrobeHeightDepthSupport.minHeight}-${wardrobeHeightDepthSupport.maxHeight} mm. Depth: ${wardrobeHeightDepthSupport.minDepth}-${wardrobeHeightDepthSupport.maxDepth} mm. Enter one size, review the preview, then press Apply. Board thickness, edited drawer sizes, and finishes stay unchanged. These limits are provisional; the shop must review final sizes.`
                           : `Width can change from ${wardrobeWidthSupport.minWidth} to ${wardrobeWidthSupport.maxWidth} mm. Preview the bay sizes and press Apply Width. Board thickness, drawer dimensions, and custom finishes stay unchanged. Height and Depth stay locked for this layout. Final sizes need shop review.`
-                        : "Overall wardrobe size is protected because this layout is not verified for safe resizing. Supported drawers, shelves, and finishes can still be edited."}
+                        : "Overall wardrobe size is protected because this layout is not verified for safe resizing. Wood finishes and door/drawer previews remain available."}
+                    </div>
+                  ) : null}
+
+                  {!overallWardrobeSizeProtected && !bookshelfSupport.ok && !cabinetSupport.ok ? (
+                    <div style={styles.helperTextMuted} role="status">
+                      Size protected: automatic resizing is not verified for this furniture.
+                      To request a different width, height, or depth, open Order Details
+                      and write your preferred measurements in the notes. Admin will
+                      review the request before quotation. The 3D model stays unchanged.
                     </div>
                   ) : null}
 
@@ -6492,7 +6296,8 @@ export default function Customer3DViewer({
                         disabled={
                           !isCustomizable ||
                           readOnly ||
-                          (overallWardrobeSizeProtected && !canSmartResizeWardrobeWidth)
+                          (!canResizeBookshelf("width") && !canResizeCabinet("width") &&
+                            (!overallWardrobeSizeProtected || !canSmartResizeWardrobeWidth))
                         }
                         onChange={(e) =>
                           handleOverallDraftChange("width", e.target.value)
@@ -6506,13 +6311,15 @@ export default function Customer3DViewer({
                         }}
                         aria-invalid={Boolean(
                           overallDimensionErrors.width ||
+                            (cabinetSupport.ok && cabinetPreviews.width && !cabinetPreviews.width.ok) ||
                             (canSmartResizeWardrobeWidth &&
                               wardrobeWidthPreview &&
                               !wardrobeWidthPreview.ok),
                         )}
                         aria-describedby={
                           overallDimensionErrors.width ||
-                          (canSmartResizeWardrobeWidth &&
+                          (cabinetSupport.ok && cabinetPreviews.width && !cabinetPreviews.width.ok) ||
+                            (canSmartResizeWardrobeWidth &&
                             wardrobeWidthPreview &&
                             !wardrobeWidthPreview.ok)
                             ? "customer-overall-width-error"
@@ -6535,7 +6342,8 @@ export default function Customer3DViewer({
                         value={overallDrafts.height}
                         disabled={
                           !isCustomizable || readOnly ||
-                          (overallWardrobeSizeProtected && !canSmartResizeWardrobeHeight)
+                          (!canResizeBookshelf("height") && !canResizeCabinet("height") &&
+                            (!overallWardrobeSizeProtected || !canSmartResizeWardrobeHeight))
                         }
                         onChange={(e) =>
                           handleOverallDraftChange("height", e.target.value)
@@ -6549,12 +6357,14 @@ export default function Customer3DViewer({
                         }}
                         aria-invalid={Boolean(
                           overallDimensionErrors.height ||
-                          (canSmartResizeWardrobeHeight &&
+                          (cabinetSupport.ok && cabinetPreviews.height && !cabinetPreviews.height.ok) ||
+                            (canSmartResizeWardrobeHeight &&
                             wardrobeHeightPreview && !wardrobeHeightPreview.ok),
                         )}
                         aria-describedby={
                           overallDimensionErrors.height ||
-                          (canSmartResizeWardrobeHeight &&
+                          (cabinetSupport.ok && cabinetPreviews.height && !cabinetPreviews.height.ok) ||
+                            (canSmartResizeWardrobeHeight &&
                             wardrobeHeightPreview && !wardrobeHeightPreview.ok)
                             ? "customer-overall-height-error"
                             : undefined
@@ -6576,7 +6386,8 @@ export default function Customer3DViewer({
                         value={overallDrafts.depth}
                         disabled={
                           !isCustomizable || readOnly ||
-                          (overallWardrobeSizeProtected && !canSmartResizeWardrobeDepth)
+                          (!canResizeBookshelf("depth") && !canResizeCabinet("depth") &&
+                            (!overallWardrobeSizeProtected || !canSmartResizeWardrobeDepth))
                         }
                         onChange={(e) =>
                           handleOverallDraftChange("depth", e.target.value)
@@ -6590,12 +6401,14 @@ export default function Customer3DViewer({
                         }}
                         aria-invalid={Boolean(
                           overallDimensionErrors.depth ||
-                          (canSmartResizeWardrobeDepth &&
+                          (cabinetSupport.ok && cabinetPreviews.depth && !cabinetPreviews.depth.ok) ||
+                            (canSmartResizeWardrobeDepth &&
                             wardrobeDepthPreview && !wardrobeDepthPreview.ok),
                         )}
                         aria-describedby={
                           overallDimensionErrors.depth ||
-                          (canSmartResizeWardrobeDepth &&
+                          (cabinetSupport.ok && cabinetPreviews.depth && !cabinetPreviews.depth.ok) ||
+                            (canSmartResizeWardrobeDepth &&
                             wardrobeDepthPreview && !wardrobeDepthPreview.ok)
                             ? "customer-overall-depth-error"
                             : undefined
@@ -6612,6 +6425,7 @@ export default function Customer3DViewer({
                   </div>
 
                   {(overallDimensionErrors.width ||
+                    (cabinetSupport.ok && cabinetPreviews.width && !cabinetPreviews.width.ok) ||
                     (canSmartResizeWardrobeWidth &&
                       wardrobeWidthPreview &&
                       !wardrobeWidthPreview.ok)) ? (
@@ -6632,6 +6446,7 @@ export default function Customer3DViewer({
                       }}
                     >
                       {overallDimensionErrors.width ||
+                        (cabinetSupport.ok ? cabinetPreviews.width?.error : "") ||
                         wardrobeWidthPreview?.error}
                     </div>
                   ) : null}
@@ -6642,6 +6457,8 @@ export default function Customer3DViewer({
                     const enabled = axis === "height"
                       ? canSmartResizeWardrobeHeight : canSmartResizeWardrobeDepth;
                     const message = overallDimensionErrors[axis] ||
+                      (cabinetSupport.ok && cabinetPreviews[axis] && !cabinetPreviews[axis].ok
+                        ? cabinetPreviews[axis].error : "") ||
                       (enabled && preview && !preview.ok ? preview.error : "");
                     return message ? (
                       <div
@@ -6666,7 +6483,53 @@ export default function Customer3DViewer({
                     ) : null;
                   })}
 
-                  {canSmartResizeWardrobeWidth && wardrobeWidthPreview ? (
+                  {bookshelfSupport.ok ? (
+                    <div style={{marginTop:8,display:"grid",gap:8}}>
+                      {(["width","height","depth"]).map(axis => {
+                        const candidate=bookshelfPreviews[axis];
+                        if (!candidate) return null;
+                        const label=axis.charAt(0).toUpperCase()+axis.slice(1);
+                        return <div key={axis} style={{display:"grid",gap:5}}>
+                          {candidate.ok ? <>
+                            <div style={styles.helperTextMuted} role="status">
+                              {label}: {overallBounds[axis+"_mm"]} mm to {candidate[axis]} mm.
+                              Part thickness is preserved.
+                            </div>
+                            <button type="button" onClick={() => applySmartBookshelf(axis)}
+                              disabled={!isCustomizable || readOnly || !editable[axis]}
+                              style={{background:"#111",color:"#fff",border:"1px solid #111",
+                                borderRadius:0,padding:"10px 12px",fontWeight:700,cursor:"pointer"}}>
+                              Apply {label}
+                            </button>
+                          </> : <div role="alert" style={{color:"#b91c1c",fontSize:11}}>
+                            {candidate.error}
+                          </div>}
+                        </div>;
+                      })}
+                    </div>
+                  ) : null}
+                  {cabinetSupport.ok ? (
+                    <div style={{marginTop:8,display:"grid",gap:8}}>
+                      {(["width","height","depth"]).map(axis => {
+                        const candidate=cabinetPreviews[axis];
+                        if (!candidate || !candidate.ok) return null;
+                        const label=axis.charAt(0).toUpperCase()+axis.slice(1);
+                        return <div key={axis} style={{display:"grid",gap:5}}>
+                          <div style={styles.helperTextMuted} role="status">
+                            {label}: {overallBounds[axis+"_mm"]} mm to {candidate[axis]} mm.
+                            All 10 parts and two inset doors preserve their clearances.
+                          </div>
+                          <button type="button" onClick={() => applySmartCabinet(axis)}
+                            disabled={!isCustomizable || readOnly || !editable[axis]}
+                            style={{background:"#111",color:"#fff",border:"1px solid #111",
+                              borderRadius:0,padding:"10px 12px",fontWeight:700,cursor:"pointer"}}>
+                            Apply {label}
+                          </button>
+                        </div>;
+                      })}
+                    </div>
+                  ) : null}
+                  {canSmartResizeWardrobeWidth && wardrobeWidthPreview && !cabinetSupport.ok ? (
                     <div style={{ marginTop: 8, display: "grid", gap: 7 }}>
                       {wardrobeWidthPreview.ok ? (
                         <>
@@ -6703,7 +6566,7 @@ export default function Customer3DViewer({
                     </div>
                   ) : null}
 
-                  {canSmartResizeWardrobeHeight && wardrobeHeightPreview?.ok ? (
+                  {!cabinetSupport.ok && canSmartResizeWardrobeHeight && wardrobeHeightPreview?.ok ? (
                     <div style={{ marginTop: 8, display: "grid", gap: 7 }}>
                       <div style={styles.helperTextMuted} role="status">
                         Height preview: {overallBounds.height_mm} mm to{" "}
@@ -6727,7 +6590,7 @@ export default function Customer3DViewer({
                     </div>
                   ) : null}
 
-                  {canSmartResizeWardrobeDepth && wardrobeDepthPreview?.ok ? (
+                  {!cabinetSupport.ok && canSmartResizeWardrobeDepth && wardrobeDepthPreview?.ok ? (
                     <div style={{ marginTop: 8, display: "grid", gap: 7 }}>
                       <div style={styles.helperTextMuted} role="status">
                         Depth preview: {overallBounds.depth_mm} mm to{" "}
