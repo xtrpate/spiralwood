@@ -1782,12 +1782,11 @@ export default function LandingPage() {
               id="wisdom-home-clean-hero-title"
               className="wisdom-home-clean-hero__title"
             >
-              Furniture designed around your space.
+              Made for your space. Designed by you.
             </h1>
 
             <p className="wisdom-home-clean-hero__summary">
-              Customize the size, layout, and wood finish in 3D, or browse ready
-              made furniture from Spiral Wood.
+              Customize dimensions, explore layouts, and choose wood finishes in 3D, or discover ready-made furniture for your home.
             </p>
 
             <div className="wisdom-home-clean-hero__actions">
@@ -2383,11 +2382,9 @@ export default function LandingPage() {
 
         <section className="wisdom-home-editorial__statement">
           <div className="wisdom-home-editorial__statement-inner wisdom-home-editorial-reveal">
-            <h2>Designed digitally. Built for real spaces.</h2>
+            <h2>Designed digitally. Built for your space.</h2>
             <p>
-              WISDOM connects furniture customization with the actual Spiral
-              Wood workflow, giving the approved dimensions, layout, and finish
-              a clearer reference before production.
+              Bring your furniture idea to life with a clearer digital reference for approved dimensions, layout, and finish before production.
             </p>
           </div>
         </section>
@@ -2408,7 +2405,7 @@ export default function LandingPage() {
               </h2>
               <p className="wisdom-home-shop__copy">
                 Choose a furniture category, then browse the available ready
-                made pieces from Spiral Wood.
+                made pieces for your home.
               </p>
             </div>
 
@@ -2443,7 +2440,7 @@ export default function LandingPage() {
             <h2>Choose how you want to furnish your space.</h2>
             <p>
               Start with a customizable design or browse ready made furniture
-              from Spiral Wood.
+              for your home.
             </p>
 
             <div className="wisdom-home-editorial__actions">
