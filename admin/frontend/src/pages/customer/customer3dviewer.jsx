@@ -37,6 +37,8 @@ import { getCustomerBookshelfResizeSupport, planCustomerBookshelfResize }
   from "../../utils/customerBookshelfResize";
 import { getCustomerCabinetResizeSupport, planCustomerCabinetResize }
   from "../../utils/customerCabinetSafeResize";
+import { getCustomerDiningTableResizeSupport, planCustomerDiningTableResize }
+  from "../../utils/customerDiningTableResize.mjs";
 import { createFurnitureObject } from "../blueprints/3d/createFurnitureObjects";
 import { WOOD_FINISHES } from "../blueprints/data/furnitureTypes";
 import {
@@ -2085,6 +2087,35 @@ export default function Customer3DViewer({
     return result;
   }, [cabinetSupport.ok, editable, overallDrafts, overallBounds,
       planCabinet, convertUnitToMm, unit]);
+  // C5-1: exact nine-part Dining Table only; future/unverified layouts fail closed.
+  const tableSupport = useMemo(
+    () => getCustomerDiningTableResizeSupport(components), [components]);
+  const canResizeTable = axis => tableSupport.ok && editable[axis] === true;
+  const planTable = useCallback((axis, mm) => {
+    if (editable[axis] !== true) return {ok:false,error:"This size is not editable."};
+    const limits=customizationRules?.dimensions?.[axis] || {};
+    const min=Number(limits.min ?? limits.min_mm);
+    const max=Number(limits.max ?? limits.max_mm);
+    if ((limits.min != null || limits.min_mm != null) && Number.isFinite(min) && mm < min)
+      return {ok:false,error:"Size must be at least " + min + " mm."};
+    if ((limits.max != null || limits.max_mm != null) && Number.isFinite(max) && mm > max)
+      return {ok:false,error:"Size must be " + max + " mm or less."};
+    return planCustomerDiningTableResize(components, axis, mm);
+  }, [components, editable, customizationRules]);
+  const tablePreviews = useMemo(() => {
+    const result={};
+    for (const axis of ["width","height","depth"]) {
+      if (!tableSupport.ok || !editable[axis]) continue;
+      const raw=String(overallDrafts[axis] ?? "").trim();
+      if (!raw) continue;
+      const mm=Math.round(convertUnitToMm(raw,unit));
+      if (mm === Number(overallBounds[axis+"_mm"])) continue;
+      result[axis]=Number.isFinite(mm) && mm > 0 ? planTable(axis,mm)
+        : {ok:false,error:"Enter a valid dimension."};
+    }
+    return result;
+  }, [tableSupport.ok, editable, overallDrafts, overallBounds, planTable,
+      convertUnitToMm, unit]);
   const overallWardrobeSizeProtected = useMemo(
     () => needsSafeWardrobeResize(components),
     [components],
@@ -4463,6 +4494,14 @@ export default function Customer3DViewer({
       if (!result.ok) showCustomizeFeedback(result.error || "Invalid cabinet size.");
       return;
     }
+    if (tableSupport.ok) {
+      const value=overallDrafts?.[axis];
+      const error=getDimensionFieldError(value, {label:axis.charAt(0).toUpperCase()+axis.slice(1)});
+      const result=error ? {ok:false,error} : planTable(axis,Math.round(convertUnitToMm(value,unit)));
+      setOverallDimensionErrors(old => ({...old,[axis]:result.ok ? "" : result.error}));
+      if (!result.ok) showCustomizeFeedback(result.error || "Invalid dining table size.");
+      return;
+    }
     // Verified wardrobe dimensions require an explicit Apply button.
     // Enter/blur validates and reports errors without changing the 3D model.
     if (needsSafeWardrobeResize(components)) {
@@ -4537,6 +4576,22 @@ export default function Customer3DViewer({
     commitComponents(next.parts);
     setCustomizeProgressStep(current=>Math.max(current,3));
     showCustomizeFeedback("Cabinet size updated. Review all 10 parts and door clearances.");
+  };
+  const applySmartTable = axis => {
+    if (!isCustomizable || readOnly || !canResizeTable(axis)) return;
+    const value=overallDrafts?.[axis];
+    const error=getDimensionFieldError(value,{label:axis.charAt(0).toUpperCase()+axis.slice(1)});
+    const next=error ? {ok:false,error} : planTable(axis,Math.round(convertUnitToMm(value,unit)));
+    if (!next.ok) {
+      setOverallDimensionErrors(old=>({...old,[axis]:next.error}));
+      showCustomizeFeedback(next.error || "Dining Table dimensions are not verified.");
+      return;
+    }
+    if (next[axis] === Number(overallBounds[axis+"_mm"])) return;
+    setOverallDimensionErrors(old=>({...old,[axis]:""}));
+    commitComponents(next.parts);
+    setCustomizeProgressStep(current=>Math.max(current,3));
+    showCustomizeFeedback("Dining Table size updated. Review all 9 parts before checkout.");
   };
   const applySmartWardrobeWidth = () => {
     if (!isCustomizable || readOnly || !canSmartResizeWardrobeWidth) return;
@@ -6161,7 +6216,7 @@ export default function Customer3DViewer({
                       Furniture Size ({unit === "inches" ? "in" : unit})
                     </label>
                     <span style={styles.pill}>
-                      {bookshelfSupport.ok ? "Smart bookshelf" : cabinetSupport.ok ? "Smart cabinet" : overallWardrobeSizeProtected
+                      {bookshelfSupport.ok ? "Smart bookshelf" : cabinetSupport.ok ? "Smart cabinet" : tableSupport.ok ? "Smart table" : overallWardrobeSizeProtected
                         ? canSmartResizeWardrobeHeight && canSmartResizeWardrobeDepth
                           ? "Smart sizing"
                           : canSmartResizeWardrobeWidth
@@ -6188,6 +6243,15 @@ export default function Customer3DViewer({
                       Admin must review final construction specifications.
                     </div>
                   ) : null}
+                  {tableSupport.ok ? (
+                    <div style={styles.helperTextMuted} role="status">
+                      Width {tableSupport.minWidth}-{tableSupport.maxWidth} mm;
+                      Height {tableSupport.minHeight}-{tableSupport.maxHeight} mm;
+                      Depth {tableSupport.minDepth}-{tableSupport.maxDepth} mm.
+                      The 40 mm tabletop, 80 × 80 mm leg sections, and 25 mm aprons stay intact.
+                      Final dimensions and joinery require Admin review.
+                    </div>
+                  ) : null}
                   {!bookshelfSupport.ok && !cabinetSupport.ok && overallWardrobeSizeProtected ? (
                     <div style={styles.helperTextMuted} role="status">
                       {canSmartResizeWardrobeWidth
@@ -6198,7 +6262,7 @@ export default function Customer3DViewer({
                     </div>
                   ) : null}
 
-                  {!overallWardrobeSizeProtected && !bookshelfSupport.ok && !cabinetSupport.ok ? (
+                  {!overallWardrobeSizeProtected && !bookshelfSupport.ok && !cabinetSupport.ok && !tableSupport.ok ? (
                     <div style={styles.helperTextMuted} role="status">
                       Size protected: automatic resizing is not verified for this furniture.
                       To request a different width, height, or depth, open Order Details
@@ -6219,7 +6283,7 @@ export default function Customer3DViewer({
                         disabled={
                           !isCustomizable ||
                           readOnly ||
-                          (!canResizeBookshelf("width") && !canResizeCabinet("width") &&
+                          (!canResizeBookshelf("width") && !canResizeCabinet("width") && !canResizeTable("width") &&
                             (!overallWardrobeSizeProtected || !canSmartResizeWardrobeWidth))
                         }
                         onChange={(e) =>
@@ -6265,7 +6329,7 @@ export default function Customer3DViewer({
                         value={overallDrafts.height}
                         disabled={
                           !isCustomizable || readOnly ||
-                          (!canResizeBookshelf("height") && !canResizeCabinet("height") &&
+                          (!canResizeBookshelf("height") && !canResizeCabinet("height") && !canResizeTable("height") &&
                             (!overallWardrobeSizeProtected || !canSmartResizeWardrobeHeight))
                         }
                         onChange={(e) =>
@@ -6309,7 +6373,7 @@ export default function Customer3DViewer({
                         value={overallDrafts.depth}
                         disabled={
                           !isCustomizable || readOnly ||
-                          (!canResizeBookshelf("depth") && !canResizeCabinet("depth") &&
+                          (!canResizeBookshelf("depth") && !canResizeCabinet("depth") && !canResizeTable("depth") &&
                             (!overallWardrobeSizeProtected || !canSmartResizeWardrobeDepth))
                         }
                         onChange={(e) =>
@@ -6448,6 +6512,31 @@ export default function Customer3DViewer({
                               borderRadius:0,padding:"10px 12px",fontWeight:700,cursor:"pointer"}}>
                             Apply {label}
                           </button>
+                        </div>;
+                      })}
+                    </div>
+                  ) : null}
+                  {tableSupport.ok ? (
+                    <div style={{marginTop:8,display:"grid",gap:8}}>
+                      {(["width","height","depth"]).map(axis => {
+                        const candidate=tablePreviews[axis];
+                        if (!candidate) return null;
+                        const label=axis.charAt(0).toUpperCase()+axis.slice(1);
+                        return <div key={axis} style={{display:"grid",gap:5}}>
+                          {candidate.ok ? <>
+                            <div style={styles.helperTextMuted} role="status">
+                              {label}: {overallBounds[axis+"_mm"]} mm to {candidate[axis]} mm.
+                              Tabletop thickness, leg section and apron thickness stay fixed.
+                            </div>
+                            <button type="button" onClick={() => applySmartTable(axis)}
+                              disabled={!isCustomizable || readOnly || !editable[axis]}
+                              style={{background:"#111",color:"#fff",border:"1px solid #111",
+                                borderRadius:0,padding:"10px 12px",fontWeight:700,cursor:"pointer"}}>
+                              Apply {label}
+                            </button>
+                          </> : <div role="alert" style={{color:"#b91c1c",fontSize:11}}>
+                            {candidate.error}
+                          </div>}
                         </div>;
                       })}
                     </div>
