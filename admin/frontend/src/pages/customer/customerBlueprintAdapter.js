@@ -96,6 +96,8 @@ const normalizeComponent = (raw = {}, index = 0) => {
     woodFinish: String(raw.woodFinish ?? finishCandidate).trim(),
     material: raw.material || raw.wood_type || "",
     wood_type: raw.wood_type || raw.material || "",
+    // Keep customer choice separate from the original structural material.
+    requested_wood_type: String(raw.requested_wood_type || "").trim(),
     finish_color: finishColorCandidate || resolvedFill,
     color_mode: colorMode,
     hardware: raw.hardware || "",

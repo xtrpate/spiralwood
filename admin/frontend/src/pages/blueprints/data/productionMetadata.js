@@ -16,6 +16,12 @@ const MATERIAL_SUGGESTIONS = [
   "Walnut Wood",
   "Mahogany Wood",
   "Teak Wood",
+  "Acacia Wood",
+  "Narra Wood",
+  "Tanguile Wood",
+  "Gmelina Wood",
+  "Rubberwood",
+  "Maple Wood",
 ];
 
 const GRAIN_DIRECTION_OPTIONS = [

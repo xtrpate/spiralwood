@@ -475,6 +475,13 @@ function normalizeComponent(c) {
     fill: resolvedFill,
     color: explicitColor || resolvedFill,
     material: resolvedMaterial,
+    // W5: Preserve the customer's requested actual wood and Admin's review
+    // stamp through Load -> Edit -> Save -> Reload, without silently changing
+    // geometry, old substrate fields or the accepted quotation.
+    requested_wood_type: String(c.requested_wood_type || "").trim(),
+    woodMaterialValidationSignature: String(
+      c.woodMaterialValidationSignature || "",
+    ).slice(0, 320),
     // Exact inventory identity travels with the design and is NOT a billable estimate row.
     raw_material_id: constructionMethod === "single" &&
       Number.isSafeInteger(Number(c.raw_material_id)) && Number(c.raw_material_id) > 0

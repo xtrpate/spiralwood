@@ -42,6 +42,7 @@ const ESTIMATION_ITEM_SOURCE_TYPES = new Set([
   "cutlist",
   "blueprint_part",
   "inventory_material",
+  "wood_reference",
   "other",
   "manual",
 ]);
@@ -71,9 +72,9 @@ function normalizeEstimationItems(items = []) {
           ? "inventory_material"
           : requestedSourceType || "other";
       const normalizedUnitCost =
-        sourceType === "inventory_material" ? 0 : unitCost;
+        sourceType === "inventory_material" || sourceType === "wood_reference" ? 0 : unitCost;
       const subtotal =
-        sourceType === "inventory_material"
+        sourceType === "inventory_material" || sourceType === "wood_reference"
           ? 0
           : item.subtotal != null
             ? Number(item.subtotal) || 0
@@ -83,6 +84,7 @@ function normalizeEstimationItems(items = []) {
         id: item.id || index + 1,
         component_id: item.component_id ? Number(item.component_id) : null,
         raw_material_id: rawMaterialId,
+        wood_type: String(item.wood_type || "").trim().toLowerCase(),
         name: String(item.name || item.description || "").trim(),
         description: String(item.description || item.name || "").trim(),
         quantity,
@@ -115,6 +117,7 @@ function validateEstimationItems(items = []) {
   }
 
   const seenInventoryMaterialIds = new Set();
+  const seenWoodTypes = new Set();
 
   items.forEach((rawItem, index) => {
     const rowLabel = `Item ${index + 1}`;
@@ -148,7 +151,7 @@ function validateEstimationItems(items = []) {
     }
 
     const requiresWholeQuantity =
-      sourceType === "inventory_material" || sourceType === "other";
+      sourceType === "inventory_material" || sourceType === "wood_reference" || sourceType === "other";
 
     if (
       requiresWholeQuantity &&
@@ -169,7 +172,7 @@ function validateEstimationItems(items = []) {
     }
 
     if (
-      sourceType !== "inventory_material" &&
+      sourceType !== "inventory_material" && sourceType !== "wood_reference" &&
       (!Number.isFinite(unitCost) || unitCost < 0.01 || unitCost > 100000000)
     ) {
       throw createValidationError(
@@ -178,7 +181,7 @@ function validateEstimationItems(items = []) {
     }
 
     if (
-      sourceType === "inventory_material" &&
+      (sourceType === "inventory_material" || sourceType === "wood_reference") &&
       (!Number.isFinite(unitCost) || unitCost < 0 || unitCost > 100000000)
     ) {
       throw createValidationError(
@@ -226,6 +229,14 @@ function validateEstimationItems(items = []) {
       throw createValidationError(
         `${rowLabel}: Select an inventory material before saving.`,
       );
+    }
+    if (sourceType === "wood_reference") {
+      const woodType = String(rawItem.wood_type || "").trim().toLowerCase();
+      const { findWoodReference } = require("../../utils/blueprintWoodReferencePrices");
+      if (!findWoodReference(woodType) || rawMaterialId !== null || unit !== "plank" || seenWoodTypes.has(woodType)) {
+        throw createValidationError(`${rowLabel}: Select one unique wood type with unit plank, without an inventory material.`);
+      }
+      seenWoodTypes.add(woodType);
     }
 
     if (sourceType === "other" && rawMaterialId !== null) {

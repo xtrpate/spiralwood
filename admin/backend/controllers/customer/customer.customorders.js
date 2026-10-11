@@ -493,6 +493,8 @@ const sanitizeEditorSnapshotForStorage = (snapshot = null) => {
 
         material: toTrimmedStringOrNull(comp?.material),
         wood_type: toTrimmedStringOrNull(comp?.wood_type),
+        // Customer's per-part wood request is not the production board material.
+        requested_wood_type: toTrimmedStringOrNull(comp?.requested_wood_type),
         finish: toTrimmedStringOrNull(comp?.finish),
         finish_id: toTrimmedStringOrNull(comp?.finish_id),
         woodFinish: toTrimmedStringOrNull(comp?.woodFinish),

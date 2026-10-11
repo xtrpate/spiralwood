@@ -39,6 +39,13 @@ import { getCustomerCabinetResizeSupport, planCustomerCabinetResize }
   from "../../utils/customerCabinetSafeResize";
 import { createFurnitureObject } from "../blueprints/3d/createFurnitureObjects";
 import { WOOD_FINISHES } from "../blueprints/data/furnitureTypes";
+import {
+  CUSTOMER_WOOD_TYPES,
+  resolveCustomerWoodType,
+  previewCustomerWoodTypes,
+  WOOD_PREVIEW_FINISH_ID,
+  getRequestedWoodTypeSummary,
+} from "./customerWoodTypes.mjs";
 import { applyWoodFinish } from "../blueprints/data/componentUtils";
 import "./customer3dviewer-roomle-complete.css";
 
@@ -214,9 +221,18 @@ const normalizeDimensions = (source = {}) => ({
 });
 
 const summarizeMetadata = (items = []) => {
-  const first = Array.isArray(items) ? items.find(Boolean) : null;
+  const parts = Array.isArray(items) ? items : [];
+  const first = parts.find(Boolean);
   return {
-    wood_type: String(first?.material || "").trim(),
+    // Customer's species requests are independent of structural blueprint materials.
+    wood_type: getRequestedWoodTypeSummary(parts) || String(first?.material || "").trim(),
+    requested_wood_types_by_part: parts
+      .filter((part) => resolveCustomerWoodType(part?.requested_wood_type))
+      .map((part) => ({
+        part_id: part.id,
+        part_name: String(part.label || part.name || "Part"),
+        wood_type: resolveCustomerWoodType(part.requested_wood_type),
+      })),
     finish_color: String(
       first?.finish_id ||
         first?.woodFinish ||
@@ -1705,6 +1721,7 @@ export default function Customer3DViewer({
   commentsPlaceholder = "Optional notes for this custom draft...",
   initialQuantity = 1,
   initialComments = "",
+  initialWoodType = "",
   referencePhotos = [],
   uploadError = "",
   onPickReferencePhotos,
@@ -1751,9 +1768,19 @@ export default function Customer3DViewer({
   const viewerRootRef = useRef(null);
   const dimensionLinesRef = useRef(null);
 
-  const [components, setComponents] = useState(() =>
-    normalizeViewerComponents(initialComponents),
-  );
+  // Keep a stable original visual snapshot for "Original" reset per part.
+  const originalViewerPartsRef = useRef(null);
+  if (originalViewerPartsRef.current === null) {
+    originalViewerPartsRef.current = normalizeViewerComponents(initialComponents);
+  }
+  const [components, setComponents] = useState(() => {
+    const blueprintWood = resolveCustomerWoodType(initialWoodType);
+    return originalViewerPartsRef.current.map((component) => ({
+      ...component,
+      requested_wood_type:
+        resolveCustomerWoodType(component?.requested_wood_type) || blueprintWood,
+    }));
+  });
   const [selectedCompIds, setSelectedCompIds] = useState([]);
   const [doorsPreviewOpen, setDoorsPreviewOpen] = useState(false);
   const [drawersPreviewOpen, setDrawersPreviewOpen] = useState(false);
@@ -2011,6 +2038,7 @@ export default function Customer3DViewer({
       height: customizationRules?.editable?.height !== false,
       depth: customizationRules?.editable?.depth !== false,
       finish_color: customizationRules?.editable?.finish_color !== false,
+      wood_type: customizationRules?.editable?.wood_type !== false,
       comments: customizationRules?.editable?.comments !== false,
       quantity: customizationRules?.editable?.quantity !== false,
     }),
@@ -4401,32 +4429,8 @@ export default function Customer3DViewer({
     }
   }, [showCustomizeFeedback]);
 
-  const finishCatalog = Array.isArray(WOOD_FINISHES) ? WOOD_FINISHES : [];
-
-  const getFinishPreviewChoices = (activeFinishId = "", limit = 3) => {
-    const safeLimit = Math.max(1, Number(limit) || 3);
-    const firstChoices = finishCatalog.slice(0, safeLimit);
-
-    if (
-      activeFinishId &&
-      activeFinishId !== "__mixed__" &&
-      !firstChoices.some((finish) => finish.id === activeFinishId)
-    ) {
-      const activeFinish = finishCatalog.find(
-        (finish) => finish.id === activeFinishId,
-      );
-
-      if (activeFinish) {
-        return [
-          ...firstChoices.slice(0, Math.max(0, safeLimit - 1)),
-          activeFinish,
-        ];
-      }
-    }
-
-    return firstChoices;
-  };
-
+  // Keep existing 3D finish engine internally for woodgrain previews.
+  // The customer-facing circles now show only the ten requested wood species.
   const getDimensionFieldError = useCallback(
     (rawValue, { minMm = 1, maxMm = Infinity, label = "Size" } = {}) => {
       const text = String(rawValue ?? "").trim();
@@ -4758,6 +4762,58 @@ export default function Customer3DViewer({
     showCustomizeFeedback("Shelf moved within verified cabinet limits.");
   };
 
+  const handleWoodTypeChange = (woodLabel, targetIdsOverride = null) => {
+    if (!isCustomizable || readOnly || !editable.wood_type) return;
+    const chosen = CUSTOMER_WOOD_TYPES.find((wood) => wood.label === woodLabel);
+    if (woodLabel && !chosen) return;
+    const targetIds = Array.isArray(targetIdsOverride) && targetIdsOverride.length
+      ? targetIdsOverride
+      : components.map((component) => component.id);
+    const originalMap = new Map(
+      (originalViewerPartsRef.current || []).map((component) => [component.id, component]),
+    );
+    commitComponents((prev) => prev.map((component) => {
+      if (!targetIds.includes(component.id)) return component;
+      if (!chosen) {
+        const original = originalMap.get(component.id) || {};
+        return {
+          ...component,
+          fill: original.fill ?? component.fill,
+          color: original.color ?? component.color,
+          finish: original.finish ?? "",
+          finish_id: original.finish_id ?? "",
+          woodFinish: original.woodFinish ?? "",
+          finish_color: original.finish_color ?? "",
+          color_mode: original.color_mode ?? "",
+          requested_wood_type: "",
+        };
+      }
+      const finishId = WOOD_PREVIEW_FINISH_ID[chosen.id];
+      const preview = applyWoodFinish(component, finishId);
+      const previewHex = getFinishPreviewColor(
+        finishId, preview?.fill || chosen.swatch,
+      );
+      return {
+        ...component,
+        ...preview,
+        fill: previewHex,
+        color: previewHex,
+        finish: finishId,
+        finish_id: finishId,
+        woodFinish: finishId,
+        finish_color: previewHex,
+        color_mode: "wood",
+        // This is a request, not a change to material or panel thickness.
+        material: component.material,
+        requested_wood_type: chosen.label,
+      };
+    }));
+    setCustomizeProgressStep((step) => Math.max(step, 5));
+    showCustomizeFeedback(chosen
+      ? chosen.label + " requested. Admin will confirm materials."
+      : "Original appearance restored for selected parts.");
+  };
+
   const handleFinishChange = (finishId, targetIdsOverride = null) => {
     if (!isCustomizable || readOnly || !editable.finish_color) return;
     setCustomizeProgressStep((current) => Math.max(current, 5));
@@ -4799,6 +4855,11 @@ export default function Customer3DViewer({
 
   const handleApply = () => {
     if (typeof onApply !== "function") return;
+
+    if (isCustomizable && editable.wood_type && !getRequestedWoodTypeSummary(components)) {
+      showCustomizeFeedback("Choose a wood type for the furniture or a part before adding to cart.");
+      return;
+    }
 
     const parsedQuantity = Number(quantity);
 
@@ -5583,124 +5644,65 @@ export default function Customer3DViewer({
 
               {partListVisible ? (
                 <>
-                  <section className="wisdom-config-section wisdom-config-whole">
+                  <section className="wisdom-config-section wisdom-config-whole" aria-label="Whole Furniture Wood Type">
                     <div className="wisdom-config-section-head wisdom-config-section-head-static">
                       <button
                         type="button"
                         className="wisdom-config-part-title-btn"
                         onClick={() => setSelectedCompIds([])}
                       >
-                        <span className="wisdom-config-section-title">
-                          WHOLE FURNITURE
-                        </span>
-                        <span className="wisdom-config-section-note">
-                          Apply one wood finish to the complete design
-                        </span>
+                        <span className="wisdom-config-section-title">WHOLE FURNITURE</span>
+                        <span className="wisdom-config-section-note">Choose wood for all parts</span>
                       </button>
                     </div>
-
                     {(() => {
                       const groupKey = "__whole__";
+                      const requested = components.map((component) =>
+                        resolveCustomerWoodType(component.requested_wood_type));
+                      const uniformWood = requested.length && new Set(requested).size === 1
+                        ? requested[0] : "__mixed__";
                       const showAll = expandedFinishGroupLabel === groupKey;
-                      const previewFinishes = getFinishPreviewChoices(
-                        uniformFinishId,
-                        3,
-                      );
-                      const finishesToRender = showAll
-                        ? finishCatalog
-                        : previewFinishes;
-                      const hiddenCount = Math.max(
-                        0,
-                        finishCatalog.length - previewFinishes.length,
-                      );
-
+                      const previewWoods = previewCustomerWoodTypes(uniformWood, 3);
+                      const choices = showAll ? CUSTOMER_WOOD_TYPES : previewWoods;
                       return (
-                        <div
-                          className={
-                            "wisdom-finish-preview-grid" +
-                            (showAll ? " show-all" : "")
-                          }
-                        >
+                        <div className={"wisdom-finish-preview-grid" + (showAll ? " show-all" : "")}>
                           <button
                             type="button"
-                            className={
-                              "wisdom-finish-choice" +
-                              (!uniformFinishId ? " is-active" : "")
-                            }
+                            className={"wisdom-finish-choice" + (!uniformWood ? " is-active" : "")}
+                            disabled={!editable.wood_type}
                             onClick={() => {
                               setSelectedCompIds([]);
-                              handleFinishChange(
-                                "",
-                                components.map((component) => component.id),
-                              );
+                              handleWoodTypeChange("", components.map((component) => component.id));
                             }}
                           >
                             <span className="wisdom-finish-circle wisdom-finish-original">
-                              {!uniformFinishId ? (
-                                <span className="wisdom-finish-check">✓</span>
-                              ) : null}
+                              {!uniformWood ? <span className="wisdom-finish-check">✓</span> : null}
                             </span>
-                            <span className="wisdom-finish-label">
-                              Original
-                            </span>
+                            <span className="wisdom-finish-label">Original</span>
                           </button>
-
-                          {finishesToRender.map((finish) => (
+                          {choices.map((wood) => (
                             <button
-                              key={"whole_" + finish.id}
+                              key={"whole_" + wood.id}
                               type="button"
-                              className={
-                                "wisdom-finish-choice" +
-                                (uniformFinishId === finish.id
-                                  ? " is-active"
-                                  : "")
-                              }
+                              className={"wisdom-finish-choice" + (uniformWood === wood.label ? " is-active" : "")}
+                              aria-pressed={uniformWood === wood.label}
+                              disabled={!editable.wood_type}
                               onClick={() => {
                                 setSelectedCompIds([]);
-                                handleFinishChange(
-                                  finish.id,
-                                  components.map((component) => component.id),
-                                );
+                                handleWoodTypeChange(wood.label, components.map((component) => component.id));
                               }}
                             >
-                              <span
-                                className="wisdom-finish-circle"
-                                style={{
-                                  background:
-                                    finish.front ||
-                                    finish.carcass ||
-                                    finish.inside ||
-                                    finish.color ||
-                                    finish.hex ||
-                                    "#dddddd",
-                                }}
-                              >
-                                {uniformFinishId === finish.id ? (
-                                  <span className="wisdom-finish-check">✓</span>
-                                ) : null}
+                              <span className="wisdom-finish-circle" style={{ background: wood.swatch }}>
+                                {uniformWood === wood.label ? <span className="wisdom-finish-check">✓</span> : null}
                               </span>
-                              <span className="wisdom-finish-label">
-                                {finish.label}
-                              </span>
+                              <span className="wisdom-finish-label">{wood.label}</span>
                             </button>
                           ))}
-
-                          {finishCatalog.length > previewFinishes.length ? (
-                            <button
-                              type="button"
-                              className="wisdom-finish-more-choice"
-                              onClick={() =>
-                                setExpandedFinishGroupLabel((current) =>
-                                  current === groupKey ? "" : groupKey,
-                                )
-                              }
-                            >
-                              <span className="wisdom-finish-more-circle">
-                                {showAll ? "−" : "+" + hiddenCount}
-                              </span>
-                              <span className="wisdom-finish-label">
-                                {showAll ? "Show less" : "Show all"}
-                              </span>
+                          {CUSTOMER_WOOD_TYPES.length > previewWoods.length ? (
+                            <button type="button" className="wisdom-finish-more-choice"
+                              onClick={() => setExpandedFinishGroupLabel((current) => current === groupKey ? "" : groupKey)}>
+                              <span className="wisdom-finish-more-circle">{showAll ? "−" : "+" + (CUSTOMER_WOOD_TYPES.length - previewWoods.length)}</span>
+                              <span className="wisdom-finish-label">{showAll ? "Show less" : "Show all"}</span>
                             </button>
                           ) : null}
                         </div>
@@ -5714,50 +5716,26 @@ export default function Customer3DViewer({
                         group.ids.includes(component.id),
                       ) || null;
 
-                    const finishTargetIds = getCustomerFinishGroupTargetIds(
+                    const woodTargetIds = getCustomerFinishGroupTargetIds(
                       group,
                       selectedCompIds,
                       components,
                     );
-                    const activeFinishParts = components.filter((component) =>
-                      finishTargetIds.includes(component.id),
+                    const activeWoodParts = components.filter((component) =>
+                      woodTargetIds.includes(component.id),
                     );
-                    const finishIds = activeFinishParts.map((component) =>
-                      String(
-                        component?.finish_id ||
-                          component?.woodFinish ||
-                          component?.finish ||
-                          "",
-                      ).trim(),
+                    const requested = activeWoodParts.map((component) =>
+                      resolveCustomerWoodType(component.requested_wood_type),
                     );
-                    const groupFinishId =
-                      group.label === "Doors"
-                        ? finishIds.length && new Set(finishIds).size === 1
-                          ? finishIds[0]
-                          : "__mixed__"
-                        : String(
-                            representative?.finish_id ||
-                              representative?.woodFinish ||
-                              representative?.finish ||
-                              "",
-                          ).trim();
-
+                    const groupWood = requested.length && new Set(requested).size === 1
+                      ? requested[0] : "__mixed__";
                     const groupSelected = group.ids.some((id) =>
                       selectedCompIds.includes(id),
                     );
-
                     const showAll = expandedFinishGroupLabel === group.label;
-                    const previewFinishes = getFinishPreviewChoices(
-                      groupFinishId,
-                      3,
-                    );
-                    const finishesToRender = showAll
-                      ? finishCatalog
-                      : previewFinishes;
-                    const hiddenCount = Math.max(
-                      0,
-                      finishCatalog.length - previewFinishes.length,
-                    );
+                    const previewWoods = previewCustomerWoodTypes(groupWood, 3);
+                    const choices = showAll ? CUSTOMER_WOOD_TYPES : previewWoods;
+                    const hiddenCount = Math.max(0, CUSTOMER_WOOD_TYPES.length - previewWoods.length);
 
                     return (
                       <section
@@ -5795,96 +5773,54 @@ export default function Customer3DViewer({
                           ) : null}
                         </div>
 
-                        <div
-                          className={
-                            "wisdom-finish-preview-grid" +
-                            (showAll ? " show-all" : "")
-                          }
-                        >
-                          <button
-                            type="button"
-                            className={
-                              "wisdom-finish-choice" +
-                              (!groupFinishId ? " is-active" : "")
-                            }
+                        <div className={"wisdom-finish-preview-grid" + (showAll ? " show-all" : "")}>
+                          <button type="button"
+                            className={"wisdom-finish-choice" + (!groupWood ? " is-active" : "")}
+                            disabled={!editable.wood_type}
                             onClick={() => {
-                              setSelectedCompIds(finishTargetIds);
-                              handleFinishChange("", finishTargetIds);
-                            }}
-                          >
+                              setSelectedCompIds(woodTargetIds);
+                              handleWoodTypeChange("", woodTargetIds);
+                            }}>
                             <span className="wisdom-finish-circle wisdom-finish-original">
-                              {!groupFinishId ? (
-                                <span className="wisdom-finish-check">✓</span>
-                              ) : null}
+                              {!groupWood ? <span className="wisdom-finish-check">✓</span> : null}
                             </span>
-                            <span className="wisdom-finish-label">
-                              Original
-                            </span>
+                            <span className="wisdom-finish-label">Original</span>
                           </button>
-
-                          {finishesToRender.map((finish) => (
+                          {choices.map((wood) => (
                             <button
-                              key={group.label + "_" + finish.id}
+                              key={group.label + "_" + wood.id}
                               type="button"
-                              className={
-                                "wisdom-finish-choice" +
-                                (groupFinishId === finish.id
-                                  ? " is-active"
-                                  : "")
-                              }
+                              className={"wisdom-finish-choice" + (groupWood === wood.label ? " is-active" : "")}
+                              aria-pressed={groupWood === wood.label}
+                              disabled={!editable.wood_type}
                               onClick={() => {
-                                setSelectedCompIds(finishTargetIds);
-                                handleFinishChange(finish.id, finishTargetIds);
-                              }}
-                            >
-                              <span
-                                className="wisdom-finish-circle"
-                                style={{
-                                  background:
-                                    finish.front ||
-                                    finish.carcass ||
-                                    finish.inside ||
-                                    finish.color ||
-                                    finish.hex ||
-                                    "#dddddd",
-                                }}
-                              >
-                                {groupFinishId === finish.id ? (
-                                  <span className="wisdom-finish-check">✓</span>
-                                ) : null}
+                                setSelectedCompIds(woodTargetIds);
+                                handleWoodTypeChange(wood.label, woodTargetIds);
+                              }}>
+                              <span className="wisdom-finish-circle" style={{ background: wood.swatch }}>
+                                {groupWood === wood.label ? <span className="wisdom-finish-check">✓</span> : null}
                               </span>
-                              <span className="wisdom-finish-label">
-                                {finish.label}
-                              </span>
+                              <span className="wisdom-finish-label">{wood.label}</span>
                             </button>
                           ))}
-
-                          {finishCatalog.length > previewFinishes.length ? (
-                            <button
-                              type="button"
-                              className="wisdom-finish-more-choice"
-                              onClick={() =>
-                                setExpandedFinishGroupLabel((current) =>
-                                  current === group.label ? "" : group.label,
-                                )
-                              }
-                            >
-                              <span className="wisdom-finish-more-circle">
-                                {showAll ? "−" : "+" + hiddenCount}
-                              </span>
-                              <span className="wisdom-finish-label">
-                                {showAll ? "Show less" : "Show all"}
-                              </span>
+                          {CUSTOMER_WOOD_TYPES.length > previewWoods.length ? (
+                            <button type="button" className="wisdom-finish-more-choice"
+                              onClick={() => setExpandedFinishGroupLabel((current) => current === group.label ? "" : group.label)}>
+                              <span className="wisdom-finish-more-circle">{showAll ? "−" : "+" + hiddenCount}</span>
+                              <span className="wisdom-finish-label">{showAll ? "Show less" : "Show all"}</span>
                             </button>
                           ) : null}
                         </div>
                         {group.label === "Doors" ? (
                           <div style={styles.helperTextMuted}>
-                            {finishTargetIds.length === 1
-                              ? "Finish changes only the selected door. Click DOORS to select both."
-                              : "Finish changes both doors. Choose one above for a single door."}
+                            {woodTargetIds.length === 1
+                              ? "Wood choice changes only the selected door. Click DOORS to select both."
+                              : "Wood choice changes both doors. Choose one above for a single door."}
                           </div>
                         ) : null}
+                        <div style={styles.helperTextMuted}>
+                          Requested wood only. Admin will verify the actual materials and thickness.
+                        </div>
                       </section>
                     );
                   })}

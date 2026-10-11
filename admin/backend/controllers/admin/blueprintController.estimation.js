@@ -28,6 +28,14 @@ const {
   validateBlueprintEstimateQuantities,
 } = require("../../utils/blueprintEstimateQuantityIntegrity");
 const { emitBlueprintUpdate } = require("../../utils/orderStatusSocket");
+const {
+  allocateFixedMarkupQuote,
+} = require("../../utils/blueprintPricingFormula");
+const {
+  computeProductionCostWithManualWood,
+  validateRequestedWoodCoverage,
+} = require("../../utils/blueprintWoodCostingW4");
+const { WOOD_REFERENCE_PRICES, WOOD_REFERENCE_PRICE_VERSION, findWoodReference } = require("../../utils/blueprintWoodReferencePrices");
 
 const checkQuotationInventoryReadiness = async (
   conn,
@@ -46,6 +54,14 @@ const checkQuotationInventoryReadiness = async (
   );
 
   if (!inventoryItems.length) {
+    const woodItems = snapshotItems.filter((row) =>
+      String(row?.source_type || "").toLowerCase() === "wood_reference",
+    );
+    if (woodItems.length > 0 &&
+        estimationMeta?.costing_formula?.material_cost_status === "priced") {
+      // W4 manual wood planks are not warehouse stock reservations.
+      return { ready: true, issues: [] };
+    }
     return {
       ready: false,
       issues: [
@@ -225,6 +241,7 @@ exports.getEstimation = async (req, res) => {
             status: autoDraft.status || "draft",
             auto_generated: true,
             auto_source: autoDraft.source || "unknown",
+            wood_reference_prices: WOOD_REFERENCE_PRICES,
             is_recovery_draft: true,
             persisted: false,
             items: autoDraft.items || [],
@@ -265,6 +282,7 @@ exports.getEstimation = async (req, res) => {
         status: autoDraft.status || "draft",
         auto_generated: true,
         auto_source: autoDraft.source || "unknown",
+        wood_reference_prices: WOOD_REFERENCE_PRICES,
         items: autoDraft.items || [],
         material_cost: autoDraft.material_cost || 0,
         items_total: autoDraft.items_total || 0,
@@ -341,6 +359,12 @@ exports.getEstimation = async (req, res) => {
     const labor_cost = Number.isFinite(laborCostRaw)
       ? laborCostRaw
       : Number(meta.labor_cost || 0);
+    const isF2Quote =
+      meta.costing_formula?.version === "PRICING-F2" &&
+      meta.costing_formula?.connected_to_quotation_totals === true;
+    const production_labor_cost = isF2Quote
+      ? Number(meta.costing_formula.production_labor_cost)
+      : labor_cost;
     const overhead_cost = Number(meta.overhead_cost) || 0;
     const additional_delivery_fee = Math.max(
       0,
@@ -385,7 +409,11 @@ exports.getEstimation = async (req, res) => {
       material_cost,
       items_total: material_cost,
       inventory_pricing_mode,
+      costing_formula: meta.costing_formula || null,
+      wood_reference_prices: WOOD_REFERENCE_PRICES,
       labor_cost,
+      production_labor_cost,
+      billable_labor_cost: labor_cost,
       overhead_cost,
       additional_delivery_fee,
       tax_rate,
@@ -703,12 +731,37 @@ exports.saveEstimation = async (req, res) => {
           : 1;
     }
 
+    const canonicalDesign = safeJsonParse(quantityBlueprint?.design_data, {}) || {};
     validateBlueprintEstimateQuantities({
-      designData: safeJsonParse(quantityBlueprint?.design_data, {}) || {},
+      designData: canonicalDesign,
       orderQuantity: canonicalOrderQuantity,
       items: normalizedItems,
     });
+    try {
+      validateRequestedWoodCoverage({ blueprintComponents: canonicalDesign.components, items: normalizedItems });
+    } catch (error) {
+      throw createValidationError(error.message);
+    }
 
+    // Canonicalize manual wood entries on the server, not from submitted labels or rates.
+    normalizedItems = normalizedItems.map((item) => {
+      if (item.source_type !== "wood_reference") return item;
+      const wood = findWoodReference(item.wood_type);
+      if (!wood) throw createValidationError("Choose a valid W3 wood reference.");
+      return {
+        ...item,
+        name: `${wood.name} Plank`,
+        description: `${wood.name} Plank`,
+        wood_type: wood.id,
+        unit: "plank",
+        raw_material_id: null,
+        unit_cost: 0,
+        subtotal: 0,
+      };
+    });
+
+    // Server-priced raw material snapshot; NEVER trust browser-supplied unit_cost.
+    let costingMaterialMap = new Map();
     const rawMaterialIds = [
       ...new Set(
         normalizedItems
@@ -735,6 +788,16 @@ exports.saveEstimation = async (req, res) => {
       const rawMaterialMap = new Map(
         rawMaterialRows.map((row) => [Number(row.id), row]),
       );
+      costingMaterialMap = rawMaterialMap;
+
+      const referencedWoods = normalizedItems.filter((row) => row.source_type === "wood_reference")
+        .map((row) => String(row.wood_type || "").toLowerCase());
+      for (const material of rawMaterialRows) {
+        const name = String(material.name || "").toLowerCase();
+        if (referencedWoods.some((wood) => name.includes(wood) && /\b(plank|lumber|timber)\b/.test(name))) {
+          throw createValidationError(`Cannot charge the same wood stock through both hardcoded plank pricing and Inventory: ${material.name}.`);
+        }
+      }
 
       normalizedItems = normalizedItems.map((item) => {
         if (!item.raw_material_id) return item;
@@ -800,15 +863,62 @@ exports.saveEstimation = async (req, res) => {
       }
     }
 
+    // PRICING-F2: the browser's part rates are allocation weights only. The
+    // actual selling price comes solely from the DB-backed F1 cost + 20%.
+    const productionCost = computeProductionCostWithManualWood({
+      items: normalizedItems,
+      materialsById: costingMaterialMap,
+      laborCost: laborCostInput,
+    });
+    let costing_formula = productionCost;
+    let billableLaborCost = laborCostInput;
+    if (productionCost.material_cost_status === "priced") {
+      let quoted;
+      try {
+        quoted = allocateFixedMarkupQuote({
+          items: normalizedItems,
+          materialCost: productionCost.material_cost,
+          productionLaborCost: laborCostInput,
+        });
+      } catch (error) {
+        throw createValidationError(error.message);
+      }
+      normalizedItems = quoted.items;
+      billableLaborCost = quoted.billable_labor_cost;
+      costing_formula = {
+        ...productionCost,
+        version: "PRICING-F2",
+        connected_to_quotation_totals: true,
+        furniture_parts_selling_total: quoted.furniture_parts_total,
+        billable_labor_cost: quoted.billable_labor_cost,
+        price_allocation_rounding: quoted.price_allocation_rounding,
+        quotation_furniture_selling_total: quoted.furniture_selling_total,
+      };
+    }
+
     const totals = computeEstimationTotals({
       items: normalizedItems,
-      labor_cost: laborCostInput,
+      labor_cost: billableLaborCost,
       overhead_cost: overheadCostInput,
       additional_delivery_fee: preservedAdditionalDeliveryFee,
       tax_rate: taxRateInput,
       discount: discountInput,
       inventory_pricing_mode: "tracking_only",
     });
+
+    if (costing_formula.connected_to_quotation_totals) {
+      // The persisted columns use DECIMAL(...,2). Round once on the server
+      // before saving and return the identical values to the Admin preview.
+      const cents = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
+      totals.material_cost = cents(totals.material_cost);
+      totals.items_total = cents(totals.items_total);
+      totals.labor_cost = cents(totals.labor_cost);
+      totals.subtotal = cents(totals.subtotal);
+      totals.discount_amount = cents(totals.subtotal * totals.discount_rate / 100);
+      const discounted = cents(totals.subtotal - totals.discount_amount);
+      totals.tax_amount = cents(discounted * totals.tax_rate / 100);
+      totals.grand_total = cents(discounted + totals.tax_amount);
+    }
 
     // Version calculation uses the lifecycle-valid estimation only — a
     // stale row is never used to derive the next version number, so a
@@ -831,6 +941,7 @@ exports.saveEstimation = async (req, res) => {
       discount_amount: totals.discount_amount,
       notes: notesInput,
       inventory_pricing_mode: "tracking_only",
+      costing_formula,
       material_cost: totals.material_cost,
       items_total: totals.items_total,
       subtotal: totals.subtotal,
@@ -945,7 +1056,10 @@ exports.saveEstimation = async (req, res) => {
         material_cost: totals.material_cost,
         items_total: totals.items_total,
         inventory_pricing_mode: "tracking_only",
+        costing_formula,
         labor_cost: totals.labor_cost,
+        production_labor_cost: productionCost.production_labor_cost,
+        billable_labor_cost: totals.labor_cost,
         overhead_cost: totals.overhead_cost,
         additional_delivery_fee: totals.additional_delivery_fee,
         tax_rate: totals.tax_rate,
@@ -1141,6 +1255,79 @@ exports.approveEstimation = async (req, res) => {
         message:
           "Quotation state changed before it could be sent. Please refresh and try again.",
         integrity_reason: "ESTIMATION_STATE_CHANGED",
+      });
+    }
+
+    const quoteMeta = safeJsonParse(latestEstimation.estimation_data, {}) || {};
+    const priced = quoteMeta.costing_formula;
+    if (priced?.version !== "PRICING-F2" ||
+        priced?.connected_to_quotation_totals !== true ||
+        priced?.material_cost_status !== "priced") {
+      await conn.rollback();
+      return res.status(409).json({
+        message: "Save this draft again with verified Required Material costs and the fixed 20% markup before sending.",
+        integrity_reason: "PRICING_F2_NOT_READY",
+      });
+    }
+
+    // Reconfirm supplier cost did not change between draft save and send.
+    // Never silently send an outdated material-cost quotation.
+    const pricedMaterials = (Array.isArray(quoteMeta.items) ? quoteMeta.items : [])
+      .filter((row) => String(row?.source_type || "").toLowerCase() === "inventory_material");
+    const pricedIds = [...new Set(pricedMaterials.map((row) => Number(row.raw_material_id)))];
+    const quoteWoodRows = (Array.isArray(quoteMeta.items) ? quoteMeta.items : [])
+      .filter((row) => String(row?.source_type || "").toLowerCase() === "wood_reference");
+    if (quoteWoodRows.length && priced.wood_reference_version !== WOOD_REFERENCE_PRICE_VERSION) {
+      await conn.rollback();
+      return res.status(409).json({ message: "Wood reference prices changed. Review and save the estimate again.", integrity_reason: "WOOD_REFERENCE_PRICE_VERSION_CHANGED" });
+    }
+    if ((!pricedIds.length && !quoteWoodRows.length) ||
+        pricedIds.some((id) => !Number.isSafeInteger(id) || id <= 0)) {
+      await conn.rollback();
+      return res.status(409).json({
+        message: "Required materials are missing. Save the estimation again.",
+        integrity_reason: "PRICING_MATERIALS_MISSING",
+      });
+    }
+    let currentMaterialPriceMap = new Map();
+    if (pricedIds.length) {
+      const [currentMaterialPrices] = await conn.query(
+        `SELECT id, name, unit_cost FROM raw_materials
+         WHERE id IN (${pricedIds.map(() => "?").join(",")})
+         ORDER BY id FOR UPDATE`,
+        pricedIds,
+      );
+      currentMaterialPriceMap = new Map(currentMaterialPrices.map((row) => [Number(row.id), row]));
+      const woodIds = quoteWoodRows.map((row) => String(row.wood_type || "").toLowerCase());
+      if (currentMaterialPrices.some((material) =>
+        woodIds.some((wood) => String(material.name || "").toLowerCase().includes(wood) &&
+          /\b(plank|lumber|timber)\b/.test(String(material.name || "").toLowerCase())))) {
+        await conn.rollback();
+        return res.status(409).json({ message: "Wood plank is counted twice; remove duplicate Inventory wood.", integrity_reason: "WOOD_COST_DUPLICATE" });
+      }
+    }
+    let latestCostSnapshot;
+    try {
+      const [[quoteBlueprint]] = await conn.query(
+        `SELECT design_data FROM blueprints WHERE id = ? LIMIT 1`, [blueprintId],
+      );
+      const quoteDesign = safeJsonParse(quoteBlueprint?.design_data, {}) || {};
+      validateRequestedWoodCoverage({ blueprintComponents: quoteDesign.components, items: quoteMeta.items });
+      latestCostSnapshot = computeProductionCostWithManualWood({
+        items: quoteMeta.items,
+        materialsById: currentMaterialPriceMap,
+        laborCost: Number(priced.production_labor_cost),
+      });
+    } catch {
+      latestCostSnapshot = null;
+    }
+    if (!latestCostSnapshot || latestCostSnapshot.material_cost_status !== "priced" ||
+        Math.abs(latestCostSnapshot.material_cost - Number(priced.material_cost)) > 0.001 ||
+        Math.abs(latestCostSnapshot.proposed_furniture_selling_price - Number(priced.proposed_furniture_selling_price)) > 0.001) {
+      await conn.rollback();
+      return res.status(409).json({
+        message: "Material unit costs changed or are incomplete. Refresh and save the quotation again before sending.",
+        integrity_reason: "PRICING_MATERIAL_COST_CHANGED",
       });
     }
 

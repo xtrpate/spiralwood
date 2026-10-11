@@ -3,6 +3,7 @@
 // Read-only export helper. No geometry, pricing, inventory, backend, or DB mutation.
 
 import { resolveProductionPartCode } from "../data/componentUtils";
+import { getPartsScheduleMaterialText } from "../data/actualWoodMaterialValidation.mjs";
 import {
   GRAIN_DIRECTION_OPTIONS,
   normalizeProductionMetadata,
@@ -42,7 +43,7 @@ function buildExplodedPartScheduleRows(components = []) {
           Number(component.depth) || 0,
           "mm",
         ),
-        material: cleanText(component.material) || "Material not set",
+        material: getPartsScheduleMaterialText(component),
         grain:
           GRAIN_LABELS[production.grainDirection] ||
           cleanText(production.grainDirection) ||

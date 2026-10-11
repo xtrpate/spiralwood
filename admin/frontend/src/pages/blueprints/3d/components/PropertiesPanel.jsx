@@ -7,6 +7,12 @@ import {
 } from "../../data/productionMetadata";
 import { displayToMm, formatDim, formatDims, mmToDisplay } from "../../data/utils";
 import { getInspectorPartThickness } from "../../data/inspectorPartThickness";
+import {
+  getRequestedActualWood,
+  getActualWoodValidationStatus,
+  getActualWoodValidationSignature,
+  matchesRequestedActualWood,
+} from "../../data/actualWoodMaterialValidation.mjs";
 import S from "../../styles/blueprintStyles";
 import { VIEWER_UI } from "../viewerUi";
 import {
@@ -3055,6 +3061,8 @@ export function PropertiesPanel({
   renderSmartBuild = null,
 }) {
   const selectedComp = liveSelectedComp || committedSelectedComp;
+  const requestedActualWood = getRequestedActualWood(selectedComp);
+  const actualWoodStatus = getActualWoodValidationStatus(selectedComp);
   const hasSmartBuild = Boolean(renderSmartBuild);
   const partFunction = getPartFunctionChoice(selectedComp);
   const doorHinge = getDoorHingeChoice(selectedComp);
@@ -5466,19 +5474,59 @@ export function PropertiesPanel({
 
             <div style={{ marginBottom: 6 }}>
               <label style={S.floatingLabel}>Board Material</label>
-              <input
-                list="blueprint-production-materials"
+              <select
                 value={selectedComp.material || ""}
                 disabled={editorMode !== "editable" || isLocked(selectedComp)}
-                onChange={(e) => applyStyleChange({ material: e.target.value, raw_material_id: null })}
+                onChange={(e) => applyStyleChange({
+                  material: e.target.value,
+                  ...(requestedActualWood ? { wood_type: e.target.value } : {}),
+                  raw_material_id: null,
+                })}
                 style={inputStyle}
-              />
-              <datalist id="blueprint-production-materials">
+              >
+                <option value="" disabled>Select board material...</option>
+                {selectedComp.material &&
+                  !MATERIAL_SUGGESTIONS.includes(selectedComp.material) && (
+                    <option value={selectedComp.material}>
+                      {selectedComp.material} (Existing material)
+                    </option>
+                  )}
                 {MATERIAL_SUGGESTIONS.map((material) => (
-                  <option key={material} value={material} />
+                  <option key={material} value={material}>
+                    {material}
+                  </option>
                 ))}
-              </datalist>
+              </select>
             </div>
+
+            {requestedActualWood && (
+              <div style={{ marginBottom: 10, padding: 10, border: "1px solid #d1d5db", borderRadius: 4 }}>
+                <div style={{ fontSize: 12, fontWeight: 700 }}>
+                  Customer Requested Actual Wood: {requestedActualWood}
+                </div>
+                <div style={{ fontSize: 11, marginTop: 5 }}>
+                  {actualWoodStatus === "confirmed"
+                    ? "Confirmed for these part dimensions and material."
+                    : actualWoodStatus === "material_mismatch"
+                      ? `Material mismatch: set Board Material to ${requestedActualWood} Wood, then review the part dimensions and construction.`
+                      : "Review actual wood, dimensions, thickness and construction before confirming."}
+                </div>
+                <button
+                  type="button"
+                  disabled={editorMode !== "editable" || isLocked(selectedComp) ||
+                    !matchesRequestedActualWood(selectedComp) || actualWoodStatus === "confirmed"}
+                  onClick={() => onChange(selectedComp.id, {
+                    woodMaterialValidationSignature: getActualWoodValidationSignature(selectedComp),
+                  })}
+                  style={{ ...inputStyle, marginTop: 7, cursor: "pointer" }}
+                >
+                  {actualWoodStatus === "confirmed" ? "Material Confirmed" : "Confirm Actual Wood & Dimensions"}
+                </button>
+                <div style={{ fontSize: 11, marginTop: 5 }}>
+                  Manual Admin approval only. This does not calculate plank quantity or check fabrication feasibility.
+                </div>
+              </div>
+            )}
 
             {(isWoodLikeMaterial(selectedComp.material) ||
               selectedComp.finish !== undefined) && (

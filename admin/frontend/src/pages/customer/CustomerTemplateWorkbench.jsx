@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { extractCustomerBlueprintScene } from "./customerBlueprintAdapter";
 import { normalizeComponent } from "../blueprints/data/componentUtils";
 import Customer3DViewer from "./customer3dviewer";
+import { resolveCustomerWoodType } from "./customerWoodTypes.mjs";
 
 const MAX_REFERENCE_PHOTOS = 5;
 const MAX_REFERENCE_FILE_SIZE = 5 * 1024 * 1024;
@@ -18,8 +19,8 @@ const toPositiveNumber = (value) => {
 };
 
 const normalizeComponentList = (items = []) =>
-  (Array.isArray(items) ? items : []).map((item) =>
-    normalizeComponent({
+  (Array.isArray(items) ? items : []).map((item) => {
+    const normalized = normalizeComponent({
       ...item,
       color: item?.color ?? item?.fill ?? "",
       finish_color: item?.finish_color ?? item?.fill ?? item?.color ?? "",
@@ -27,8 +28,15 @@ const normalizeComponentList = (items = []) =>
       finish_id: item?.finish_id ?? item?.finish ?? item?.woodFinish ?? "",
       woodFinish: item?.woodFinish ?? item?.finish ?? item?.finish_id ?? "",
       color_mode: item?.color_mode || "",
-    }),
-  );
+    });
+    // normalizeComponent intentionally has a fixed production schema.
+    // Preserve this CUSTOMER REQUEST field explicitly in the cart snapshot,
+    // without changing production material/wood_type or panel geometry.
+    return {
+      ...normalized,
+      requested_wood_type: resolveCustomerWoodType(item?.requested_wood_type),
+    };
+  });
 
 const normalizeDimensions = (source = {}) => ({
   width_mm: toPositiveNumber(
@@ -343,6 +351,7 @@ export default function CustomerTemplateWorkbench({
       key={`${blueprint?.id || "blueprint"}_${readOnly ? "view" : "edit"}`}
       initialComponents={initialComponents}
       initialDimensions={initialDimensions}
+      initialWoodType={firstText(blueprint?.wood_type, blueprint?.primary_material)}
       customizationRules={blueprint?.customization_rules || {}}
       isCustomizable={!readOnly}
       readOnly={readOnly}

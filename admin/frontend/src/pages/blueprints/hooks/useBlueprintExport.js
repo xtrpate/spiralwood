@@ -9,6 +9,7 @@ import {
 } from "../export/exportBuilders";
 import { downloadBlueprintPdf } from "../export/blueprintPdfDownload";
 import { getOfficialOutputFidelityIssues } from "../data/technicalOutputUtils";
+import { getActualWoodMaterialIssues } from "../data/actualWoodMaterialValidation.mjs";
 
 export function useBlueprintExport({
   components,
@@ -31,6 +32,19 @@ export function useBlueprintExport({
     () => getOfficialOutputFidelityIssues(exportTargetComponents),
     [exportTargetComponents],
   );
+
+  const actualWoodIssues = useMemo(
+    () => getActualWoodMaterialIssues(exportTargetComponents),
+    [exportTargetComponents],
+  );
+
+  const woodValidationMessage = useMemo(() => {
+    if (!actualWoodIssues.length) return "";
+    return `Actual wood needs Admin review for ${actualWoodIssues.length} part(s). ` +
+      `First: ${actualWoodIssues[0].label} (requested ${actualWoodIssues[0].requestedWood}, ` +
+      `current ${actualWoodIssues[0].currentMaterial || "not set"}). ` +
+      "Update Board Material and confirm each part in Properties before official PDF/Print.";
+  }, [actualWoodIssues]);
 
   const outputFidelityMessage = useMemo(() => {
     if (!outputFidelityIssues.length) return "";
@@ -113,10 +127,9 @@ export function useBlueprintExport({
       return {
         pages,
         html: buildBlueprintDocumentHtml(pages, {
-          previewWarning:
-            previewOnly && outputFidelityMessage
-              ? `PREVIEW ONLY — ${outputFidelityMessage}`
-              : "",
+          previewWarning: previewOnly && (woodValidationMessage || outputFidelityMessage)
+            ? `PREVIEW ONLY — ${[woodValidationMessage, outputFidelityMessage].filter(Boolean).join(" ")}`
+            : "",
         }),
       };
     } catch (error) {
@@ -127,6 +140,7 @@ export function useBlueprintExport({
   }, [
     exportTargetComponents,
     outputFidelityMessage,
+    woodValidationMessage,
     exportTargetLabel,
     exportTargetMaterials,
     exportTargetBounds,
@@ -149,6 +163,11 @@ export function useBlueprintExport({
       toast.error(
         `Fix ${errors.length} Blueprint ${errors.length === 1 ? "error" : "errors"} before downloading or printing.`,
       );
+      return false;
+    }
+
+    if (actualWoodIssues.length) {
+      toast.error(woodValidationMessage, { duration: 6500 });
       return false;
     }
 
@@ -184,6 +203,8 @@ export function useBlueprintExport({
   }, [
     designValidationReport,
     hasUnsavedDesignChanges,
+    actualWoodIssues,
+    woodValidationMessage,
     outputFidelityIssues,
     outputFidelityMessage,
   ]);

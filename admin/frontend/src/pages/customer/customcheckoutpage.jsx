@@ -319,6 +319,7 @@ const getCheckoutPartRows = (item = {}) => {
       firstCheckoutText(component?.material, component?.wood_type) ||
       firstCheckoutText(item?.wood_type) ||
       "—",
+    requestedWood: firstCheckoutText(component?.requested_wood_type),
     finish: resolveCheckoutPartFinish(component),
   }));
 };
@@ -573,6 +574,9 @@ export default function CustomCheckoutPage() {
   const partsModalRows = useMemo(
     () => (partsModalItem ? getCheckoutPartRows(partsModalItem) : []),
     [partsModalItem],
+  );
+  const partsHaveRequestedWood = partsModalRows.some(
+    (part) => Boolean(part.requestedWood),
   );
 
   const handleSubmit = async (e) => {
@@ -859,6 +863,9 @@ export default function CustomCheckoutPage() {
                       item?.customization_snapshot?.reference_photo_count || 0,
                     );
                 const checkoutParts = getCheckoutPartRows(item);
+                const hasRequestedWood = checkoutParts.some(
+                  (part) => Boolean(part.requestedWood),
+                );
 
                 return (
                   <div key={item.key} className="custom-final-review-grid">
@@ -963,7 +970,7 @@ export default function CustomCheckoutPage() {
                           </div>
                         ) : null}
 
-                        {hasMeaningfulCustomerSpec(
+                        {!hasRequestedWood && hasMeaningfulCustomerSpec(
                           item.finish_color || item.color,
                         ) ? (
                           <div>
@@ -1765,8 +1772,9 @@ export default function CustomCheckoutPage() {
                     color: "#6b7280",
                   }}
                 >
-                  Saved dimensions, material, and finish for every furniture
-                  part.
+                  Saved dimensions, material, and {partsHaveRequestedWood
+                    ? "requested wood"
+                    : "finish"} for every furniture part.
                 </span>
               </div>
 
@@ -1826,7 +1834,7 @@ export default function CustomCheckoutPage() {
                       ["Height", "11%"],
                       ["Depth", "11%"],
                       ["Material", "18%"],
-                      ["Finish / Color", "25%"],
+                      [partsHaveRequestedWood ? "Requested Wood" : "Finish / Color", "25%"],
                     ].map(([label, width]) => (
                       <th
                         key={label}
@@ -1907,7 +1915,7 @@ export default function CustomCheckoutPage() {
                             minWidth: 0,
                           }}
                         >
-                          {part.finish?.color ? (
+                          {!partsHaveRequestedWood && part.finish?.color ? (
                             <i
                               aria-hidden="true"
                               style={{
@@ -1920,7 +1928,11 @@ export default function CustomCheckoutPage() {
                               }}
                             />
                           ) : null}
-                          <span>{part.finish?.label || "—"}</span>
+                          <span>
+                            {partsHaveRequestedWood
+                              ? part.requestedWood || "Original (no wood request)"
+                              : part.finish?.label || "—"}
+                          </span>
                         </span>
                       </td>
                     </tr>

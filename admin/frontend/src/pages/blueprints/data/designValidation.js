@@ -175,6 +175,8 @@ const stableComponentSnapshot = (component = {}) => ({
   rotationY: roundMetric(component.rotationY, 1),
   rotationZ: roundMetric(component.rotationZ, 1),
   material: cleanText(component.material || component.wood_type),
+  requested_wood_type: cleanText(component.requested_wood_type),
+  woodMaterialValidationSignature: cleanText(component.woodMaterialValidationSignature),
   constructionMethod: cleanText(component.constructionMethod || "single"),
   constructionLayerCount: Number(component.constructionLayerCount) || 2,
   constructionStockId: Number(component.constructionStockId) || null,

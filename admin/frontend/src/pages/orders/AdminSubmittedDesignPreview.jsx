@@ -152,6 +152,17 @@ export default function AdminSubmittedDesignPreview({
         ? "Mixed materials"
         : firstText(item?.requested_wood_type, metadata?.wood_type) || "—";
 
+  const partWoodRequests = parts.map((part) =>
+    firstText(part?.requested_wood_type),
+  );
+  const uniqueWoodRequests = [...new Set(partWoodRequests.filter(Boolean))];
+  const hasWoodRequests = uniqueWoodRequests.length > 0;
+  const overallRequestedWood = hasWoodRequests
+    ? uniqueWoodRequests.length === 1 && partWoodRequests.every(Boolean)
+      ? uniqueWoodRequests[0]
+      : "Mixed Wood Types"
+    : "";
+
   const hardware = firstText(item?.requested_hardware, metadata?.hardware);
 
   if (!blueprint) return null;
@@ -216,6 +227,13 @@ export default function AdminSubmittedDesignPreview({
               <strong>{overallMaterial}</strong>
             </div>
 
+            {hasWoodRequests ? (
+              <div className="production-blueprint-detail-row">
+                <span>Requested Wood</span>
+                <strong>{overallRequestedWood}</strong>
+              </div>
+            ) : null}
+
             <div className="production-blueprint-detail-row">
               <span>Finish / Color</span>
               <strong>
@@ -251,6 +269,10 @@ export default function AdminSubmittedDesignPreview({
           <div className="admin-submitted-design-note">
             Read only. Doors and drawers can be opened for inspection without
             changing the customer&apos;s saved design.
+            {hasWoodRequests ? (
+              <p>Customer wood choices are requests only. Admin must verify
+                structural materials and thickness before quoting.</p>
+            ) : null}
           </div>
         </aside>
       </div>
@@ -260,7 +282,9 @@ export default function AdminSubmittedDesignPreview({
           <div>
             <h2>Parts &amp; Measurements</h2>
             <p>
-              Saved dimensions, material, and finish for every furniture part.
+              Saved dimensions, material, and {hasWoodRequests
+                ? "requested wood"
+                : "finish"} for every furniture part.
             </p>
           </div>
 
@@ -283,7 +307,7 @@ export default function AdminSubmittedDesignPreview({
                   <th>Height</th>
                   <th>Depth</th>
                   <th>Material</th>
-                  <th>Finish / Color</th>
+                  <th>{hasWoodRequests ? "Requested Wood" : "Finish / Color"}</th>
                 </tr>
               </thead>
               <tbody>
@@ -298,7 +322,10 @@ export default function AdminSubmittedDesignPreview({
                         overallMaterial}
                     </td>
                     <td>
-                      <FinishValue value={partFinishes[index]} />
+                      {hasWoodRequests
+                        ? firstText(part?.requested_wood_type) ||
+                          "Original (no wood request)"
+                        : <FinishValue value={partFinishes[index]} />}
                     </td>
                   </tr>
                 ))}
