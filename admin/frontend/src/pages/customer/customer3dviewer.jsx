@@ -46,7 +46,9 @@ import {
   WOOD_PREVIEW_FINISH_ID,
   getRequestedWoodTypeSummary,
 } from "./customerWoodTypes.mjs";
+import { isCustomerWoodEligibleComponent, getCustomerWoodEligibleTargetIds } from "./customerWoodEligibility.mjs";
 import { applyWoodFinish } from "../blueprints/data/componentUtils";
+import { getCustomerFurnitureDimensions } from "./customerGeometryBounds.mjs";
 import "./customer3dviewer-roomle-complete.css";
 
 const WORLD_W = 6400;
@@ -159,36 +161,8 @@ const clampNumber = (value, min, max) => {
 
 const cloneDeep = (value) => JSON.parse(JSON.stringify(value ?? null));
 
-const buildBoundsFromComponents = (items = []) => {
-  if (!Array.isArray(items) || !items.length) {
-    return { width_mm: 0, height_mm: 0, depth_mm: 0 };
-  }
-  const normalized = items
-    .map((item) => ({
-      x: toNum(item?.x, 0),
-      y: toNum(item?.y, 0),
-      z: toNum(item?.z, 0),
-      width: Math.max(1, toNum(item?.width, 0)),
-      height: Math.max(1, toNum(item?.height, 0)),
-      depth: Math.max(1, toNum(item?.depth, 0)),
-    }))
-    .filter((item) => item.width > 0 && item.height > 0 && item.depth > 0);
-
-  if (!normalized.length) return { width_mm: 0, height_mm: 0, depth_mm: 0 };
-
-  const minX = Math.min(...normalized.map((c) => c.x));
-  const minY = Math.min(...normalized.map((c) => c.y));
-  const minZ = Math.min(...normalized.map((c) => c.z));
-  const maxX = Math.max(...normalized.map((c) => c.x + c.width));
-  const maxY = Math.max(...normalized.map((c) => c.y + c.height));
-  const maxZ = Math.max(...normalized.map((c) => c.z + c.depth));
-
-  return {
-    width_mm: Math.max(1, Math.round(maxX - minX)),
-    height_mm: Math.max(1, Math.round(maxY - minY)),
-    depth_mm: Math.max(1, Math.round(maxZ - minZ)),
-  };
-};
+const buildBoundsFromComponents = (items = []) =>
+  getCustomerFurnitureDimensions(items);
 
 const getComponentExtents = (items = []) => {
   if (!Array.isArray(items) || !items.length) return null;
@@ -225,9 +199,10 @@ const summarizeMetadata = (items = []) => {
   const first = parts.find(Boolean);
   return {
     // Customer's species requests are independent of structural blueprint materials.
-    wood_type: getRequestedWoodTypeSummary(parts) || String(first?.material || "").trim(),
+    wood_type: getRequestedWoodTypeSummary(parts.filter(isCustomerWoodEligibleComponent)) || String(first?.material || "").trim(),
     requested_wood_types_by_part: parts
-      .filter((part) => resolveCustomerWoodType(part?.requested_wood_type))
+      .filter((part) => isCustomerWoodEligibleComponent(part) &&
+        resolveCustomerWoodType(part?.requested_wood_type))
       .map((part) => ({
         part_id: part.id,
         part_name: String(part.label || part.name || "Part"),
@@ -4769,11 +4744,15 @@ export default function Customer3DViewer({
     const targetIds = Array.isArray(targetIdsOverride) && targetIdsOverride.length
       ? targetIdsOverride
       : components.map((component) => component.id);
+    // Wood requests are choices about wooden fabrication parts, never hardware,
+    // metal rods, hinges, handles, glass, or other non-wood components.
+    const eligibleTargetIds = getCustomerWoodEligibleTargetIds(components, targetIds);
+    if (!eligibleTargetIds.size) return;
     const originalMap = new Map(
       (originalViewerPartsRef.current || []).map((component) => [component.id, component]),
     );
     commitComponents((prev) => prev.map((component) => {
-      if (!targetIds.includes(component.id)) return component;
+      if (!eligibleTargetIds.has(component.id)) return component;
       if (!chosen) {
         const original = originalMap.get(component.id) || {};
         return {
@@ -4856,10 +4835,8 @@ export default function Customer3DViewer({
   const handleApply = () => {
     if (typeof onApply !== "function") return;
 
-    if (isCustomizable && editable.wood_type && !getRequestedWoodTypeSummary(components)) {
-      showCustomizeFeedback("Choose a wood type for the furniture or a part before adding to cart.");
-      return;
-    }
+    // Original/unchanged furniture is a valid custom quotation request.
+    // A wood species is optional and must never gate Add to Cart.
 
     const parsedQuantity = Number(quantity);
 
@@ -5644,6 +5621,7 @@ export default function Customer3DViewer({
 
               {partListVisible ? (
                 <>
+                  {components.some(isCustomerWoodEligibleComponent) ? (
                   <section className="wisdom-config-section wisdom-config-whole" aria-label="Whole Furniture Wood Type">
                     <div className="wisdom-config-section-head wisdom-config-section-head-static">
                       <button
@@ -5652,13 +5630,15 @@ export default function Customer3DViewer({
                         onClick={() => setSelectedCompIds([])}
                       >
                         <span className="wisdom-config-section-title">WHOLE FURNITURE</span>
-                        <span className="wisdom-config-section-note">Choose wood for all parts</span>
+                        <span className="wisdom-config-section-note">Choose wood for wooden parts</span>
                       </button>
                     </div>
                     {(() => {
                       const groupKey = "__whole__";
-                      const requested = components.map((component) =>
-                        resolveCustomerWoodType(component.requested_wood_type));
+                      const requested = components
+                        .filter(isCustomerWoodEligibleComponent)
+                        .map((component) =>
+                          resolveCustomerWoodType(component.requested_wood_type));
                       const uniformWood = requested.length && new Set(requested).size === 1
                         ? requested[0] : "__mixed__";
                       const showAll = expandedFinishGroupLabel === groupKey;
@@ -5709,15 +5689,22 @@ export default function Customer3DViewer({
                       );
                     })()}
                   </section>
+                  ) : null}
 
                   {partGroups.map((group) => {
+                    const woodEligibleGroupIds = group.ids.filter((id) =>
+                      components.some((component) => component.id === id &&
+                        isCustomerWoodEligibleComponent(component)));
+                    // Non-wood components stay in the 3D model and parts schedule,
+                    // but are not offered a wood-type selector.
+                    if (!woodEligibleGroupIds.length) return null;
                     const representative =
                       components.find((component) =>
                         group.ids.includes(component.id),
                       ) || null;
 
                     const woodTargetIds = getCustomerFinishGroupTargetIds(
-                      group,
+                      { ...group, ids: woodEligibleGroupIds },
                       selectedCompIds,
                       components,
                     );

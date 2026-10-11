@@ -28,6 +28,7 @@ import { useCustomCart } from "./customcartcontext";
 import { useCart } from "./cartcontext";
 
 import { WOOD_FINISHES } from "../blueprints/data/furnitureTypes";
+import { getCustomerFurnitureDimensions } from "./customerGeometryBounds.mjs";
 import "./customizepage.css";
 import { saveCustomReferencePhotos } from "../../utils/customReferencePhotoStore";
 import {
@@ -340,49 +341,22 @@ const extractSceneItems = (source) => {
 };
 
 const computeSceneBounds = (blueprint = {}) => {
-  const items = [
-    ...extractSceneItems(blueprint?.view_3d_data),
-    ...extractSceneItems(blueprint?.design_data),
-    ...(Array.isArray(blueprint?.components) ? blueprint.components : []),
+  // Use one authoritative scene, not concatenated copies from multiple sources.
+  const candidates = [
+    extractSceneItems(blueprint?.design_data),
+    extractSceneItems(blueprint?.view_3d_data),
+    Array.isArray(blueprint?.components) ? blueprint.components : [],
   ];
-
-  if (!items.length) return null;
-
-  const normalized = items
-    .map((item) => ({
-      x: Number(item?.x ?? item?.position_x ?? 0) || 0,
-      y: Number(item?.y ?? item?.position_y ?? 0) || 0,
-      z: Number(item?.z ?? item?.position_z ?? 0) || 0,
-      width: Math.max(
-        1,
-        Number(item?.width ?? item?.w ?? item?.width_mm ?? 0) || 0,
-      ),
-      height: Math.max(
-        1,
-        Number(item?.height ?? item?.h ?? item?.height_mm ?? 0) || 0,
-      ),
-      depth: Math.max(
-        1,
-        Number(item?.depth ?? item?.d ?? item?.depth_mm ?? 0) || 0,
-      ),
-    }))
-    .filter((item) => item.width > 0 && item.height > 0 && item.depth > 0);
-
-  if (!normalized.length) return null;
-
-  const minX = Math.min(...normalized.map((c) => c.x));
-  const minY = Math.min(...normalized.map((c) => c.y));
-  const minZ = Math.min(...normalized.map((c) => c.z));
-
-  const maxX = Math.max(...normalized.map((c) => c.x + c.width));
-  const maxY = Math.max(...normalized.map((c) => c.y + c.height));
-  const maxZ = Math.max(...normalized.map((c) => c.z + c.depth));
-
-  return {
-    width: Math.round(maxX - minX),
-    height: Math.round(maxY - minY),
-    depth: Math.round(maxZ - minZ),
-  };
+  for (const components of candidates) {
+    if (!components.length) continue;
+    const dims = getCustomerFurnitureDimensions(components);
+    if (dims.width_mm > 0 && dims.height_mm > 0 && dims.depth_mm > 0) {
+      return { width: dims.width_mm, height: dims.height_mm, depth: dims.depth_mm };
+    }
+    // An invalid saved scene must not be silently replaced by another scene.
+    return null;
+  }
+  return null;
 };
 
 const detectProfileFromSceneItems = (blueprint = {}) => {
@@ -599,7 +573,7 @@ const normalizeDimensionRule = (sourceRule, fallbackRule) => {
 
 const resolveDimensionConfig = (blueprint = {}, dimRules = {}, profile) => {
   const sceneBounds =
-    blueprint?.scene_bounds || computeSceneBounds(blueprint) || null;
+    computeSceneBounds(blueprint) || blueprint?.scene_bounds || null;
 
   const bounds =
     blueprint?.bounds ||
@@ -726,6 +700,7 @@ const slimComponentForKey = (component = {}) => ({
   finish_color: stableText(component?.finish_color),
   finish: stableText(component?.finish),
   material: stableText(component?.material),
+  requested_wood_type: stableText(component?.requested_wood_type),
   qty: Math.max(1, Number(component?.qty || 1)),
 });
 

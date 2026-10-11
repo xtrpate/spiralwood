@@ -112,8 +112,17 @@ const normalizeComponent = (raw = {}, index = 0) => {
     groupLabel: raw.groupLabel,
     groupType: raw.groupType,
     partRole: raw.partRole,
+    assemblyRole: raw.assemblyRole,
+    parentPartId: raw.parentPartId,
     partFunction: raw.partFunction,
     doorHinge: raw.doorHinge,
+    motionGroupId: raw.motionGroupId,
+    motionReferencePartId: raw.motionReferencePartId,
+    templateType: raw.templateType,
+    grainDirection: raw.grainDirection,
+    // One component row may represent multiple physical pieces. This quantity
+    // must survive Customer normalization and the Admin estimation handoff.
+    qty: Number(raw.qty ?? raw.quantity ?? 1),
     locked: raw.locked === true,
 
     // WISDOM CUSTOMER MACHINING FIDELITY R1

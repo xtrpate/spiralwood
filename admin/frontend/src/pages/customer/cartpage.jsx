@@ -23,6 +23,8 @@ import { buildAssetUrl } from "../../services/api";
 import { useCart } from "./cartcontext";
 import useAuthStore from "../../store/authStore";
 import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
+import { buildCustomerPartSchedule } from "./customerPartSchedule.mjs";
+import CartPartScheduleDialog from "./CartPartScheduleDialog";
 import "./cart.css";
 
 const resolveImageSrc = (value) => {
@@ -106,6 +108,8 @@ export default function CartPage() {
   }, []);
 
   const [itemToDelete, setItemToDelete] = useState(null);
+  const [partsModalKey, setPartsModalKey] = useState(null);
+  const partsModalItem = cart.find((entry) => entry.key === partsModalKey) || null;
   const [clearCartConfirmOpen, setClearCartConfirmOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState("");
   const [isHiding, setIsHiding] = useState(false);
@@ -563,6 +567,9 @@ export default function CartPage() {
               const liveBlueprintPreview = blueprint
                 ? buildLiveCartBlueprintPreview(item)
                 : null;
+              const partRows = blueprint && liveBlueprintPreview
+                ? buildCustomerPartSchedule(liveBlueprintPreview.components, item.quantity)
+                : [];
               const lineSubtotal =
                 Number(item.unit_price || 0) * Number(item.quantity || 0);
 
@@ -662,6 +669,23 @@ export default function CartPage() {
                             <span>{item.wood_type}</span>
                           </div>
                         ) : null}
+
+                        {blueprint ? (
+                          <button
+                            type="button"
+                            disabled={!partRows.length}
+                            onClick={() => setPartsModalKey(item.key)}
+                            style={{ marginTop: 7, border: "1px solid #18181b", background: "#fff",
+                              padding: "6px 11px", fontSize: 12, cursor: partRows.length ? "pointer" : "not-allowed" }}
+                          >
+                            View Parts ({partRows.length})
+                          </button>
+                        ) : null}
+                        {blueprint && !partRows.length ? (
+                          <small style={{ display: "block", color: "#9a3412", marginTop: 4 }}>
+                            Part details unavailable. Review this custom design before checkout.
+                          </small>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -760,6 +784,11 @@ export default function CartPage() {
               );
             })}
           </div>
+
+          <CartPartScheduleDialog
+            item={partsModalItem}
+            onClose={() => setPartsModalKey(null)}
+          />
 
           {itemToDelete && (
             <div className="fm-modal-overlay">

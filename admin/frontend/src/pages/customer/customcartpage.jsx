@@ -4,10 +4,12 @@ import { useCustomCart } from "./customcartcontext";
 import api, { buildAssetUrl } from "../../services/api";
 import CustomerTemplateWorkbench from "./CustomerTemplateWorkbench";
 import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
+import { buildCustomerPartSchedule, summarizeCustomerPartQuantities, formatCustomerPartThickness } from "./customerPartSchedule.mjs";
 import {
   getCustomReferencePhotos,
   saveCustomReferencePhotos,
 } from "../../utils/customReferencePhotoStore";
+import { getCustomerItemDimensions } from "./customerGeometryBounds.mjs";
 import "./customizepage.css";
 
 const resolveImage = (value) => {
@@ -38,49 +40,7 @@ const hasEditorSnapshot = (item) =>
   Array.isArray(item?.editor_snapshot?.components) &&
   item.editor_snapshot.components.length > 0;
 
-const getItemDisplayDims = (item = {}) => {
-  const components = Array.isArray(item?.editor_snapshot?.components)
-    ? item.editor_snapshot.components
-    : [];
-
-  if (!components.length) {
-    return {
-      width: Number(item.width) || 0,
-      height: Number(item.height) || 0,
-      depth: Number(item.depth) || 0,
-    };
-  }
-
-  let minX = Infinity;
-  let minY = Infinity;
-  let minZ = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  let maxZ = -Infinity;
-
-  components.forEach((comp) => {
-    const x = Number(comp?.x) || 0;
-    const y = Number(comp?.y) || 0;
-    const z = Number(comp?.z) || 0;
-    const w = Math.max(0, Number(comp?.width) || 0);
-    const h = Math.max(0, Number(comp?.height) || 0);
-    const d = Math.max(0, Number(comp?.depth) || 0);
-
-    minX = Math.min(minX, x);
-    minY = Math.min(minY, y);
-    minZ = Math.min(minZ, z);
-
-    maxX = Math.max(maxX, x + w);
-    maxY = Math.max(maxY, y + h);
-    maxZ = Math.max(maxZ, z + d);
-  });
-
-  const width = Math.round(maxX - minX) || Number(item.width) || 0;
-  const height = Math.round(maxY - minY) || Number(item.height) || 0;
-  const depth = Math.round(maxZ - minZ) || Number(item.depth) || 0;
-
-  return { width, height, depth };
-};
+const getItemDisplayDims = (item = {}) => getCustomerItemDimensions(item);
 
 const buildCartPreviewBlueprint = (item) => {
   const components = Array.isArray(item?.editor_snapshot?.components)
@@ -782,6 +742,8 @@ export default function CustomCartPage() {
               item.image_url || item.preview_image_url,
             );
             const dims = getItemDisplayDims(item);
+            const partSchedule = buildCustomerPartSchedule(item?.editor_snapshot?.components, item.quantity);
+            const partCounts = summarizeCustomerPartQuantities(partSchedule);
             const isSelected = selectedKeys.includes(item.key);
 
             const showEditedCardPreview = hasEditorSnapshot(item);
@@ -1057,6 +1019,41 @@ export default function CustomCartPage() {
                       </div>
                     </div>
                   ) : null}
+                  <section style={{ marginTop: 18 }} aria-label="Parts and Measurements">
+                    <h4 style={{ margin: "0 0 6px", fontSize: 15 }}>Parts &amp; Measurements</h4>
+                    <p style={{ margin: "0 0 10px", fontSize: 12, color: "#52525b" }}>
+                      {partCounts.entries} entries · {partCounts.piecesPerFurniture} pieces per furniture
+                      {Number(item.quantity || 1) > 1 ? ` · ${partCounts.totalPieces} pieces for ${item.quantity} furniture units` : ""}.
+                      Final raw materials and pricing are verified by Admin.
+                    </p>
+                    {partSchedule.length ? (
+                      <div style={{ overflowX: "auto", border: "1px solid #e4e4e7" }}>
+                        <table style={{ width: "100%", minWidth: 890, borderCollapse: "collapse", fontSize: 12 }}>
+                          <thead style={{ background: "#f4f4f5" }}><tr>
+                            {["Part / Code", "Qty / Unit", "Total Qty", "Width", "Height", "Depth", "Thickness / Section", "Original Material", "Requested Wood"].map((header) => (
+                              <th key={header} style={{ padding: "9px 8px", borderBottom: "1px solid #d4d4d8", textAlign: "left" }}>{header}</th>
+                            ))}
+                          </tr></thead>
+                          <tbody>{partSchedule.map((part) => (
+                            <tr key={`${part.key}-${part.index}`}>
+                              <td style={{ padding: "8px", borderBottom: "1px solid #eee" }}>
+                                <strong>{part.label}</strong>
+                                {part.code ? <div style={{ color: "#71717a" }}>{part.code}</div> : null}
+                              </td>
+                              <td style={{ padding: "8px" }}>{part.quantityPerUnit}</td>
+                              <td style={{ padding: "8px" }}>{part.totalQuantity}</td>
+                              <td style={{ padding: "8px" }}>{formatMm(part.width)}</td>
+                              <td style={{ padding: "8px" }}>{formatMm(part.height)}</td>
+                              <td style={{ padding: "8px" }}>{formatMm(part.depth)}</td>
+                              <td style={{ padding: "8px" }}>{part.thicknessMm || part.sectionWidthMm ? formatCustomerPartThickness(part) : "—"}</td>
+                              <td style={{ padding: "8px" }}>{part.material || "—"}</td>
+                              <td style={{ padding: "8px" }}>{part.requestedWood || "Original"}</td>
+                            </tr>
+                          ))}</tbody>
+                        </table>
+                      </div>
+                    ) : <p style={{ color: "#b45309" }}>Part measurements unavailable. Review this design before checkout.</p>}
+                  </section>
                 </div>
               </div>
             );

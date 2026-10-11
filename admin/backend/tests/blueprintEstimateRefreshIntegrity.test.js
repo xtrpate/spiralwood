@@ -44,8 +44,8 @@ mustInclude(
 );
 
 mustInclude(
-  "setItems([...mergedAuto, ...inventoryItems]);",
-  "Refresh must preserve existing inventory-material selections.",
+  "setItems([...mergedAuto, ...inventoryItems, ...woodReferenceItems]);",
+  "Refresh must preserve existing inventory materials and wood-reference selections.",
 );
 
 mustInclude(

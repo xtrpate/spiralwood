@@ -6,6 +6,7 @@ import { getSocket, subscribeSocketReady } from "../../services/socket";
 import toast from "react-hot-toast";
 import useAuthStore from "../../store/authStore";
 import AdminSubmittedDesignPreview from "./AdminSubmittedDesignPreview";
+import { getCustomerItemDimensions } from "../customer/customerGeometryBounds.mjs";
 import OrderDiscussionPanel from "./OrderDiscussionPanel";
 import { exportOrderCompletionReportPdf } from "./OrderCompletionReport";
 import { DeliveryReceiptButton } from "../../components/delivery/DeliveryReceiptModal";
@@ -372,49 +373,7 @@ const hasCustomEditorSnapshot = (item) =>
   Array.isArray(item?.editor_snapshot?.components) &&
   item.editor_snapshot.components.length > 0;
 
-const getCustomRequestDims = (item = {}) => {
-  const components = Array.isArray(item?.editor_snapshot?.components)
-    ? item.editor_snapshot.components
-    : [];
-
-  if (!components.length) {
-    return {
-      width: Number(item.requested_width) || 0,
-      height: Number(item.requested_height) || 0,
-      depth: Number(item.requested_depth) || 0,
-    };
-  }
-
-  let minX = Infinity;
-  let minY = Infinity;
-  let minZ = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  let maxZ = -Infinity;
-
-  components.forEach((comp) => {
-    const x = Number(comp?.x) || 0;
-    const y = Number(comp?.y) || 0;
-    const z = Number(comp?.z) || 0;
-    const w = Math.max(0, Number(comp?.width) || 0);
-    const h = Math.max(0, Number(comp?.height) || 0);
-    const d = Math.max(0, Number(comp?.depth) || 0);
-
-    minX = Math.min(minX, x);
-    minY = Math.min(minY, y);
-    minZ = Math.min(minZ, z);
-
-    maxX = Math.max(maxX, x + w);
-    maxY = Math.max(maxY, y + h);
-    maxZ = Math.max(maxZ, z + d);
-  });
-
-  return {
-    width: Math.round(maxX - minX) || Number(item.requested_width) || 0,
-    height: Math.round(maxY - minY) || Number(item.requested_height) || 0,
-    depth: Math.round(maxZ - minZ) || Number(item.requested_depth) || 0,
-  };
-};
+const getCustomRequestDims = (item = {}) => getCustomerItemDimensions(item);
 
 const buildCustomRequestPreviewBlueprint = (item) => {
   const components = Array.isArray(item?.editor_snapshot?.components)

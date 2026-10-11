@@ -7,6 +7,7 @@ import api from "../../services/api";
 import "./customizepage.css";
 import useAuthStore from "../../store/authStore";
 import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
+import { buildCustomerPartSchedule, formatCustomerPartThickness } from "./customerPartSchedule.mjs";
 import LocationPicker from "../../components/LocationPicker";
 import {
   MotionFeedbackOverlay,
@@ -14,6 +15,7 @@ import {
 } from "../../components/MotionFeedbackOverlay";
 import { getCustomReferencePhotos } from "../../utils/customReferencePhotoStore";
 import { WOOD_FINISHES } from "../blueprints/data/furnitureTypes";
+import { getCustomerItemDimensions } from "./customerGeometryBounds.mjs";
 
 const InlineFieldError = ({ id, message }) =>
   message ? (
@@ -150,49 +152,7 @@ const buildLiveCartBlueprintPreview = (item = {}) => {
   };
 };
 
-const getItemDisplayDims = (item = {}) => {
-  const components = Array.isArray(item?.editor_snapshot?.components)
-    ? item.editor_snapshot.components
-    : [];
-
-  if (!components.length) {
-    return {
-      width: Number(item.width) || 0,
-      height: Number(item.height) || 0,
-      depth: Number(item.depth) || 0,
-    };
-  }
-
-  let minX = Infinity;
-  let minY = Infinity;
-  let minZ = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  let maxZ = -Infinity;
-
-  components.forEach((comp) => {
-    const x = Number(comp?.x) || 0;
-    const y = Number(comp?.y) || 0;
-    const z = Number(comp?.z) || 0;
-    const w = Math.max(0, Number(comp?.width) || 0);
-    const h = Math.max(0, Number(comp?.height) || 0);
-    const d = Math.max(0, Number(comp?.depth) || 0);
-
-    minX = Math.min(minX, x);
-    minY = Math.min(minY, y);
-    minZ = Math.min(minZ, z);
-
-    maxX = Math.max(maxX, x + w);
-    maxY = Math.max(maxY, y + h);
-    maxZ = Math.max(maxZ, z + d);
-  });
-
-  const width = Math.round(maxX - minX) || Number(item.width) || 0;
-  const height = Math.round(maxY - minY) || Number(item.height) || 0;
-  const depth = Math.round(maxZ - minZ) || Number(item.depth) || 0;
-
-  return { width, height, depth };
-};
+const getItemDisplayDims = (item = {}) => getCustomerItemDimensions(item);
 
 /* WISDOM CUSTOM CHECKOUT REVIEW BATCH 3 V1.0.5
    Customer checkout uses the same finish/color resolution pattern as the
@@ -287,9 +247,6 @@ const resolveCheckoutPartFinish = (part = {}) => {
   return { key: "none", label: "Original finish", color: "" };
 };
 
-const formatCheckoutPartName = (component = {}, index = 0) =>
-  component?.label || component?.name || component?.type || `Part ${index + 1}`;
-
 const formatCheckoutPartMm = (value) => {
   const number = Number(value);
   return Number.isFinite(number) && number > 0
@@ -305,22 +262,19 @@ const getCheckoutPartRows = (item = {}) => {
       ? item.components
       : [];
 
-  return components.map((component, index) => ({
-    key:
-      component?.id ||
-      component?.technicalId ||
-      component?.partCode ||
-      `checkout-part-${index}`,
-    name: formatCheckoutPartName(component, index),
-    width: formatCheckoutPartMm(component?.width),
-    height: formatCheckoutPartMm(component?.height),
-    depth: formatCheckoutPartMm(component?.depth),
-    material:
-      firstCheckoutText(component?.material, component?.wood_type) ||
-      firstCheckoutText(item?.wood_type) ||
-      "—",
-    requestedWood: firstCheckoutText(component?.requested_wood_type),
-    finish: resolveCheckoutPartFinish(component),
+  return buildCustomerPartSchedule(components, item.quantity).map((part) => ({
+    key: `${part.key}-${part.index}`,
+    code: part.code,
+    name: part.label,
+    quantityPerUnit: part.quantityPerUnit,
+    totalQuantity: part.totalQuantity,
+    width: formatCheckoutPartMm(part.width),
+    height: formatCheckoutPartMm(part.height),
+    depth: formatCheckoutPartMm(part.depth),
+    thickness: formatCustomerPartThickness(part),
+    material: firstCheckoutText(part.material, item?.wood_type) || "—",
+    requestedWood: part.requestedWood,
+    finish: resolveCheckoutPartFinish(part.raw),
   }));
 };
 
@@ -1820,7 +1774,7 @@ export default function CustomCheckoutPage() {
               <table
                 style={{
                   width: "100%",
-                  minWidth: 820,
+                  minWidth: 1090,
                   borderCollapse: "collapse",
                   tableLayout: "fixed",
                   fontSize: 12,
@@ -1829,12 +1783,15 @@ export default function CustomCheckoutPage() {
                 <thead>
                   <tr style={{ background: "#f8f8f8" }}>
                     {[
-                      ["Part", "24%"],
-                      ["Width", "11%"],
-                      ["Height", "11%"],
-                      ["Depth", "11%"],
-                      ["Material", "18%"],
-                      [partsHaveRequestedWood ? "Requested Wood" : "Finish / Color", "25%"],
+                      ["Part / Code", "18%"],
+                      ["Qty / Unit", "8%"],
+                      ["Total Qty", "9%"],
+                      ["Width", "9%"],
+                      ["Height", "9%"],
+                      ["Depth", "9%"],
+                      ["Thickness / Section", "12%"],
+                      ["Material", "13%"],
+                      [partsHaveRequestedWood ? "Requested Wood" : "Finish / Color", "13%"],
                     ].map(([label, width]) => (
                       <th
                         key={label}
@@ -1868,7 +1825,11 @@ export default function CustomCheckoutPage() {
                         }}
                       >
                         {part.name}
+                        {part.code ? <div style={{ fontSize: 11, color: "#71717a", fontWeight: 400 }}>{part.code}</div> : null}
                       </td>
+                      {[part.quantityPerUnit, part.totalQuantity].map((qty, index) => (
+                        <td key={index} style={{ padding: "11px 12px", borderBottom: "1px solid #e5e7eb" }}>{qty}</td>
+                      ))}
                       <td
                         style={{
                           padding: "11px 12px",
@@ -1892,6 +1853,9 @@ export default function CustomCheckoutPage() {
                         }}
                       >
                         {part.depth}
+                      </td>
+                      <td style={{ padding: "11px 12px", borderBottom: "1px solid #e5e7eb" }}>
+                        {part.thickness}
                       </td>
                       <td
                         style={{

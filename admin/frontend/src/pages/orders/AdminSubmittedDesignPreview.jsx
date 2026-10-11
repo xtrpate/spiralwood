@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import { WOOD_FINISHES } from "../blueprints/data/furnitureTypes";
 import { extractCustomerBlueprintScene } from "../customer/customerBlueprintAdapter";
+import { getCustomerFurnitureDimensions } from "../customer/customerGeometryBounds.mjs";
+import { buildCustomerPartSchedule, summarizeCustomerPartQuantities, formatCustomerPartThickness } from "../customer/customerPartSchedule.mjs";
 import StaffProductionBlueprintViewer from "../staff/StaffProductionBlueprintViewer";
 import "../staff/ProductionBlueprintView.css";
 import "./AdminSubmittedDesignPreview.css";
@@ -21,9 +23,6 @@ const firstText = (...values) => {
   }
   return "";
 };
-
-const formatPartName = (part, index) =>
-  part?.label || part?.name || part?.type || `Part ${index + 1}`;
 
 const findFinish = (finishId) => {
   const id = String(finishId || "").trim();
@@ -108,7 +107,9 @@ export default function AdminSubmittedDesignPreview({
   );
 
   const parts = Array.isArray(scene?.components) ? scene.components : [];
-  const dimensions = scene?.defaultDimensions || {};
+  const partSchedule = buildCustomerPartSchedule(parts, item?.quantity);
+  const partCounts = summarizeCustomerPartQuantities(partSchedule);
+  const dimensions = getCustomerFurnitureDimensions(parts, scene?.defaultDimensions || {});
   const metadata = scene?.metadata || {};
 
   const partFinishes = useMemo(
@@ -282,50 +283,51 @@ export default function AdminSubmittedDesignPreview({
           <div>
             <h2>Parts &amp; Measurements</h2>
             <p>
-              Saved dimensions, material, and {hasWoodRequests
-                ? "requested wood"
-                : "finish"} for every furniture part.
+              Submitted dimensions and per-part quantities, for Admin estimation.
+              {` ${partCounts.piecesPerFurniture} pieces per furniture · ${partCounts.totalPieces} total pieces for ${Math.max(1, Number(item?.quantity) || 1)} furniture unit(s).`}
             </p>
           </div>
 
           <span>
-            {parts.length} {parts.length === 1 ? "part" : "parts"}
+            {partCounts.entries} {partCounts.entries === 1 ? "entry" : "entries"}
           </span>
         </div>
 
-        {parts.length === 0 ? (
+        {partSchedule.length === 0 ? (
           <div className="production-blueprint-empty-parts">
             No saved parts are available for this submitted design.
           </div>
         ) : (
           <div className="production-blueprint-table-wrap">
-            <table className="production-blueprint-table">
+            <table className="production-blueprint-table" style={{ minWidth: 1020 }}>
               <thead>
                 <tr>
-                  <th>Part</th>
+                  <th>Part / Code</th>
+                  <th>Qty / Unit</th>
+                  <th>Total Qty</th>
                   <th>Width</th>
                   <th>Height</th>
                   <th>Depth</th>
+                  <th>Thickness / Section</th>
                   <th>Material</th>
                   <th>{hasWoodRequests ? "Requested Wood" : "Finish / Color"}</th>
                 </tr>
               </thead>
               <tbody>
-                {parts.map((part, index) => (
-                  <tr key={part.id || `${part.type || "part"}-${index}`}>
-                    <td>{formatPartName(part, index)}</td>
+                {partSchedule.map((part) => (
+                  <tr key={`${part.key}-${part.index}`}>
+                    <td>{part.label}{part.code ? <div style={{ fontSize: 11, color: "#71717a" }}>{part.code}</div> : null}</td>
+                    <td>{part.quantityPerUnit}</td>
+                    <td>{part.totalQuantity}</td>
                     <td>{formatMm(part.width)}</td>
                     <td>{formatMm(part.height)}</td>
                     <td>{formatMm(part.depth)}</td>
-                    <td>
-                      {firstText(part.material, part.wood_type) ||
-                        overallMaterial}
-                    </td>
+                    <td>{part.thicknessMm || part.sectionWidthMm ? formatCustomerPartThickness(part) : "—"}</td>
+                    <td>{part.material || overallMaterial}</td>
                     <td>
                       {hasWoodRequests
-                        ? firstText(part?.requested_wood_type) ||
-                          "Original (no wood request)"
-                        : <FinishValue value={partFinishes[index]} />}
+                        ? part.requestedWood || "Original (no wood request)"
+                        : <FinishValue value={partFinishes[part.index]} />}
                     </td>
                   </tr>
                 ))}

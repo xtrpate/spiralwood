@@ -461,20 +461,63 @@ const sanitizeSnapshotMachiningPlane = (value) => {
   return SNAPSHOT_MACHINING_PLANES.has(normalized) ? normalized : null;
 };
 
+// CUST-C1: A submitted parts schedule must be complete. Never silently
+// truncate, repair, or substitute malformed customer-submitted geometry.
+const MAX_CUSTOM_EDITOR_PARTS = 300;
+const validateCustomEditorSnapshot = (snapshot) => {
+  const parts = snapshot?.components;
+  if (!Array.isArray(parts) || parts.length === 0) {
+    return "A complete furniture parts list is required for quotation.";
+  }
+  if (parts.length > MAX_CUSTOM_EDITOR_PARTS) {
+    return `This design has more than ${MAX_CUSTOM_EDITOR_PARTS} parts and cannot be submitted safely.`;
+  }
+
+  const seenIds = new Set();
+  for (const part of parts) {
+    if (!part || typeof part !== "object" || Array.isArray(part)) {
+      return "The furniture parts list contains an invalid part.";
+    }
+    const validIdType = typeof part.id === "string" ||
+      (typeof part.id === "number" && Number.isSafeInteger(part.id) && part.id > 0);
+    const id = validIdType ? String(part.id).trim() : "";
+    if (!id || seenIds.has(id)) {
+      return "Every furniture part needs a unique saved ID.";
+    }
+    seenIds.add(id);
+
+    if (!["x", "y", "z", "width", "height", "depth"].every((field) => {
+      const raw = part[field];
+      if (raw === null || raw === undefined || raw === "") return false;
+      const value = Number(raw);
+      return Number.isFinite(value) &&
+        (!["width", "height", "depth"].includes(field) || value > 0);
+    })) {
+      return "Furniture part positions and dimensions must be valid numbers.";
+    }
+
+    const qty = Number(part.qty ?? 1);
+    if (!Number.isSafeInteger(qty) || qty < 1 || qty > 1000000) {
+      return "Each furniture part needs a valid whole-number quantity.";
+    }
+  }
+  return null;
+};
+
 const sanitizeEditorSnapshotForStorage = (snapshot = null) => {
   if (!snapshot || typeof snapshot !== "object") return null;
 
   const worldSize =
     snapshot?.worldSize && typeof snapshot.worldSize === "object"
       ? {
-          w: Number(snapshot.worldSize.w || 0) || 0,
-          h: Number(snapshot.worldSize.h || 0) || 0,
-          d: Number(snapshot.worldSize.d || 0) || 0,
+          w: Number(snapshot.worldSize.w ?? snapshot.worldSize.width_mm ?? snapshot.worldSize.width ?? 0) || 0,
+          h: Number(snapshot.worldSize.h ?? snapshot.worldSize.height_mm ?? snapshot.worldSize.height ?? 0) || 0,
+          d: Number(snapshot.worldSize.d ?? snapshot.worldSize.depth_mm ?? snapshot.worldSize.depth ?? 0) || 0,
         }
       : null;
 
   const components = Array.isArray(snapshot?.components)
-    ? snapshot.components.slice(0, 300).map((comp) => ({
+    ? snapshot.components.map((comp) => ({
         id: comp?.id || null,
         type: comp?.type || null,
         label: comp?.label || null,
@@ -539,6 +582,7 @@ const sanitizeEditorSnapshotForStorage = (snapshot = null) => {
         assemblyType: toTrimmedStringOrNull(comp?.assemblyType),
         parentPartId: toTrimmedStringOrNull(comp?.parentPartId),
         partRole: toTrimmedStringOrNull(comp?.partRole),
+        assemblyRole: toTrimmedStringOrNull(comp?.assemblyRole),
 
         qty: Math.max(1, Number(comp?.qty || 1)),
         locked: Boolean(comp?.locked),
@@ -988,6 +1032,11 @@ exports.createCustomOrder = async (req, res) => {
     return res.status(400).json({
       message: "Submit exactly one valid custom design per request.",
     });
+  }
+
+  const snapshotError = validateCustomEditorSnapshot(cleanedItems[0].editor_snapshot);
+  if (snapshotError) {
+    return res.status(400).json({ message: snapshotError });
   }
 
   const blueprintIds = [
