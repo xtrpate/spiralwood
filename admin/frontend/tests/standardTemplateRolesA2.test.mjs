@@ -12,7 +12,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.
 const localFile = path.join(root, rel);
 const src = fs.readFileSync(localFile, 'utf8').replace(/\r\n/g, '\n');
 const gitRoot = process.env.WISDOM_A2_GIT_ROOT || process.cwd();
-const baseline = execFileSync('git', ['show', 'HEAD:' + rel], { cwd: gitRoot, encoding: 'utf8' }).replace(/\r\n/g, '\n');
+const baseline = execFileSync('git', ['show', '1ae0e8b49395d39f24bc48fc2e337eb98c5d1134:' + rel], { cwd: gitRoot, encoding: 'utf8' }).replace(/\r\n/g, '\n');
 const expectedSha = 'F3BE3D5045E61D64D6A9A81C21B7C3CB7D5C0B6502E96778B4243D38E2FE38BA';
 const expectedRoles = {
   "DT-TOP": "top_panel",
