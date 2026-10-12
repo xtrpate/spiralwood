@@ -20,6 +20,8 @@ import {
   buildFurnitureTemplateParts,
   createClosetWardrobeComponents,
 } from "./standardTemplateBuilders";
+import { buildSmartAssemblyResizePlan } from "./smartAssemblyResize";
+import { reviewFurnitureGeometryA3 } from "./constructionGeometryA3.mjs";
 
 const GRID_SIZE = 20;
 const FLOOR_OFFSET = 40;
@@ -106,6 +108,40 @@ function getFurnitureTemplateDims(
   };
 }
 
+// A4-3: use the A4-1/A4-2 reviewed family rules for initial template sizes.
+// Unsupported bed/complex-closet builders retain their old compatibility path.
+// This is not manufacturing approval or a Customer resize capability.
+const CONSTRUCTION_RESIZE_TEMPLATES = new Set([
+  "template_dining_table", "template_coffee_table", "template_wardrobe",
+]);
+
+function resizeTemplateWithConstruction(baseParts, targetDims) {
+  let resized = baseParts;
+  const dimensions = [
+    ["width", targetDims.w],
+    ["height", targetDims.h],
+    ["depth", targetDims.d],
+  ];
+  for (const [dimension, requested] of dimensions) {
+    const bounds = getComponentsBounds3D(resized);
+    if (!bounds || !Number.isFinite(requested) || requested <= 0) return null;
+    if (Math.abs(bounds[dimension] - requested) < 0.5) continue;
+    const plan = buildSmartAssemblyResizePlan(resized, {
+      dimension, newValue: requested, anchor: "center",
+    });
+    if (!plan.supported || !plan.changesById) return null;
+    resized = resized.map((part) => ({
+      ...part, ...(plan.changesById[part.id] || {}),
+    }));
+  }
+  const checked = reviewFurnitureGeometryA3({ components: resized });
+  if (!checked.geometryCandidateForReview) return null;
+  const finalBounds = getComponentsBounds3D(resized);
+  if (!finalBounds || dimensions.some(([axis, expected]) =>
+    Math.abs(finalBounds[axis] - expected) > 0.5)) return null;
+  return resized;
+}
+
 function scaleAssemblyComponentsToTarget(
   baseParts,
   targetDims,
@@ -120,6 +156,28 @@ function scaleAssemblyComponentsToTarget(
   if (!baseBounds) return [];
 
   const floorY = canvasH - FLOOR_OFFSET;
+  if (CONSTRUCTION_RESIZE_TEMPLATES.has(templateType)) {
+    const resized = resizeTemplateWithConstruction(baseParts, targetDims);
+    if (!resized) {
+      throw new Error(`Cannot safely generate construction dimensions for ${templateType}.`);
+    }
+    const bounds = getComponentsBounds3D(resized);
+    return resized.map((part) =>
+      normalizeComponent({
+        ...part,
+        id: makeId(),
+        groupId,
+        assemblyId: part.assemblyId ? groupId : part.assemblyId,
+        groupLabel,
+        groupType: "assembly",
+        templateType,
+        // Translation only. No further scale factor can alter physical sections.
+        x: originX + part.x - bounds.minX,
+        y: floorY + part.y - bounds.maxY,
+        z: originZ + part.z - bounds.minZ,
+      }),
+    );
+  }
   const scaleX = targetDims.w / Math.max(baseBounds.width, 1);
   const scaleY = targetDims.h / Math.max(baseBounds.height, 1);
   const scaleZ = targetDims.d / Math.max(baseBounds.depth, 1);
