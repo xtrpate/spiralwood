@@ -1,5 +1,6 @@
 // data/smartAssemblyResize.js — Controlled assembly resizing for supported furniture
 import { normalizeDimensionMm, roundToPrecision } from "./utils";
+import { reviewFurnitureGeometryA3 } from "./constructionGeometryA3.mjs";
 
 const MIN_COMPONENT_DIMENSION_MM = 1;
 const MIN_STRETCH_MEMBER_MM = 20;
@@ -548,6 +549,22 @@ function analyzeSmartAssemblyResize(items = []) {
     };
   }
 
+  // A4-1: the same read-only A1/A3 review gates Admin preview and apply.
+  // A family name or template code alone is never construction approval.
+  const constructionBefore = reviewFurnitureGeometryA3({ components: items });
+  if (!constructionBefore.geometryCandidateForReview) {
+    return {
+      supported: false,
+      reason: 'Construction review required before resizing: ' +
+        (constructionBefore.issues[0]?.detail || 'Unverified furniture assembly.'),
+      assemblyType: constructionBefore.family || 'unsupported',
+      assemblyIds: normalizedItems.map((item) => item.id),
+      supportedDimensions: [],
+      constructionReviewStatus: constructionBefore.status,
+      constructionIssues: constructionBefore.issues,
+    };
+  }
+
   const family = detectAssemblyFamily(normalizedItems);
 
   if (!family.supportedDimensions.length) {
@@ -839,6 +856,27 @@ function buildSmartAssemblyResizePlan(items = [], options = {}) {
         });
       }
     }
+  }
+
+  // Validate a detached projection BEFORE returning changesById to the UI.
+  // If this fails, applySmartWidthResize3D must not receive a usable plan.
+  const projectedParts = items.map((item) => ({
+    ...item,
+    ...(changesById[item.id] || {}),
+  }));
+  const constructionAfter = reviewFurnitureGeometryA3({ components: projectedParts });
+  if (!constructionAfter.geometryCandidateForReview) {
+    return {
+      ...analysis,
+      supported: false,
+      reason: 'Resize rejected by construction review: ' +
+        (constructionAfter.issues[0]?.detail || 'Invalid resulting furniture geometry.'),
+      dimension,
+      requestedValue,
+      constructionReviewStatus: constructionAfter.status,
+      constructionIssues: constructionAfter.issues,
+      // Intentionally do NOT return changesById on rejection.
+    };
   }
 
   const result = {
