@@ -685,9 +685,12 @@ function buildSmartAssemblyResizePlan(items = [], options = {}) {
   }
 
   const meta = DIMENSION_META[dimension];
-  const anchor = meta.validAnchors.has(options?.anchor)
+  const requestedAnchor = meta.validAnchors.has(options?.anchor)
     ? options.anchor
     : "center";
+  // A4-2: Y grows upward in this editor. The feet/base must NEVER leave
+  // their previous floor plane, including when the UI requests center/bottom.
+  const anchor = dimension === "height" ? "top" : requestedAnchor;
   const requestedRaw = Number(options?.newValue ?? options?.newWidth);
 
   if (!Number.isFinite(requestedRaw) || requestedRaw <= 0) {
@@ -828,20 +831,37 @@ function buildSmartAssemblyResizePlan(items = [], options = {}) {
         if (leftSide && rightSide) {
           const innerLeft = nextBounds.min + effective(leftSide, "width");
           const innerRight = nextBounds.max - effective(rightSide, "width");
-          const halfWidth = roundToPrecision((innerRight - innerLeft) / 2);
+          const span = innerRight - innerLeft;
+          const halfWidth = roundToPrecision(span / 2);
           const seamX = roundToPrecision(innerLeft + halfWidth);
-
+          // A4-2: use the remainder for the second panel, so odd-mm spans
+          // cannot leave an invisible 1 mm center seam or exceed the shell.
           override(backLeft, {
             x: roundToPrecision(innerLeft),
             width: halfWidth,
           });
           override(backRight, {
             x: seamX,
-            width: halfWidth,
+            width: roundToPrecision(innerRight - seamX),
           });
           override(seamSupport, {
             x: roundToPrecision(seamX - effective(seamSupport, "width") / 2),
           });
+
+          const doorLeft = byCode("WR-DL");
+          const doorRight = byCode("WR-DR");
+          if (doorLeft && doorRight) {
+            // Standard two-door wardrobe: doors continue to fill the opening,
+            // rather than ratio-scaling to leave gaps at its side panels.
+            override(doorLeft, {
+              x: roundToPrecision(innerLeft),
+              width: halfWidth,
+            });
+            override(doorRight, {
+              x: seamX,
+              width: roundToPrecision(innerRight - seamX),
+            });
+          }
         }
       } else if (dimension === "height") {
         override(seamSupport, {
@@ -876,6 +896,88 @@ function buildSmartAssemblyResizePlan(items = [], options = {}) {
       constructionReviewStatus: constructionAfter.status,
       constructionIssues: constructionAfter.issues,
       // Intentionally do NOT return changesById on rejection.
+    };
+  }
+
+  // A4-2: A3 checks whole-furniture geometry, while this explicitly
+  // preserves physical material sections and ground contact across a change.
+  // It does NOT constitute carpenter approval of joinery or load capacity.
+  const fixedSectionErrors = [];
+  const nearMm = (a, b) => Math.abs(Number(a) - Number(b)) <= 0.5;
+  const partRole = (part) => String(part.partRole || part.assemblyRole || '').toLowerCase();
+  const isTable = ['dining-table', 'coffee-table'].includes(analysis.assemblyType);
+  const isShell = analysis.assemblyType === 'wardrobe' || analysis.assemblyType === 'cabinet-box';
+  for (let i = 0; i < items.length; i += 1) {
+    const before = items[i];
+    const after = projectedParts[i];
+    const roleName = partRole(before);
+    const fixedAxes = [];
+    if (isTable) {
+      if (roleName === 'top_panel' || roleName === 'shelf') fixedAxes.push('height');
+      if (roleName === 'leg') fixedAxes.push('width', 'depth');
+      if (roleName === 'apron_rail') {
+        if (Number(before.width) > Number(before.depth)) fixedAxes.push('depth');
+        else if (Number(before.depth) > Number(before.width)) fixedAxes.push('width');
+        else fixedSectionErrors.push('Ambiguous apron orientation.');
+        fixedAxes.push('height');
+      }
+    } else if (isShell) {
+      if (roleName === 'left_side_panel' || roleName === 'right_side_panel') fixedAxes.push('width');
+      if (['top_panel', 'bottom_panel', 'shelf'].includes(roleName)) fixedAxes.push('height');
+      if (roleName === 'back_panel' || roleName === 'door') fixedAxes.push('depth');
+      if (roleName === 'support_panel') fixedAxes.push('width', 'depth');
+    }
+    if (fixedAxes.some((key) => !nearMm(before[key], after[key]))) {
+      fixedSectionErrors.push(`${before.partCode || before.id}: material section changed.`);
+    }
+    if (dimension !== 'height' &&
+        (!nearMm(before.y, after.y) || !nearMm(before.height, after.height))) {
+      fixedSectionErrors.push(`${before.partCode || before.id}: unrelated vertical geometry changed.`);
+    }
+    if (dimension === 'height' &&
+        ((isTable && roleName === 'leg') ||
+         (isShell && ['left_side_panel', 'right_side_panel', 'bottom_panel'].includes(roleName))) &&
+        !nearMm(Number(before.y) + Number(before.height),
+          Number(after.y) + Number(after.height))) {
+      fixedSectionErrors.push(`${before.partCode || before.id}: floor contact moved.`);
+    }
+  }
+  if (dimension === 'height' && !nearMm(analysis.bounds.maxY, nextBounds.max)) {
+    fixedSectionErrors.push('Furniture floor plane moved.');
+  }
+  // A4-2: guard standardized two-door wardrobe fits and split back seam.
+  if (analysis.assemblyType === 'wardrobe') {
+    const currentByCode = new Map(projectedParts.map((part) =>
+      [String(part.partCode || '').toUpperCase(), part]));
+    const left = currentByCode.get('WR-SL');
+    const right = currentByCode.get('WR-SR');
+    const doorL = currentByCode.get('WR-DL');
+    const doorR = currentByCode.get('WR-DR');
+    const backL = currentByCode.get('WR-BKL');
+    const backR = currentByCode.get('WR-BKR');
+    if (left && right && doorL && doorR && backL && backR) {
+      const openingL = Number(left.x) + Number(left.width);
+      const openingR = Number(right.x);
+      const touches = (a, b) => nearMm(a, b);
+      if (!touches(doorL.x, openingL) ||
+          !touches(Number(doorL.x) + Number(doorL.width), doorR.x) ||
+          !touches(Number(doorR.x) + Number(doorR.width), openingR) ||
+          !touches(backL.x, openingL) ||
+          !touches(Number(backL.x) + Number(backL.width), backR.x) ||
+          !touches(Number(backR.x) + Number(backR.width), openingR)) {
+        fixedSectionErrors.push('Wardrobe door or split back does not fill the inner opening.');
+      }
+    }
+  }
+  if (fixedSectionErrors.length) {
+    return {
+      ...analysis,
+      supported: false,
+      reason: `Resize rejected: ${fixedSectionErrors[0]}`,
+      dimension,
+      requestedValue,
+      constructionIssues: fixedSectionErrors.map((detail) => ({ code: 'A4_FIXED_SECTION_OR_FLOOR', detail })),
+      // Fail closed: do not expose executable changesById.
     };
   }
 
