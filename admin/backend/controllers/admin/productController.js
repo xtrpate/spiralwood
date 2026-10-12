@@ -2009,6 +2009,11 @@ exports.togglePublish = async (req, res) => {
 };
 
 // ── PUT /api/products/blueprint/:blueprint_id/publish ───────────────────
+const {
+  selectCanonicalPublicationScene,
+  validateBlueprintPublicationParts,
+} = require("../../services/blueprintPublicationPartsGuard");
+
 exports.publishByBlueprint = async (req, res) => {
   const conn = await pool.getConnection();
 
@@ -2128,6 +2133,24 @@ exports.publishByBlueprint = async (req, res) => {
     );
 
     const canonicalProduct = linkedProducts[0] || null;
+    // Enforce C7-1 only on NEW publication or republication of a currently
+    // UNPUBLISHED design. Never auto-change or revalidate already-published
+    // legacy products, their quotes, stock, customer orders, or BOM here.
+    if (!linkedProducts.some((linked) => Number(linked.is_published) === 1)) {
+      const sceneParts = selectCanonicalPublicationScene(
+        parseSceneComponents(blueprint.design_data),
+        parseSceneComponents(blueprint.view_3d_data),
+      );
+      const validation = validateBlueprintPublicationParts(sceneParts);
+      if (!validation.ok) {
+        await conn.rollback();
+        return res.status(409).json({
+          code: 'BLUEPRINT_PUBLICATION_PARTS_INVALID',
+          message: 'Correct the Blueprint part data before publishing.',
+          issues: validation.issues,
+        });
+      }
+    }
     let productId = canonicalProduct ? Number(canonicalProduct.id) : null;
     let created = false;
 
