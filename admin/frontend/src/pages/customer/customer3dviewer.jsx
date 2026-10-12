@@ -1681,6 +1681,45 @@ const resizeCustomerDrawerAssembly = (
   return allComponents;
 };
 
+// CUSTOMER SIZE WARNINGS: The effective allowance is the intersection of
+// Admin-published customization rules and the verified construction planner.
+// Display this same range in drafts, previews, and Apply. Never weaken a
+// construction minimum or expand a construction maximum for presentation.
+const getEffectiveCustomerSizeRange = (support, rules, axis) => {
+  const names = { width: "Width", height: "Height", depth: "Depth" };
+  const name = names[axis];
+  if (!name || support?.ok !== true) return null;
+  const plannerMin = Number(support[`min${name}`]);
+  const plannerMax = Number(support[`max${name}`]);
+  if (!Number.isFinite(plannerMin) || !Number.isFinite(plannerMax) ||
+      plannerMin <= 0 || plannerMax < plannerMin) return null;
+  const published = rules?.dimensions?.[axis] || {};
+  const parseOptional = (first, second) => {
+    const raw = first ?? second;
+    if (raw === null || raw === undefined || raw === "") return null;
+    const value = Number(raw);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  };
+  const ruleMin = parseOptional(published.min, published.min_mm);
+  const ruleMax = parseOptional(published.max, published.max_mm);
+  const min = Math.max(plannerMin, ruleMin ?? plannerMin);
+  const max = Math.min(plannerMax, ruleMax ?? plannerMax);
+  return { min, max, valid: min <= max };
+};
+
+const getEffectiveCustomerSizeError = (axis, range, valueMm) => {
+  const labels = { width: "Width", height: "Height", depth: "Depth" };
+  const name = labels[axis] || "Size";
+  if (!range || !range.valid) {
+    return "Size limits conflict or are unverified. Ask Admin to review this furniture.";
+  }
+  if (!Number.isFinite(valueMm)) return `${name} must be a valid number.`;
+  if (valueMm < range.min || valueMm > range.max) {
+    return `${name} must be ${range.min}-${range.max} mm.`;
+  }
+  return "";
+};
+
 // CUST-A: Raw component geometry is Admin-controlled; only approved
 // whole-furniture sizing and finish options remain customer-facing.
 const CUSTOMER_PART_GEOMETRY_EDITING_ENABLED = false;
@@ -2035,15 +2074,11 @@ export default function Customer3DViewer({
   const canResizeBookshelf = axis => bookshelfSupport.ok && editable[axis] === true;
   const planBookshelf = useCallback((axis, mm) => {
     if (editable[axis] !== true) return {ok:false,error:"This size is not editable."};
-    const limits=customizationRules?.dimensions?.[axis] || {};
-    const min=Number(limits.min ?? limits.min_mm);
-    const max=Number(limits.max ?? limits.max_mm);
-    if ((limits.min != null || limits.min_mm != null) && Number.isFinite(min) && mm < min)
-      return {ok:false,error:"Size must be at least " + min + " mm."};
-    if ((limits.max != null || limits.max_mm != null) && Number.isFinite(max) && mm > max)
-      return {ok:false,error:"Size must be " + max + " mm or less."};
+    const allowed = getEffectiveCustomerSizeRange(bookshelfSupport, customizationRules, axis);
+    const warning = getEffectiveCustomerSizeError(axis, allowed, mm);
+    if (warning) return {ok: false, error: warning};
     return planCustomerBookshelfResize(components, axis, mm);
-  }, [components, editable, customizationRules]);
+  }, [components, editable, customizationRules, bookshelfSupport]);
   const bookshelfPreviews = useMemo(() => {
     const result={};
     for (const axis of ["width","height","depth"]) {
@@ -2064,15 +2099,11 @@ export default function Customer3DViewer({
   const canResizeCabinet = axis => cabinetSupport.ok && editable[axis] === true;
   const planCabinet = useCallback((axis, mm) => {
     if (editable[axis] !== true) return {ok:false,error:"This size is not editable."};
-    const limits=customizationRules?.dimensions?.[axis] || {};
-    const min=Number(limits.min ?? limits.min_mm);
-    const max=Number(limits.max ?? limits.max_mm);
-    if ((limits.min != null || limits.min_mm != null) && Number.isFinite(min) && mm < min)
-      return {ok:false,error:"Size must be at least " + min + " mm."};
-    if ((limits.max != null || limits.max_mm != null) && Number.isFinite(max) && mm > max)
-      return {ok:false,error:"Size must be " + max + " mm or less."};
+    const allowed = getEffectiveCustomerSizeRange(cabinetSupport, customizationRules, axis);
+    const warning = getEffectiveCustomerSizeError(axis, allowed, mm);
+    if (warning) return {ok: false, error: warning};
     return planCustomerCabinetResize(components, axis, mm);
-  }, [components, editable, customizationRules]);
+  }, [components, editable, customizationRules, cabinetSupport]);
   const cabinetPreviews = useMemo(() => {
     const result={};
     for (const axis of ["width","height","depth"]) {
@@ -2093,15 +2124,11 @@ export default function Customer3DViewer({
   const canResizeTable = axis => tableSupport.ok && editable[axis] === true;
   const planTable = useCallback((axis, mm) => {
     if (editable[axis] !== true) return {ok:false,error:"This size is not editable."};
-    const limits=customizationRules?.dimensions?.[axis] || {};
-    const min=Number(limits.min ?? limits.min_mm);
-    const max=Number(limits.max ?? limits.max_mm);
-    if ((limits.min != null || limits.min_mm != null) && Number.isFinite(min) && mm < min)
-      return {ok:false,error:"Size must be at least " + min + " mm."};
-    if ((limits.max != null || limits.max_mm != null) && Number.isFinite(max) && mm > max)
-      return {ok:false,error:"Size must be " + max + " mm or less."};
+    const allowed = getEffectiveCustomerSizeRange(tableSupport, customizationRules, axis);
+    const warning = getEffectiveCustomerSizeError(axis, allowed, mm);
+    if (warning) return {ok: false, error: warning};
     return planCustomerDiningTableResize(components, axis, mm);
-  }, [components, editable, customizationRules]);
+  }, [components, editable, customizationRules, tableSupport]);
   const tablePreviews = useMemo(() => {
     const result={};
     for (const axis of ["width","height","depth"]) {
@@ -2135,8 +2162,11 @@ export default function Customer3DViewer({
     if (!Number.isFinite(parsed) || parsed < 1) return null;
     const wanted = Math.round(parsed);
     if (wanted === Number(overallBounds.width_mm)) return null;
-    return planCustomerWardrobeWidth(components, wanted);
+    const range = getEffectiveCustomerSizeRange(wardrobeWidthSupport, customizationRules, "width");
+    const error = getEffectiveCustomerSizeError("width", range, wanted);
+    return error ? { ok: false, error } : planCustomerWardrobeWidth(components, wanted);
   }, [
+    wardrobeWidthSupport, customizationRules,
     canSmartResizeWardrobeWidth,
     components,
     convertUnitToMm,
@@ -2165,8 +2195,11 @@ export default function Customer3DViewer({
     if (!Number.isFinite(candidate) || candidate < 1) return null;
     const wanted = Math.round(candidate);
     if (wanted === Number(overallBounds.height_mm)) return null;
-    return planCustomerWardrobeHeight(components, wanted);
+    const range = getEffectiveCustomerSizeRange(wardrobeHeightDepthSupport, customizationRules, "height");
+    const error = getEffectiveCustomerSizeError("height", range, wanted);
+    return error ? { ok: false, error } : planCustomerWardrobeHeight(components, wanted);
   }, [
+    wardrobeHeightDepthSupport, customizationRules,
     canSmartResizeWardrobeHeight, components, convertUnitToMm,
     overallBounds.height_mm, overallDrafts.height, unit,
   ]);
@@ -2178,11 +2211,29 @@ export default function Customer3DViewer({
     if (!Number.isFinite(candidate) || candidate < 1) return null;
     const wanted = Math.round(candidate);
     if (wanted === Number(overallBounds.depth_mm)) return null;
-    return planCustomerWardrobeDepth(components, wanted);
+    const range = getEffectiveCustomerSizeRange(wardrobeHeightDepthSupport, customizationRules, "depth");
+    const error = getEffectiveCustomerSizeError("depth", range, wanted);
+    return error ? { ok: false, error } : planCustomerWardrobeDepth(components, wanted);
   }, [
+    wardrobeHeightDepthSupport, customizationRules,
     canSmartResizeWardrobeDepth, components, convertUnitToMm,
     overallBounds.depth_mm, overallDrafts.depth, unit,
   ]);
+
+  const effectiveCustomerSizeRanges = useMemo(() => {
+    const ranges = {};
+    for (const axis of ["width", "height", "depth"]) {
+      const support = bookshelfSupport.ok ? bookshelfSupport
+        : cabinetSupport.ok ? cabinetSupport
+        : tableSupport.ok ? tableSupport
+        : overallWardrobeSizeProtected
+          ? (axis === "width" ? wardrobeWidthSupport : wardrobeHeightDepthSupport)
+          : null;
+      ranges[axis] = getEffectiveCustomerSizeRange(support, customizationRules, axis);
+    }
+    return ranges;
+  }, [bookshelfSupport, cabinetSupport, tableSupport, overallWardrobeSizeProtected,
+      wardrobeWidthSupport, wardrobeHeightDepthSupport, customizationRules]);
 
   const viewMetadata = useMemo(() => {
     const firstComponent = Array.isArray(components)
@@ -4466,18 +4517,36 @@ export default function Customer3DViewer({
     [convertUnitToMm, unit],
   );
 
+  const getCustomerOverallSizeWarning = (axis, rawValue) => {
+    const label = axis.charAt(0).toUpperCase() + axis.slice(1);
+    const range = effectiveCustomerSizeRanges[axis];
+    // Required / malformed values keep the existing input error behavior.
+    const fieldError = getDimensionFieldError(rawValue, {
+      label, minMm: -Infinity, maxMm: Infinity,
+    });
+    if (fieldError) return fieldError;
+    if (!range) return getDimensionFieldError(rawValue, { label });
+    const mm = Math.round(convertUnitToMm(rawValue, unit));
+    return getEffectiveCustomerSizeError(axis, range, mm);
+  };
+
   const handleOverallDraftChange = (axis, value) => {
     setOverallDrafts((prev) => ({ ...prev, [axis]: value }));
-
     setOverallDimensionErrors((prev) => ({
       ...prev,
-      [axis]: getDimensionFieldError(value),
+      [axis]: getCustomerOverallSizeWarning(axis, value),
     }));
   };
 
   const commitOverallDimension = (axis) => {
     if (!isCustomizable || readOnly) return;
     if (!Array.isArray(components) || !components.length) return;
+    const effectiveWarning = getCustomerOverallSizeWarning(axis, overallDrafts?.[axis]);
+    if (effectiveWarning) {
+      setOverallDimensionErrors((old) => ({ ...old, [axis]: effectiveWarning }));
+      showCustomizeFeedback(effectiveWarning);
+      return;
+    }
     if (bookshelfSupport.ok) {
       const value=overallDrafts?.[axis];
       const error=getDimensionFieldError(value, {label:axis.charAt(0).toUpperCase()+axis.slice(1)});
@@ -4596,7 +4665,7 @@ export default function Customer3DViewer({
   const applySmartWardrobeWidth = () => {
     if (!isCustomizable || readOnly || !canSmartResizeWardrobeWidth) return;
     const rawWidth = overallDrafts.width;
-    const genericError = getDimensionFieldError(rawWidth, { label: "Width" });
+    const genericError = getCustomerOverallSizeWarning("width", rawWidth);
     const wanted = Math.round(convertUnitToMm(rawWidth, unit));
     const plan = genericError
       ? { ok: false, error: genericError }
@@ -4625,7 +4694,7 @@ export default function Customer3DViewer({
     if (!isCustomizable || readOnly || !planning) return;
     const raw = overallDrafts?.[axis];
     const label = axis === "height" ? "Height" : "Depth";
-    const fieldError = getDimensionFieldError(raw, { label });
+    const fieldError = getCustomerOverallSizeWarning(axis, raw);
     const candidate = fieldError
       ? { ok: false, error: fieldError }
       : planning(components, Math.round(convertUnitToMm(raw, unit)));
@@ -4931,6 +5000,27 @@ export default function Customer3DViewer({
 
   const undoDisabled = !historyRef.current.past.length;
   const redoDisabled = !historyRef.current.future.length;
+
+  // Present every invalid W/H/D draft once. Keep all planner failures visible.
+  const getSingleCustomerSizeWarning = (axis) => {
+    if (overallDimensionErrors[axis]) return overallDimensionErrors[axis];
+    if (bookshelfSupport.ok && bookshelfPreviews[axis] && !bookshelfPreviews[axis].ok)
+      return bookshelfPreviews[axis].error || "Invalid bookshelf size.";
+    if (cabinetSupport.ok && cabinetPreviews[axis] && !cabinetPreviews[axis].ok)
+      return cabinetPreviews[axis].error || "Invalid cabinet size.";
+    if (tableSupport.ok && tablePreviews[axis] && !tablePreviews[axis].ok)
+      return tablePreviews[axis].error || "Invalid dining table size.";
+    if (axis === "width" && canSmartResizeWardrobeWidth &&
+        wardrobeWidthPreview && !wardrobeWidthPreview.ok)
+      return wardrobeWidthPreview.error || "Invalid wardrobe width.";
+    const wardrobePreview = axis === "height" ? wardrobeHeightPreview
+      : axis === "depth" ? wardrobeDepthPreview : null;
+    const wardrobeEnabled = axis === "height" ? canSmartResizeWardrobeHeight
+      : axis === "depth" ? canSmartResizeWardrobeDepth : false;
+    if (wardrobeEnabled && wardrobePreview && !wardrobePreview.ok)
+      return wardrobePreview.error || "Invalid wardrobe size.";
+    return "";
+  };
 
   return (
     <div
@@ -6228,26 +6318,26 @@ export default function Customer3DViewer({
 
                   {bookshelfSupport.ok ? (
                     <div style={styles.helperTextMuted} role="status">
-                      Width {bookshelfSupport.minWidth}-{bookshelfSupport.maxWidth} mm;
-                      Height {bookshelfSupport.minHeight}-{bookshelfSupport.maxHeight} mm;
-                      Depth {bookshelfSupport.minDepth}-{bookshelfSupport.maxDepth} mm.
+                      Width {effectiveCustomerSizeRanges.width?.min}-{effectiveCustomerSizeRanges.width?.max} mm;
+                      Height {effectiveCustomerSizeRanges.height?.min}-{effectiveCustomerSizeRanges.height?.max} mm;
+                      Depth {effectiveCustomerSizeRanges.depth?.min}-{effectiveCustomerSizeRanges.depth?.max} mm.
                       All 18 mm boards stay the same thickness. Admin reviews final specifications.
                     </div>
                   ) : null}
                   {cabinetSupport.ok ? (
                     <div style={styles.helperTextMuted} role="status">
-                      Width {cabinetSupport.minWidth}-{cabinetSupport.maxWidth} mm;
-                      Height {cabinetSupport.minHeight}-{cabinetSupport.maxHeight} mm;
-                      Depth {cabinetSupport.minDepth}-{cabinetSupport.maxDepth} mm.
+                      Width {effectiveCustomerSizeRanges.width?.min}-{effectiveCustomerSizeRanges.width?.max} mm;
+                      Height {effectiveCustomerSizeRanges.height?.min}-{effectiveCustomerSizeRanges.height?.max} mm;
+                      Depth {effectiveCustomerSizeRanges.depth?.min}-{effectiveCustomerSizeRanges.depth?.max} mm.
                       The two inset doors, shelf clearances and original panel thicknesses stay aligned.
                       Admin must review final construction specifications.
                     </div>
                   ) : null}
                   {tableSupport.ok ? (
                     <div style={styles.helperTextMuted} role="status">
-                      Width {tableSupport.minWidth}-{tableSupport.maxWidth} mm;
-                      Height {tableSupport.minHeight}-{tableSupport.maxHeight} mm;
-                      Depth {tableSupport.minDepth}-{tableSupport.maxDepth} mm.
+                      Width {effectiveCustomerSizeRanges.width?.min}-{effectiveCustomerSizeRanges.width?.max} mm;
+                      Height {effectiveCustomerSizeRanges.height?.min}-{effectiveCustomerSizeRanges.height?.max} mm;
+                      Depth {effectiveCustomerSizeRanges.depth?.min}-{effectiveCustomerSizeRanges.depth?.max} mm.
                       The 40 mm tabletop, 80 × 80 mm leg sections, and 25 mm aprons stay intact.
                       Final dimensions and joinery require Admin review.
                     </div>
@@ -6256,8 +6346,8 @@ export default function Customer3DViewer({
                     <div style={styles.helperTextMuted} role="status">
                       {canSmartResizeWardrobeWidth
                         ? canSmartResizeWardrobeHeight && canSmartResizeWardrobeDepth
-                          ? `Width: ${wardrobeWidthSupport.minWidth}-${wardrobeWidthSupport.maxWidth} mm. Height: ${wardrobeHeightDepthSupport.minHeight}-${wardrobeHeightDepthSupport.maxHeight} mm. Depth: ${wardrobeHeightDepthSupport.minDepth}-${wardrobeHeightDepthSupport.maxDepth} mm. Enter one size, review the preview, then press Apply. Board thickness, edited drawer sizes, and finishes stay unchanged. These limits are provisional; the shop must review final sizes.`
-                          : `Width can change from ${wardrobeWidthSupport.minWidth} to ${wardrobeWidthSupport.maxWidth} mm. Preview the bay sizes and press Apply Width. Board thickness, drawer dimensions, and custom finishes stay unchanged. Height and Depth stay locked for this layout. Final sizes need shop review.`
+                          ? `Width: ${effectiveCustomerSizeRanges.width?.min}-${effectiveCustomerSizeRanges.width?.max} mm. Height: ${effectiveCustomerSizeRanges.height?.min}-${effectiveCustomerSizeRanges.height?.max} mm. Depth: ${effectiveCustomerSizeRanges.depth?.min}-${effectiveCustomerSizeRanges.depth?.max} mm. Enter one size, review the preview, then press Apply. Board thickness, edited drawer sizes, and finishes stay unchanged. These limits are provisional; the shop must review final sizes.`
+                          : `Width can change from ${effectiveCustomerSizeRanges.width?.min} to ${effectiveCustomerSizeRanges.width?.max} mm. Preview the bay sizes and press Apply Width. Board thickness, drawer dimensions, and custom finishes stay unchanged. Height and Depth stay locked for this layout. Final sizes need shop review.`
                         : "Overall wardrobe size is protected because this layout is not verified for safe resizing. Wood finishes and door/drawer previews remain available."}
                     </div>
                   ) : null}
@@ -6411,11 +6501,7 @@ export default function Customer3DViewer({
                     </div>
                   </div>
 
-                  {(overallDimensionErrors.width ||
-                    (cabinetSupport.ok && cabinetPreviews.width && !cabinetPreviews.width.ok) ||
-                    (canSmartResizeWardrobeWidth &&
-                      wardrobeWidthPreview &&
-                      !wardrobeWidthPreview.ok)) ? (
+                  {getSingleCustomerSizeWarning("width") ? (
                     <div
                       id="customer-overall-width-error"
                       role="alert"
@@ -6432,9 +6518,7 @@ export default function Customer3DViewer({
                         overflowWrap: "anywhere",
                       }}
                     >
-                      {overallDimensionErrors.width ||
-                        (cabinetSupport.ok ? cabinetPreviews.width?.error : "") ||
-                        wardrobeWidthPreview?.error}
+                      {getSingleCustomerSizeWarning("width")}
                     </div>
                   ) : null}
 
@@ -6443,10 +6527,7 @@ export default function Customer3DViewer({
                       ? wardrobeHeightPreview : wardrobeDepthPreview;
                     const enabled = axis === "height"
                       ? canSmartResizeWardrobeHeight : canSmartResizeWardrobeDepth;
-                    const message = overallDimensionErrors[axis] ||
-                      (cabinetSupport.ok && cabinetPreviews[axis] && !cabinetPreviews[axis].ok
-                        ? cabinetPreviews[axis].error : "") ||
-                      (enabled && preview && !preview.ok ? preview.error : "");
+                    const message = getSingleCustomerSizeWarning(axis);
                     return message ? (
                       <div
                         key={axis}
@@ -6488,9 +6569,7 @@ export default function Customer3DViewer({
                                 borderRadius:0,padding:"10px 12px",fontWeight:700,cursor:"pointer"}}>
                               Apply {label}
                             </button>
-                          </> : <div role="alert" style={{color:"#b91c1c",fontSize:11}}>
-                            {candidate.error}
-                          </div>}
+                          </> : null}
                         </div>;
                       })}
                     </div>
@@ -6534,9 +6613,7 @@ export default function Customer3DViewer({
                                 borderRadius:0,padding:"10px 12px",fontWeight:700,cursor:"pointer"}}>
                               Apply {label}
                             </button>
-                          </> : <div role="alert" style={{color:"#b91c1c",fontSize:11}}>
-                            {candidate.error}
-                          </div>}
+                          </> : null}
                         </div>;
                       })}
                     </div>
