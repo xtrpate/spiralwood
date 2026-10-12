@@ -37,8 +37,14 @@ import { getCustomerBookshelfResizeSupport, planCustomerBookshelfResize }
   from "../../utils/customerBookshelfResize";
 import { getCustomerCabinetResizeSupport, planCustomerCabinetResize }
   from "../../utils/customerCabinetSafeResize";
+import { getCustomerValidatedPanelCarcassSupport, planCustomerValidatedPanelCarcassResize }
+  from "../../utils/customerValidatedPanelCarcassResize.mjs";
 import { getCustomerDiningTableResizeSupport, planCustomerDiningTableResize }
   from "../../utils/customerDiningTableResize.mjs";
+import { getCustomerManualFivePartTableSupport, planCustomerManualFivePartTableResize }
+  from "../../utils/customerManualFivePartTableResize.mjs";
+import { getCustomerGeometricManualTableSupport, planCustomerGeometricManualTableResize }
+  from "../../utils/customerGeometricManualTableResize.mjs";
 import { createFurnitureObject } from "../blueprints/3d/createFurnitureObjects";
 import { WOOD_FINISHES } from "../blueprints/data/furnitureTypes";
 import {
@@ -2094,15 +2100,21 @@ export default function Customer3DViewer({
   }, [bookshelfSupport.ok, editable, overallDrafts, overallBounds,
       planBookshelf, convertUnitToMm, unit]);
   // CUST-B3: strictly validated 10-part Base Cabinet; never generic resize.
-  const cabinetSupport = useMemo(
-    () => getCustomerCabinetResizeSupport(components), [components]);
+  const cabinetSupport = useMemo(() => {
+    const verifiedTenPart = getCustomerCabinetResizeSupport(components);
+    return verifiedTenPart.ok
+      ? verifiedTenPart
+      : getCustomerValidatedPanelCarcassSupport(components);
+  }, [components]);
   const canResizeCabinet = axis => cabinetSupport.ok && editable[axis] === true;
   const planCabinet = useCallback((axis, mm) => {
     if (editable[axis] !== true) return {ok:false,error:"This size is not editable."};
     const allowed = getEffectiveCustomerSizeRange(cabinetSupport, customizationRules, axis);
     const warning = getEffectiveCustomerSizeError(axis, allowed, mm);
     if (warning) return {ok: false, error: warning};
-    return planCustomerCabinetResize(components, axis, mm);
+    return cabinetSupport.validatedPanelCarcass
+      ? planCustomerValidatedPanelCarcassResize(components, axis, mm)
+      : planCustomerCabinetResize(components, axis, mm);
   }, [components, editable, customizationRules, cabinetSupport]);
   const cabinetPreviews = useMemo(() => {
     const result={};
@@ -2119,15 +2131,21 @@ export default function Customer3DViewer({
   }, [cabinetSupport.ok, editable, overallDrafts, overallBounds,
       planCabinet, convertUnitToMm, unit]);
   // C5-1: exact nine-part Dining Table only; future/unverified layouts fail closed.
-  const tableSupport = useMemo(
-    () => getCustomerDiningTableResizeSupport(components), [components]);
+  const tableSupport = useMemo(() => {
+    const standard = getCustomerDiningTableResizeSupport(components);
+    if (standard.ok) return standard;
+    const verifiedManual = getCustomerManualFivePartTableSupport(components);
+    return verifiedManual.ok ? verifiedManual : getCustomerGeometricManualTableSupport(components);
+  }, [components]);
   const canResizeTable = axis => tableSupport.ok && editable[axis] === true;
   const planTable = useCallback((axis, mm) => {
     if (editable[axis] !== true) return {ok:false,error:"This size is not editable."};
     const allowed = getEffectiveCustomerSizeRange(tableSupport, customizationRules, axis);
     const warning = getEffectiveCustomerSizeError(axis, allowed, mm);
     if (warning) return {ok: false, error: warning};
-    return planCustomerDiningTableResize(components, axis, mm);
+    return tableSupport.manualFivePart ? planCustomerManualFivePartTableResize(components, axis, mm)
+      : tableSupport.geometricManualTable ? planCustomerGeometricManualTableResize(components, axis, mm)
+      : planCustomerDiningTableResize(components, axis, mm);
   }, [components, editable, customizationRules, tableSupport]);
   const tablePreviews = useMemo(() => {
     const result={};
@@ -4644,7 +4662,9 @@ export default function Customer3DViewer({
     setOverallDimensionErrors(old=>({...old,[axis]:""}));
     commitComponents(next.parts);
     setCustomizeProgressStep(current=>Math.max(current,3));
-    showCustomizeFeedback("Cabinet size updated. Review all 10 parts and door clearances.");
+    showCustomizeFeedback(cabinetSupport.validatedPanelCarcass
+      ? "Carcass size updated. Admin must verify physical stability, joints and any door layout."
+      : "Cabinet size updated. Review all 10 parts and door clearances.");
   };
   const applySmartTable = axis => {
     if (!isCustomizable || readOnly || !canResizeTable(axis)) return;
@@ -4653,14 +4673,16 @@ export default function Customer3DViewer({
     const next=error ? {ok:false,error} : planTable(axis,Math.round(convertUnitToMm(value,unit)));
     if (!next.ok) {
       setOverallDimensionErrors(old=>({...old,[axis]:next.error}));
-      showCustomizeFeedback(next.error || "Dining Table dimensions are not verified.");
+      showCustomizeFeedback(next.error || "Table dimensions are not verified.");
       return;
     }
     if (next[axis] === Number(overallBounds[axis+"_mm"])) return;
     setOverallDimensionErrors(old=>({...old,[axis]:""}));
     commitComponents(next.parts);
     setCustomizeProgressStep(current=>Math.max(current,3));
-    showCustomizeFeedback("Dining Table size updated. Review all 9 parts before checkout.");
+    showCustomizeFeedback(tableSupport.manualFivePart || tableSupport.geometricManualTable
+      ? "Manual table size updated. Ask Admin to review leg joinery and tabletop support."
+      : "Dining Table size updated. Review all 9 parts before checkout.");
   };
   const applySmartWardrobeWidth = () => {
     if (!isCustomizable || readOnly || !canSmartResizeWardrobeWidth) return;
@@ -6306,7 +6328,7 @@ export default function Customer3DViewer({
                       Furniture Size ({unit === "inches" ? "in" : unit})
                     </label>
                     <span style={styles.pill}>
-                      {bookshelfSupport.ok ? "Smart bookshelf" : cabinetSupport.ok ? "Smart cabinet" : tableSupport.ok ? "Smart table" : overallWardrobeSizeProtected
+                      {bookshelfSupport.ok ? "Smart bookshelf" : cabinetSupport.ok ? (cabinetSupport.validatedPanelCarcass ? "Smart carcass" : "Smart cabinet") : tableSupport.ok && (tableSupport.manualFivePart || tableSupport.geometricManualTable) ? "Manual table" : tableSupport.ok ? "Smart table" : overallWardrobeSizeProtected
                         ? canSmartResizeWardrobeHeight && canSmartResizeWardrobeDepth
                           ? "Smart sizing"
                           : canSmartResizeWardrobeWidth
@@ -6329,7 +6351,9 @@ export default function Customer3DViewer({
                       Width {effectiveCustomerSizeRanges.width?.min}-{effectiveCustomerSizeRanges.width?.max} mm;
                       Height {effectiveCustomerSizeRanges.height?.min}-{effectiveCustomerSizeRanges.height?.max} mm;
                       Depth {effectiveCustomerSizeRanges.depth?.min}-{effectiveCustomerSizeRanges.depth?.max} mm.
-                      The two inset doors, shelf clearances and original panel thicknesses stay aligned.
+                      {cabinetSupport.validatedPanelCarcass
+                        ? "Panel thickness, shelf connections and base support stay aligned. Door/drawer assemblies must be verified separately."
+                        : "The two inset doors, shelf clearances and original panel thicknesses stay aligned."}
                       Admin must review final construction specifications.
                     </div>
                   ) : null}
@@ -6338,7 +6362,9 @@ export default function Customer3DViewer({
                       Width {effectiveCustomerSizeRanges.width?.min}-{effectiveCustomerSizeRanges.width?.max} mm;
                       Height {effectiveCustomerSizeRanges.height?.min}-{effectiveCustomerSizeRanges.height?.max} mm;
                       Depth {effectiveCustomerSizeRanges.depth?.min}-{effectiveCustomerSizeRanges.depth?.max} mm.
-                      The 40 mm tabletop, 80 × 80 mm leg sections, and 25 mm aprons stay intact.
+                      {tableSupport.manualFivePart || tableSupport.geometricManualTable
+                        ? `Manual five-part table: ${tableSupport.tabletopThickness} mm tabletop and ${tableSupport.legSection ?? tableSupport.legWidth} × ${tableSupport.legSection ?? tableSupport.legDepth} mm leg sections; corner offsets and floor contact stay fixed. Admin must review structural support and joinery.`
+                        : "The 40 mm tabletop, 80 × 80 mm leg sections, and 25 mm aprons stay intact."}
                       Final dimensions and joinery require Admin review.
                     </div>
                   ) : null}
@@ -6583,7 +6609,9 @@ export default function Customer3DViewer({
                         return <div key={axis} style={{display:"grid",gap:5}}>
                           <div style={styles.helperTextMuted} role="status">
                             {label}: {overallBounds[axis+"_mm"]} mm to {candidate[axis]} mm.
-                            All 10 parts and two inset doors preserve their clearances.
+                            {cabinetSupport.validatedPanelCarcass
+                              ? "Verified panel joints and shelf spacing remain aligned; Admin reviews joinery before production."
+                              : "All 10 parts and two inset doors preserve their clearances."}
                           </div>
                           <button type="button" onClick={() => applySmartCabinet(axis)}
                             disabled={!isCustomizable || readOnly || !editable[axis]}
@@ -6605,7 +6633,9 @@ export default function Customer3DViewer({
                           {candidate.ok ? <>
                             <div style={styles.helperTextMuted} role="status">
                               {label}: {overallBounds[axis+"_mm"]} mm to {candidate[axis]} mm.
-                              Tabletop thickness, leg section and apron thickness stay fixed.
+                              {tableSupport.manualFivePart || tableSupport.geometricManualTable
+                                ? "Tabletop thickness, leg cross-sections, corner insets and feet position stay fixed."
+                                : "Tabletop thickness, leg section and apron thickness stay fixed."}
                             </div>
                             <button type="button" onClick={() => applySmartTable(axis)}
                               disabled={!isCustomizable || readOnly || !editable[axis]}
