@@ -353,6 +353,7 @@ export default function CustomerTemplateWorkbench({
       initialDimensions={initialDimensions}
       initialWoodType={firstText(blueprint?.wood_type, blueprint?.primary_material)}
       customizationRules={blueprint?.customization_rules || {}}
+      universalManualPreview={sceneData?.universalManualPreview || null}
       isCustomizable={!readOnly}
       readOnly={readOnly}
       onViewCustomize={onViewCustomize}

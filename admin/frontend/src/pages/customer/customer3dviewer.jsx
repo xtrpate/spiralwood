@@ -39,12 +39,16 @@ import { getCustomerCabinetResizeSupport, planCustomerCabinetResize }
   from "../../utils/customerCabinetSafeResize";
 import { getCustomerValidatedPanelCarcassSupport, planCustomerValidatedPanelCarcassResize }
   from "../../utils/customerValidatedPanelCarcassResize.mjs";
+import { getCustomerCarcassWholeDoorSupport, planCustomerCarcassWholeDoorResize }
+  from "../../utils/customerCarcassWholeDoorResize.mjs";
 import { getCustomerDiningTableResizeSupport, planCustomerDiningTableResize }
   from "../../utils/customerDiningTableResize.mjs";
 import { getCustomerManualFivePartTableSupport, planCustomerManualFivePartTableResize }
   from "../../utils/customerManualFivePartTableResize.mjs";
 import { getCustomerGeometricManualTableSupport, planCustomerGeometricManualTableResize }
   from "../../utils/customerGeometricManualTableResize.mjs";
+import { getCustomerUniversalManualPreviewSupport, planCustomerUniversalManualPreviewResize,
+  isCustomerUniversalManualPreviewChanged } from "../../utils/customerUniversalManualPreviewU5.mjs";
 import { createFurnitureObject } from "../blueprints/3d/createFurnitureObjects";
 import { WOOD_FINISHES } from "../blueprints/data/furnitureTypes";
 import {
@@ -1699,6 +1703,19 @@ const getEffectiveCustomerSizeRange = (support, rules, axis) => {
   const plannerMax = Number(support[`max${name}`]);
   if (!Number.isFinite(plannerMin) || !Number.isFinite(plannerMax) ||
       plannerMin <= 0 || plannerMax < plannerMin) return null;
+  // U9: A server-verified U4 manual review supplies the definitive geometry
+  // limits for its *preview-only* construction. Legacy generic customization
+  // rules can be derived from unrotated drawer bounds (e.g. 1172 mm rather
+  // than the reviewed 569 mm depth), creating an impossible min > max range.
+  // Keep all other furniture planners on the existing rules intersection.
+  // U6 independently authorizes any submitted universal geometry against the
+  // stored reviewed profile; this does not grant manufacturing approval.
+  if (support.previewOnly === true &&
+      support.profile?.status === "draft" &&
+      support.profile?.customerResizable === false &&
+      support.profile?.approval === "not_reviewed") {
+    return { min: plannerMin, max: plannerMax, valid: true };
+  }
   const published = rules?.dimensions?.[axis] || {};
   const parseOptional = (first, second) => {
     const raw = first ?? second;
@@ -1735,6 +1752,7 @@ export default function Customer3DViewer({
   initialComponents = [],
   initialDimensions = null,
   customizationRules = {},
+  universalManualPreview = null,
   isCustomizable = true,
   readOnly = false,
   onViewCustomize,
@@ -2102,9 +2120,11 @@ export default function Customer3DViewer({
   // CUST-B3: strictly validated 10-part Base Cabinet; never generic resize.
   const cabinetSupport = useMemo(() => {
     const verifiedTenPart = getCustomerCabinetResizeSupport(components);
-    return verifiedTenPart.ok
-      ? verifiedTenPart
-      : getCustomerValidatedPanelCarcassSupport(components);
+    if (verifiedTenPart.ok) return verifiedTenPart;
+    const verifiedCarcass = getCustomerValidatedPanelCarcassSupport(components);
+    return verifiedCarcass.ok
+      ? verifiedCarcass
+      : getCustomerCarcassWholeDoorSupport(components);
   }, [components]);
   const canResizeCabinet = axis => cabinetSupport.ok && editable[axis] === true;
   const planCabinet = useCallback((axis, mm) => {
@@ -2112,9 +2132,11 @@ export default function Customer3DViewer({
     const allowed = getEffectiveCustomerSizeRange(cabinetSupport, customizationRules, axis);
     const warning = getEffectiveCustomerSizeError(axis, allowed, mm);
     if (warning) return {ok: false, error: warning};
-    return cabinetSupport.validatedPanelCarcass
-      ? planCustomerValidatedPanelCarcassResize(components, axis, mm)
-      : planCustomerCabinetResize(components, axis, mm);
+    return cabinetSupport.validatedCarcassDoors
+      ? planCustomerCarcassWholeDoorResize(components, axis, mm)
+      : cabinetSupport.validatedPanelCarcass
+        ? planCustomerValidatedPanelCarcassResize(components, axis, mm)
+        : planCustomerCabinetResize(components, axis, mm);
   }, [components, editable, customizationRules, cabinetSupport]);
   const cabinetPreviews = useMemo(() => {
     const result={};
@@ -2238,10 +2260,48 @@ export default function Customer3DViewer({
     overallBounds.depth_mm, overallDrafts.depth, unit,
   ]);
 
+  // U5: This is preview-only. The server independently rechecks the U4
+  // construction against DB design_data before returning this capability.
+  // Older verified family planners remain authoritative when available.
+  const universalManualSupport = useMemo(() => {
+    if (bookshelfSupport.ok || cabinetSupport.ok || tableSupport.ok || overallWardrobeSizeProtected)
+      return { ok: false };
+    return getCustomerUniversalManualPreviewSupport(universalManualPreview, components);
+  }, [universalManualPreview, components, bookshelfSupport.ok, cabinetSupport.ok,
+      tableSupport.ok, overallWardrobeSizeProtected]);
+  const canPreviewUniversal = axis => universalManualSupport.ok && editable[axis] === true;
+  const planUniversal = useCallback((axis, mm) => {
+    if (editable[axis] !== true || !universalManualSupport.ok)
+      return { ok:false, error:"Manual construction is not verified for this dimension." };
+    const range = getEffectiveCustomerSizeRange(universalManualSupport, customizationRules, axis);
+    const warning = getEffectiveCustomerSizeError(axis, range, mm);
+    if (warning) return {ok:false,error:warning};
+    return planCustomerUniversalManualPreviewResize(universalManualPreview, components, axis, mm);
+  }, [editable, universalManualSupport, customizationRules, universalManualPreview, components]);
+  const universalPreviews = useMemo(() => {
+    const result={};
+    if(!universalManualSupport.ok)return result;
+    for(const axis of ["width","height","depth"]) {
+      if(!editable[axis])continue;
+      const raw=String(overallDrafts[axis] ?? "").trim();
+      if(!raw)continue;
+      const parsed=convertUnitToMm(raw, unit);
+      if(!Number.isFinite(parsed))continue;
+      const mm=Math.round(parsed);
+      if(mm===Number(overallBounds[axis+"_mm"]))continue;
+      result[axis]=planUniversal(axis,mm);
+    }
+    return result;
+  }, [universalManualSupport.ok, editable, overallDrafts, unit, convertUnitToMm,
+      overallBounds, planUniversal]);
+  const universalPreviewEdited = universalManualPreview?.verified === true &&
+    isCustomerUniversalManualPreviewChanged(universalManualPreview, components);
+
   const effectiveCustomerSizeRanges = useMemo(() => {
     const ranges = {};
     for (const axis of ["width", "height", "depth"]) {
-      const support = bookshelfSupport.ok ? bookshelfSupport
+      const support = universalManualSupport.ok ? universalManualSupport
+        : bookshelfSupport.ok ? bookshelfSupport
         : cabinetSupport.ok ? cabinetSupport
         : tableSupport.ok ? tableSupport
         : overallWardrobeSizeProtected
@@ -2250,7 +2310,7 @@ export default function Customer3DViewer({
       ranges[axis] = getEffectiveCustomerSizeRange(support, customizationRules, axis);
     }
     return ranges;
-  }, [bookshelfSupport, cabinetSupport, tableSupport, overallWardrobeSizeProtected,
+  }, [universalManualSupport, bookshelfSupport, cabinetSupport, tableSupport, overallWardrobeSizeProtected,
       wardrobeWidthSupport, wardrobeHeightDepthSupport, customizationRules]);
 
   const viewMetadata = useMemo(() => {
@@ -4565,6 +4625,13 @@ export default function Customer3DViewer({
       showCustomizeFeedback(effectiveWarning);
       return;
     }
+    if (universalManualSupport.ok) {
+      const mm=Math.round(convertUnitToMm(overallDrafts?.[axis],unit));
+      const preview=planUniversal(axis,mm);
+      setOverallDimensionErrors(old=>({...old,[axis]:preview.ok?"":preview.error}));
+      if(!preview.ok)showCustomizeFeedback(preview.error || "Manual size preview not available.");
+      return; // Apply button is required; Enter/blur never changes geometry.
+    }
     if (bookshelfSupport.ok) {
       const value=overallDrafts?.[axis];
       const error=getDimensionFieldError(value, {label:axis.charAt(0).toUpperCase()+axis.slice(1)});
@@ -4633,6 +4700,21 @@ export default function Customer3DViewer({
     showCustomizeFeedback("Size protected. Request measurements in Order Details.");
   };
 
+  const applyUniversalManualPreview = axis => {
+    if(!isCustomizable || readOnly || !canPreviewUniversal(axis))return;
+    const mm=Math.round(convertUnitToMm(overallDrafts?.[axis], unit));
+    const result=planUniversal(axis,mm);
+    if(!result.ok){
+      setOverallDimensionErrors(old=>({...old,[axis]:result.error}));
+      showCustomizeFeedback(result.error || "This construction cannot be resized safely.");
+      return;
+    }
+    if(mm===Number(overallBounds[axis+"_mm"]))return;
+    setOverallDimensionErrors(old=>({...old,[axis]:""}));
+    commitComponents(result.parts);
+    setCustomizeProgressStep(current=>Math.max(current,3));
+    showCustomizeFeedback("Manual geometry preview updated. Final custom-cart authorization is still pending.");
+  };
   const applySmartBookshelf = axis => {
     if (!isCustomizable || readOnly || !canResizeBookshelf(axis)) return;
     const value=overallDrafts?.[axis];
@@ -4662,9 +4744,11 @@ export default function Customer3DViewer({
     setOverallDimensionErrors(old=>({...old,[axis]:""}));
     commitComponents(next.parts);
     setCustomizeProgressStep(current=>Math.max(current,3));
-    showCustomizeFeedback(cabinetSupport.validatedPanelCarcass
-      ? "Carcass size updated. Admin must verify physical stability, joints and any door layout."
-      : "Cabinet size updated. Review all 10 parts and door clearances.");
+    showCustomizeFeedback(cabinetSupport.validatedCarcassDoors
+      ? "Carcass and doors resized. Admin must verify hinges, physical stability and joinery."
+      : cabinetSupport.validatedPanelCarcass
+        ? "Carcass size updated. Admin must verify physical stability, joints and any door layout."
+        : "Cabinet size updated. Review all 10 parts and door clearances.");
   };
   const applySmartTable = axis => {
     if (!isCustomizable || readOnly || !canResizeTable(axis)) return;
@@ -6328,7 +6412,7 @@ export default function Customer3DViewer({
                       Furniture Size ({unit === "inches" ? "in" : unit})
                     </label>
                     <span style={styles.pill}>
-                      {bookshelfSupport.ok ? "Smart bookshelf" : cabinetSupport.ok ? (cabinetSupport.validatedPanelCarcass ? "Smart carcass" : "Smart cabinet") : tableSupport.ok && (tableSupport.manualFivePart || tableSupport.geometricManualTable) ? "Manual table" : tableSupport.ok ? "Smart table" : overallWardrobeSizeProtected
+                      {universalManualSupport.ok ? "Reviewed manual · preview" : bookshelfSupport.ok ? "Smart bookshelf" : cabinetSupport.ok ? (cabinetSupport.validatedCarcassDoors ? "Smart carcass + doors" : cabinetSupport.validatedPanelCarcass ? "Smart carcass" : "Smart cabinet") : tableSupport.ok && (tableSupport.manualFivePart || tableSupport.geometricManualTable) ? "Manual table" : tableSupport.ok ? "Smart table" : overallWardrobeSizeProtected
                         ? canSmartResizeWardrobeHeight && canSmartResizeWardrobeDepth
                           ? "Smart sizing"
                           : canSmartResizeWardrobeWidth
@@ -6338,6 +6422,14 @@ export default function Customer3DViewer({
                     </span>
                   </div>
 
+                  {universalManualSupport.ok ? (
+                    <div style={styles.helperTextMuted} role="status">
+                      Admin-reviewed W/H/D ranges: Width {effectiveCustomerSizeRanges.width?.min}-{effectiveCustomerSizeRanges.width?.max} mm;
+                      Height {effectiveCustomerSizeRanges.height?.min}-{effectiveCustomerSizeRanges.height?.max} mm;
+                      Depth {effectiveCustomerSizeRanges.depth?.min}-{effectiveCustomerSizeRanges.depth?.max} mm.
+                      Customer-requested changes are server-validated at custom checkout before an order is created.
+                    </div>
+                  ) : null}
                   {bookshelfSupport.ok ? (
                     <div style={styles.helperTextMuted} role="status">
                       Width {effectiveCustomerSizeRanges.width?.min}-{effectiveCustomerSizeRanges.width?.max} mm;
@@ -6351,9 +6443,11 @@ export default function Customer3DViewer({
                       Width {effectiveCustomerSizeRanges.width?.min}-{effectiveCustomerSizeRanges.width?.max} mm;
                       Height {effectiveCustomerSizeRanges.height?.min}-{effectiveCustomerSizeRanges.height?.max} mm;
                       Depth {effectiveCustomerSizeRanges.depth?.min}-{effectiveCustomerSizeRanges.depth?.max} mm.
-                      {cabinetSupport.validatedPanelCarcass
-                        ? "Panel thickness, shelf connections and base support stay aligned. Door/drawer assemblies must be verified separately."
-                        : "The two inset doors, shelf clearances and original panel thicknesses stay aligned."}
+                      {cabinetSupport.validatedCarcassDoors
+                        ? "The checked whole-opening door gaps, frame alignment, panel thickness and shelf clearances remain aligned. Admin verifies hinges and joinery."
+                        : cabinetSupport.validatedPanelCarcass
+                          ? "Panel thickness, shelf connections and base support stay aligned. Door/drawer assemblies must be verified separately."
+                          : "The two inset doors, shelf clearances and original panel thicknesses stay aligned."}
                       Admin must review final construction specifications.
                     </div>
                   ) : null}
@@ -6378,7 +6472,7 @@ export default function Customer3DViewer({
                     </div>
                   ) : null}
 
-                  {!overallWardrobeSizeProtected && !bookshelfSupport.ok && !cabinetSupport.ok && !tableSupport.ok ? (
+                  {!universalManualSupport.ok && !overallWardrobeSizeProtected && !bookshelfSupport.ok && !cabinetSupport.ok && !tableSupport.ok ? (
                     <div style={styles.helperTextMuted} role="status">
                       Size protected: automatic resizing is not verified for this furniture.
                       To request a different width, height, or depth, open Order Details
@@ -6399,7 +6493,7 @@ export default function Customer3DViewer({
                         disabled={
                           !isCustomizable ||
                           readOnly ||
-                          (!canResizeBookshelf("width") && !canResizeCabinet("width") && !canResizeTable("width") &&
+                          (!canPreviewUniversal("width") && !canResizeBookshelf("width") && !canResizeCabinet("width") && !canResizeTable("width") &&
                             (!overallWardrobeSizeProtected || !canSmartResizeWardrobeWidth))
                         }
                         onChange={(e) =>
@@ -6445,7 +6539,7 @@ export default function Customer3DViewer({
                         value={overallDrafts.height}
                         disabled={
                           !isCustomizable || readOnly ||
-                          (!canResizeBookshelf("height") && !canResizeCabinet("height") && !canResizeTable("height") &&
+                          (!canPreviewUniversal("height") && !canResizeBookshelf("height") && !canResizeCabinet("height") && !canResizeTable("height") &&
                             (!overallWardrobeSizeProtected || !canSmartResizeWardrobeHeight))
                         }
                         onChange={(e) =>
@@ -6489,7 +6583,7 @@ export default function Customer3DViewer({
                         value={overallDrafts.depth}
                         disabled={
                           !isCustomizable || readOnly ||
-                          (!canResizeBookshelf("depth") && !canResizeCabinet("depth") && !canResizeTable("depth") &&
+                          (!canPreviewUniversal("depth") && !canResizeBookshelf("depth") && !canResizeCabinet("depth") && !canResizeTable("depth") &&
                             (!overallWardrobeSizeProtected || !canSmartResizeWardrobeDepth))
                         }
                         onChange={(e) =>
@@ -6577,6 +6671,29 @@ export default function Customer3DViewer({
                     ) : null;
                   })}
 
+                  {universalManualSupport.ok ? (
+                    <div style={{marginTop:8,display:"grid",gap:8}}>
+                      {(["width","height","depth"]).map(axis=>{
+                        const candidate=universalPreviews[axis];
+                        if(!candidate)return null;
+                        const label=axis.charAt(0).toUpperCase()+axis.slice(1);
+                        return <div key={axis} style={{display:"grid",gap:5}}>
+                          {candidate.ok ? <>
+                            <div style={styles.helperTextMuted} role="status">
+                              Preview {label}: {overallBounds[axis+"_mm"]} to {candidate[axis]} mm.
+                              Connections and original part dimensions are checked against Admin rules.
+                            </div>
+                            <button type="button" onClick={()=>applyUniversalManualPreview(axis)}
+                              disabled={!isCustomizable || readOnly || !editable[axis]}
+                              style={{background:"#111",color:"#fff",border:"1px solid #111",borderRadius:0,
+                                padding:"10px 12px",fontWeight:700,cursor:"pointer"}}>
+                              Apply {label} Preview
+                            </button>
+                          </> : null}
+                        </div>;
+                      })}
+                    </div>
+                  ) : null}
                   {bookshelfSupport.ok ? (
                     <div style={{marginTop:8,display:"grid",gap:8}}>
                       {(["width","height","depth"]).map(axis => {
@@ -7220,6 +7337,12 @@ export default function Customer3DViewer({
                   />
                 </div>
 
+                {universalPreviewEdited ? (
+                  <div style={styles.helperTextMuted} role="status">
+                    Manual geometry changes are checked against the original reviewed Blueprint at
+                    checkout. Admin still reviews physical construction and the final quotation.
+                  </div>
+                ) : null}
                 <button
                   type="button"
                   className="wisdom-add-to-cart-btn"

@@ -599,13 +599,21 @@ const sanitizeEditorSnapshotForStorage = (snapshot = null) => {
   };
 };
 
-const sanitizeCustomizationSnapshotForStorage = (snapshot = null) => {
-  if (!snapshot || typeof snapshot !== "object") return null;
+// U10: Normalize the two existing customer snapshot formats without altering
+// the order schema. For a U4-reviewed manual design, use ONLY the dimension
+// values independently authorized by U6; never trust an optional client alias.
+const sanitizeCustomizationSnapshotForStorage = (snapshot = null, reviewedDimensions = null) => {
+  if ((!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) && !reviewedDimensions) return null;
+
+  const savedDimension = (axis) => {
+    if (reviewedDimensions) return reviewedDimensions[axis];
+    return Number(snapshot?.[axis] ?? snapshot?.[`${axis}_mm`] ?? 0) || 0;
+  };
 
   return {
-    width: Number(snapshot?.width || 0) || 0,
-    height: Number(snapshot?.height || 0) || 0,
-    depth: Number(snapshot?.depth || 0) || 0,
+    width: savedDimension("width"),
+    height: savedDimension("height"),
+    depth: savedDimension("depth"),
     wood_type: toTrimmedStringOrNull(snapshot?.wood_type),
     finish_color: toTrimmedStringOrNull(snapshot?.finish_color),
     color: toTrimmedStringOrNull(snapshot?.color),
@@ -1063,6 +1071,33 @@ exports.createCustomOrder = async (req, res) => {
     conn = await db.getConnection();
     await conn.beginTransaction();
 
+    // U6: a published Blueprint with a reviewed manual construction requires
+    // independent server recomputation before ANY order row or upload is saved.
+    // No client preview marker/profile is trusted; no-reviewed legacy paths remain unchanged.
+    const [sourceRows] = await conn.execute(
+      `SELECT b.design_data FROM blueprints b
+       WHERE b.id = ? AND b.is_deleted = 0
+         AND EXISTS (
+           SELECT 1 FROM products p WHERE p.blueprint_id = b.id
+             AND p.is_published = 1 AND p.is_active = 1
+         ) LIMIT 1 FOR UPDATE`,
+      [primaryBlueprintId],
+    );
+    if (!sourceRows.length) {
+      await conn.rollback();
+      return res.status(409).json({ message: 'The published Blueprint is no longer available. Reopen the design.' });
+    }
+    const sourceDesign = typeof sourceRows[0].design_data === 'string'
+      ? JSON.parse(sourceRows[0].design_data) : sourceRows[0].design_data;
+    const { authorizeUniversalManualOrderU6 } = require('../../services/universalManualOrderU6');
+    const checkedManual = await authorizeUniversalManualOrderU6({
+      designData: sourceDesign, item: cleanedItems[0],
+    });
+    if (!checkedManual.ok) {
+      await conn.rollback();
+      return res.status(400).json({ message: checkedManual.message });
+    }
+
     const now = new Date();
     const date = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(
       2,
@@ -1115,6 +1150,7 @@ exports.createCustomOrder = async (req, res) => {
     for (const item of cleanedItems) {
       const slimCustomizationSnapshot = sanitizeCustomizationSnapshotForStorage(
         item.customization_snapshot,
+        checkedManual.applies === true ? checkedManual.dimensions : null,
       );
 
       const slimEditorSnapshot = sanitizeEditorSnapshotForStorage(

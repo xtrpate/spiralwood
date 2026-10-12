@@ -30,7 +30,6 @@ export function FurnitureToolsPanel({
   onDrawerStackSelection,
   onFaceFitSelection,
   onInsideFitSelection,
-  onBuildSimpleTable,
   onBuildCabinetBox,
   onBuildCabinetShelfLayout,
   onBuildCabinetInteriorPreset,
@@ -39,7 +38,6 @@ export function FurnitureToolsPanel({
   onBuildCabinetFrontPreset,
   onBuildCabinetCustomBayFronts,
   onBuildCabinetCustomCellFronts,
-  canBuildSimpleTable = false,
   canBuildCabinetBox = false,
   canBuildCabinetShelfLayout = false,
   canBuildCabinetInteriorPreset = false,
@@ -84,13 +82,6 @@ export function FurnitureToolsPanel({
   const [builderApronHeight, setBuilderApronHeight] = useState(70);
   const [builderApronThickness, setBuilderApronThickness] = useState(22);
   const [builderDrawerCount, setBuilderDrawerCount] = useState(3);
-  const [simpleTableWidth, setSimpleTableWidth] = useState(1400);
-  const [simpleTableDepth, setSimpleTableDepth] = useState(800);
-  const [simpleTableHeight, setSimpleTableHeight] = useState(760);
-  const [simpleTableTopThickness, setSimpleTableTopThickness] = useState(36);
-  const [simpleTableLegSize, setSimpleTableLegSize] = useState(70);
-  const [simpleTableApronHeight, setSimpleTableApronHeight] = useState(90);
-  const [simpleTableApronThickness, setSimpleTableApronThickness] = useState(25);
   const [baseCabinetWidth, setBaseCabinetWidth] = useState(900);
   const [baseCabinetHeight, setBaseCabinetHeight] = useState(876);
   const [baseCabinetDepth, setBaseCabinetDepth] = useState(610);
@@ -236,8 +227,6 @@ export function FurnitureToolsPanel({
     !smartWidthResizeContext?.hasLockedAssemblyPart &&
     typeof onPreviewSmartWidthResize === "function" &&
     typeof onApplySmartWidthResize === "function";
-  const canSimpleTableBuilder =
-    canBuildSimpleTable && typeof onBuildSimpleTable === "function";
   const canQuickCabinetBuilder =
     canBuildCabinetBox && typeof onBuildCabinetBox === "function";
   const canShelfLayoutBuilder =
@@ -1244,192 +1233,6 @@ export function FurnitureToolsPanel({
 
       {activeToolTab === "builders" ? (
         <>
-
-          <div style={sectionCardStyle}>
-            <div style={S.smartActionsSectionLabel}>Simple Table Builder</div>
-            <div style={sectionHintStyle}>
-              Generate a complete 9-part table assembly from production
-              dimensions: 1 tabletop, 4 legs, and 4 structural aprons.
-            </div>
-
-            <div style={S.smartActionsFieldsRow}>
-              <label style={fieldStyle}>
-                <span style={{ fontSize: 10, color: "#94a3b8" }}>
-                  Width (mm)
-                </span>
-                <input
-                  type="number"
-                  min="400"
-                  step="1"
-                  value={simpleTableWidth}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onChange={(e) =>
-                    setSimpleTableWidth(Math.max(400, Number(e.target.value) || 400))
-                  }
-                  style={actionInputStyle}
-                />
-              </label>
-
-              <label style={fieldStyle}>
-                <span style={{ fontSize: 10, color: "#94a3b8" }}>
-                  Depth (mm)
-                </span>
-                <input
-                  type="number"
-                  min="400"
-                  step="1"
-                  value={simpleTableDepth}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onChange={(e) =>
-                    setSimpleTableDepth(Math.max(400, Number(e.target.value) || 400))
-                  }
-                  style={actionInputStyle}
-                />
-              </label>
-            </div>
-
-            <div style={S.smartActionsFieldsRow}>
-              <label style={fieldStyle}>
-                <span style={{ fontSize: 10, color: "#94a3b8" }}>
-                  Height (mm)
-                </span>
-                <input
-                  type="number"
-                  min="300"
-                  step="1"
-                  value={simpleTableHeight}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onChange={(e) =>
-                    setSimpleTableHeight(Math.max(300, Number(e.target.value) || 300))
-                  }
-                  style={actionInputStyle}
-                />
-              </label>
-
-              <label style={fieldStyle}>
-                <span style={{ fontSize: 10, color: "#94a3b8" }}>
-                  Tabletop Thickness (mm)
-                </span>
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={simpleTableTopThickness}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onChange={(e) =>
-                    setSimpleTableTopThickness(
-                      Math.max(1, Number(e.target.value) || 1),
-                    )
-                  }
-                  style={actionInputStyle}
-                />
-              </label>
-            </div>
-
-            <div style={S.smartActionsFieldsRow}>
-              <label style={fieldStyle}>
-                <span style={{ fontSize: 10, color: "#94a3b8" }}>
-                  Leg Size (mm)
-                </span>
-                <input
-                  type="number"
-                  min="20"
-                  step="1"
-                  value={simpleTableLegSize}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onChange={(e) =>
-                    setSimpleTableLegSize(Math.max(20, Number(e.target.value) || 20))
-                  }
-                  style={actionInputStyle}
-                />
-              </label>
-
-              <label style={fieldStyle}>
-                <span style={{ fontSize: 10, color: "#94a3b8" }}>
-                  Apron Height (mm)
-                </span>
-                <input
-                  type="number"
-                  min="20"
-                  step="1"
-                  value={simpleTableApronHeight}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onChange={(e) =>
-                    setSimpleTableApronHeight(
-                      Math.max(20, Number(e.target.value) || 20),
-                    )
-                  }
-                  style={actionInputStyle}
-                />
-              </label>
-            </div>
-
-            <div style={S.smartActionsFieldsRow}>
-              <label style={fieldStyle}>
-                <span style={{ fontSize: 10, color: "#94a3b8" }}>
-                  Apron Thickness (mm)
-                </span>
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={simpleTableApronThickness}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onChange={(e) =>
-                    setSimpleTableApronThickness(
-                      Math.max(1, Number(e.target.value) || 1),
-                    )
-                  }
-                  style={actionInputStyle}
-                />
-              </label>
-              <div style={fieldStyle} />
-            </div>
-
-            <div
-              style={{
-                ...S.infoCard,
-                margin: "0 0 8px",
-                padding: "8px 10px",
-                fontSize: 10,
-                color: canSimpleTableBuilder ? "#93c5fd" : "#fcd34d",
-                lineHeight: 1.5,
-              }}
-            >
-              {canSimpleTableBuilder
-                ? "Builds exactly 9 parts with a 40 mm automatic maximum corner inset. All generated part prices remain 0."
-                : "Simple Table Builder is available in Editable mode."}
-            </div>
-
-            <div style={S.smartActionsWideGrid}>
-              <button
-                type="button"
-                onClick={makeHandler(
-                  canSimpleTableBuilder,
-                  onBuildSimpleTable,
-                  {
-                    width: simpleTableWidth,
-                    depth: simpleTableDepth,
-                    height: simpleTableHeight,
-                    tabletopThickness: simpleTableTopThickness,
-                    legSize: simpleTableLegSize,
-                    apronHeight: simpleTableApronHeight,
-                    apronThickness: simpleTableApronThickness,
-                  },
-                )}
-                style={getBtnStyle(canSimpleTableBuilder)}
-              >
-                Build Simple Table
-              </button>
-            </div>
-          </div>
 
           <div style={sectionCardStyle}>
             <div style={S.smartActionsSectionLabel}>Base Cabinet Builder</div>

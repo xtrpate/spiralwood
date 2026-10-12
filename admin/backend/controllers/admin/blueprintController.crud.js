@@ -25,6 +25,7 @@ const {
 } = require("./blueprintController.helpers");
 
 const { emitBlueprintUpdate } = require("../../utils/orderStatusSocket");
+const { REVIEW_KEY, normalizeManualReviewForSave } = require("../../services/universalManualReviewU4");
 
 exports.getAll = async (req, res) => {
   try {
@@ -566,6 +567,24 @@ exports.update = async (req, res) => {
 
     if (incomingHasDesignData) {
       filtered.design_data = mergeDesignData(filtered.design_data);
+      const incomingDesign = JSON.parse(filtered.design_data);
+      const oldDesign = safeJsonParse(bp.design_data, {});
+      const reviewResult = await normalizeManualReviewForSave({
+        parts: incomingDesign.components,
+        incoming: incomingDesign[REVIEW_KEY],
+        previous: oldDesign && oldDesign[REVIEW_KEY],
+        actorId: req.user.id,
+      });
+      if (!reviewResult.ok) {
+        await conn.rollback();
+        return res.status(400).json({
+          code: reviewResult.code,
+          message: reviewResult.message,
+        });
+      }
+      if (reviewResult.value) incomingDesign[REVIEW_KEY] = reviewResult.value;
+      else delete incomingDesign[REVIEW_KEY];
+      filtered.design_data = JSON.stringify(incomingDesign);
     }
 
     if (!Object.keys(filtered).length) {

@@ -2013,6 +2013,7 @@ const {
   selectCanonicalPublicationScene,
   validateBlueprintPublicationParts,
 } = require("../../services/blueprintPublicationPartsGuard");
+const { REVIEW_KEY, checkStoredManualReviewForPublish } = require("../../services/universalManualReviewU4");
 
 exports.publishByBlueprint = async (req, res) => {
   const conn = await pool.getConnection();
@@ -2148,6 +2149,27 @@ exports.publishByBlueprint = async (req, res) => {
           code: 'BLUEPRINT_PUBLICATION_PARTS_INVALID',
           message: 'Correct the Blueprint part data before publishing.',
           issues: validation.issues,
+        });
+      }
+      // U4 does NOT require reviews for all products or grant Customer access.
+      // Where a reviewed manual profile exists, fail closed on stale/tampered
+      // construction instead of publishing an invalid review as current.
+      let design = {};
+      try {
+        design = blueprint.design_data
+          ? (typeof blueprint.design_data === 'string'
+              ? JSON.parse(blueprint.design_data) : blueprint.design_data)
+          : {};
+      } catch { design = {}; }
+      const reviewGuard = await checkStoredManualReviewForPublish({
+        parts: sceneParts,
+        savedReview: design?.[REVIEW_KEY],
+      });
+      if (!reviewGuard.ok) {
+        await conn.rollback();
+        return res.status(409).json({
+          code: 'BLUEPRINT_CONSTRUCTION_REVIEW_INVALID',
+          message: reviewGuard.message,
         });
       }
     }

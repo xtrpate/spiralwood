@@ -436,6 +436,21 @@ function normalizeComponent(c) {
         "auto",
     ),
 
+    // G3: Save/Reload must retain Builder-provided opening relationships.
+    // Only door parts receive these non-geometric, optional fields.
+    ...(String(c.type || "").toLowerCase() === "door_front_panel" &&
+        String(c.partRole || "").toLowerCase() === "door"
+      ? {
+          doorLayoutMode: String(c.doorLayoutMode || ""),
+          doorLayoutScope: String(c.doorLayoutScope || ""),
+          doorLeaf: String(c.doorLeaf || ""),
+          ...(c.doorReveal != null && c.doorReveal !== "" && Number.isFinite(Number(c.doorReveal))
+            ? { doorReveal: Number(c.doorReveal) } : {}),
+          ...(c.doorGap != null && c.doorGap !== "" && Number.isFinite(Number(c.doorGap))
+            ? { doorGap: Number(c.doorGap) } : {}),
+        }
+      : {}),
+
     // WISDOM MANUAL MOVING GROUPS V1.1.0
     // Kept separate from furniture groupId / assemblyId so a drawer or door
     // can move independently without reclassifying the whole cabinet.

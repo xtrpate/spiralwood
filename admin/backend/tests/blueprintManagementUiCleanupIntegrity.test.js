@@ -26,12 +26,14 @@ assert(
   "Retired manual validation / mirror actions are still exposed",
 );
 for (const label of [
-  "Simple Table Builder", "Base Cabinet Builder", "Wardrobe Builder",
+  "Base Cabinet Builder", "Wardrobe Builder",
   "Shelf Layout", "Door Builder", "Drawer Builder",
   "Controlled Assembly Resize", "Select Whole Furniture",
 ]) {
   assert(panel.includes(label), "Required Blueprint control missing: " + label);
 }
+assert(!panel.includes("Simple Table Builder") && !panel.includes("Build Simple Table"),
+  "Retired duplicate Simple Table Builder must not be exposed in Admin Tools");
 assert(
   panel.includes("showCabinetVariants ? (") &&
     panel.includes("SHOW_ADVANCED_BUILD_TOOLS ? ("),

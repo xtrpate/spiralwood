@@ -559,7 +559,6 @@ function ThreeDViewer({
   onDrawerStackSelection,
   onFaceFitSelection,
   onInsideFitSelection,
-  onBuildSimpleTable,
   onBuildCabinetBox,
   onBuildCabinetShelfLayout,
   onBuildCabinetInteriorPreset,
@@ -568,7 +567,6 @@ function ThreeDViewer({
   onBuildCabinetFrontPreset,
   onBuildCabinetCustomBayFronts,
   onBuildCabinetCustomCellFronts,
-  canBuildSimpleTable = false,
   canBuildCabinetBox = false,
   canBuildCabinetShelfLayout = false,
   canBuildCabinetInteriorPreset = false,
@@ -4055,7 +4053,6 @@ function ThreeDViewer({
             onDrawerStackSelection={onDrawerStackSelection}
             onFaceFitSelection={onFaceFitSelection}
             onInsideFitSelection={onInsideFitSelection}
-            onBuildSimpleTable={onBuildSimpleTable}
             onBuildCabinetBox={onBuildCabinetBox}
             onBuildCabinetShelfLayout={onBuildCabinetShelfLayout}
             onBuildCabinetInteriorPreset={onBuildCabinetInteriorPreset}
@@ -4064,7 +4061,6 @@ function ThreeDViewer({
             onBuildCabinetFrontPreset={onBuildCabinetFrontPreset}
             onBuildCabinetCustomBayFronts={onBuildCabinetCustomBayFronts}
             onBuildCabinetCustomCellFronts={onBuildCabinetCustomCellFronts}
-            canBuildSimpleTable={canBuildSimpleTable}
             canBuildCabinetBox={canBuildCabinetBox}
             canBuildCabinetShelfLayout={canBuildCabinetShelfLayout}
             canBuildCabinetInteriorPreset={canBuildCabinetInteriorPreset}

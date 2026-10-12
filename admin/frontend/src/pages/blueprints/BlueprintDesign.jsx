@@ -25,6 +25,7 @@ import { Canvas2D } from "./2d/blueprintComponents";
 // ── Editor UI / Hooks ─────────────────────────────────────────────────────────
 import { BlueprintEditorHeader } from "./components/BlueprintEditorHeader";
 import { BlueprintPublishModal } from "./components/BlueprintPublishModal";
+import { ManualConstructionReviewU2 } from "./components/ManualConstructionReviewU2";
 import { useBlueprintHistory } from "./hooks/useBlueprintHistory";
 import { useBlueprintPersistence } from "./hooks/useBlueprintPersistence";
 import { useBlueprintExport } from "./hooks/useBlueprintExport";
@@ -75,6 +76,8 @@ export default function BlueprintDesign() {
 
   const [blueprint, setBlueprint] = useState(null);
   const [components, setComponents] = useState([]);
+  const [manualPreview3D, setManualPreview3D] = useState(null);
+  const [stagedManualReviewU4, setStagedManualReviewU4] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
   const [clipboardObject, setClipboardObject] = useState(null);
@@ -138,6 +141,19 @@ export default function BlueprintDesign() {
     () => getDesignComponentSignature(components),
     [components],
   );
+  const hasStoredManualReviewU4 = useMemo(() => {
+    try {
+      const saved = typeof blueprint?.design_data === "string"
+        ? JSON.parse(blueprint.design_data) : blueprint?.design_data;
+      return saved?.manualConstructionReviewU4?.status === "geometry_reviewed" &&
+        saved.manualConstructionReviewU4.customerResizable === false;
+    } catch { return false; }
+  }, [blueprint?.design_data]);
+  // Any live component mutation or navigation invalidates a temporary preview.
+  useEffect(() => {
+    setManualPreview3D(null);
+    setStagedManualReviewU4(null);
+  }, [id, currentDesignComponentSignature]);
 
   // Unsaved-change tracking covers the editor state that Save Design persists,
   // not only component geometry. View/selection/grid state is intentionally
@@ -179,6 +195,7 @@ export default function BlueprintDesign() {
   const markEditorStateSaved = useCallback((savedSignature) => {
     if (typeof savedSignature === "string") {
       setSavedEditorStateSignature(savedSignature);
+      setStagedManualReviewU4(null);
     }
   }, []);
 
@@ -605,7 +622,6 @@ export default function BlueprintDesign() {
   });
 
   const {
-    buildSimpleTable3D,
     buildCabinetBox3D,
     buildCabinetShelfLayout3D,
     buildCabinetInteriorPreset3D,
@@ -646,6 +662,7 @@ export default function BlueprintDesign() {
       importDimensions,
       editorStateSignature: currentEditorStateSignature,
       onDesignSaved: markEditorStateSaved,
+      stagedManualReviewU4,
       publishForm,
       setPublishModal,
       setSaving,
@@ -739,10 +756,48 @@ export default function BlueprintDesign() {
         setPublishModal={setPublishModal}
         handleUnpublishProduct={handleUnpublishProduct}
       />
+      {view === "3d" && (stagedManualReviewU4 || hasStoredManualReviewU4) ? (
+        <div style={{background:'#172554',color:'#bfdbfe',padding:'7px 16px',fontSize:11}}>
+          {stagedManualReviewU4
+            ? 'U4 geometry review staged. Click Save to ask the backend to validate and persist it; Customer remains Size Protected.'
+            : 'U4 geometry review stored on Blueprint. Changes require revalidation; Customer remains Size Protected.'}
+        </div>
+      ) : null}
+      {view === "3d" ? (
+        <ManualConstructionReviewU2
+          onStageReviewed={(settings) => setStagedManualReviewU4({
+            signature: currentEditorStateSignature,
+            settings,
+          })}
+          onInvalidateReviewed={() => setStagedManualReviewU4(null)}
+          key={currentDesignComponentSignature}
+          components={components}
+          onShowPreview={(next) => {
+            if (next?.previewOnly === true && next?.customerResizable === false &&
+                Array.isArray(next.parts) && next.parts.length === components.length) {
+              setManualPreview3D(next);
+            }
+          }}
+        />
+      ) : null}
+      {manualPreview3D && view === "3d" ? (
+        <div role="presentation" style={{position:"fixed",inset:0,zIndex:2147480000,background:"transparent",pointerEvents: "auto"}}>
+          <div role="status" style={{position:"absolute",top:20,right:20,background:"#0f172a",color:"#e2e8f0",border:"1px solid #38bdf8",padding:16,maxWidth:400,boxShadow:"0 8px 32px #0008",fontSize:12}}>
+            <div style={{fontWeight:700,marginBottom:7}}>U3 Admin-only 3D Preview</div>
+            <div style={{color:"#fbbf24",lineHeight:1.5,marginBottom:9}}>Not saved or published. Editor actions are blocked during preview. Customer sizing remains protected.</div>
+            <div style={{marginBottom:10}}>
+              W {manualPreview3D.dimensions.width} Â· H {manualPreview3D.dimensions.height} Â· D {manualPreview3D.dimensions.depth} mm
+            </div>
+            <button type="button" style={{background:"#2563eb",border:"1px solid #60a5fa",color:"white",padding:"9px 13px",cursor:"pointer"}} onClick={() => setManualPreview3D(null)}>
+              Restore original design
+            </button>
+          </div>
+        </div>
+      ) : null}
       {view === "3d" ? (
         <div style={{ flex: 1, minHeight: 0, width: "100%", height: "100%" }}>
           <ThreeDViewer
-            components={components}
+            components={manualPreview3D?.parts ?? components}
             selectedId={selectedId}
             edit3DId={edit3DId}
             setSelectedId={setSelectedId}
@@ -779,7 +834,6 @@ export default function BlueprintDesign() {
             onDrawerStackSelection={drawerStackSelection3D}
             onFaceFitSelection={faceFitSelection3D}
             onInsideFitSelection={insideFitSelection3D}
-            onBuildSimpleTable={buildSimpleTable3D}
             onBuildCabinetBox={buildCabinetBox3D}
             onBuildCabinetShelfLayout={buildCabinetShelfLayout3D}
             onBuildCabinetInteriorPreset={buildCabinetInteriorPreset3D}
@@ -788,7 +842,6 @@ export default function BlueprintDesign() {
             onBuildCabinetFrontPreset={buildCabinetFrontPreset3D}
             onBuildCabinetCustomBayFronts={buildCabinetCustomBayFronts3D}
             onBuildCabinetCustomCellFronts={buildCabinetCustomCellFronts3D}
-            canBuildSimpleTable={editorMode === "editable"}
             canBuildCabinetBox={editorMode === "editable"}
             canBuildCabinetShelfLayout={editorMode === "editable"}
             canBuildCabinetInteriorPreset={editorMode === "editable"}

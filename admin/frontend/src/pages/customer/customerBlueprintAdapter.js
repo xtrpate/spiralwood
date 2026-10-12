@@ -403,6 +403,8 @@ export function extractCustomerBlueprintScene(blueprint) {
     mainComponent,
     detectedTemplateType,
     hasExactAdmin3D: components.length > 0,
+    // U5: provided only by GET /customer/blueprints/:id after U4 backend revalidation.
+    universalManualPreview: blueprint?.customer_universal_manual_resize || null,
     defaultDimensions: {
       width_mm,
       height_mm,

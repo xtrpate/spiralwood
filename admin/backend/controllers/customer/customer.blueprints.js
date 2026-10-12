@@ -874,8 +874,31 @@ exports.getBlueprintById = async (req, res) => {
       components,
     });
 
+    // U5: independent U4 backend recheck before allowing *visual preview*.
+    // This does NOT authorize a changed custom cart/order (U6 pending).
+    let customerUniversalPreview = null;
+    const designParts = blueprint.design_data?.components;
+    const savedManualReview = blueprint.design_data?.manualConstructionReviewU4;
+    if (savedManualReview && Array.isArray(designParts)) {
+      const { checkStoredManualReviewForPublish } = require("../../services/universalManualReviewU4");
+      const verified = await checkStoredManualReviewForPublish({
+        parts: designParts, savedReview: savedManualReview,
+      });
+      if (verified.ok === true && verified.hasReview === true &&
+          savedManualReview?.draftProfile?.status === "draft" &&
+          savedManualReview?.draftProfile?.customerResizable === false &&
+          savedManualReview?.draftProfile?.approval === "not_reviewed") {
+        customerUniversalPreview = {
+          verified: true, previewOnly: true,
+          profile: savedManualReview.draftProfile,
+          sourceParts: designParts,
+        };
+      }
+    }
+
     res.json({
       ...blueprint,
+      customer_universal_manual_resize: customerUniversalPreview,
       thumbnail_url:
         blueprint.thumbnail_url || blueprint.preview_image_url || "",
       preview_image_url:

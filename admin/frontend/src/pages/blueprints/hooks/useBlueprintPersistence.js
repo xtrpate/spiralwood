@@ -20,6 +20,7 @@ export function useBlueprintPersistence({
   importDimensions,
   editorStateSignature,
   onDesignSaved,
+  stagedManualReviewU4,
   publishForm,
   setPublishModal,
   setSaving,
@@ -162,6 +163,21 @@ export function useBlueprintPersistence({
         exportViews,
       };
 
+      // U4: stage only the explicitly reviewed scene. Backend independently
+      // verifies it and stores a geometry-only, non-customer record.
+      if (stagedManualReviewU4) {
+        if (stagedManualReviewU4.signature !== savingEditorStateSignature &&
+            stagedManualReviewU4.signature !== undefined) {
+          toast.error("Construction review changed. Re-review before saving.");
+          return { ok: false, reason: 'REVIEW_SCENE_CHANGED' };
+        }
+        payload.manualConstructionReviewU4 = {
+          status: 'submitted_for_review',
+          customerResizable: false,
+          settings: stagedManualReviewU4.settings,
+        };
+      }
+
       const view3dPayload = {
         furnitureType: actualFurnitureType,
         templateType: actualTemplateType,
@@ -239,6 +255,7 @@ export function useBlueprintPersistence({
     importDimensions,
     editorStateSignature,
     onDesignSaved,
+    stagedManualReviewU4,
     publishForm,
     setSaving,
     setBlueprint,
