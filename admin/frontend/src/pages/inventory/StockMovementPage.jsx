@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import useAuthStore from "../../store/authStore";
@@ -183,6 +189,8 @@ export default function StockMovementPage() {
   const [exportScope, setExportScope] = useState("filtered");
   const [exportFormat, setExportFormat] = useState("xlsx");
   const [itemKind, setItemKind] = useState("material");
+
+  const exportInProgressRef = useRef(false);
 
   const handleDatePreset = (preset) => {
     const today = getPhilippineDateKey();
@@ -442,8 +450,10 @@ export default function StockMovementPage() {
       toast.error("You do not have permission to export stock movements.");
       return;
     }
-    if (exporting) return;
 
+    if (exportInProgressRef.current) return;
+
+    exportInProgressRef.current = true;
     setExporting(true);
 
     try {
@@ -528,6 +538,7 @@ export default function StockMovementPage() {
         toast.error(err?.message || "Failed to export report.");
       }
     } finally {
+      exportInProgressRef.current = false;
       setExporting(false);
     }
   };

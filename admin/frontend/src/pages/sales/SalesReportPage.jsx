@@ -215,6 +215,7 @@ export default function SalesReportPage() {
   const hasPermission = useAuthStore((state) => state.hasPermission);
   const canExport = hasPermission("sales_report.export");
   const requestIdRef = useRef(0);
+  const exportInProgressRef = useRef(false);
 
   const [channel, setChannel] = useState("");
   const [payment, setPayment] = useState("");
@@ -441,6 +442,9 @@ export default function SalesReportPage() {
     "All Payments";
   const exportExcel = async () => {
     if (!data || !appliedFilters || loading || !canExport) return;
+
+    if (exportInProgressRef.current) return;
+    exportInProgressRef.current = true;
 
     let saveHandle = null;
 
@@ -973,6 +977,7 @@ export default function SalesReportPage() {
         );
       }
     } finally {
+      exportInProgressRef.current = false;
       setExporting(false);
     }
   };
@@ -1002,14 +1007,16 @@ export default function SalesReportPage() {
             type="button"
             className="sales-button sales-button-primary"
             onClick={exportExcel}
-            disabled={!data || !appliedFilters || loading || !canExport}
+            disabled={
+              !data || !appliedFilters || loading || exporting || !canExport
+            }
             title={
               !canExport
                 ? "Sales report export permission is required."
                 : undefined
             }
           >
-            {exporting ? "Exporting..." : "Export Report"}
+            {exporting ? "Exporting..." : "Export Excel"}
           </button>
         </div>
       </div>
@@ -1082,7 +1089,7 @@ export default function SalesReportPage() {
             whiteSpace: "nowrap",
           }}
         >
-          Sales &amp; Profitability
+          Profitability
         </button>
       </div>
 

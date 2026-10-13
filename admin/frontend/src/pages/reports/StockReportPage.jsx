@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useSearchParams } from "react-router-dom";
 import { Eye, X, FileDown } from "lucide-react";
 import toast from "react-hot-toast";
@@ -874,6 +880,7 @@ export default function StockReportPage() {
   const [loading, setLoading] = useState(true);
   const [initialLoading, setInitialLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const exportInProgressRef = useRef(false);
   const [generatedAt, setGeneratedAt] = useState("");
 
   useEffect(() => {
@@ -1024,7 +1031,11 @@ export default function StockReportPage() {
   ]);
 
   const exportExcel = async () => {
+    if (exportInProgressRef.current) return;
+
+    exportInProgressRef.current = true;
     setExporting(true);
+
     try {
       const workbook = XLSX.utils.book_new();
 
@@ -1377,6 +1388,7 @@ export default function StockReportPage() {
     } catch (err) {
       if (err.name !== "AbortError") toast.error("Failed to export report.");
     } finally {
+      exportInProgressRef.current = false;
       setExporting(false);
     }
   };

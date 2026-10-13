@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import * as XLSX from "xlsx-js-style";
@@ -186,6 +192,8 @@ export default function DailyStockInReportPage() {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
   const [selectedTransaction, setSelectedTransaction] = useState(null);
+
+  const exportInProgressRef = useRef(false);
 
   const generatedBy =
     String(user?.name || user?.full_name || "").trim() || "Administrator";
@@ -376,6 +384,8 @@ export default function DailyStockInReportPage() {
   };
 
   const exportExcel = async () => {
+    if (exportInProgressRef.current) return;
+
     if (loading || !generatedAt) return;
 
     if (filteredRows.length === 0) {
@@ -383,6 +393,7 @@ export default function DailyStockInReportPage() {
       return;
     }
 
+    exportInProgressRef.current = true;
     setExporting(true);
 
     try {
@@ -602,6 +613,7 @@ export default function DailyStockInReportPage() {
       if (err.name !== "AbortError")
         toast.error("Failed to export the Stock In Report.");
     } finally {
+      exportInProgressRef.current = false;
       setExporting(false);
     }
   };

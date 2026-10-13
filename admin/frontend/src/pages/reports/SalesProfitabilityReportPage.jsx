@@ -426,6 +426,7 @@ export default function SalesProfitabilityReportPage() {
   );
 
   const hasLoadedReportRef = useRef(false);
+  const exportInProgressRef = useRef(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -518,6 +519,11 @@ export default function SalesProfitabilityReportPage() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const exportExcel = async () => {
+    if (exportInProgressRef.current) return;
+
+    exportInProgressRef.current = true;
+    setExporting(true);
+
     const orderTypeFilenamePart =
       orderType === "all" ? "all_orders" : getExportFilenamePart(orderType);
 
@@ -592,8 +598,6 @@ export default function SalesProfitabilityReportPage() {
           throw err;
         }
       }
-
-      setExporting(true);
 
       /*
        * First request:
@@ -1350,6 +1354,7 @@ export default function SalesProfitabilityReportPage() {
         toast.error(err?.message || "Failed to export Profitability report.");
       }
     } finally {
+      exportInProgressRef.current = false;
       setExporting(false);
     }
   };
@@ -1387,7 +1392,6 @@ export default function SalesProfitabilityReportPage() {
                 : undefined
             }
           >
-            <FileDown size={14} style={{ marginRight: 6 }} />
             {exporting ? "Exporting..." : "Export Excel"}
           </button>
         </div>
@@ -1458,7 +1462,7 @@ export default function SalesProfitabilityReportPage() {
             whiteSpace: "nowrap",
           }}
         >
-          Sales &amp; Profitability
+          Profitability
         </button>
       </div>
 
@@ -2102,7 +2106,7 @@ export default function SalesProfitabilityReportPage() {
                       : "Export the Order Completion Report PDF"
                 }
               >
-                <FileDown size={14} /> Export Record
+                Export Record
               </button>
               <button
                 type="button"

@@ -326,6 +326,7 @@ export default function CurrentInventoryReportPage() {
 
   const reportRequestIdRef = useRef(0);
   const hasLoadedReportRef = useRef(false);
+  const exportInProgressRef = useRef(false);
 
   const [reportDate, setReportDate] = useState(todayManila);
   const [search, setSearch] = useState("");
@@ -577,6 +578,8 @@ export default function CurrentInventoryReportPage() {
   };
 
   const exportExcel = async () => {
+    if (exportInProgressRef.current) return;
+
     if (!generatedAt || loading) return;
 
     if (filteredRaw.length === 0 && filteredReadyMade.length === 0) {
@@ -584,6 +587,7 @@ export default function CurrentInventoryReportPage() {
       return;
     }
 
+    exportInProgressRef.current = true;
     setExporting(true);
 
     try {
@@ -883,6 +887,7 @@ export default function CurrentInventoryReportPage() {
       if (err.name !== "AbortError")
         toast.error("Failed to export the Inventory report.");
     } finally {
+      exportInProgressRef.current = false;
       setExporting(false);
     }
   };

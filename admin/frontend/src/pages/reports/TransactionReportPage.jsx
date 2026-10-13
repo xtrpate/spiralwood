@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useSearchParams } from "react-router-dom";
 import { Eye, X, FileDown } from "lucide-react";
 import toast from "react-hot-toast";
@@ -850,6 +856,8 @@ export default function TransactionReportPage() {
   const [exporting, setExporting] = useState(false);
   const [generatedAt, setGeneratedAt] = useState("");
 
+  const exportInProgressRef = useRef(false);
+
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setDebouncedSearch(search.trim());
@@ -1026,10 +1034,15 @@ export default function TransactionReportPage() {
   ]);
 
   const exportExcel = async () => {
+    if (exportInProgressRef.current) return;
+
     if (dateFilter === "custom" && (!customStart || !customEnd)) {
       toast.error("Select both Start Date and End Date before exporting.");
       return;
     }
+
+    exportInProgressRef.current = true;
+    setExporting(true);
 
     const subreportFilenamePart =
       reportType === "orders" ? "orders" : "cancellations";
@@ -1110,6 +1123,9 @@ export default function TransactionReportPage() {
           ],
         });
       } catch (err) {
+        exportInProgressRef.current = false;
+        setExporting(false);
+
         if (err?.name === "AbortError") {
           return;
         }
@@ -1118,8 +1134,6 @@ export default function TransactionReportPage() {
         return;
       }
     }
-
-    setExporting(true);
 
     try {
       let exportRows = [];
@@ -1512,6 +1526,7 @@ export default function TransactionReportPage() {
         toast.error(err?.message || "Failed to export report.");
       }
     } finally {
+      exportInProgressRef.current = false;
       setExporting(false);
     }
   };

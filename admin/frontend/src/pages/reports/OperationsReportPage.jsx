@@ -1321,6 +1321,8 @@ export default function OperationsReportPage({ fixedOperationType = null }) {
   const [generatedAt, setGeneratedAt] = useState("");
   const [silentLoading, setSilentLoading] = useState(false);
 
+  const exportInProgressRef = useRef(false);
+
   const reportRequestIdRef = useRef(0);
   const hasLoadedReportRef = useRef(false);
 
@@ -1773,7 +1775,11 @@ export default function OperationsReportPage({ fixedOperationType = null }) {
   ]);
 
   const exportExcel = async () => {
+    if (exportInProgressRef.current) return;
+
+    exportInProgressRef.current = true;
     setExporting(true);
+
     try {
       const workbook = XLSX.utils.book_new();
 
@@ -2248,6 +2254,7 @@ export default function OperationsReportPage({ fixedOperationType = null }) {
     } catch (err) {
       if (err.name !== "AbortError") toast.error("Failed to export report.");
     } finally {
+      exportInProgressRef.current = false;
       setExporting(false);
     }
   };
