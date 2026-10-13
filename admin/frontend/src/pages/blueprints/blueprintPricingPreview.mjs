@@ -75,7 +75,13 @@ export function allocateFixedMarkupQuote({ items = [], materialCost, productionL
 
 export function previewFixedMarkupQuote({ items = [], rawMaterials = [], woodReferencePrices = [], requestedWoodTypes = [], laborCost = 0 } = {}) {
   const woodRows = items.filter((row) => String(row?.source_type || "").toLowerCase() === "wood_reference");
-  const selectedWood = new Set(woodRows.map((row) => String(row.wood_type || "").toLowerCase()));
+  const inventoryWoodRows = items.filter((row) =>
+    String(row?.source_type || "").toLowerCase() === "inventory_material" && row.wood_type);
+  const selectedWood = new Set([...woodRows, ...inventoryWoodRows]
+    .map((row) => String(row.wood_type || "").toLowerCase()));
+  if (selectedWood.size !== woodRows.length + inventoryWoodRows.length) {
+    return { ready: false, message: "The same wood species is selected more than once." };
+  }
   const requested = new Set(requestedWoodTypes.map((type) => String(type || "").toLowerCase()).filter(Boolean));
   if ([...requested].some((wood) => !selectedWood.has(wood)) || [...selectedWood].some((wood) => requested.size && !requested.has(wood))) {
     return { ready: false, message: "Add each customer-requested wood type in Wood Planks with Admin-estimated quantities." };
@@ -94,6 +100,12 @@ export function previewFixedMarkupQuote({ items = [], rawMaterials = [], woodRef
         return { ready: false, message: "Invalid required material or quantity. Review Materials." };
       }
       used.add(id);
+      if (row.wood_type) {
+        const reference = woodReferencePrices.find((record) => record.id === String(row.wood_type).toLowerCase());
+        if (!reference || Number(reference.raw_material_id) !== id) {
+          return { ready: false, message: "Wood inventory selection changed. Refresh and review Required Materials." };
+        }
+      }
       const dbUnitCost = Number(material.unit_cost);
       if (!Number.isFinite(dbUnitCost) || dbUnitCost <= 0) {
         return { ready: false, message: `Required material ${material.name || '#' + id} has no confirmed unit cost.` };
@@ -105,7 +117,9 @@ export function previewFixedMarkupQuote({ items = [], rawMaterials = [], woodRef
       const id = String(row.wood_type || "").toLowerCase();
       const reference = woodReferencePrices.find((record) => record.id === id);
       const qty = Number(row.quantity);
-      if (!reference || row.unit !== "plank" || usedWoodTypes.has(id) || !Number.isSafeInteger(qty) || qty < 1 || qty > 100000) {
+      if (!reference || reference.source !== "raw_materials.unit_cost" || !reference.raw_material_id ||
+          row.unit !== "plank" || usedWoodTypes.has(id) || !Number.isSafeInteger(qty) || qty < 1 || qty > 100000 ||
+          used.has(Number(reference.raw_material_id))) {
         return { ready: false, message: "Review wood type and whole plank quantities in Required Materials." };
       }
       usedWoodTypes.add(id);

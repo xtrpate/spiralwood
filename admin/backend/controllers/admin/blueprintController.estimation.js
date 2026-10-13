@@ -36,6 +36,33 @@ const {
   validateRequestedWoodCoverage,
 } = require("../../utils/blueprintWoodCostingW4");
 const { WOOD_REFERENCE_PRICES, WOOD_REFERENCE_PRICE_VERSION, findWoodReference } = require("../../utils/blueprintWoodReferencePrices");
+const { WOOD_MATERIALS, resolveInventoryWoodMaterial, normalizeInventoryWoodEstimateRows } =
+  require("../../utils/blueprintInventoryWoodPricingW4A");
+const { validateRetainedOriginalMaterialCoverage } =
+  require("../../utils/blueprintRetainedOriginalMaterialsW4A4");
+
+// Admin-only live wood catalog. W3 rates are retained exclusively for locked
+// historical quotations, never used to price a new editable quote.
+const loadInventoryWoodPrices = async (conn) => {
+  const woodTypes = Object.keys(WOOD_MATERIALS);
+  const names = woodTypes.map((type) => WOOD_MATERIALS[type].inventoryName);
+  const [rows] = await conn.query(
+    `SELECT id, name, unit, material_form, length_mm, width_mm, thickness_mm,
+            unit_cost, quantity, is_active FROM raw_materials
+     WHERE name IN (${names.map(() => "?").join(",")})`, names);
+  return woodTypes.flatMap((type) => {
+    try {
+      const material = resolveInventoryWoodMaterial(type, rows);
+      return [{ id: type, name: type[0].toUpperCase() + type.slice(1),
+        cost_per_plank: material.unit_cost,
+        length_mm: material.length_mm, width_mm: material.width_mm,
+        thickness_mm: material.thickness_mm,
+        source: "raw_materials.unit_cost", raw_material_id: material.raw_material_id }];
+    } catch { return []; } // Missing/invalid stock wood is not available to price.
+  });
+};
+const isLockedEstimateStatusForWood = (status) =>
+  ["sent", "approved"].includes(String(status || "").trim().toLowerCase());
 
 const checkQuotationInventoryReadiness = async (
   conn,
@@ -241,7 +268,7 @@ exports.getEstimation = async (req, res) => {
             status: autoDraft.status || "draft",
             auto_generated: true,
             auto_source: autoDraft.source || "unknown",
-            wood_reference_prices: WOOD_REFERENCE_PRICES,
+            wood_reference_prices: await loadInventoryWoodPrices(conn),
             is_recovery_draft: true,
             persisted: false,
             items: autoDraft.items || [],
@@ -282,7 +309,7 @@ exports.getEstimation = async (req, res) => {
         status: autoDraft.status || "draft",
         auto_generated: true,
         auto_source: autoDraft.source || "unknown",
-        wood_reference_prices: WOOD_REFERENCE_PRICES,
+        wood_reference_prices: await loadInventoryWoodPrices(conn),
         items: autoDraft.items || [],
         material_cost: autoDraft.material_cost || 0,
         items_total: autoDraft.items_total || 0,
@@ -403,6 +430,22 @@ exports.getEstimation = async (req, res) => {
       ? grandTotalRaw
       : computed.grand_total;
 
+    // Historical quoted wood costs must display their saved snapshot, not a
+    // later Inventory price. Previously locked W3 quotes keep their W3 display.
+    const savedWoodPrices = meta.costing_formula?.wood_inventory_cost_snapshot;
+    const lockedQuote = isLockedEstimateStatusForWood(est.status);
+    const historicalWoodReference = normalizedItems.some((item) => item.source_type === "wood_reference");
+    const woodDisplayCatalog = lockedQuote && Array.isArray(savedWoodPrices) && savedWoodPrices.length
+      ? savedWoodPrices.map((row) => ({
+          id: row.wood_type, name: row.wood_type[0].toUpperCase() + row.wood_type.slice(1),
+          raw_material_id: row.raw_material_id, cost_per_plank: row.unit_cost,
+          length_mm: row.length_mm, width_mm: row.width_mm, thickness_mm: row.thickness_mm,
+          source: "saved_inventory_quote_snapshot",
+        }))
+      : lockedQuote && historicalWoodReference
+        ? WOOD_REFERENCE_PRICES
+        : await loadInventoryWoodPrices(conn);
+
     res.json({
       ...est,
       items: normalizedItems,
@@ -410,7 +453,7 @@ exports.getEstimation = async (req, res) => {
       items_total: material_cost,
       inventory_pricing_mode,
       costing_formula: meta.costing_formula || null,
-      wood_reference_prices: WOOD_REFERENCE_PRICES,
+      wood_reference_prices: woodDisplayCatalog,
       labor_cost,
       production_labor_cost,
       billable_labor_cost: labor_cost,
@@ -743,82 +786,80 @@ exports.saveEstimation = async (req, res) => {
       throw createValidationError(error.message);
     }
 
-    // Canonicalize manual wood entries on the server, not from submitted labels or rates.
-    normalizedItems = normalizedItems.map((item) => {
-      if (item.source_type !== "wood_reference") return item;
-      const wood = findWoodReference(item.wood_type);
-      if (!wood) throw createValidationError("Choose a valid W3 wood reference.");
-      return {
-        ...item,
-        name: `${wood.name} Plank`,
-        description: `${wood.name} Plank`,
-        wood_type: wood.id,
-        unit: "plank",
-        raw_material_id: null,
-        unit_cost: 0,
-        subtotal: 0,
-      };
-    });
+    // W4-A2: collect selected inventory rows and Admin-requested wood species.
+    // Inventory is authoritative for names, prices and physical plank identity;
+    // the browser controls only wood choice and manual whole-number quantities.
+    const requestedWoodSpecies = [...new Set((Array.isArray(canonicalDesign.components) ? canonicalDesign.components : [])
+      .map((part) => String(part?.requested_wood_type || "").trim().toLowerCase()).filter(Boolean))];
+    const selectedWoodTypes = [...new Set(normalizedItems
+      .filter((row) => row.source_type === "wood_reference" ||
+        (row.source_type === "inventory_material" && row.wood_type))
+      .map((row) => String(row.wood_type || "").trim().toLowerCase()))];
+    const neededWoodTypes = [...new Set([...requestedWoodSpecies, ...selectedWoodTypes])];
+    const woodNames = neededWoodTypes.map((wood) => WOOD_MATERIALS[wood]?.inventoryName);
+    if (woodNames.some((name) => !name)) {
+      throw createValidationError("Unsupported wood species in the blueprint or estimate.");
+    }
+    let woodMaterials = [];
+    if (woodNames.length) {
+      [woodMaterials] = await conn.query(
+        `SELECT id, name, unit, material_form, length_mm, width_mm, thickness_mm,
+                unit_cost, quantity, is_active FROM raw_materials
+         WHERE name IN (${woodNames.map(() => "?").join(",")})`, woodNames);
+    }
 
-    // Server-priced raw material snapshot; NEVER trust browser-supplied unit_cost.
-    let costingMaterialMap = new Map();
-    const rawMaterialIds = [
-      ...new Set(
-        normalizedItems
-          .map((item) => Number(item.raw_material_id) || null)
-          .filter(Boolean),
-      ),
-    ];
+    try {
+      normalizedItems = normalizeInventoryWoodEstimateRows({
+        items: normalizedItems,
+        rawMaterials: woodMaterials,
+        requestedWoodTypes: requestedWoodSpecies,
+      });
+    } catch (error) {
+      throw createValidationError(error.message);
+    }
 
+    // Server-priced stock snapshot; one row per material ID, no duplicated
+    // wood reference charges or browser-provided material rates.
+    const rawMaterialIds = [...new Set(normalizedItems
+      .filter((row) => row.source_type === "inventory_material")
+      .map((row) => Number(row.raw_material_id)))];
+    const costingMaterialMap = new Map();
     if (rawMaterialIds.length) {
-      const placeholders = rawMaterialIds.map(() => "?").join(",");
       const [rawMaterialRows] = await conn.query(
-        `SELECT id, name, unit, quantity, unit_cost, stock_status
-         FROM raw_materials
-         WHERE id IN (${placeholders})`,
+        `SELECT id, name, unit, material_form, length_mm, width_mm, thickness_mm,
+                quantity, unit_cost, stock_status, is_active
+         FROM raw_materials WHERE id IN (${rawMaterialIds.map(() => "?").join(",")})`,
         rawMaterialIds,
       );
-
       if (rawMaterialRows.length !== rawMaterialIds.length) {
-        throw createValidationError(
-          "One or more selected inventory materials no longer exist. Refresh and try again.",
-        );
+        throw createValidationError("One or more selected inventory materials no longer exist. Refresh and try again.");
       }
-
-      const rawMaterialMap = new Map(
-        rawMaterialRows.map((row) => [Number(row.id), row]),
-      );
-      costingMaterialMap = rawMaterialMap;
-
-      const referencedWoods = normalizedItems.filter((row) => row.source_type === "wood_reference")
-        .map((row) => String(row.wood_type || "").toLowerCase());
-      for (const material of rawMaterialRows) {
-        const name = String(material.name || "").toLowerCase();
-        if (referencedWoods.some((wood) => name.includes(wood) && /\b(plank|lumber|timber)\b/.test(name))) {
-          throw createValidationError(`Cannot charge the same wood stock through both hardcoded plank pricing and Inventory: ${material.name}.`);
-        }
-      }
-
+      rawMaterialRows.forEach((row) => costingMaterialMap.set(Number(row.id), row));
+      try {
+        normalizeInventoryWoodEstimateRows({
+          items: normalizedItems, rawMaterials: rawMaterialRows,
+          requestedWoodTypes: requestedWoodSpecies,
+        });
+      } catch (error) { throw createValidationError(error.message); }
       normalizedItems = normalizedItems.map((item) => {
-        if (!item.raw_material_id) return item;
-
-        const material = rawMaterialMap.get(Number(item.raw_material_id));
-        if (!material) return item;
-
-        if (item.source_type !== "inventory_material") {
-          return item;
-        }
-
-        return {
-          ...item,
-          name: String(material.name || item.name).trim(),
-          description: String(material.name || item.description).trim(),
-          unit: String(material.unit || item.unit || "pc").trim() || "pc",
-          unit_cost: 0,
-          subtotal: 0,
-          source_type: "inventory_material",
-        };
+        if (item.source_type !== "inventory_material") return item;
+        const material = costingMaterialMap.get(Number(item.raw_material_id));
+        return { ...item, name: String(material.name).trim(),
+          description: String(material.name).trim(), unit: String(material.unit).trim(),
+          unit_cost: 0, subtotal: 0 };
       });
+    }
+
+    // W4-A4: the original Marine Plywood panels still require a sheet count.
+    // Validate against the canonical Blueprint and live SKU dimensions, never a browser label.
+    if (isTransactionEstimate) {
+      try {
+        validateRetainedOriginalMaterialCoverage({
+          design: canonicalDesign,
+          items: normalizedItems,
+          rawMaterials: [...costingMaterialMap.values()],
+        });
+      } catch (error) { throw createValidationError(error.message); }
     }
 
     const existingEstimationMeta =
@@ -870,7 +911,21 @@ exports.saveEstimation = async (req, res) => {
       materialsById: costingMaterialMap,
       laborCost: laborCostInput,
     });
-    let costing_formula = productionCost;
+    const woodInventoryCostSnapshot = normalizedItems
+      .filter((row) => row.source_type === "inventory_material" && row.wood_type)
+      .map((row) => {
+        const material = costingMaterialMap.get(Number(row.raw_material_id));
+        return {
+          wood_type: row.wood_type,
+          raw_material_id: Number(row.raw_material_id),
+          unit_cost: Number(material.unit_cost),
+          quantity: Number(row.quantity),
+          length_mm: Number(material.length_mm),
+          width_mm: Number(material.width_mm),
+          thickness_mm: Number(material.thickness_mm),
+        };
+      });
+    let costing_formula = { ...productionCost, wood_inventory_cost_snapshot: woodInventoryCostSnapshot };
     let billableLaborCost = laborCostInput;
     if (productionCost.material_cost_status === "priced") {
       let quoted;
@@ -887,6 +942,7 @@ exports.saveEstimation = async (req, res) => {
       billableLaborCost = quoted.billable_labor_cost;
       costing_formula = {
         ...productionCost,
+        wood_inventory_cost_snapshot: woodInventoryCostSnapshot,
         version: "PRICING-F2",
         connected_to_quotation_totals: true,
         furniture_parts_selling_total: quoted.furniture_parts_total,
@@ -1277,9 +1333,9 @@ exports.approveEstimation = async (req, res) => {
     const pricedIds = [...new Set(pricedMaterials.map((row) => Number(row.raw_material_id)))];
     const quoteWoodRows = (Array.isArray(quoteMeta.items) ? quoteMeta.items : [])
       .filter((row) => String(row?.source_type || "").toLowerCase() === "wood_reference");
-    if (quoteWoodRows.length && priced.wood_reference_version !== WOOD_REFERENCE_PRICE_VERSION) {
+    if (quoteWoodRows.length) {
       await conn.rollback();
-      return res.status(409).json({ message: "Wood reference prices changed. Review and save the estimate again.", integrity_reason: "WOOD_REFERENCE_PRICE_VERSION_CHANGED" });
+      return res.status(409).json({ message: "This draft uses older W3 wood prices. Review and Save Estimation again to link real Inventory planks.", integrity_reason: "WOOD_REFERENCE_PRICE_VERSION_CHANGED" });
     }
     if ((!pricedIds.length && !quoteWoodRows.length) ||
         pricedIds.some((id) => !Number.isSafeInteger(id) || id <= 0)) {
@@ -1292,7 +1348,8 @@ exports.approveEstimation = async (req, res) => {
     let currentMaterialPriceMap = new Map();
     if (pricedIds.length) {
       const [currentMaterialPrices] = await conn.query(
-        `SELECT id, name, unit_cost FROM raw_materials
+        `SELECT id, name, unit, material_form, length_mm, width_mm, thickness_mm,
+                unit_cost, quantity, is_active FROM raw_materials
          WHERE id IN (${pricedIds.map(() => "?").join(",")})
          ORDER BY id FOR UPDATE`,
         pricedIds,
@@ -1313,6 +1370,16 @@ exports.approveEstimation = async (req, res) => {
       );
       const quoteDesign = safeJsonParse(quoteBlueprint?.design_data, {}) || {};
       validateRequestedWoodCoverage({ blueprintComponents: quoteDesign.components, items: quoteMeta.items });
+      normalizeInventoryWoodEstimateRows({
+        items: quoteMeta.items,
+        rawMaterials: [...currentMaterialPriceMap.values()],
+        requestedWoodTypes: (Array.isArray(quoteDesign.components) ? quoteDesign.components : [])
+          .map((part) => String(part?.requested_wood_type || "").trim().toLowerCase()).filter(Boolean),
+      });
+      validateRetainedOriginalMaterialCoverage({
+        design: quoteDesign, items: quoteMeta.items,
+        rawMaterials: [...currentMaterialPriceMap.values()],
+      });
       latestCostSnapshot = computeProductionCostWithManualWood({
         items: quoteMeta.items,
         materialsById: currentMaterialPriceMap,

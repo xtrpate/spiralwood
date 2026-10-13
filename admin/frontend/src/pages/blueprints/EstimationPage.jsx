@@ -7,6 +7,12 @@ import api, { buildAssetUrl } from "../../services/api";
 import { getSocket, subscribeSocketReady } from "../../services/socket";
 import OversizedDeliveryEstimatorPanel from "../../components/OversizedDeliveryEstimatorPanel";
 import { previewFixedMarkupQuote } from "./blueprintPricingPreview.mjs";
+import {
+  ensureRequestedWoodRows,
+  getRequestedWoodTypesFromDesign,
+  resolveWoodInventoryId,
+} from "./requestedWoodMaterialsW4A3.mjs";
+import { ensureRetainedOriginalMaterialRows } from "./retainedOriginalMaterialsW4A4.mjs";
 
 // WISDOM Project Estimate UI Friendly Polish Fix V1.0.1
 // WISDOM Project Estimate Readability V1.0.0
@@ -159,9 +165,12 @@ const normalizeItem = (raw = {}, index = 0) => {
     raw_material_id: rawMaterialId,
     wood_type: normalizeText(raw.wood_type).toLowerCase(),
     name: normalizeText(raw.name || raw.description || raw.label || ""),
-    quantity: isAreaUnit(unit)
-      ? Number(Math.max(0.0001, numericQty || 0.0001).toFixed(4))
-      : Math.max(1, Number.isFinite(numericQty) ? numericQty : 1),
+    quantity: String(raw.source_key || "").startsWith("retained-original:") &&
+      (raw.quantity === "" || raw.quantity === null)
+      ? ""
+      : isAreaUnit(unit)
+        ? Number(Math.max(0.0001, numericQty || 0.0001).toFixed(4))
+        : Math.max(1, Number.isFinite(numericQty) ? numericQty : 1),
     unit,
     unit_cost:
       raw.unit_cost === "" || raw.unit_cost === null
@@ -236,6 +245,10 @@ const isInventoryItem = (item = {}) =>
     .toLowerCase() === "inventory_material";
 const isWoodReferenceItem = (item = {}) =>
   String(item.source_type || "").trim().toLowerCase() === "wood_reference";
+const isInventoryWoodItem = (item = {}) =>
+  isInventoryItem(item) && Boolean(normalizeText(item.wood_type));
+const isWoodPanelItem = (item = {}) =>
+  isWoodReferenceItem(item) || isInventoryWoodItem(item);
 
 const isBlueprintPartItem = (item = {}) => {
   if (isInventoryItem(item)) return false;
@@ -1114,9 +1127,7 @@ const getInventoryAvailability = (item = {}, material = null) => {
 const getQuotationInventoryIssues = (
   inventoryItems = [],
   rawMaterials = [],
-  hasManualWood = false,
 ) => {
-  if (!inventoryItems.length && hasManualWood) return [];
   if (!inventoryItems.length) {
     return [
       {
@@ -1222,64 +1233,10 @@ function EstimateTable({
   inventoryTrackingOnly = false,
   woodReferencePrices = [],
 }) {
-  if (section === "wood_reference") {
-    const catalog = Array.isArray(woodReferencePrices) ? woodReferencePrices : [];
-    const money = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-    return (
-      <div style={{ ...card, marginBottom: 20 }}>
-        <div style={sectionHeader}>
-          <div>
-            <h3 style={sectionTitle}>Wood Planks — Admin Quantity Estimate</h3>
-            <p style={helperText}>
-              Select requested wood and enter how many standard planks are needed. Prices are internal W3 development references, NOT supplier quotes. Check actual thickness and construction before quoting. These cost rows are allocated to Furniture Parts, not billed twice.
-            </p>
-          </div>
-          {!readOnly && <button type="button" onClick={onAdd} style={btnAdd}>Add Wood</button>}
-        </div>
-        <div style={{ overflowX: "auto" }}>
-          <table style={estimateTableStyle}>
-            <thead><tr style={tableHeadRow}>
-              <th style={th}>Wood Type</th><th style={th}>Stock Plank</th><th style={th}>Quantity (Admin)</th>
-              <th style={th}>Cost / Plank</th><th style={th}>Material Cost</th><th style={th}>Remarks</th><th style={th}></th>
-            </tr></thead>
-            <tbody>
-              {!rows.length && <tr><td colSpan={7} style={emptyCell}>No wood planks entered. Admin determines the quantities from the saved parts and dimensions.</td></tr>}
-              {rows.map((row) => {
-                const selected = catalog.find((wood) => wood.id === row.wood_type);
-                const count = Number(row.quantity);
-                const total = selected && Number.isSafeInteger(count) && count > 0
-                  ? money(selected.cost_per_plank * count) : 0;
-                return <tr key={row._row_key}>
-                  <td style={td}><select value={row.wood_type || ""}
-                    onChange={(e) => onUpdate(row._row_key, "wood_type", e.target.value)}
-                    disabled={readOnly} style={{ ...cellInput, minWidth: 135 }}>
-                    <option value="">Select wood...</option>
-                    {catalog.map((wood) => <option key={wood.id} value={wood.id}>{wood.name}</option>)}
-                  </select></td>
-                  <td style={td}>{selected ? `${selected.length_mm} × ${selected.width_mm} × ${selected.thickness_mm} mm` : "—"}</td>
-                  <td style={td}><input type="number" min="1" step="1" value={row.quantity}
-                    onChange={(e) => onUpdate(row._row_key, "quantity", e.target.value)}
-                    disabled={readOnly} style={{ ...cellInput, width: 90 }} /></td>
-                  <td style={td}>{selected ? formatMoney(selected.cost_per_plank) : "—"}</td>
-                  <td style={td}>{selected ? formatMoney(total) : "—"}</td>
-                  <td style={td}><input value={row.note || ""} maxLength={500} disabled={readOnly}
-                    onChange={(e) => onUpdate(row._row_key, "note", e.target.value)}
-                    style={{ ...cellInput, minWidth: 120 }} placeholder="Admin validation notes" /></td>
-                  <td style={td}>{!readOnly && <button type="button" onClick={() => onRemove(row._row_key)} style={btnRemove}>✕</button>}</td>
-                </tr>;
-              })}
-            </tbody>
-            <tfoot><tr style={tableFooterRow}><td colSpan={4} style={{ ...td, textAlign: "right", fontWeight: 700 }}>Wood Reference Cost</td>
-              <td colSpan={3} style={{ ...td, fontWeight: 700 }}>{formatMoney(subtotal)}</td></tr></tfoot>
-          </table>
-        </div>
-      </div>
-    );
-  }
   const isInventory = section === "inventory";
   const isBlueprint = section === "blueprint";
   const showNotes = section !== "blueprint";
-  const showInventoryPricing = isInventory && !inventoryTrackingOnly;
+  const showInventoryPricing = isInventory;
   const emptyText =
     section === "blueprint"
       ? "No blueprint components are available. Use Refresh Components after saving the design."
@@ -1293,11 +1250,15 @@ function EstimateTable({
     : showNotes
       ? 8
       : 7;
+  const inventoryMaterialFor = (item) => {
+    const inventoryId = isWoodReferenceItem(item)
+      ? resolveWoodInventoryId(item.wood_type, woodReferencePrices)
+      : Number(item.raw_material_id);
+    return rawMaterials.find((row) => Number(row.id) === inventoryId);
+  };
   const inventoryChecks = isInventory
     ? rows.map((item) => {
-        const material = rawMaterials.find(
-          (row) => Number(row.id) === Number(item.raw_material_id),
-        );
+        const material = inventoryMaterialFor(item);
         return {
           item,
           material,
@@ -1372,10 +1333,12 @@ function EstimateTable({
               </tr>
             ) : (
               rows.map((item, index) => {
-                const selectedMaterial = rawMaterials.find(
-                  (material) =>
-                    Number(material.id) === Number(item.raw_material_id),
-                );
+                const isRequiredWood = isWoodPanelItem(item);
+                const isRetainedOriginal = String(item.source_key || "").startsWith("retained-original:");
+                const selectedMaterial = isInventory
+                  ? inventoryMaterialFor(item)
+                  : rawMaterials.find((material) =>
+                      Number(material.id) === Number(item.raw_material_id));
                 const availability = isInventory
                   ? getInventoryAvailability(item, selectedMaterial)
                   : null;
@@ -1407,7 +1370,16 @@ function EstimateTable({
                     <td style={td}>
                       {isInventory ? (
                         <>
-                          {/* WISDOM Project Estimate Physical Specs V1 Syntax Hotfix */}
+                          {isRequiredWood || isRetainedOriginal ? (
+                            <div style={{ fontWeight: 700, padding: "8px 0" }}>
+                              {selectedMaterial?.name || item.name || "Inventory mapping needed"}
+                              <div style={{ fontSize: 10, color: "#71717a", fontWeight: 400 }}>
+                                {isRetainedOriginal
+                                  ? "Retained original panel material · Admin confirms actual sheets"
+                                  : "Customer-requested wood · Admin confirms quantity"}
+                              </div>
+                            </div>
+                          ) : (
                           <select
                             value={item.raw_material_id || ""}
                             onChange={(event) =>
@@ -1431,6 +1403,7 @@ function EstimateTable({
                               </option>
                             ))}
                           </select>
+                          )}
                           {selectedMaterial && (
                             <div
                               style={{
@@ -1514,7 +1487,9 @@ function EstimateTable({
                     <td style={td}>
                       {isInventory ? (
                         <input
-                          value={item.unit || selectedMaterial?.unit || ""}
+                          value={isRequiredWood || isRetainedOriginal
+                            ? (selectedMaterial?.unit || "sheet")
+                            : (item.unit || selectedMaterial?.unit || "")}
                           readOnly
                           style={{
                             ...cellInput,
@@ -1623,34 +1598,27 @@ function EstimateTable({
                     )}
                     {(!isInventory || showInventoryPricing) && (
                       <td style={td}>
-                        <input
-                          type="number"
-                          min={isInventory ? "0" : "0.01"}
-                          step="0.01"
-                          required={!readOnly && !isInventory}
-                          value={item.unit_cost}
-                          onChange={(event) =>
-                            onUpdate(
-                              item._row_key,
-                              "unit_cost",
-                              event.target.value,
-                            )
-                          }
-                          style={{
-                            ...cellInput,
-                            ...readOnlyFieldStyle(readOnly),
-                            width: "100%",
-                          }}
-                          placeholder="0.00"
-                          disabled={readOnly}
-                        />
+                        {isInventory ? (
+                          <span>{selectedMaterial && Number(selectedMaterial.unit_cost) > 0
+                            ? formatMoney(selectedMaterial.unit_cost) : "—"}</span>
+                        ) : (
+                          <input
+                            type="number" min="0.01" step="0.01"
+                            required={!readOnly} value={item.unit_cost}
+                            onChange={(event) => onUpdate(item._row_key, "unit_cost", event.target.value)}
+                            style={{ ...cellInput, ...readOnlyFieldStyle(readOnly), width: "100%" }}
+                            placeholder="0.00" disabled={readOnly}
+                          />
+                        )}
                       </td>
                     )}
                     {(!isInventory || showInventoryPricing) && (
-                      <td
-                        style={{ ...td, fontWeight: 700, whiteSpace: "nowrap" }}
-                      >
-                        {formatMoney(getItemAmount(item))}
+                      <td style={{ ...td, fontWeight: 700, whiteSpace: "nowrap" }}>
+                        {isInventory
+                          ? selectedMaterial && Number(selectedMaterial.unit_cost) > 0 &&
+                            Number.isSafeInteger(Number(item.quantity)) && Number(item.quantity) > 0
+                            ? formatMoney(Number(selectedMaterial.unit_cost) * Number(item.quantity)) : "—"
+                          : formatMoney(getItemAmount(item))}
                       </td>
                     )}
                     {showNotes && (
@@ -1676,7 +1644,7 @@ function EstimateTable({
                       </td>
                     )}
                     <td style={{ ...td, textAlign: "center" }}>
-                      {!readOnly && !isBlueprint && (
+                      {!readOnly && !isBlueprint && !isRequiredWood && !isRetainedOriginal && (
                         <button
                           type="button"
                           onClick={() => onRemove(item._row_key)}
@@ -1694,6 +1662,7 @@ function EstimateTable({
           </tbody>
           <tfoot>
             {isInventory && inventoryTrackingOnly ? (
+              <>
               <tr style={tableFooterRow}>
                 <td
                   colSpan={columnCount}
@@ -1772,6 +1741,14 @@ function EstimateTable({
                   )}
                 </td>
               </tr>
+              <tr style={tableFooterRow}>
+                <td colSpan={6} style={{ ...td, textAlign: "right", fontWeight: 700 }}>
+                  Required materials cost (allocated through Furniture Parts, not billed twice)
+                </td>
+                <td style={{ ...td, fontWeight: 700 }}>{formatMoney(subtotal)}</td>
+                <td colSpan={3} />
+              </tr>
+              </>
             ) : (
               <tr style={tableFooterRow}>
                 <td
@@ -1934,7 +1911,15 @@ export default function EstimationPage() {
             ? reconciledItems
             : latestAutoRows;
 
-          setItems(effectiveItems);
+          setItems(loadedOrderId
+            ? ensureRetainedOriginalMaterialRows(
+                ensureRequestedWoodRows(effectiveItems, loadedDesign, {
+                  locked: isLockedEstimateStatus(savedEstimation.status),
+                  woodCatalog: savedEstimation.wood_reference_prices || [],
+                }),
+                loadedDesign, materialsResponse.data?.rows || [],
+                { locked: isLockedEstimateStatus(savedEstimation.status) },
+              ) : effectiveItems);
           setCosts(loadedCosts);
           // If an editable legacy draft still contains Additional Items, keep
           // the persisted signature so the cleaned costing view is marked
@@ -1963,7 +1948,14 @@ export default function EstimationPage() {
           const draftItems = draftRows.length
             ? reconcileLoadedItems(draftRows, latestAutoRows)
             : latestAutoRows;
-          setItems(applyEstimateCostingItemPolicy(draftItems, "draft"));
+          const editableDraftItems = applyEstimateCostingItemPolicy(draftItems, "draft");
+          setItems(loadedOrderId
+            ? ensureRetainedOriginalMaterialRows(
+                ensureRequestedWoodRows(editableDraftItems, loadedDesign, {
+                  woodCatalog: savedEstimation?.wood_reference_prices || [],
+                }),
+                loadedDesign, materialsResponse.data?.rows || [],
+              ) : editableDraftItems);
         }
 
         const orderId =
@@ -2069,17 +2061,18 @@ export default function EstimationPage() {
     [items],
   );
   const inventoryItems = useMemo(() => items.filter(isInventoryItem), [items]);
-  const woodReferenceItems = useMemo(() => items.filter(isWoodReferenceItem), [items]);
+  const woodReferenceItems = useMemo(() => items.filter(isWoodPanelItem), [items]);
+  const otherInventoryItems = useMemo(() => items.filter((row) =>
+    isInventoryItem(row) && !isInventoryWoodItem(row)), [items]);
   const otherItems = useMemo(() => items.filter(isOtherItem), [items]);
 
   const isTransactionMode = Boolean(
     blueprint?.order_id || blueprint?.order_context?.order_id,
   );
-  const requestedWoodTypes = useMemo(() => [...new Set(
-    (Array.isArray(parsedDesign?.components) ? parsedDesign.components : [])
-      .map((part) => normalizeText(part.requested_wood_type).toLowerCase())
-      .filter(Boolean),
-  )], [parsedDesign]);
+  const requestedWoodTypes = useMemo(
+    () => getRequestedWoodTypesFromDesign(parsedDesign),
+    [parsedDesign],
+  );
   const rawFulfillmentMethod = String(
     blueprint?.order_context?.fulfillment_method || "",
   )
@@ -2102,12 +2095,18 @@ export default function EstimationPage() {
     }),
     [items, rawMaterials, woodReferencePrices, requestedWoodTypes, costs.labor_cost],
   );
+  const inventoryRequirementsForPreview = useMemo(() => [
+    ...inventoryItems,
+    ...woodReferenceItems.filter(isWoodReferenceItem).map((item) => ({
+      ...item,
+      raw_material_id: resolveWoodInventoryId(item.wood_type, woodReferencePrices),
+    })),
+  ], [inventoryItems, woodReferenceItems, woodReferencePrices]);
   const quotationInventoryIssues = useMemo(
-    () =>
-      isTransactionMode
-        ? getQuotationInventoryIssues(inventoryItems, rawMaterials, woodReferenceItems.length > 0)
-        : [],
-    [inventoryItems, isTransactionMode, rawMaterials, woodReferenceItems.length],
+    () => isTransactionMode
+      ? getQuotationInventoryIssues(inventoryRequirementsForPreview, rawMaterials)
+      : [],
+    [inventoryRequirementsForPreview, isTransactionMode, rawMaterials],
   );
 
   const currentDraftSignature = useMemo(
@@ -2194,7 +2193,17 @@ export default function EstimationPage() {
           };
 
           setEstimation(loadedEstimation);
-          setItems(normalizedItems);
+          setWoodReferencePrices(Array.isArray(loadedEstimation.wood_reference_prices)
+            ? loadedEstimation.wood_reference_prices : []);
+          setItems((loadedBlueprint?.order_id || loadedBlueprint?.order_context?.order_id)
+            ? ensureRetainedOriginalMaterialRows(
+                ensureRequestedWoodRows(normalizedItems, parseBlueprintDesignData(loadedBlueprint), {
+                  locked: isLockedEstimateStatus(loadedEstimation.status),
+                  woodCatalog: loadedEstimation.wood_reference_prices || [],
+                }),
+                parseBlueprintDesignData(loadedBlueprint), rawMaterials,
+                { locked: isLockedEstimateStatus(loadedEstimation.status) },
+              ) : normalizedItems);
           setCosts(normalizedCosts);
           setSavedDraftSignature(
             buildEditableEstimateSignature(reconciledItems, normalizedCosts),
@@ -2370,10 +2379,17 @@ export default function EstimationPage() {
     (sum, item) => sum + getItemAmount(item),
     0,
   );
-  const woodReferenceSubtotal = woodReferenceItems.reduce((total, item) => {
-    const wood = woodReferencePrices.find((record) => record.id === item.wood_type);
-    return total + (wood ? (Number(item.quantity) || 0) * wood.cost_per_plank : 0);
-  }, 0);
+  const requiredMaterialsDisplaySubtotal = [...woodReferenceItems, ...otherInventoryItems]
+    .reduce((total, item) => {
+      const id = isWoodReferenceItem(item)
+        ? resolveWoodInventoryId(item.wood_type, woodReferencePrices)
+        : Number(item.raw_material_id);
+      const material = rawMaterials.find((row) => Number(row.id) === id);
+      const quantity = Number(item.quantity);
+      return total + (material && Number(material.unit_cost) > 0 &&
+        Number.isSafeInteger(quantity) && quantity > 0
+        ? Number(material.unit_cost) * quantity : 0);
+    }, 0);
   const inventorySubtotal = inventoryItems.reduce(
     (sum, item) => sum + getItemAmount(item),
     0,
@@ -2560,9 +2576,9 @@ export default function EstimationPage() {
     setItems((current) =>
       current.map((item) => {
         if (item._row_key !== rowKey) return item;
-        if (field === "wood_type" && isWoodReferenceItem(item)) {
+        if (field === "wood_type" && isWoodPanelItem(item)) {
           const wood = woodReferencePrices.find((record) => record.id === value);
-          return { ...item, wood_type: wood?.id || "", name: wood?.name || "Select wood type", unit: "plank", unit_cost: 0 };
+          return { ...item, wood_type: wood?.id || "", name: wood?.name || "Select wood type", unit: "plank", raw_material_id: null, source_type: "wood_reference", unit_cost: 0 };
         }
         if (field === "raw_material_id") {
           const material = rawMaterials.find(
@@ -2589,14 +2605,6 @@ export default function EstimationPage() {
   const removeItem = (rowKey) => {
     if (isReadOnly) return;
     setItems((current) => current.filter((item) => item._row_key !== rowKey));
-  };
-
-  const addWoodReferenceItem = () => {
-    if (isReadOnly || !isTransactionMode) return;
-    setItems((current) => [...current, normalizeItem({
-      wood_type: "", name: "Select wood type", unit: "plank", quantity: 1,
-      unit_cost: 0, source_type: "wood_reference", source_key: makeLocalKey("wood"),
-    })]);
   };
 
   const addInventoryItem = () => {
@@ -2653,7 +2661,12 @@ export default function EstimationPage() {
       );
 
       setBlueprint(latestBlueprint);
-      setItems([...mergedAuto, ...inventoryItems, ...woodReferenceItems]);
+      setItems(isTransactionMode
+        ? ensureRetainedOriginalMaterialRows(
+            [...mergedAuto, ...otherInventoryItems, ...woodReferenceItems],
+            parseBlueprintDesignData(latestBlueprint), rawMaterials,
+          )
+        : [...mergedAuto, ...otherInventoryItems, ...woodReferenceItems]);
       toast.success(
         "Furniture parts refreshed from the latest Blueprint. Existing rates were preserved.",
       );
@@ -3448,30 +3461,17 @@ export default function EstimationPage() {
 
       {isTransactionMode && activeEstimateTab === "materials" && (
         <EstimateTable
-          title="Wood Planks"
-          section="wood_reference"
-          rows={woodReferenceItems}
-          woodReferencePrices={woodReferencePrices}
-          readOnly={isReadOnly}
-          onAdd={addWoodReferenceItem}
-          onRemove={removeItem}
-          onUpdate={updateItem}
-          subtotal={woodReferenceSubtotal}
-        />
-      )}
-
-      {isTransactionMode && activeEstimateTab === "materials" && (
-        <EstimateTable
           title="Required Materials"
-          helper="Select other production materials and Admin-confirmed quantities from Inventory. Wood planks are entered separately above, at fixed W3 internal reference prices. Costs are charged only once."
+          helper="Customer-requested wood is listed automatically. Admin confirms the actual plank quantities and any other materials. Unit costs come from Inventory; costs are allocated through Furniture Parts only once."
           section="inventory"
-          rows={inventoryItems}
+          rows={[...woodReferenceItems, ...otherInventoryItems]}
           rawMaterials={rawMaterials}
+          woodReferencePrices={woodReferencePrices}
           readOnly={isReadOnly}
           onAdd={addInventoryItem}
           onRemove={removeItem}
           onUpdate={updateItem}
-          subtotal={inventorySubtotal}
+          subtotal={requiredMaterialsDisplaySubtotal}
           inventoryTrackingOnly={inventoryTrackingOnly}
         />
       )}
@@ -3646,7 +3646,7 @@ export default function EstimationPage() {
                 {internalCostBasis && (
                   <div style={{ fontSize: 12, padding: 12, border: "1px solid #e4e4e7", marginBottom: 14 }}>
                     <strong>Internal Production Cost Basis</strong>
-                    <div style={summaryRow}><span>{woodReferenceItems.length > 0 ? "Production Materials (wood reference costs)" : "Verified Required Materials"}</span><strong>{formatMoney(internalCostBasis.material_cost)}</strong></div>
+                    <div style={summaryRow}><span>{woodReferenceItems.length > 0 ? "Verified Production Materials" : "Verified Required Materials"}</span><strong>{formatMoney(internalCostBasis.material_cost)}</strong></div>
                     <div style={summaryRow}><span>Production Labor</span><strong>{formatMoney(internalCostBasis.production_labor_cost)}</strong></div>
                     <div style={summaryRow}><span>Production Cost</span><strong>{formatMoney(internalCostBasis.production_cost)}</strong></div>
                     <div style={summaryRow}><span>Fixed Markup (20%)</span><strong>{formatMoney(internalCostBasis.markup_amount)}</strong></div>

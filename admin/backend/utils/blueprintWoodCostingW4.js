@@ -22,7 +22,8 @@ function validateRequestedWoodCoverage({ blueprintComponents = [], items = [] } 
   }
   if (!requested.size) return { requested: [], missing: [], extra: [] }; // Legacy designs use F2 unchanged.
   const selected = new Set((Array.isArray(items) ? items : [])
-    .filter(isWoodRow)
+    .filter((row) => isWoodRow(row) ||
+      (String(row?.source_type || "").toLowerCase() === "inventory_material" && row.wood_type))
     .map((row) => String(row.wood_type || "").trim().toLowerCase()));
   const missing = [...requested].filter((id) => !selected.has(id));
   const extra = [...selected].filter((id) => !requested.has(id));
