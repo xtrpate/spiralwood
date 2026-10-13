@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 
-const SITE_URL = "https://spiralwoodservice.onrender.com";
+const SITE_URL = "https://www.spiralwoodservice.com";
 const SITE_NAME = "Spiral Wood Services";
 
 const SEO_CONFIG = {
