@@ -299,6 +299,33 @@
   line-height: 1.35;
 }
 
+.cir-analytics-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.cir-analytics-kpi-grid .cir-summary-card {
+  min-height: 102px;
+}
+
+.cir-analytics-kpi-grid .cir-summary-value {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .cir-analytics-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .cir-analytics-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .cir-card {
   overflow: hidden;
   margin-bottom: 14px;

@@ -429,8 +429,11 @@ async function getRawUsage30Days(materialIds, cutoffSql) {
   if (ids.length === 0) return usageByMaterial;
 
   const inClause = placeholders(ids);
+
   const [rows] = await pool.query(
-    `SELECT material_id, COALESCE(SUM(quantity), 0) AS used_quantity
+    `SELECT
+       material_id,
+       COALESCE(SUM(quantity), 0) AS used_quantity
      FROM stock_movements
      WHERE material_id IN (${inClause})
        AND product_id IS NULL
@@ -451,6 +454,919 @@ async function getRawUsage30Days(materialIds, cutoffSql) {
 
   return usageByMaterial;
 }
+
+const analyticsDateText = (date) => {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
+const analyticsShiftDays = (dateText, amount) => {
+  const [year, month, day] = dateText.split("-").map(Number);
+
+  return analyticsDateText(new Date(Date.UTC(year, month - 1, day + amount)));
+};
+
+const analyticsShiftMonthStart = (dateText, monthOffset) => {
+  const [year, month] = dateText.split("-").map(Number);
+
+  return analyticsDateText(
+    new Date(Date.UTC(year, month - 1 + monthOffset, 1)),
+  );
+};
+
+const analyticsLastDayOfMonth = (monthStartText) => {
+  const [year, month] = monthStartText.split("-").map(Number);
+
+  return analyticsDateText(new Date(Date.UTC(year, month, 0)));
+};
+
+const analyticsReadCost = (value) => {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    return null;
+  }
+
+  const cost = Number(value);
+
+  // A positive cost is required to value stock or an outgoing quantity.
+  // Do not silently interpret a missing or zero cost as a reliable zero value.
+  return Number.isFinite(cost) && cost > 0 ? cost : null;
+};
+
+async function loadAnalyticsSnapshot({
+  rows,
+  entityType,
+  cutoffSql,
+  snapshotCache,
+  warnings,
+}) {
+  const cacheKey = `${entityType}:${cutoffSql}:${rows
+    .map((row) => Number(row.id))
+    .sort((a, b) => a - b)
+    .join(",")}`;
+
+  if (snapshotCache.has(cacheKey)) {
+    return snapshotCache.get(cacheKey);
+  }
+
+  // Exclude catalog items that did not exist by this historical cutoff.
+  const snapshotRows = rows.filter(
+    (row) => String(row.created_at_utc || "") < cutoffSql,
+  );
+
+  const reconstructed = await reconstructOnHand({
+    rows: snapshotRows,
+    entityType,
+    cutoffSql,
+    warnings,
+  });
+
+  const snapshot = {
+    ...reconstructed,
+    rows: snapshotRows,
+  };
+
+  snapshotCache.set(cacheKey, snapshot);
+
+  return snapshot;
+}
+
+function calculateAnalyticsValuation(snapshot, entityType) {
+  let total = 0;
+  let complete = true;
+  let missingCostCount = 0;
+  let unavailableQuantityCount = 0;
+
+  for (const row of snapshot.rows) {
+    const id = Number(row.id);
+    const quantity = snapshot.quantityById.get(id);
+    const historyComplete = snapshot.completeById.get(id) !== false;
+
+    if (
+      !historyComplete ||
+      quantity === null ||
+      quantity === undefined ||
+      !Number.isFinite(Number(quantity))
+    ) {
+      complete = false;
+      unavailableQuantityCount += 1;
+      continue;
+    }
+
+    const quantityValue = Number(quantity);
+    const unitCost = analyticsReadCost(
+      entityType === "raw" ? row.unit_cost : row.production_cost,
+    );
+
+    if (quantityValue > 0 && unitCost === null) {
+      complete = false;
+      missingCostCount += 1;
+      continue;
+    }
+
+    total += Math.max(0, quantityValue) * (unitCost ?? 0);
+  }
+
+  return {
+    value: complete ? Math.round(total * 100) / 100 : null,
+    complete,
+    missingCostCount,
+    unavailableQuantityCount,
+  };
+}
+
+async function queryAnalyticsRawOutflow(
+  rows,
+  startCutoff,
+  endCutoff,
+  groupByMonth = false,
+) {
+  const ids = rows.map((row) => Number(row.id)).filter((id) => id > 0);
+
+  if (ids.length === 0) return [];
+
+  const bucketExpression =
+    groupByMonth === "day"
+      ? "DATE_FORMAT(DATE_ADD(sm.created_at, INTERVAL 8 HOUR), '%Y-%m-%d')"
+      : groupByMonth
+        ? "DATE_FORMAT(DATE_ADD(sm.created_at, INTERVAL 8 HOUR), '%Y-%m')"
+        : "'__period__'";
+
+  const [results] = await pool.query(
+    `SELECT
+       ${bucketExpression} AS month,
+       sm.material_id,
+       COALESCE(SUM(sm.quantity), 0) AS used_quantity
+     FROM stock_movements sm
+     WHERE sm.material_id IN (${placeholders(ids)})
+       AND sm.product_id IS NULL
+       AND sm.type = 'out'
+       AND sm.created_at >= ?
+       AND sm.created_at < ?
+     GROUP BY month, sm.material_id`,
+    [...ids, startCutoff, endCutoff],
+  );
+
+  return results;
+}
+
+async function queryAnalyticsReadyMadeCogs(
+  rows,
+  startCutoff,
+  endCutoff,
+  groupByMonth = false,
+) {
+  const ids = rows.map((row) => Number(row.id)).filter((id) => id > 0);
+
+  if (ids.length === 0) return [];
+
+  const bucketExpression =
+    groupByMonth === "day"
+      ? "DATE_FORMAT(DATE_ADD(o.created_at, INTERVAL 8 HOUR), '%Y-%m-%d')"
+      : groupByMonth
+        ? "DATE_FORMAT(DATE_ADD(o.created_at, INTERVAL 8 HOUR), '%Y-%m')"
+        : "'__period__'";
+
+  const unitCostExpression =
+    "COALESCE(NULLIF(oi.production_cost, 0), NULLIF(p.production_cost, 0))";
+
+  const [results] = await pool.query(
+    `SELECT
+       ${bucketExpression} AS month,
+       oi.product_id,
+       COALESCE(
+         SUM(oi.quantity * COALESCE(${unitCostExpression}, 0)),
+         0
+       ) AS cogs,
+       COALESCE(
+         SUM(
+           CASE
+             WHEN oi.quantity > 0
+               AND ${unitCostExpression} IS NULL
+             THEN oi.quantity
+             ELSE 0
+           END
+         ),
+         0
+       ) AS uncosted_units
+     FROM order_items oi
+     INNER JOIN orders o ON o.id = oi.order_id
+     LEFT JOIN products p ON p.id = oi.product_id
+     WHERE oi.product_id IN (${placeholders(ids)})
+       AND o.status = 'completed'
+       AND LOWER(COALESCE(o.order_type, 'standard')) = 'standard'
+       AND o.created_at >= ?
+       AND o.created_at < ?
+     GROUP BY month, oi.product_id`,
+    [...ids, startCutoff, endCutoff],
+  );
+
+  return results;
+}
+
+function aggregateAnalyticsRawOutflow(rows, materialRows) {
+  const costById = new Map(
+    materialRows.map((row) => [
+      Number(row.id),
+      analyticsReadCost(row.unit_cost),
+    ]),
+  );
+
+  const totals = new Map();
+
+  for (const row of rows) {
+    const bucket = row.month || "__period__";
+    const current = totals.get(bucket) || {
+      value: 0,
+      complete: true,
+    };
+
+    const quantity = Math.max(0, Number(row.used_quantity || 0));
+    const unitCost = costById.get(Number(row.material_id));
+
+    if (quantity > 0 && unitCost === null) {
+      current.complete = false;
+    } else {
+      current.value += quantity * (unitCost ?? 0);
+    }
+
+    totals.set(bucket, current);
+  }
+
+  return totals;
+}
+
+function aggregateAnalyticsReadyMadeCogs(rows) {
+  const totals = new Map();
+
+  for (const row of rows) {
+    const bucket = row.month || "__period__";
+    const current = totals.get(bucket) || {
+      value: 0,
+      complete: true,
+    };
+
+    current.value += Number(row.cogs || 0);
+
+    if (Number(row.uncosted_units || 0) > 0) {
+      current.complete = false;
+    }
+
+    totals.set(bucket, current);
+  }
+
+  return totals;
+}
+
+function calculateAnalyticsTurnover(outflow, openingValue, closingValue) {
+  if (
+    !outflow ||
+    outflow.complete !== true ||
+    openingValue?.complete !== true ||
+    closingValue?.complete !== true ||
+    openingValue.value === null ||
+    closingValue.value === null
+  ) {
+    return null;
+  }
+
+  const averageInventory = (openingValue.value + closingValue.value) / 2;
+
+  if (!Number.isFinite(averageInventory) || averageInventory <= 0) {
+    return null;
+  }
+
+  return Math.round((outflow.value / averageInventory) * 100) / 100;
+}
+
+exports.getInventoryAnalytics = async (req, res) => {
+  try {
+    const requestedFrom = String(req.query.from || "").trim();
+    const requestedTo = String(req.query.to || "").trim();
+
+    if (Boolean(requestedFrom) !== Boolean(requestedTo)) {
+      const error = new Error("Both start and end dates are required.");
+      error.status = 400;
+      throw error;
+    }
+
+    const clock = await getReportClock(requestedTo || req.query.date);
+
+    const showTrend = ["1", "true"].includes(
+      String(req.query.trend || "")
+        .trim()
+        .toLowerCase(),
+    );
+
+    const inventoryType = String(
+      req.query.inventory_type || req.query.inventoryType || "",
+    )
+      .trim()
+      .toLowerCase();
+
+    const stockStatus = String(
+      req.query.stock_status || req.query.stockStatus || "",
+    )
+      .trim()
+      .toLowerCase();
+
+    const search = String(req.query.search || "")
+      .trim()
+      .toLowerCase();
+
+    if (!["", "raw", "ready_made"].includes(inventoryType)) {
+      const error = new Error("Invalid inventory type filter.");
+      error.status = 400;
+      throw error;
+    }
+
+    if (search.length > 120) {
+      const error = new Error("Search must be 120 characters or less.");
+      error.status = 400;
+      throw error;
+    }
+
+    const allowedStatuses = new Set([
+      "",
+      "healthy_stock",
+      "low_stock",
+      "critical_stock",
+      "out_of_stock",
+      "history_unavailable",
+    ]);
+
+    if (!allowedStatuses.has(stockStatus)) {
+      const error = new Error("Invalid stock health filter.");
+      error.status = 400;
+      throw error;
+    }
+
+    const rangeStartDate = requestedFrom ? parseDateOnly(requestedFrom) : null;
+
+    if (requestedFrom && !rangeStartDate) {
+      const error = new Error("Start date must use a valid YYYY-MM-DD date.");
+      error.status = 400;
+      throw error;
+    }
+
+    if (rangeStartDate && rangeStartDate > clock.selectedDate) {
+      const error = new Error("Start date cannot be after end date.");
+      error.status = 400;
+      throw error;
+    }
+
+    const warnings = [];
+    const snapshotCache = new Map();
+
+    // Load the historical catalog records and their current cost fields.
+    const [allRawRows] = await pool.query(
+      `SELECT
+         rm.id,
+         rm.name,
+         rm.unit,
+         rm.material_form,
+         rm.length_mm,
+         rm.width_mm,
+         rm.thickness_mm,
+         rm.quantity,
+         rm.unit_cost,
+         rm.reorder_point,
+         rm.safety_stock,
+         rm.lead_time_days,
+         s.name AS supplier_name,
+         c.name AS category_name,
+         DATE_FORMAT(
+           rm.created_at,
+           '%Y-%m-%d %H:%i:%s'
+         ) AS created_at_utc
+       FROM raw_materials rm
+       LEFT JOIN suppliers s
+         ON s.id = rm.supplier_id
+       LEFT JOIN categories c
+         ON c.id = rm.category_id
+       WHERE rm.created_at < ?
+       ORDER BY rm.created_at ASC, rm.id ASC`,
+      [clock.cutoffSql],
+    );
+
+    const [allProductRows] = await pool.query(
+      `SELECT
+         p.id,
+         p.name,
+         p.barcode,
+         p.stock,
+         p.reorder_point,
+         p.production_cost,
+         DATE_FORMAT(
+           p.created_at,
+           '%Y-%m-%d %H:%i:%s'
+         ) AS created_at_utc
+       FROM products p
+       WHERE LOWER(COALESCE(p.type, 'standard')) = 'standard'
+         AND p.created_at < ?
+       ORDER BY p.created_at ASC, p.id ASC`,
+      [clock.cutoffSql],
+    );
+
+    const matchesSearch = (...values) => {
+      if (!search) return true;
+
+      const searchable = values
+        .map((value) =>
+          String(value ?? "")
+            .trim()
+            .toLowerCase(),
+        )
+        .filter(Boolean)
+        .join(" ");
+
+      return search
+        .split(/\s+/)
+        .filter(Boolean)
+        .every((term) => searchable.includes(term));
+    };
+
+    // Resolve stock health using reconstructed stock and the same
+    // health rules as the Inventory Report.
+    const [allClosingRawSnapshot, allClosingReadySnapshot] = await Promise.all([
+      loadAnalyticsSnapshot({
+        rows: allRawRows,
+        entityType: "raw",
+        cutoffSql: clock.cutoffSql,
+        snapshotCache,
+        warnings: [],
+      }),
+      loadAnalyticsSnapshot({
+        rows: allProductRows,
+        entityType: "ready",
+        cutoffSql: clock.cutoffSql,
+        snapshotCache,
+        warnings: [],
+      }),
+    ]);
+
+    let reservationByMaterial = new Map();
+    let usageByMaterial = new Map();
+
+    if (stockStatus) {
+      const rawIds = allRawRows.map((row) => Number(row.id));
+
+      [reservationByMaterial, usageByMaterial] = await Promise.all([
+        getHistoricalReservationSummary(rawIds, clock.cutoffSql),
+        getRawUsage30Days(rawIds, clock.cutoffSql),
+      ]);
+    }
+
+    const rawRows =
+      inventoryType === "ready_made"
+        ? []
+        : allRawRows.filter((row) => {
+            if (
+              !matchesSearch(
+                row.name,
+                row.category_name,
+                row.supplier_name,
+                row.unit,
+                row.material_form,
+              )
+            ) {
+              return false;
+            }
+
+            if (!stockStatus) return true;
+
+            const id = Number(row.id);
+
+            const reservation = reservationByMaterial.get(id) || {
+              reserved_quantity: 0,
+              pending_need_quantity: 0,
+            };
+
+            const usedLast30Days = Number(usageByMaterial.get(id) || 0);
+
+            const status = computeRawHealth({
+              onHand: allClosingRawSnapshot.quantityById.get(id),
+              reserved: reservation.reserved_quantity,
+              pendingNeed: reservation.pending_need_quantity,
+              safetyStock: row.safety_stock,
+              reorderPoint: row.reorder_point,
+              leadTimeDays: row.lead_time_days,
+              avgDailyUsage: usedLast30Days / 30,
+            });
+
+            return status === stockStatus;
+          });
+
+    const productRows =
+      inventoryType === "raw"
+        ? []
+        : allProductRows.filter((row) => {
+            if (!matchesSearch(row.name, row.barcode)) {
+              return false;
+            }
+
+            if (!stockStatus) return true;
+
+            const status = computeReadyHealth(
+              allClosingReadySnapshot.quantityById.get(Number(row.id)),
+              row.reorder_point,
+            );
+
+            return status === stockStatus;
+          });
+
+    // The KPI period defaults to the 30 days ending on the report date.
+    const periodStartDate =
+      rangeStartDate || analyticsShiftDays(clock.selectedDate, -29);
+
+    const openingCutoff = formatSqlDateTimeUtc(
+      historicalEndOfManilaDayUtc(analyticsShiftDays(periodStartDate, -1)),
+    );
+
+    const [
+      openingRawSnapshot,
+      closingRawSnapshot,
+      openingReadySnapshot,
+      closingReadySnapshot,
+    ] = await Promise.all([
+      loadAnalyticsSnapshot({
+        rows: rawRows,
+        entityType: "raw",
+        cutoffSql: openingCutoff,
+        snapshotCache,
+        warnings: [],
+      }),
+      loadAnalyticsSnapshot({
+        rows: rawRows,
+        entityType: "raw",
+        cutoffSql: clock.cutoffSql,
+        snapshotCache,
+        warnings,
+      }),
+      loadAnalyticsSnapshot({
+        rows: productRows,
+        entityType: "ready",
+        cutoffSql: openingCutoff,
+        snapshotCache,
+        warnings: [],
+      }),
+      loadAnalyticsSnapshot({
+        rows: productRows,
+        entityType: "ready",
+        cutoffSql: clock.cutoffSql,
+        snapshotCache,
+        warnings,
+      }),
+    ]);
+
+    const openingRawValue = calculateAnalyticsValuation(
+      openingRawSnapshot,
+      "raw",
+    );
+
+    const closingRawValue = calculateAnalyticsValuation(
+      closingRawSnapshot,
+      "raw",
+    );
+
+    const openingReadyValue = calculateAnalyticsValuation(
+      openingReadySnapshot,
+      "ready",
+    );
+
+    const closingReadyValue = calculateAnalyticsValuation(
+      closingReadySnapshot,
+      "ready",
+    );
+
+    const [rawPeriodRows, readyPeriodRows] = await Promise.all([
+      queryAnalyticsRawOutflow(rawRows, openingCutoff, clock.cutoffSql),
+      queryAnalyticsReadyMadeCogs(productRows, openingCutoff, clock.cutoffSql),
+    ]);
+
+    const rawPeriodOutflow = aggregateAnalyticsRawOutflow(
+      rawPeriodRows,
+      rawRows,
+    ).get("__period__") || {
+      value: 0,
+      complete: true,
+    };
+
+    const readyPeriodCogs = aggregateAnalyticsReadyMadeCogs(
+      readyPeriodRows,
+    ).get("__period__") || {
+      value: 0,
+      complete: true,
+    };
+
+    const rawSelected = inventoryType !== "ready_made";
+
+    const readySelected = inventoryType !== "raw";
+
+    const valuationTotal =
+      (!rawSelected || closingRawValue.complete) &&
+      (!readySelected || closingReadyValue.complete)
+        ? Math.round(
+            ((rawSelected ? closingRawValue.value : 0) +
+              (readySelected ? closingReadyValue.value : 0)) *
+              100,
+          ) / 100
+        : null;
+
+    const trend = [];
+    let trendInterval = "month";
+
+    if (showTrend) {
+      const trendStartDate =
+        rangeStartDate || analyticsShiftMonthStart(clock.selectedDate, -11);
+
+      const trendEndDate = clock.selectedDate;
+
+      const rangeDays =
+        Math.floor(
+          (new Date(`${trendEndDate}T00:00:00Z`).getTime() -
+            new Date(`${trendStartDate}T00:00:00Z`).getTime()) /
+            86400000,
+        ) + 1;
+
+      trendInterval = rangeStartDate && rangeDays <= 45 ? "day" : "month";
+
+      const trendTargets = [];
+
+      if (trendInterval === "day") {
+        for (
+          let cursor = trendStartDate;
+          cursor <= trendEndDate;
+          cursor = analyticsShiftDays(cursor, 1)
+        ) {
+          trendTargets.push({
+            key: cursor,
+            startDate: cursor,
+            cutoffSql:
+              cursor === clock.selectedDate && clock.isCurrentDate
+                ? clock.cutoffSql
+                : formatSqlDateTimeUtc(historicalEndOfManilaDayUtc(cursor)),
+          });
+        }
+      } else {
+        for (
+          let monthStart = analyticsShiftMonthStart(trendStartDate, 0);
+          monthStart <= trendEndDate;
+          monthStart = analyticsShiftMonthStart(monthStart, 1)
+        ) {
+          const month = monthStart.slice(0, 7);
+          const lastDay = analyticsLastDayOfMonth(monthStart);
+
+          const bucketStart =
+            trendStartDate > monthStart ? trendStartDate : monthStart;
+
+          const bucketEnd = trendEndDate < lastDay ? trendEndDate : lastDay;
+
+          trendTargets.push({
+            key: month,
+            startDate: bucketStart,
+            cutoffSql:
+              bucketEnd === clock.selectedDate && clock.isCurrentDate
+                ? clock.cutoffSql
+                : formatSqlDateTimeUtc(historicalEndOfManilaDayUtc(bucketEnd)),
+          });
+        }
+      }
+
+      const trendStartCutoff = formatSqlDateTimeUtc(
+        historicalEndOfManilaDayUtc(analyticsShiftDays(trendStartDate, -1)),
+      );
+
+      const groupMode = trendInterval === "day" ? "day" : true;
+
+      const [rawTrendRows, readyTrendRows] = await Promise.all([
+        queryAnalyticsRawOutflow(
+          rawRows,
+          trendStartCutoff,
+          clock.cutoffSql,
+          groupMode,
+        ),
+        queryAnalyticsReadyMadeCogs(
+          productRows,
+          trendStartCutoff,
+          clock.cutoffSql,
+          groupMode,
+        ),
+      ]);
+
+      const rawTrendOutflows = aggregateAnalyticsRawOutflow(
+        rawTrendRows,
+        rawRows,
+      );
+
+      const readyTrendCogs = aggregateAnalyticsReadyMadeCogs(readyTrendRows);
+
+      // Process a few dates concurrently so the graph does not wait for
+      // every historical date to finish one by one.
+      // Keep batches small to avoid overwhelming the database.
+      const TREND_BATCH_SIZE = 4;
+
+      for (
+        let batchStart = 0;
+        batchStart < trendTargets.length;
+        batchStart += TREND_BATCH_SIZE
+      ) {
+        const batch = trendTargets.slice(
+          batchStart,
+          batchStart + TREND_BATCH_SIZE,
+        );
+
+        const batchPoints = await Promise.all(
+          batch.map(async (target) => {
+            const bucketOpeningCutoff = formatSqlDateTimeUtc(
+              historicalEndOfManilaDayUtc(
+                analyticsShiftDays(target.startDate, -1),
+              ),
+            );
+
+            const [
+              rawOpeningSnapshot,
+              rawClosingSnapshot,
+              readyOpeningSnapshot,
+              readyClosingSnapshot,
+            ] = await Promise.all([
+              loadAnalyticsSnapshot({
+                rows: rawRows,
+                entityType: "raw",
+                cutoffSql: bucketOpeningCutoff,
+                snapshotCache,
+                warnings: [],
+              }),
+              loadAnalyticsSnapshot({
+                rows: rawRows,
+                entityType: "raw",
+                cutoffSql: target.cutoffSql,
+                snapshotCache,
+                warnings: [],
+              }),
+              loadAnalyticsSnapshot({
+                rows: productRows,
+                entityType: "ready",
+                cutoffSql: bucketOpeningCutoff,
+                snapshotCache,
+                warnings: [],
+              }),
+              loadAnalyticsSnapshot({
+                rows: productRows,
+                entityType: "ready",
+                cutoffSql: target.cutoffSql,
+                snapshotCache,
+                warnings: [],
+              }),
+            ]);
+
+            const rawOpeningValue = calculateAnalyticsValuation(
+              rawOpeningSnapshot,
+              "raw",
+            );
+
+            const rawClosingValue = calculateAnalyticsValuation(
+              rawClosingSnapshot,
+              "raw",
+            );
+
+            const readyOpeningValue = calculateAnalyticsValuation(
+              readyOpeningSnapshot,
+              "ready",
+            );
+
+            const readyClosingValue = calculateAnalyticsValuation(
+              readyClosingSnapshot,
+              "ready",
+            );
+
+            const rawOutflow = rawTrendOutflows.get(target.key) || {
+              value: 0,
+              complete: true,
+            };
+
+            const readyOutflow = readyTrendCogs.get(target.key) || {
+              value: 0,
+              complete: true,
+            };
+
+            return {
+              month: target.key,
+
+              raw_materials_value:
+                inventoryType === "ready_made" ? null : rawClosingValue.value,
+
+              ready_made_value:
+                inventoryType === "raw" ? null : readyClosingValue.value,
+
+              raw_materials_turnover:
+                inventoryType === "ready_made"
+                  ? null
+                  : calculateAnalyticsTurnover(
+                      rawOutflow,
+                      rawOpeningValue,
+                      rawClosingValue,
+                    ),
+
+              ready_made_turnover:
+                inventoryType === "raw"
+                  ? null
+                  : calculateAnalyticsTurnover(
+                      readyOutflow,
+                      readyOpeningValue,
+                      readyClosingValue,
+                    ),
+
+              valuation_complete:
+                (inventoryType === "ready_made" || rawClosingValue.complete) &&
+                (inventoryType === "raw" || readyClosingValue.complete),
+            };
+          }),
+        );
+
+        // Promise.all preserves the original date order.
+        trend.push(...batchPoints);
+      }
+    }
+
+    if (rawSelected && !closingRawValue.complete) {
+      warnings.push(
+        "Raw-material valuation is incomplete because some historical quantities or unit costs are unavailable.",
+      );
+    }
+
+    if (readySelected && !closingReadyValue.complete) {
+      warnings.push(
+        "Ready-made valuation is incomplete because some historical quantities or production costs are unavailable.",
+      );
+    }
+
+    return res.json({
+      report_date: clock.selectedDate,
+      period_start_date: periodStartDate,
+      period_end_date: clock.selectedDate,
+
+      period_days: rangeStartDate
+        ? Math.floor(
+            (new Date(`${clock.selectedDate}T00:00:00Z`).getTime() -
+              new Date(`${periodStartDate}T00:00:00Z`).getTime()) /
+              86400000,
+          ) + 1
+        : 30,
+
+      filters: {
+        inventory_type: inventoryType || "all",
+        search,
+        stock_status: stockStatus || "all",
+      },
+
+      cost_basis:
+        "Historical quantities valued using current catalog costs; ready-made turnover uses stored order-item production costs when available.",
+
+      valuation: {
+        raw_materials: rawSelected ? closingRawValue.value : null,
+
+        ready_made: readySelected ? closingReadyValue.value : null,
+
+        total: valuationTotal,
+
+        raw_materials_complete: rawSelected ? closingRawValue.complete : null,
+
+        ready_made_complete: readySelected ? closingReadyValue.complete : null,
+      },
+
+      turnover: {
+        raw_materials: rawSelected
+          ? calculateAnalyticsTurnover(
+              rawPeriodOutflow,
+              openingRawValue,
+              closingRawValue,
+            )
+          : null,
+
+        ready_made: readySelected
+          ? calculateAnalyticsTurnover(
+              readyPeriodCogs,
+              openingReadyValue,
+              closingReadyValue,
+            )
+          : null,
+      },
+
+      trend_interval: trendInterval,
+      trend,
+      warnings: [...new Set(warnings)],
+    });
+  } catch (error) {
+    const status = Number(error?.status) || 500;
+
+    return res.status(status).json({
+      message: error?.message || "Failed to generate Inventory Analytics.",
+    });
+  }
+};
 
 exports.getInventoryReport = async (req, res) => {
   try {

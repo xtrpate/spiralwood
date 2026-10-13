@@ -113,7 +113,10 @@ const warrantyFulfillmentUpload = (req, res, next) => {
               message: "Fulfillment proof must be 10 MB or smaller.",
             });
           }
-          if (err.code === "LIMIT_FILE_COUNT" || err.code === "LIMIT_UNEXPECTED_FILE") {
+          if (
+            err.code === "LIMIT_FILE_COUNT" ||
+            err.code === "LIMIT_UNEXPECTED_FILE"
+          ) {
             return res.status(400).json({
               message: "Upload exactly one fulfillment proof.",
             });
@@ -256,6 +259,13 @@ router.get(
   dashboard.getDashboard,
 );
 
+router.get(
+  "/dashboard/inventory-analytics",
+  adminStaff,
+  requirePermission("dashboard.view"),
+  inventoryReport.getInventoryAnalytics,
+);
+
 // ══════════════════════════════════════════════════════════════════════════════
 // PRODUCTS
 // ══════════════════════════════════════════════════════════════════════════════
@@ -385,6 +395,13 @@ router.get(
   adminStaff,
   requirePermission("stock_movements.view"),
   inventoryReport.getInventoryReport,
+);
+
+router.get(
+  "/inventory/analytics",
+  adminStaff,
+  requirePermission("stock_movements.view"),
+  inventoryReport.getInventoryAnalytics,
 );
 router.get(
   "/inventory/reports/daily-stock-in",

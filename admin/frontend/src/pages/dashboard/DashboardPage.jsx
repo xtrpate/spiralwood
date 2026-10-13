@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Line, Bar, Doughnut } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -50,7 +56,6 @@ const peso = new Intl.NumberFormat("en-PH", {
 });
 
 const num = new Intl.NumberFormat("en-PH");
-
 
 function formatChartLabel(value, chartMode) {
   if (!value) return "—";
@@ -275,6 +280,9 @@ export default function DashboardPage() {
   }, []);
   const navigate = useNavigate();
   const [data, setData] = useState(null);
+  const [inventoryAnalytics, setInventoryAnalytics] = useState(null);
+  const [inventoryAnalyticsError, setInventoryAnalyticsError] = useState("");
+  const inventoryAnalyticsRequestRef = useRef(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [fetchError, setFetchError] = useState("");
@@ -320,8 +328,7 @@ export default function DashboardPage() {
         setData(res.data);
         setAppliedRange({
           preset: responseRange.preset || presetArg,
-          from:
-            responseRange.from || (presetArg === "custom" ? fromArg : ""),
+          from: responseRange.from || (presetArg === "custom" ? fromArg : ""),
           to: responseRange.to || (presetArg === "custom" ? toArg : ""),
         });
       } catch (err) {
@@ -340,6 +347,50 @@ export default function DashboardPage() {
     },
     [],
   );
+
+  const loadInventoryAnalytics = useCallback(
+    async ({ fromArg = "", toArg = "" } = {}) => {
+      if (!fromArg || !toArg) return;
+
+      const requestId = ++inventoryAnalyticsRequestRef.current;
+
+      try {
+        setInventoryAnalyticsError("");
+
+        const response = await api.get("/dashboard/inventory-analytics", {
+          params: {
+            from: fromArg,
+            to: toArg,
+            trend: 1,
+          },
+        });
+
+        if (requestId !== inventoryAnalyticsRequestRef.current) return;
+
+        setInventoryAnalytics(response.data || null);
+      } catch (err) {
+        if (requestId !== inventoryAnalyticsRequestRef.current) return;
+
+        setInventoryAnalyticsError(
+          err?.response?.data?.message || "Failed to load inventory analytics.",
+        );
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!appliedRange.from || !appliedRange.to) return;
+
+    loadInventoryAnalytics({
+      fromArg: appliedRange.from,
+      toArg: appliedRange.to,
+    });
+
+    return () => {
+      inventoryAnalyticsRequestRef.current += 1;
+    };
+  }, [appliedRange.from, appliedRange.to, loadInventoryAnalytics]);
 
   useEffect(() => {
     loadDashboard({ presetArg: "last30" });
@@ -403,6 +454,11 @@ export default function DashboardPage() {
       toArg: appliedRange.to,
       silent: true,
     });
+
+    loadInventoryAnalytics({
+      fromArg: appliedRange.from,
+      toArg: appliedRange.to,
+    });
   };
 
   const activeLabel =
@@ -422,6 +478,31 @@ export default function DashboardPage() {
     : [];
   const dateRange = data?.dateRange || null;
   const chartMode = data?.chartMode || "daily";
+  const inventoryTrend = Array.isArray(inventoryAnalytics?.trend)
+    ? inventoryAnalytics.trend
+    : [];
+
+  const inventoryTrendLabels = useMemo(() => {
+    const chartMode =
+      inventoryAnalytics?.trend_interval === "day" ? "daily" : "monthly";
+
+    return inventoryTrend.map((row) => formatChartLabel(row.month, chartMode));
+  }, [inventoryTrend, inventoryAnalytics?.trend_interval]);
+
+  const hasInventoryValuationTrend = inventoryTrend.some(
+    (row) =>
+      (row.raw_materials_value !== null &&
+        row.raw_materials_value !== undefined) ||
+      (row.ready_made_value !== null && row.ready_made_value !== undefined),
+  );
+
+  const hasInventoryTurnoverTrend = inventoryTrend.some(
+    (row) =>
+      (row.raw_materials_turnover !== null &&
+        row.raw_materials_turnover !== undefined) ||
+      (row.ready_made_turnover !== null &&
+        row.ready_made_turnover !== undefined),
+  );
   const dashboardFontFamily = useMemo(() => {
     if (typeof window === "undefined") return "sans-serif";
     return window.getComputedStyle(document.body).fontFamily || "sans-serif";
@@ -438,9 +519,7 @@ export default function DashboardPage() {
     currentOps.contract_released_orders || 0,
   );
   const currentProduction = Number(currentOps.production_orders || 0);
-  const currentReadyForPickup = Number(
-    currentOps.ready_for_pickup_orders || 0,
-  );
+  const currentReadyForPickup = Number(currentOps.ready_for_pickup_orders || 0);
   const currentShipping = Number(currentOps.shipping_orders || 0);
   const currentDelivered = Number(currentOps.delivered_orders || 0);
   const currentCompleted = Number(currentOps.completed_orders || 0);
@@ -549,6 +628,101 @@ export default function DashboardPage() {
     [salesChart, chartLabels],
   );
 
+  const inventoryValuationTrendData = useMemo(
+    () => ({
+      labels: inventoryTrendLabels,
+      datasets: [
+        {
+          label: "Raw Materials",
+          data: inventoryTrend.map((row) =>
+            row.raw_materials_value === null ||
+            row.raw_materials_value === undefined
+              ? null
+              : Number(row.raw_materials_value),
+          ),
+          borderColor: "#18181b",
+          backgroundColor: "transparent",
+          fill: false,
+          tension: 0.24,
+          borderWidth: 2.25,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          pointHitRadius: 12,
+          pointBackgroundColor: "#ffffff",
+          pointBorderColor: "#18181b",
+        },
+        {
+          label: "Ready-made Products",
+          data: inventoryTrend.map((row) =>
+            row.ready_made_value === null || row.ready_made_value === undefined
+              ? null
+              : Number(row.ready_made_value),
+          ),
+          borderColor: "#9ca3af",
+          backgroundColor: "transparent",
+          borderDash: [6, 5],
+          fill: false,
+          tension: 0.24,
+          borderWidth: 1.75,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          pointHitRadius: 12,
+          pointBackgroundColor: "#ffffff",
+          pointBorderColor: "#9ca3af",
+        },
+      ],
+    }),
+    [inventoryTrend, inventoryTrendLabels],
+  );
+
+  const inventoryTurnoverTrendData = useMemo(
+    () => ({
+      labels: inventoryTrendLabels,
+      datasets: [
+        {
+          label: "Raw Materials",
+          data: inventoryTrend.map((row) =>
+            row.raw_materials_turnover === null ||
+            row.raw_materials_turnover === undefined
+              ? null
+              : Number(row.raw_materials_turnover),
+          ),
+          borderColor: "#18181b",
+          backgroundColor: "transparent",
+          fill: false,
+          tension: 0.24,
+          borderWidth: 2.25,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+          pointHitRadius: 12,
+          pointBackgroundColor: "#ffffff",
+          pointBorderColor: "#18181b",
+        },
+        {
+          label: "Ready-made Products",
+          data: inventoryTrend.map((row) =>
+            row.ready_made_turnover === null ||
+            row.ready_made_turnover === undefined
+              ? null
+              : Number(row.ready_made_turnover),
+          ),
+          borderColor: "#9ca3af",
+          backgroundColor: "transparent",
+          borderDash: [6, 5],
+          fill: false,
+          tension: 0.24,
+          borderWidth: 1.75,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+          pointHitRadius: 12,
+          pointBackgroundColor: "#ffffff",
+          pointBorderColor: "#9ca3af",
+        },
+      ],
+    }),
+    [inventoryTrend, inventoryTrendLabels],
+  );
+
   const topProductsData = useMemo(
     () => ({
       labels: topProducts
@@ -588,12 +762,7 @@ export default function DashboardPage() {
         },
       ],
     }),
-    [
-      healthyStockTotal,
-      lowStockTotal,
-      criticalStockTotal,
-      outOfStockTotal,
-    ],
+    [healthyStockTotal, lowStockTotal, criticalStockTotal, outOfStockTotal],
   );
 
   const inventoryHealthOptions = useMemo(
@@ -758,6 +927,65 @@ export default function DashboardPage() {
       },
     }),
     [chartMode, dashboardFontFamily],
+  );
+
+  const inventoryValuationOptions = useMemo(
+    () => ({
+      ...lineOptions,
+      scales: {
+        ...lineOptions.scales,
+        x: {
+          ...lineOptions.scales.x,
+          ticks: {
+            ...lineOptions.scales.x.ticks,
+            maxTicksLimit: 12,
+          },
+        },
+      },
+    }),
+    [lineOptions],
+  );
+
+  const inventoryTurnoverOptions = useMemo(
+    () => ({
+      ...lineOptions,
+      plugins: {
+        ...lineOptions.plugins,
+        tooltip: {
+          ...lineOptions.plugins.tooltip,
+          callbacks: {
+            ...lineOptions.plugins.tooltip.callbacks,
+            label: (context) => {
+              const value = context.parsed.y;
+
+              return `${context.dataset.label}: ${
+                value === null || value === undefined
+                  ? "Unavailable"
+                  : `${Number(value).toFixed(2)}x`
+              }`;
+            },
+          },
+        },
+      },
+      scales: {
+        ...lineOptions.scales,
+        x: {
+          ...lineOptions.scales.x,
+          ticks: {
+            ...lineOptions.scales.x.ticks,
+            maxTicksLimit: 12,
+          },
+        },
+        y: {
+          ...lineOptions.scales.y,
+          ticks: {
+            ...lineOptions.scales.y.ticks,
+            callback: (value) => `${Number(value).toFixed(3)}x`,
+          },
+        },
+      },
+    }),
+    [lineOptions],
   );
 
   const barOptions = useMemo(
@@ -1022,9 +1250,7 @@ export default function DashboardPage() {
           <div className="dash-chart-area dash-chart-area--sales">
             {salesChart.length === 0 ? (
               <div className="dash-empty-state">
-                <div className="dash-empty-title">
-                  No verified collections
-                </div>
+                <div className="dash-empty-title">No verified collections</div>
                 <div className="dash-empty-text">
                   No verified payments were recorded in the selected period.
                 </div>
@@ -1112,14 +1338,108 @@ export default function DashboardPage() {
         </div>
       </section>
 
+      <section className="dashboard-grid dashboard-grid--main">
+        <div className="dash-card">
+          <div className="card-header">
+            <div>
+              <h2 className="card-title">Inventory Valuation Trends</h2>
+              <p className="card-description">
+                Estimated raw-material and ready-made inventory values across
+                the selected Dashboard date range, using current catalog costs.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              className="dash-link-button"
+              onClick={() => navigate("/admin/reports/current-inventory")}
+            >
+              View Inventory Report
+            </button>
+          </div>
+
+          <div className="dash-chart-area dash-chart-area--inventory-analytics">
+            {inventoryAnalyticsError ? (
+              <div className="dash-empty-state">
+                <div className="dash-empty-title">
+                  Inventory valuation unavailable
+                </div>
+                <div className="dash-empty-text">{inventoryAnalyticsError}</div>
+              </div>
+            ) : !inventoryAnalytics ? (
+              <Line
+                data={inventoryValuationTrendData}
+                options={inventoryValuationOptions}
+              />
+            ) : !hasInventoryValuationTrend ? (
+              <div className="dash-empty-state">
+                <div className="dash-empty-title">
+                  Valuation data unavailable
+                </div>
+                <div className="dash-empty-text">
+                  Some historical stock quantities or inventory costs could not
+                  be reconstructed.
+                </div>
+              </div>
+            ) : (
+              <Line
+                data={inventoryValuationTrendData}
+                options={inventoryValuationOptions}
+              />
+            )}
+          </div>
+        </div>
+
+        <div className="dash-card">
+          <div className="card-header">
+            <div>
+              <h2 className="card-title">Inventory Turnover Trends</h2>
+              <p className="card-description">
+                Raw-material outflow and ready-made COGS divided by average
+                inventory value across the selected Dashboard date range.
+              </p>
+            </div>
+          </div>
+
+          <div className="dash-chart-area dash-chart-area--inventory-analytics">
+            {inventoryAnalyticsError ? (
+              <div className="dash-empty-state">
+                <div className="dash-empty-title">
+                  Inventory turnover unavailable
+                </div>
+                <div className="dash-empty-text">{inventoryAnalyticsError}</div>
+              </div>
+            ) : !inventoryAnalytics ? (
+              <Line
+                data={inventoryTurnoverTrendData}
+                options={inventoryTurnoverOptions}
+              />
+            ) : !hasInventoryTurnoverTrend ? (
+              <div className="dash-empty-state">
+                <div className="dash-empty-title">
+                  Turnover data unavailable
+                </div>
+                <div className="dash-empty-text">
+                  A complete opening and closing inventory value and reliable
+                  outflow or COGS costs are required.
+                </div>
+              </div>
+            ) : (
+              <Line
+                data={inventoryTurnoverTrendData}
+                options={inventoryTurnoverOptions}
+              />
+            )}
+          </div>
+        </div>
+      </section>
+
       <section className="dashboard-grid dashboard-grid--triple">
         <div className="dash-card">
           <div className="card-header">
             <div>
               <h2 className="card-title">Inventory health</h2>
-              <p className="card-description">
-                Current active stock position.
-              </p>
+              <p className="card-description">Current active stock position.</p>
             </div>
           </div>
 
@@ -1171,13 +1491,15 @@ export default function DashboardPage() {
               </div>
               <div className="inventory-attention__counts">
                 <span className="stock-count stock-count--healthy">
-                  Healthy {num.format(Number(inventory.healthy_stock_count || 0))}
+                  Healthy{" "}
+                  {num.format(Number(inventory.healthy_stock_count || 0))}
                 </span>
                 <span className="stock-count stock-count--low">
                   Low {num.format(Number(inventory.low_stock_count || 0))}
                 </span>
                 <span className="stock-count stock-count--critical">
-                  Critical {num.format(Number(inventory.critical_stock_count || 0))}
+                  Critical{" "}
+                  {num.format(Number(inventory.critical_stock_count || 0))}
                 </span>
                 <span className="stock-count stock-count--out">
                   Out {num.format(Number(inventory.out_of_stock_count || 0))}
@@ -1198,7 +1520,8 @@ export default function DashboardPage() {
                   Low {num.format(Number(inventory.raw_low_stock || 0))}
                 </span>
                 <span className="stock-count stock-count--critical">
-                  Critical {num.format(Number(inventory.raw_critical_stock || 0))}
+                  Critical{" "}
+                  {num.format(Number(inventory.raw_critical_stock || 0))}
                 </span>
                 <span className="stock-count stock-count--out">
                   Out {num.format(Number(inventory.raw_out_of_stock || 0))}
@@ -1230,7 +1553,8 @@ export default function DashboardPage() {
             <div>
               <h2 className="card-title">Custom orders</h2>
               <p className="card-description">
-                Current status of blueprint orders created in the selected period.
+                Current status of blueprint orders created in the selected
+                period.
               </p>
             </div>
 
@@ -1307,7 +1631,8 @@ export default function DashboardPage() {
             <div>
               <h2 className="card-title">Top products</h2>
               <p className="card-description">
-                Best-selling standard products from verified sales in the selected period.
+                Best-selling standard products from verified sales in the
+                selected period.
               </p>
             </div>
           </div>
@@ -1373,7 +1698,9 @@ export default function DashboardPage() {
               <tbody>
                 {recentOrders.slice(0, 8).map((order) => (
                   <tr key={order.id}>
-                    <td className="dash-strong">{order.order_number || `#${order.id}`}</td>
+                    <td className="dash-strong">
+                      {order.order_number || `#${order.id}`}
+                    </td>
                     <td>{order.customer_name || "Walk-in"}</td>
                     <td className="dash-amount">
                       {peso.format(Number(order.total_amount || 0))}
@@ -1732,8 +2059,12 @@ const dashboardCss = `
     height: 278px;
   }
 
-  .dash-chart-area--products {
+   .dash-chart-area--products {
     height: 258px;
+  }
+
+  .dash-chart-area--inventory-analytics {
+    height: 278px;
   }
 
   .progress-list {
