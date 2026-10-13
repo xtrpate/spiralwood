@@ -4697,7 +4697,7 @@ export default function Customer3DViewer({
       ...previous,
       [axis]: "Automatic resizing is not verified for this furniture.",
     }));
-    showCustomizeFeedback("Size protected. Request measurements in Order Details.");
+    showCustomizeFeedback("For a different size, add your preferred measurements in Order Details.");
   };
 
   const applyUniversalManualPreview = axis => {
@@ -4713,7 +4713,7 @@ export default function Customer3DViewer({
     setOverallDimensionErrors(old=>({...old,[axis]:""}));
     commitComponents(result.parts);
     setCustomizeProgressStep(current=>Math.max(current,3));
-    showCustomizeFeedback("Manual geometry preview updated. Final custom-cart authorization is still pending.");
+    showCustomizeFeedback("Size updated. Please review your design before checkout.");
   };
   const applySmartBookshelf = axis => {
     if (!isCustomizable || readOnly || !canResizeBookshelf(axis)) return;
@@ -4744,11 +4744,7 @@ export default function Customer3DViewer({
     setOverallDimensionErrors(old=>({...old,[axis]:""}));
     commitComponents(next.parts);
     setCustomizeProgressStep(current=>Math.max(current,3));
-    showCustomizeFeedback(cabinetSupport.validatedCarcassDoors
-      ? "Carcass and doors resized. Admin must verify hinges, physical stability and joinery."
-      : cabinetSupport.validatedPanelCarcass
-        ? "Carcass size updated. Admin must verify physical stability, joints and any door layout."
-        : "Cabinet size updated. Review all 10 parts and door clearances.");
+    showCustomizeFeedback("Size updated. Please review your design before checkout.");
   };
   const applySmartTable = axis => {
     if (!isCustomizable || readOnly || !canResizeTable(axis)) return;
@@ -4764,9 +4760,7 @@ export default function Customer3DViewer({
     setOverallDimensionErrors(old=>({...old,[axis]:""}));
     commitComponents(next.parts);
     setCustomizeProgressStep(current=>Math.max(current,3));
-    showCustomizeFeedback(tableSupport.manualFivePart || tableSupport.geometricManualTable
-      ? "Manual table size updated. Ask Admin to review leg joinery and tabletop support."
-      : "Dining Table size updated. Review all 9 parts before checkout.");
+    showCustomizeFeedback("Size updated. Please review your design before checkout.");
   };
   const applySmartWardrobeWidth = () => {
     if (!isCustomizable || readOnly || !canSmartResizeWardrobeWidth) return;
@@ -6411,76 +6405,7 @@ export default function Customer3DViewer({
                     <label style={styles.label}>
                       Furniture Size ({unit === "inches" ? "in" : unit})
                     </label>
-                    <span style={styles.pill}>
-                      {universalManualSupport.ok ? "Reviewed manual · preview" : bookshelfSupport.ok ? "Smart bookshelf" : cabinetSupport.ok ? (cabinetSupport.validatedCarcassDoors ? "Smart carcass + doors" : cabinetSupport.validatedPanelCarcass ? "Smart carcass" : "Smart cabinet") : tableSupport.ok && (tableSupport.manualFivePart || tableSupport.geometricManualTable) ? "Manual table" : tableSupport.ok ? "Smart table" : overallWardrobeSizeProtected
-                        ? canSmartResizeWardrobeHeight && canSmartResizeWardrobeDepth
-                          ? "Smart sizing"
-                          : canSmartResizeWardrobeWidth
-                            ? "Smart width"
-                            : "Size protected"
-                        : "Size protected"}
-                    </span>
                   </div>
-
-                  {universalManualSupport.ok ? (
-                    <div style={styles.helperTextMuted} role="status">
-                      Admin-reviewed W/H/D ranges: Width {effectiveCustomerSizeRanges.width?.min}-{effectiveCustomerSizeRanges.width?.max} mm;
-                      Height {effectiveCustomerSizeRanges.height?.min}-{effectiveCustomerSizeRanges.height?.max} mm;
-                      Depth {effectiveCustomerSizeRanges.depth?.min}-{effectiveCustomerSizeRanges.depth?.max} mm.
-                      Customer-requested changes are server-validated at custom checkout before an order is created.
-                    </div>
-                  ) : null}
-                  {bookshelfSupport.ok ? (
-                    <div style={styles.helperTextMuted} role="status">
-                      Width {effectiveCustomerSizeRanges.width?.min}-{effectiveCustomerSizeRanges.width?.max} mm;
-                      Height {effectiveCustomerSizeRanges.height?.min}-{effectiveCustomerSizeRanges.height?.max} mm;
-                      Depth {effectiveCustomerSizeRanges.depth?.min}-{effectiveCustomerSizeRanges.depth?.max} mm.
-                      All 18 mm boards stay the same thickness. Admin reviews final specifications.
-                    </div>
-                  ) : null}
-                  {cabinetSupport.ok ? (
-                    <div style={styles.helperTextMuted} role="status">
-                      Width {effectiveCustomerSizeRanges.width?.min}-{effectiveCustomerSizeRanges.width?.max} mm;
-                      Height {effectiveCustomerSizeRanges.height?.min}-{effectiveCustomerSizeRanges.height?.max} mm;
-                      Depth {effectiveCustomerSizeRanges.depth?.min}-{effectiveCustomerSizeRanges.depth?.max} mm.
-                      {cabinetSupport.validatedCarcassDoors
-                        ? "The checked whole-opening door gaps, frame alignment, panel thickness and shelf clearances remain aligned. Admin verifies hinges and joinery."
-                        : cabinetSupport.validatedPanelCarcass
-                          ? "Panel thickness, shelf connections and base support stay aligned. Door/drawer assemblies must be verified separately."
-                          : "The two inset doors, shelf clearances and original panel thicknesses stay aligned."}
-                      Admin must review final construction specifications.
-                    </div>
-                  ) : null}
-                  {tableSupport.ok ? (
-                    <div style={styles.helperTextMuted} role="status">
-                      Width {effectiveCustomerSizeRanges.width?.min}-{effectiveCustomerSizeRanges.width?.max} mm;
-                      Height {effectiveCustomerSizeRanges.height?.min}-{effectiveCustomerSizeRanges.height?.max} mm;
-                      Depth {effectiveCustomerSizeRanges.depth?.min}-{effectiveCustomerSizeRanges.depth?.max} mm.
-                      {tableSupport.manualFivePart || tableSupport.geometricManualTable
-                        ? `Manual five-part table: ${tableSupport.tabletopThickness} mm tabletop and ${tableSupport.legSection ?? tableSupport.legWidth} × ${tableSupport.legSection ?? tableSupport.legDepth} mm leg sections; corner offsets and floor contact stay fixed. Admin must review structural support and joinery.`
-                        : "The 40 mm tabletop, 80 × 80 mm leg sections, and 25 mm aprons stay intact."}
-                      Final dimensions and joinery require Admin review.
-                    </div>
-                  ) : null}
-                  {!bookshelfSupport.ok && !cabinetSupport.ok && overallWardrobeSizeProtected ? (
-                    <div style={styles.helperTextMuted} role="status">
-                      {canSmartResizeWardrobeWidth
-                        ? canSmartResizeWardrobeHeight && canSmartResizeWardrobeDepth
-                          ? `Width: ${effectiveCustomerSizeRanges.width?.min}-${effectiveCustomerSizeRanges.width?.max} mm. Height: ${effectiveCustomerSizeRanges.height?.min}-${effectiveCustomerSizeRanges.height?.max} mm. Depth: ${effectiveCustomerSizeRanges.depth?.min}-${effectiveCustomerSizeRanges.depth?.max} mm. Enter one size, review the preview, then press Apply. Board thickness, edited drawer sizes, and finishes stay unchanged. These limits are provisional; the shop must review final sizes.`
-                          : `Width can change from ${effectiveCustomerSizeRanges.width?.min} to ${effectiveCustomerSizeRanges.width?.max} mm. Preview the bay sizes and press Apply Width. Board thickness, drawer dimensions, and custom finishes stay unchanged. Height and Depth stay locked for this layout. Final sizes need shop review.`
-                        : "Overall wardrobe size is protected because this layout is not verified for safe resizing. Wood finishes and door/drawer previews remain available."}
-                    </div>
-                  ) : null}
-
-                  {!universalManualSupport.ok && !overallWardrobeSizeProtected && !bookshelfSupport.ok && !cabinetSupport.ok && !tableSupport.ok ? (
-                    <div style={styles.helperTextMuted} role="status">
-                      Size protected: automatic resizing is not verified for this furniture.
-                      To request a different width, height, or depth, open Order Details
-                      and write your preferred measurements in the notes. Admin will
-                      review the request before quotation. The 3D model stays unchanged.
-                    </div>
-                  ) : null}
-
                   <div
                     className="wisdom-size-grid"
                     style={styles.dimensionGrid}
@@ -6679,15 +6604,11 @@ export default function Customer3DViewer({
                         const label=axis.charAt(0).toUpperCase()+axis.slice(1);
                         return <div key={axis} style={{display:"grid",gap:5}}>
                           {candidate.ok ? <>
-                            <div style={styles.helperTextMuted} role="status">
-                              Preview {label}: {overallBounds[axis+"_mm"]} to {candidate[axis]} mm.
-                              Connections and original part dimensions are checked against Admin rules.
-                            </div>
                             <button type="button" onClick={()=>applyUniversalManualPreview(axis)}
                               disabled={!isCustomizable || readOnly || !editable[axis]}
                               style={{background:"#111",color:"#fff",border:"1px solid #111",borderRadius:0,
                                 padding:"10px 12px",fontWeight:700,cursor:"pointer"}}>
-                              Apply {label} Preview
+                              Apply {label}
                             </button>
                           </> : null}
                         </div>;
@@ -6702,10 +6623,6 @@ export default function Customer3DViewer({
                         const label=axis.charAt(0).toUpperCase()+axis.slice(1);
                         return <div key={axis} style={{display:"grid",gap:5}}>
                           {candidate.ok ? <>
-                            <div style={styles.helperTextMuted} role="status">
-                              {label}: {overallBounds[axis+"_mm"]} mm to {candidate[axis]} mm.
-                              Part thickness is preserved.
-                            </div>
                             <button type="button" onClick={() => applySmartBookshelf(axis)}
                               disabled={!isCustomizable || readOnly || !editable[axis]}
                               style={{background:"#111",color:"#fff",border:"1px solid #111",
@@ -6724,12 +6641,6 @@ export default function Customer3DViewer({
                         if (!candidate || !candidate.ok) return null;
                         const label=axis.charAt(0).toUpperCase()+axis.slice(1);
                         return <div key={axis} style={{display:"grid",gap:5}}>
-                          <div style={styles.helperTextMuted} role="status">
-                            {label}: {overallBounds[axis+"_mm"]} mm to {candidate[axis]} mm.
-                            {cabinetSupport.validatedPanelCarcass
-                              ? "Verified panel joints and shelf spacing remain aligned; Admin reviews joinery before production."
-                              : "All 10 parts and two inset doors preserve their clearances."}
-                          </div>
                           <button type="button" onClick={() => applySmartCabinet(axis)}
                             disabled={!isCustomizable || readOnly || !editable[axis]}
                             style={{background:"#111",color:"#fff",border:"1px solid #111",
@@ -6748,12 +6659,6 @@ export default function Customer3DViewer({
                         const label=axis.charAt(0).toUpperCase()+axis.slice(1);
                         return <div key={axis} style={{display:"grid",gap:5}}>
                           {candidate.ok ? <>
-                            <div style={styles.helperTextMuted} role="status">
-                              {label}: {overallBounds[axis+"_mm"]} mm to {candidate[axis]} mm.
-                              {tableSupport.manualFivePart || tableSupport.geometricManualTable
-                                ? "Tabletop thickness, leg cross-sections, corner insets and feet position stay fixed."
-                                : "Tabletop thickness, leg section and apron thickness stay fixed."}
-                            </div>
                             <button type="button" onClick={() => applySmartTable(axis)}
                               disabled={!isCustomizable || readOnly || !editable[axis]}
                               style={{background:"#111",color:"#fff",border:"1px solid #111",
@@ -6769,16 +6674,6 @@ export default function Customer3DViewer({
                     <div style={{ marginTop: 8, display: "grid", gap: 7 }}>
                       {wardrobeWidthPreview.ok ? (
                         <>
-                          <div style={styles.helperTextMuted} role="status">
-                            Width preview: {overallBounds.width_mm} mm to{" "}
-                            {wardrobeWidthPreview.width} mm. Bay 1:{" "}
-                            {wardrobeWidthSupport.openings.bay1} to{" "}
-                            {wardrobeWidthPreview.openings.bay1} mm. Bay 4:{" "}
-                            {wardrobeWidthSupport.openings.bay4} to{" "}
-                            {wardrobeWidthPreview.openings.bay4} mm.
-                            Bay 2 and Bay 3, including drawers, keep their sizes.
-                            The 3D furniture updates only when you press Apply Width.
-                          </div>
                           <button
                             type="button"
                             onClick={applySmartWardrobeWidth}
@@ -6804,12 +6699,6 @@ export default function Customer3DViewer({
 
                   {!cabinetSupport.ok && canSmartResizeWardrobeHeight && wardrobeHeightPreview?.ok ? (
                     <div style={{ marginTop: 8, display: "grid", gap: 7 }}>
-                      <div style={styles.helperTextMuted} role="status">
-                        Height preview: {overallBounds.height_mm} mm to{" "}
-                        {wardrobeHeightPreview.height} mm. The base shelves and
-                        frame will move together. Drawers, upper shelves, and
-                        their wood finishes stay unchanged.
-                      </div>
                       <button
                         type="button"
                         onClick={() => applySmartWardrobeHeightDepth("height")}
@@ -6828,12 +6717,6 @@ export default function Customer3DViewer({
 
                   {!cabinetSupport.ok && canSmartResizeWardrobeDepth && wardrobeDepthPreview?.ok ? (
                     <div style={{ marginTop: 8, display: "grid", gap: 7 }}>
-                      <div style={styles.helperTextMuted} role="status">
-                        Depth preview: {overallBounds.depth_mm} mm to{" "}
-                        {wardrobeDepthPreview.depth} mm. The cabinet panels
-                        and standard shelves adjust. Drawers move as complete
-                        assemblies, keeping their customized depths and finishes.
-                      </div>
                       <button
                         type="button"
                         onClick={() => applySmartWardrobeHeightDepth("depth")}

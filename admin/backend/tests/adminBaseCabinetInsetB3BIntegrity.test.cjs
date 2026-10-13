@@ -95,6 +95,8 @@ test('helper is Admin-only and does not touch customer code',()=>{
  const ui=fs.readFileSync(path.join(root,'frontend/src/pages/blueprints/3d/components/FurnitureToolsPanel.jsx'),'utf8');
  assert.match(builder,/planBaseCabinetInsetPair/);
  assert.match(builder,/inset_pair/);
- assert.match(ui,/Inset Pair \(Base Cabinet\)/);
+ assert.doesNotMatch(ui,/<option value="inset_pair">/);
+ assert.match(ui,/<option value="pair">Double Door Pair<\/option>/);
+ assert.match(ui,/<option value="single">Single Door<\/option>/);
  assert.match(builder,/pushHistory\(/);
 });
