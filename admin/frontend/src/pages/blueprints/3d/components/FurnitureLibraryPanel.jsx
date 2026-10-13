@@ -487,7 +487,16 @@ export function FurnitureLibraryPanel({
     const mergedGroups = [
       ...COMPONENT_LIBRARY_GROUPS.filter(
         (group) =>
-          !["Chair Parts", "Custom Shape Parts", "Custom Shapes"].includes(group.label),
+          !["Custom Shape Parts", "Custom Shapes"].includes(group.label),
+      ).map((group) =>
+        group.label === "Chair Parts"
+          ? {
+              ...group,
+              items: (group.items || []).filter((item) =>
+                ["chair_seat_panel", "chair_back_slat"].includes(item.type),
+              ),
+            }
+          : group,
       ),
     ];
 
@@ -632,9 +641,9 @@ export function FurnitureLibraryPanel({
         <div style={S.libraryStickyTop}>
           <div style={S.libraryHeaderRow}>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={S.floatingTitle}>Add Furniture</div>
+              <div style={S.floatingTitle}>Furniture Library</div>
               <div style={S.librarySubtleText}>
-                Drag a furniture template or part into the workspace.
+                Drag a furniture part or template into the workspace.
               </div>
             </div>
 
@@ -832,6 +841,12 @@ export function FurnitureLibraryPanel({
                   </button>
                 </div>
               ) : null}
+            </div>
+          ) : null}
+
+          {activeTab === "parts" ? (
+            <div style={{ margin: "9px 0", padding: "8px 9px", fontSize: 10, lineHeight: 1.45, color: "#a9bdd5", border: "1px solid rgba(100,124,155,.4)" }}>
+              Select a part by its real function (for example, use Shelf for a middle shelf). Rename added parts in Properties.
             </div>
           ) : null}
 

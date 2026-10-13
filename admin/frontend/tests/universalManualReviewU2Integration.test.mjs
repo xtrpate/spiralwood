@@ -20,7 +20,8 @@ test('U2 remains draft-only, never mutates saved Blueprint or grants Customer pe
  assert.match(u2,/customerResizable:false/);
  assert.match(u1,/status:'draft'/);
  assert.match(u1,/customerResizable:false/);
- assert.match(dialog,/No Save\/Publish\/Customer permission/);
+ assert.match(dialog,/Draft design/);
+ assert.match(dialog,/Saving does not automatically enable customer resizing/);
  assert.ok(!/api\.(post|put|patch|delete)/.test(dialog));
  assert.ok(!dialog.includes('setComponents('));
  assert.ok(!dialog.includes('publishByBlueprint'));
