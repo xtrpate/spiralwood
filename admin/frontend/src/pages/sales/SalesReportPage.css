@@ -127,7 +127,23 @@
 
 .sales-filter-field {
   display: block;
-  min-width: 190px;
+  min-width: 160px;
+  flex: 0 0 160px;
+}
+
+/* Search Records: match Sales & Profitability on desktop. */
+.sales-toolbar-row > .sales-filter-field:first-child {
+  flex: 0 1 520px !important;
+  width: 520px;
+  max-width: 520px;
+  min-width: 280px !important;
+}
+
+/* Standard dropdown and date-field widths. */
+.sales-toolbar-row > .sales-filter-field:not(:first-child) {
+  flex: 0 0 160px;
+  width: 160px;
+  min-width: 160px;
 }
 
 .sales-filter-label {
@@ -517,6 +533,19 @@
 
   .sales-filter-field {
     width: 100%;
+  }
+
+  .sales-toolbar-row > .sales-filter-field:first-child {
+    flex: 1 1 100% !important;
+    width: 100%;
+    max-width: none;
+    min-width: 0 !important;
+  }
+
+  .sales-toolbar-row > .sales-filter-field:not(:first-child) {
+    flex: 1 1 100%;
+    width: 100%;
+    min-width: 0;
   }
 
   .sales-custom-apply {

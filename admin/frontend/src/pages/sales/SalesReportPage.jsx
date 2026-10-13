@@ -937,6 +937,15 @@ export default function SalesReportPage() {
         <div className="sales-header-actions no-print">
           <button
             type="button"
+            className="sales-button sales-button-secondary"
+            onClick={load}
+            disabled={loading}
+          >
+            {loading ? "Refreshing..." : "Refresh"}
+          </button>
+
+          <button
+            type="button"
             className="sales-button sales-button-primary"
             onClick={exportExcel}
             disabled={!data || !appliedFilters || loading || !canExport}
@@ -946,20 +955,7 @@ export default function SalesReportPage() {
                 : undefined
             }
           >
-            Export Report
-          </button>
-          <button
-            type="button"
-            className="sales-button sales-button-secondary"
-            onClick={() => window.print()}
-            disabled={!data || !appliedFilters || loading || !canExport}
-            title={
-              !canExport
-                ? "Sales report export permission is required."
-                : undefined
-            }
-          >
-            Print
+            {exporting ? "Exporting..." : "Export Report"}
           </button>
         </div>
       </div>
@@ -982,32 +978,57 @@ export default function SalesReportPage() {
       </div>
 
       <div
-        className="sales-detail-switch no-print"
-        role="group"
-        aria-label="Sales report detail view"
+        className="sales-report-tabs no-print"
+        role="tablist"
+        aria-label="Sales reports"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "4px",
+          margin: "12px 0 0",
+          overflowX: "auto",
+        }}
       >
         <button
           type="button"
-          className={
-            detailSection === "orders" ? "sales-detail-switch-active" : ""
-          }
-          aria-pressed={detailSection === "orders"}
-          onClick={() => setDetailSection("orders")}
+          role="tab"
+          aria-selected={true}
+          onClick={() => navigate("/admin/sales")}
+          style={{
+            padding: "10px 18px",
+            border: "none",
+            borderBottom: "2px solid #18181b",
+            background: "#18181b",
+            color: "#ffffff",
+            fontWeight: 600,
+            cursor: "default",
+            borderRadius: "4px 4px 0 0",
+            boxShadow: "0 2px 0 #18181b",
+            whiteSpace: "nowrap",
+          }}
         >
-          Order Financial Status
-          <span>{count(orders.length)} orders</span>
+          Sales
         </button>
 
         <button
           type="button"
-          className={
-            detailSection === "payments" ? "sales-detail-switch-active" : ""
-          }
-          aria-pressed={detailSection === "payments"}
-          onClick={() => setDetailSection("payments")}
+          role="tab"
+          aria-selected={false}
+          onClick={() => navigate("/admin/reports/sales-profitability")}
+          style={{
+            padding: "10px 18px",
+            border: "none",
+            borderBottom: "2px solid transparent",
+            background: "#f1f1f3",
+            color: "#3f3f46",
+            fontWeight: 600,
+            cursor: "pointer",
+            borderRadius: "4px 4px 0 0",
+            boxShadow: "0 2px 4px rgba(24, 24, 27, 0.14)",
+            whiteSpace: "nowrap",
+          }}
         >
-          Verified Payments
-          <span>{count(collections.length)} payments</span>
+          Sales &amp; Profitability
         </button>
       </div>
 
@@ -1032,6 +1053,25 @@ export default function SalesReportPage() {
                 setSearch(event.target.value.slice(0, 100));
               }}
             />
+          </label>
+
+          <label
+            className="sales-filter-field"
+            style={{
+              flex: "0 0 160px",
+              minWidth: 160,
+            }}
+          >
+            <span className="sales-filter-label">Report View</span>
+
+            <select
+              value={detailSection}
+              onChange={(event) => setDetailSection(event.target.value)}
+              aria-label="Sales report view"
+            >
+              <option value="orders">Order Financial Status</option>
+              <option value="payments">Verified Payments</option>
+            </select>
           </label>
           <label className="sales-filter-field">
             <span className="sales-filter-label">Sales Channel</span>

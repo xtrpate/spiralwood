@@ -90,12 +90,12 @@
 .sales-toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  padding: 14px 16px;
+  gap: 10px;
+  padding: 12px;
   background: #fff;
-  border: 1px solid #e4e4e7;
-  border-radius: 4px;
-  margin-bottom: 16px;
+  border: 1px solid #d9dde2;
+  border-radius: 2px;
+  margin-bottom: 14px;
   align-items: flex-end;
 }
 
@@ -127,11 +127,18 @@
   outline: none;
 }
 
-.sales-search-field {
+.sales-toolbar > .sales-filter-field.sales-search-field {
   flex: 0 1 520px;
   width: 520px;
   max-width: 520px;
   min-width: 280px;
+}
+
+/* Keep dropdowns and date fields consistent. */
+.sales-toolbar > .sales-filter-field:not(.sales-search-field) {
+  flex: 0 0 160px;
+  width: 160px;
+  min-width: 160px !important;
 }
 
 .sales-summary-grid {
@@ -604,15 +611,32 @@
 }
 
 @media (max-width: 1100px) {
-  .sales-search-field {
+  .sales-toolbar > .sales-filter-field.sales-search-field {
     flex: 1 1 100%;
     width: 100%;
     max-width: none;
     min-width: 0;
   }
 
-  .sales-filter-field {
+  .sales-toolbar > .sales-filter-field:not(.sales-search-field) {
     flex: 1 1 160px;
+    width: 160px;
+    min-width: 160px !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .sales-toolbar > .sales-filter-field.sales-search-field {
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .sales-toolbar > .sales-filter-field:not(.sales-search-field) {
+    flex: 1 1 100%;
+    width: 100%;
+    min-width: 0 !important;
   }
 }
 
@@ -633,7 +657,7 @@
 }
 
 .sales-custom-date-field + .sales-custom-date-field {
-  margin-left: 20px;
+  margin-left: 0;
 }
 
 .sales-custom-date-field input[type="date"] {
