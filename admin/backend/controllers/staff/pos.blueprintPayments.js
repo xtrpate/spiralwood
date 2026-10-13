@@ -630,7 +630,7 @@ exports.markPickedUp = async (req, res) => {
 
     const [[order]] = await conn.query(
       `SELECT id, order_number, customer_id, order_type, status, payment_status,
-              total, fulfillment_method, picked_up_at
+              total, fulfillment_method, picked_up_at, blueprint_id
        FROM orders
        WHERE id = ?
        LIMIT 1
@@ -678,7 +678,7 @@ exports.markPickedUp = async (req, res) => {
     }
 
     const [tasks] = await conn.query(
-      `SELECT task_role, status
+      `SELECT task_role, status, blueprint_id
        FROM project_tasks
        WHERE order_id = ?
        FOR UPDATE`,
@@ -700,6 +700,47 @@ exports.markPickedUp = async (req, res) => {
       "retouching",
       "packing",
     ];
+    // Match Delivery's packet-integrity rule before any pickup release.
+    // Unrelated legacy tasks may remain, but every required role must be
+    // present exactly once and belong to the order's canonical blueprint.
+    const taskRoleKey = (value) =>
+      String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, "_");
+    const requiredTaskRows = tasks.filter((row) =>
+      requiredRoles.includes(taskRoleKey(row.task_role)),
+    );
+    const requiredTaskKeys = requiredTaskRows.map((row) =>
+      taskRoleKey(row.task_role),
+    );
+    if (
+      requiredTaskRows.length !== requiredRoles.length ||
+      new Set(requiredTaskKeys).size !== requiredRoles.length
+    ) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message:
+          "This order's required production packet contains duplicate or missing steps. Manual review is required.",
+      });
+    }
+
+    const orderBlueprintId = parseStrictPositiveInt(order.blueprint_id);
+    if (
+      !orderBlueprintId ||
+      requiredTaskRows.some(
+        (row) => parseStrictPositiveInt(row.blueprint_id) !== orderBlueprintId,
+      )
+    ) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message:
+          "Production task blueprint mismatch. Manual review is required before pickup.",
+      });
+    }
+
     const productionComplete = requiredRoles.every(
       (role) => statusByRole.get(role) === "completed",
     );
