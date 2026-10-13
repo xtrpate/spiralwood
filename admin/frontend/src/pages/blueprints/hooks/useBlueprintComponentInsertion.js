@@ -179,12 +179,22 @@ export function useBlueprintComponentInsertion({
         const groupComponents = components.filter(
           (component) => component.groupId === targetBuild.id,
         );
-        const placement = getChairManualPlacement(
+        const chairPlacement = getChairManualPlacement(
           typeDef,
           groupComponents,
           components,
           worldHeight,
         );
+        // Chair identity/size stays intact, but a dragged chair part must use
+        // the actual floor drop coordinate instead of automatic chair layout.
+        const manualPlacement = getManualPlacement(
+          chairPlacement.width,
+          chairPlacement.height,
+          chairPlacement.depth,
+        );
+        const placement = manualPlacement
+          ? { ...chairPlacement, ...manualPlacement }
+          : chairPlacement;
 
         const newComponent = normalizeComponent({
           id: makeId(),
@@ -294,6 +304,8 @@ export function useBlueprintComponentInsertion({
         blueprintStyle: typeDef.blueprintStyle,
         partRole: typeDef.partRole || "",
         partCode: typeDef.partCode || "",
+        // A manual door/drawer face stays still until Admin configures movement.
+        partFunction: typeDef.partFunction || "auto",
         x: placement.x,
         y: placement.y,
         z: placement.z,
@@ -353,11 +365,8 @@ export function useBlueprintComponentInsertion({
         return;
       }
 
-      if (isChairPartType(typeDef.type)) {
-        commitAddComponent(typeDef);
-        return;
-      }
-
+      // Chair parts use the same pending preview / drop flow as all other
+      // manual parts. Do not insert an object on library pointer-down.
       setPendingPlacement({
         ...typeDef,
         placementSource: source,
@@ -373,7 +382,6 @@ export function useBlueprintComponentInsertion({
       }
     },
     [
-      commitAddComponent,
       editorMode,
       setPendingPlacement,
       setTransformMode,

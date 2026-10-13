@@ -2959,6 +2959,75 @@ function normalizeEditablePartCode(value) {
   return /^[A-Z0-9][A-Z0-9_-]{0,39}$/.test(code) ? code : null;
 }
 
+function PartNameEditor({ component, disabled, onCommit }) {
+  const originalName = String(component?.label || "");
+  const [draft, setDraft] = useState(originalName);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setDraft(originalName);
+    setError("");
+  }, [component?.id, originalName]);
+
+  const commit = () => {
+    if (disabled) return;
+    const nextName = draft.trim().replace(/\s+/g, " ");
+    if (!nextName || nextName.length > 80) {
+      setError("Enter a part name (maximum 80 characters).");
+      return;
+    }
+    if (nextName !== originalName) onCommit(nextName);
+    setDraft(nextName);
+    setError("");
+  };
+
+  return (
+    <div style={{ marginTop: 9 }}>
+      <label
+        htmlFor={`part-name-${component.id}`}
+        style={{ display: "block", color: "#93a8c4", fontSize: 9, fontWeight: 700, marginBottom: 5 }}
+      >
+        PART NAME
+      </label>
+      <input
+        id={`part-name-${component.id}`}
+        type="text"
+        aria-label="Part Name"
+        value={draft}
+        maxLength={80}
+        disabled={disabled}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          if (error) setError("");
+        }}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") event.currentTarget.blur();
+        }}
+        style={{
+          width: "100%",
+          boxSizing: "border-box",
+          borderRadius: 0,
+          padding: "7px 8px",
+          background: "rgba(15,23,42,.85)",
+          border: "1px solid rgba(100,116,139,.65)",
+          color: "#e2e8f0",
+          fontSize: 11,
+        }}
+      />
+      {error ? (
+        <div role="alert" style={{ color: "#fca5a5", fontSize: 9, marginTop: 4 }}>
+          {error}
+        </div>
+      ) : (
+        <div style={{ color: "#94a3b8", fontSize: 9, marginTop: 4 }}>
+          Renaming does not change the part type or its resize rules.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PartCodeEditor({ component, disabled, onCommit }) {
   const originalCode = String(component?.partCode || "");
   const [draft, setDraft] = useState(originalCode);
@@ -3917,6 +3986,13 @@ export function PropertiesPanel({
                     : "EDITABLE"}
                 </span>
               </div>
+
+              <PartNameEditor
+                key={`name-${selectedComp.id}`}
+                component={selectedComp}
+                disabled={editorMode !== "editable" || isLocked(selectedComp)}
+                onCommit={(label) => onChange(selectedComp.id, { label })}
+              />
 
               <PartCodeEditor
                 key={selectedComp.id}

@@ -3395,17 +3395,16 @@ function ThreeDViewer({
 
       if (dragState.active) {
         const pointerPlacement = syncPreviewFromPointerEvent(e, dragState.item);
-        const previewPlacement = getPlacementFromPreviewObject(dragState.item);
-        const placement =
-          previewPlacement || pointerPlacement || previewPlacementRef.current;
+        // The preview has a visible fallback position while dragging; never
+        // treat that fallback as a valid drop outside the actual 3D canvas.
+        const previewPlacement = pointerPlacement
+          ? getPlacementFromPreviewObject(dragState.item)
+          : null;
+        const placement = previewPlacement || pointerPlacement;
 
         const canPlace = Boolean(
           dragState.moved &&
-          (dragState.startedInsideCanvas ||
-            pointerPlacement ||
-            previewPlacement ||
-            previewPlacementRef.current) &&
-          placement &&
+          pointerPlacement &&
           pendingPlacementRef.current,
         );
 
