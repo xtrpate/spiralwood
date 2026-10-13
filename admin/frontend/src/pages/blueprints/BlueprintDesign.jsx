@@ -5,15 +5,8 @@ import toast from "react-hot-toast";
 
 // ── Data & Types ──────────────────────────────────────────────────────────────
 import { VIEWS, EXPORT_VIEWS, WOOD_FINISHES } from "./data/furnitureTypes";
-import {
-  normalizeComponent,
-  applyWoodFinish,
-  isWoodLikeMaterial,
-} from "./data/componentUtils";
-import {
-  mmToDisplay,
-  displayToMm,
-} from "./data/utils";
+import { normalizeComponent } from "./data/componentUtils";
+import { mmToDisplay } from "./data/utils";
 import {
   DEFAULT_IMPORT_DIMENSIONS,
   DEFAULT_IMPORT_TEMPLATE_TYPE,
@@ -90,7 +83,8 @@ export default function BlueprintDesign() {
   const [transformMode, setTransformMode] = useState("translate");
   const [unit, setUnit] = useState("mm");
   const [activeChairBuild, setActiveChairBuild] = useState(null);
-  const editorMode = "editable";
+  // Only 3D is editable; 2D projections are review sheets.
+  const editorMode = view === "3d" ? "editable" : "readOnly";
   const [importTemplateType, setImportTemplateType] = useState(
     DEFAULT_IMPORT_TEMPLATE_TYPE,
   );
@@ -464,6 +458,7 @@ export default function BlueprintDesign() {
 
   const updateComp = useCallback(
     (cid, attrs, options = {}) => {
+      if (editorMode !== "editable") return;
       const shouldApplyToSelection = !!options.applyToSelection;
       const targetIds =
         shouldApplyToSelection &&
@@ -516,6 +511,7 @@ export default function BlueprintDesign() {
 
   const updateManyComps = useCallback(
     (changesById = {}, options = {}) => {
+      if (editorMode !== "editable") return;
       const currentById = new Map(
         components.map((component) => [component.id, component]),
       );
@@ -741,9 +737,9 @@ export default function BlueprintDesign() {
         showGrid={showGrid}
         setShowGrid={setShowGrid}
         handleUndo={handleUndo}
-        canUndo={canUndo}
+        canUndo={editorMode === "editable" && canUndo}
         handleRedo={handleRedo}
-        canRedo={canRedo}
+        canRedo={editorMode === "editable" && canRedo}
         previewExportSheets={previewExportSheets}
         downloadExportPdf={downloadExportPdf}
         printExportSheets={printExportSheets}
@@ -965,7 +961,7 @@ export default function BlueprintDesign() {
                     pointerEvents: "none",
                   }}
                 >
-                  EDITOR WORKSPACE
+                  BLUEPRINT REFERENCE VIEW
                 </div>
 
                 <div
@@ -1018,440 +1014,130 @@ export default function BlueprintDesign() {
               flexShrink: 0,
             }}
           >
-            <p style={S.panelLabel}>Selection Actions</p>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 8,
-                marginBottom: 14,
-              }}
-            >
-              <button
-                onClick={duplicateSelected}
-                disabled={!selectedId || editorMode !== "editable"}
-                title="Duplicate (Ctrl+D)"
-                style={{
-                  ...S.toolBtn,
-                  background: "#0369a1",
-                  opacity: !selectedId || editorMode !== "editable" ? 0.4 : 1,
-                }}
-              >
-                ⧉ Duplicate
-              </button>
-
-              <button
-                onClick={copySelectedObject}
-                disabled={!selectedComp || editorMode !== "editable"}
-                title="Copy (Ctrl+C)"
-                style={{
-                  ...S.toolBtn,
-                  background: "#0369a1",
-                  opacity: selectedComp && editorMode === "editable" ? 1 : 0.4,
-                }}
-              >
-                📋 Copy
-              </button>
-
-              <button
-                onClick={pasteCopiedObject}
-                disabled={!clipboardObject || editorMode !== "editable"}
-                title="Paste (Ctrl+V)"
-                style={{
-                  ...S.toolBtn,
-                  background: "#4338ca",
-                  opacity:
-                    clipboardObject && editorMode === "editable" ? 1 : 0.4,
-                }}
-              >
-                📑 Paste
-              </button>
-
-              <button
-                onClick={removeSelected}
-                disabled={!selectedId || editorMode !== "editable"}
-                style={{
-                  ...S.toolBtn,
-                  background: "#7f1d1d",
-                  opacity: !selectedId || editorMode !== "editable" ? 0.4 : 1,
-                }}
-              >
-                🗑 Delete
-              </button>
-            </div>
-
-            <div
-              style={{
-                paddingTop: 12,
-                borderTop: "1px solid #334155",
-              }}
-            >
-              <p style={S.panelLabel}>Properties</p>
-
-              {!selectedComp ? (
-                <div
-                  style={{
-                    background: "#0f172a",
-                    border: "1px dashed #334155",
-                    borderRadius: 8,
-                    padding: 12,
-                    color: "#64748b",
-                    fontSize: 11,
-                    lineHeight: 1.8,
-                  }}
-                >
-                  Select a furniture part to edit its properties.
-                </div>
-              ) : (
-                <>
-                  <div
-                    style={{
-                      padding: "8px 8px",
-                      borderRadius: 6,
-                      marginBottom: 10,
-                      fontSize: 11,
-                      background: "#0f172a",
-                      color: "#cbd5e1",
-                      border: "1px solid #334155",
-                    }}
-                  >
-                    <div
-                      style={{ display: "flex", alignItems: "center", gap: 6 }}
-                    >
-                      <span
-                        style={{
-                          width: 10,
-                          height: 10,
-                          background: selectedComp.fill,
-                          borderRadius: 2,
-                          flexShrink: 0,
-                        }}
-                      />
-                      <span style={{ flex: 1 }}>
-                        {selectedComp.partCode
-                          ? `${selectedComp.partCode} — ${selectedComp.label}`
-                          : selectedComp.label}
-                      </span>
-                      {isLocked(selectedComp) && <span>🔒</span>}
-                    </div>
-
-                    <div style={{ marginTop: 4, fontSize: 10, opacity: 0.92 }}>
-                      Group: {selectedComp.groupLabel || "—"}
-                    </div>
-                    <div style={{ fontSize: 10, opacity: 0.85 }}>
-                      Category: {selectedComp.category || "—"}
-                    </div>
-                    <div style={{ fontSize: 10, opacity: 0.85 }}>
-                      Parts in selection: {selectedComponents.length}
-                    </div>
-                    <div style={{ fontSize: 10, opacity: 0.85 }}>
-                      Overall: {selectedDimsText || "—"}
-                    </div>
-                  </div>
-
-                  <div style={{ marginBottom: 7 }}>
-                    <label style={S.propLabel}>Label</label>
-                    <input
-                      value={selectedComp.label || ""}
-                      disabled={
-                        editorMode !== "editable" || isLocked(selectedComp)
-                      }
-                      onChange={(e) =>
-                        updateComp(selectedComp.id, {
-                          label: e.target.value,
-                        })
-                      }
-                      style={S.propInput}
-                    />
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div
-              style={{
-                marginTop: 14,
-                paddingTop: 12,
-                borderTop: "1px solid #334155",
-              }}
-            >
-              <p style={S.panelLabel}>Dimensions</p>
-
-              {!selectedComp ? (
-                <div
-                  style={{
-                    background: "#0f172a",
-                    border: "1px dashed #334155",
-                    borderRadius: 8,
-                    padding: 12,
-                    color: "#64748b",
-                    fontSize: 11,
-                    lineHeight: 1.8,
-                  }}
-                >
-                  No selected object.
-                </div>
-              ) : (
-                <>
-                  <div style={{ marginBottom: 7 }}>
-                    <label style={S.propLabel}>Width (mm)</label>
-                    <input
-                      type="number"
-                      step="1"
-                      value={mmToDisplay(selectedComp.width ?? 0, unit)}
-                      disabled={
-                        editorMode !== "editable" || isLocked(selectedComp)
-                      }
-                      onChange={(e) =>
-                        updateComp(selectedComp.id, {
-                          width: displayToMm(e.target.value, unit),
-                        })
-                      }
-                      style={S.propInput}
-                    />
-                  </div>
-
-                  <div style={{ marginBottom: 7 }}>
-                    <label style={S.propLabel}>Height (mm)</label>
-                    <input
-                      type="number"
-                      step="1"
-                      value={mmToDisplay(selectedComp.height ?? 0, unit)}
-                      disabled={
-                        editorMode !== "editable" || isLocked(selectedComp)
-                      }
-                      onChange={(e) =>
-                        updateComp(selectedComp.id, {
-                          height: displayToMm(e.target.value, unit),
-                        })
-                      }
-                      style={S.propInput}
-                    />
-                  </div>
-
-                  <div style={{ marginBottom: 7 }}>
-                    <label style={S.propLabel}>Depth (mm)</label>
-                    <input
-                      type="number"
-                      step="1"
-                      value={mmToDisplay(selectedComp.depth ?? 0, unit)}
-                      disabled={
-                        editorMode !== "editable" || isLocked(selectedComp)
-                      }
-                      onChange={(e) =>
-                        updateComp(selectedComp.id, {
-                          depth: displayToMm(e.target.value, unit),
-                        })
-                      }
-                      style={S.propInput}
-                    />
-                  </div>
-
-                  <div style={{ marginBottom: 7 }}>
-                    <label style={S.propLabel}>Qty</label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={selectedComp.qty || 1}
-                      disabled={
-                        editorMode !== "editable" || isLocked(selectedComp)
-                      }
-                      onChange={(e) =>
-                        updateComp(selectedComp.id, {
-                          qty: Math.max(1, parseInt(e.target.value || "1", 10)),
-                        })
-                      }
-                      style={S.propInput}
-                    />
-                  </div>
-
-                  <div style={{ marginBottom: 7 }}>
-                    <label style={S.propLabel}>
-                      Corner Radius (mm) — {selectedComp.cornerRadius ?? 0}mm
-                    </label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="500"
-                      step="5"
-                      value={selectedComp.cornerRadius ?? 0}
-                      disabled={
-                        editorMode !== "editable" || isLocked(selectedComp)
-                      }
-                      onChange={(e) =>
-                        updateComp(
-                          selectedComp.id,
-                          {
-                            cornerRadius: Number(e.target.value),
-                          },
-                          {
-                            applyToSelection: selectedIds.length > 1,
-                          },
-                        )
-                      }
-                      style={{
-                        width: "100%",
-                        accentColor: "#3b82f6",
-                        marginBottom: 4,
-                      }}
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      max="500"
-                      step="5"
-                      value={selectedComp.cornerRadius ?? 0}
-                      disabled={
-                        editorMode !== "editable" || isLocked(selectedComp)
-                      }
-                      onChange={(e) =>
-                        updateComp(
-                          selectedComp.id,
-                          {
-                            cornerRadius: Math.max(
-                              0,
-                              Math.min(500, Number(e.target.value) || 0),
-                            ),
-                          },
-                          {
-                            applyToSelection: selectedIds.length > 1,
-                          },
-                        )
-                      }
-                      style={S.propInput}
-                    />
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div
-              style={{
-                marginTop: 14,
-                paddingTop: 12,
-                borderTop: "1px solid #334155",
-              }}
-            >
-              <p style={S.panelLabel}>Materials / Finish</p>
-
-              {!selectedComp ? (
-                <div
-                  style={{
-                    background: "#0f172a",
-                    border: "1px dashed #334155",
-                    borderRadius: 8,
-                    padding: 12,
-                    color: "#64748b",
-                    fontSize: 11,
-                    lineHeight: 1.8,
-                  }}
-                >
-                  No selected object.
-                </div>
-              ) : (
-                <>
-                  <div style={{ marginBottom: 7 }}>
-                    <label style={S.propLabel}>Material</label>
-                    <input
-                      value={selectedComp.material || ""}
-                      disabled={
-                        editorMode !== "editable" || isLocked(selectedComp)
-                      }
-                      onChange={(e) =>
-                        updateComp(selectedComp.id, {
-                          material: e.target.value,
-                          raw_material_id: null,
-                        })
-                      }
-                      style={S.propInput}
-                    />
-                  </div>
-
-                  <div style={{ marginBottom: 7 }}>
-                    <label style={S.propLabel}>Fill Color</label>
-                    <input
-                      type="color"
-                      value={selectedComp.fill || "#d9c2a5"}
-                      disabled={
-                        editorMode !== "editable" || isLocked(selectedComp)
-                      }
-                      onChange={(e) =>
-                        updateComp(selectedComp.id, {
-                          fill: e.target.value,
-                          finish: "",
-                        })
-                      }
-                      style={{
-                        ...S.propInput,
-                        padding: 2,
-                        height: 36,
-                      }}
-                    />
-                  </div>
-
-                  {(isWoodLikeMaterial(selectedComp.material) ||
-                    selectedComp.finish !== undefined) && (
-                    <div style={{ marginBottom: 7 }}>
-                      <label style={S.propLabel}>Wood Finish</label>
-                      <select
-                        value={selectedComp.finish ?? ""}
-                        disabled={
-                          editorMode !== "editable" || isLocked(selectedComp)
-                        }
-                        onChange={(e) =>
-                          updateComp(
-                            selectedComp.id,
-                            applyWoodFinish(selectedComp, e.target.value),
-                          )
-                        }
-                        style={S.propInput}
-                      >
-                        <option value="">Custom Color</option>
-                        {WOOD_FINISHES.map((finish) => (
-                          <option key={finish.id} value={finish.id}>
-                            {finish.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            <div
-              style={{
-                marginTop: 14,
-                paddingTop: 12,
-                borderTop: "1px solid #334155",
-              }}
-            >
-              <p style={S.panelLabel}>Parts / Layers</p>
+            {/* 2D sheets are for review only. Furniture editing stays in 3D. */}
+            <p style={S.panelLabel}>Selected Part — Read Only</p>
+            {!selectedComp ? (
               <div
                 style={{
                   background: "#0f172a",
-                  border: "1px solid #334155",
-                  borderRadius: 8,
-                  padding: 10,
-                  color: "#cbd5e1",
-                  fontSize: 10,
-                  lineHeight: 1.8,
+                  border: "1px dashed #334155",
+                  padding: 12,
+                  color: "#94a3b8",
+                  fontSize: 11,
+                  lineHeight: 1.6,
                 }}
               >
-                {!selectedComp ? (
-                  <div>No part selected.</div>
-                ) : (
-                  (selectedGroupParts.length
-                    ? selectedGroupParts
-                    : [selectedComp]
-                  ).map((p) => (
-                    <div key={p.id}>
-                      • {p.partCode || "PART"} — {p.label}
-                    </div>
-                  ))
-                )}
+                No part selected. Open 3D view to edit furniture parts.
               </div>
-            </div>
+            ) : (
+              <>
+                <div
+                  style={{
+                    background: "#0f172a",
+                    border: "1px solid #334155",
+                    padding: 12,
+                    color: "#cbd5e1",
+                    fontSize: 11,
+                    lineHeight: 1.7,
+                    marginBottom: 12,
+                  }}
+                >
+                  <div style={{ fontWeight: 800, color: "#e2e8f0", marginBottom: 5 }}>
+                    {selectedComp.partCode
+                      ? `${selectedComp.partCode} — ${selectedComp.label}`
+                      : selectedComp.label}
+                    {isLocked(selectedComp) ? " 🔒" : ""}
+                  </div>
+                  <div>Group: {selectedComp.groupLabel || "—"}</div>
+                  <div>Category: {selectedComp.category || "—"}</div>
+                  <div>Parts in selection: {selectedComponents.length}</div>
+                  <div>Overall selection: {selectedDimsText || "—"}</div>
+                </div>
+
+                <div
+                  style={{
+                    borderTop: "1px solid #334155",
+                    paddingTop: 12,
+                    marginBottom: 12,
+                    color: "#cbd5e1",
+                  }}
+                >
+                  <p style={S.panelLabel}>Part Measurements</p>
+                  {[
+                    ["Width", selectedComp.width],
+                    ["Height", selectedComp.height],
+                    ["Depth", selectedComp.depth],
+                  ].map(([label, dimension]) => (
+                    <div
+                      key={label}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 8,
+                        fontSize: 11,
+                        marginBottom: 7,
+                      }}
+                    >
+                      <span style={{ color: "#94a3b8" }}>{label}</span>
+                      <strong>{mmToDisplay(dimension ?? 0, unit)} {unit}</strong>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                    <span style={{ color: "#94a3b8" }}>Quantity</span>
+                    <strong>{selectedComp.qty || 1}</strong>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    borderTop: "1px solid #334155",
+                    paddingTop: 12,
+                    marginBottom: 12,
+                    color: "#cbd5e1",
+                    fontSize: 11,
+                    lineHeight: 1.8,
+                  }}
+                >
+                  <p style={S.panelLabel}>Material / Finish</p>
+                  <div>Material: {selectedComp.material || "—"}</div>
+                  <div>
+                    Finish:{" "}
+                    {WOOD_FINISHES.find(
+                      (finish) => finish.id === selectedComp.finish,
+                    )?.label || selectedComp.finish || "—"}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    borderTop: "1px solid #334155",
+                    paddingTop: 12,
+                  }}
+                >
+                  <p style={S.panelLabel}>Parts / Layers</p>
+                  <div
+                    style={{
+                      background: "#0f172a",
+                      border: "1px solid #334155",
+                      padding: 10,
+                      color: "#cbd5e1",
+                      fontSize: 10,
+                      lineHeight: 1.8,
+                    }}
+                  >
+                    {(selectedGroupParts.length
+                      ? selectedGroupParts
+                      : [selectedComp]
+                    ).map((part) => (
+                      <div key={part.id}>
+                        • {part.partCode || "PART"} — {part.label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+
           </div>
         </div>
       )}

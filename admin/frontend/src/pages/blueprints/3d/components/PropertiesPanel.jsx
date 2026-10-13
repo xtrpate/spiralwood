@@ -65,6 +65,10 @@ import {
   getMachiningSurfaceLabels,
 } from "../../data/universalMachiningV2";
 
+// WISDOM Admin Inspector: hide editing controls only. Existing persisted
+// machining/cutout/radius fields and geometry render behavior remain intact.
+const SHOW_ADVANCED_MACHINING_UI = false;
+
 function ContourEditorCard({
   selectedComp,
   woodworkingProfile,
@@ -4979,27 +4983,30 @@ export function PropertiesPanel({
                   </div>
                 ) : null}
 
-                <CutoutEditorCard
-                  selectedComp={selectedComp}
-                  woodworkingProfile={woodworkingProfile}
-                  editorMode={editorMode}
-                  isLocked={isLocked}
-                  onChange={onChange}
-                  inputStyle={inputStyle}
-                />
-
-                <WoodworkingOperationsCard
-                  selectedComp={selectedComp}
-                  editorMode={editorMode}
-                  isLocked={isLocked}
-                  onChange={onChange}
-                  inputStyle={inputStyle}
-                />
+                {SHOW_ADVANCED_MACHINING_UI ? (
+                  <>
+                    <CutoutEditorCard
+                      selectedComp={selectedComp}
+                      woodworkingProfile={woodworkingProfile}
+                      editorMode={editorMode}
+                      isLocked={isLocked}
+                      onChange={onChange}
+                      inputStyle={inputStyle}
+                    />
+                    <WoodworkingOperationsCard
+                      selectedComp={selectedComp}
+                      editorMode={editorMode}
+                      isLocked={isLocked}
+                      onChange={onChange}
+                      inputStyle={inputStyle}
+                    />
+                  </>
+                ) : null}
               </div>
             ) : null}
 
             {/* WISDOM UNIVERSAL PART MACHINING V2.0.1 */}
-            {!isWoodworkingProfile && selectedComp?.type !== "reference_proxy" ? (
+            {SHOW_ADVANCED_MACHINING_UI && !isWoodworkingProfile && selectedComp?.type !== "reference_proxy" ? (
               <div style={inspectorSectionStyle}>
                 <div style={inspectorSectionTitleStyle}>Machining</div>
 
@@ -5069,7 +5076,7 @@ export function PropertiesPanel({
               </div>
             ) : null}
 
-            {!isWoodworkingProfile && (
+            {!isWoodworkingProfile && SHOW_ADVANCED_MACHINING_UI && (
               <div style={{ marginBottom: 6 }}>
                 <label style={S.floatingLabel}>
                   Corner Radius (mm) — current: {selectedComp.cornerRadius ?? 0}mm
