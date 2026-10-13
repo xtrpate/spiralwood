@@ -21,6 +21,10 @@ const {
   isDatabaseRestoreInProgress,
 } = require("./services/databaseRestoreService");
 const pool = require("./config/db");
+const {
+  validateSession,
+  touchSession,
+} = require("./services/authSessionService");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -43,54 +47,68 @@ const io = new SocketIOServer(httpServer, {
 app.set("io", io);
 global.io = io;
 
-const jwt = require("jsonwebtoken");
+const SOCKET_SESSION_COOKIE_NAME =
+  process.env.AUTH_SESSION_COOKIE_NAME || "wisdom_session";
+
+const readSocketCookie = (cookieHeader, cookieName) => {
+  if (typeof cookieHeader !== "string" || !cookieHeader) {
+    return undefined;
+  }
+
+  const cookie = cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${cookieName}=`));
+
+  if (!cookie) {
+    return undefined;
+  }
+
+  try {
+    return decodeURIComponent(cookie.slice(cookieName.length + 1));
+  } catch {
+    return null;
+  }
+};
 
 io.use(async (socket, next) => {
   try {
-    const token = socket.handshake.auth?.token;
+    const cookieToken = readSocketCookie(
+      socket.handshake.headers.cookie,
+      SOCKET_SESSION_COOKIE_NAME,
+    );
 
-    if (!token) {
+    if (cookieToken === undefined) {
       return next(new Error("Authentication required."));
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    const [[user]] = await pool.query(
-      `SELECT
-         id,
-         name,
-         email,
-         role,
-         authority_level,
-         staff_type,
-         is_active,
-         token_version,
-         must_change_password
-       FROM users
-       WHERE id = ?
-       LIMIT 1`,
-      [decoded.id],
-    );
-
-    if (!user) {
-      return next(new Error("Account not found."));
+    if (!cookieToken) {
+      return next(new Error("Invalid session cookie."));
     }
 
-    if (Number(user.is_active) !== 1) {
-      return next(new Error("Account is inactive."));
+    const session = await validateSession(cookieToken);
+
+    if (!session) {
+      return next(new Error("Session expired or revoked."));
     }
 
-    if (
-      Number(user.token_version || 0) !== Number(decoded.token_version || 0)
-    ) {
-      return next(new Error("Session has been revoked."));
-    }
+    await touchSession(session.session_id);
 
-    socket.user = user;
+    socket.user = {
+      id: session.user_id,
+      name: session.name,
+      email: session.email,
+      role: session.role,
+      authority_level: session.authority_level,
+      staff_type: session.staff_type,
+      is_active: session.is_active,
+      token_version: session.token_version,
+      must_change_password: session.must_change_password,
+    };
 
-    next();
+    return next();
   } catch (err) {
-    next(new Error("Invalid or expired authentication token."));
+    return next(new Error("Socket authentication failed."));
   }
 });
 
@@ -240,6 +258,12 @@ io.on("connection", (socket) => {
   if (role === "admin" || role === "staff") {
     socket.join("staff-updates");
   }
+
+  console.log(
+    `[SOCKET ROOM] user=${userId} role=${role} rooms=${[...socket.rooms].join(
+      ",",
+    )}`,
+  );
 
   socket.on("discussion:join", async (payload = {}, acknowledge) => {
     const reply = typeof acknowledge === "function" ? acknowledge : () => {};

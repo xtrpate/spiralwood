@@ -1,35 +1,144 @@
 const jwt = require("jsonwebtoken");
 const pool = require("../config/db");
 const { writeAuditLogSafe } = require("./auditLog");
+const {
+  validateSession,
+  touchSession,
+} = require("../services/authSessionService");
 require("dotenv").config();
+
+const SESSION_COOKIE_NAME =
+  process.env.AUTH_SESSION_COOKIE_NAME || "wisdom_session";
+
+function readCookie(req, cookieName) {
+  const cookieHeader = req.headers.cookie;
+
+  if (typeof cookieHeader !== "string" || !cookieHeader) {
+    return undefined;
+  }
+
+  for (const item of cookieHeader.split(";")) {
+    const separator = item.indexOf("=");
+
+    if (separator < 0) {
+      continue;
+    }
+
+    const name = item.slice(0, separator).trim();
+
+    if (name !== cookieName) {
+      continue;
+    }
+
+    try {
+      return decodeURIComponent(item.slice(separator + 1).trim());
+    } catch {
+      return null;
+    }
+  }
+
+  return undefined;
+}
+
+function enforceTemporaryPassword(user, req, res) {
+  const internalMustChange =
+    (user.role === "admin" || user.role === "staff") &&
+    Number(user.must_change_password) === 1;
+
+  const requestPath = String(req.originalUrl || req.path || "").split("?")[0];
+
+  const passwordChangeAllowed =
+    requestPath.endsWith("/auth/me") ||
+    requestPath.endsWith("/auth/change-password");
+
+  if (internalMustChange && !passwordChangeAllowed) {
+    res.status(403).json({
+      message: "Change your temporary password before continuing.",
+      code: "PASSWORD_CHANGE_REQUIRED",
+    });
+
+    return false;
+  }
+
+  return true;
+}
 
 async function authenticate(req, res, next) {
   try {
+    const sessionCookie = readCookie(req, SESSION_COOKIE_NAME);
+
+    // A supplied session cookie takes precedence. Never downgrade to JWT
+    // when a session cookie is present but invalid or revoked.
+    if (sessionCookie !== undefined) {
+      if (!sessionCookie) {
+        return res.status(401).json({
+          message: "Invalid session cookie. Please log in again.",
+        });
+      }
+
+      const session = await validateSession(sessionCookie);
+
+      if (!session) {
+        return res.status(401).json({
+          message: "Session expired or revoked. Please log in again.",
+        });
+      }
+
+      if (!enforceTemporaryPassword(session, req, res)) {
+        return;
+      }
+
+      // Validation above establishes the session's current validity.
+      // Await the activity update so database errors still fail closed.
+      // A zero affected-row count alone is not proof of revocation because
+      // MySQL may report no change when the timestamp has the same value.
+      await touchSession(session.session_id);
+
+      req.user = {
+        id: session.user_id,
+        name: session.name,
+        email: session.email,
+        role: session.role,
+        authority_level: session.authority_level,
+        staff_type: session.staff_type,
+        is_active: session.is_active,
+        is_verified: session.is_verified,
+        must_change_password: session.must_change_password,
+        token_version: session.token_version,
+        session_id: session.session_id,
+        auth_method: "session",
+      };
+
+      return next();
+    }
+
+    // Temporary compatibility path during migration.
+    // Remove only after every client and login flow has migrated.
     const header = req.headers.authorization || "";
     const token = header.startsWith("Bearer ") ? header.slice(7) : null;
 
     if (!token) {
-      return res
-        .status(401)
-        .json({ message: "Authentication required. No token provided." });
+      return res.status(401).json({
+        message: "Authentication required. No session or token provided.",
+      });
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     const [[user]] = await pool.query(
       `SELECT
-     id,
-     name,
-     email,
-     role,
-     authority_level,
-     staff_type,
-     is_active,
-     is_verified,
-     must_change_password,
-     token_version
-   FROM users
-   WHERE id = ?`,
+         id,
+         name,
+         email,
+         role,
+         authority_level,
+         staff_type,
+         is_active,
+         is_verified,
+         must_change_password,
+         token_version
+       FROM users
+       WHERE id = ?`,
       [decoded.id],
     );
 
@@ -49,26 +158,16 @@ async function authenticate(req, res, next) {
       });
     }
 
-    // The database is authoritative for temporary-password state.
-    // Do not rely on the JWT claim here: sessions issued before this fix
-    // must also be forced through the password-change flow.
-    const internalMustChange =
-      (user.role === "admin" || user.role === "staff") &&
-      Number(user.must_change_password) === 1;
-    const requestPath = String(req.originalUrl || req.path || "").split("?")[0];
-    const passwordChangeAllowed =
-      requestPath.endsWith("/auth/me") ||
-      requestPath.endsWith("/auth/change-password");
-
-    if (internalMustChange && !passwordChangeAllowed) {
-      return res.status(403).json({
-        message: "Change your temporary password before continuing.",
-        code: "PASSWORD_CHANGE_REQUIRED",
-      });
+    if (!enforceTemporaryPassword(user, req, res)) {
+      return;
     }
 
-    req.user = user;
-    next();
+    req.user = {
+      ...user,
+      auth_method: "jwt",
+    };
+
+    return next();
   } catch (err) {
     if (err.name === "TokenExpiredError") {
       return res
@@ -76,7 +175,30 @@ async function authenticate(req, res, next) {
         .json({ message: "Session expired. Please log in again." });
     }
 
-    return res.status(401).json({ message: "Invalid token." });
+    if (
+      typeof err.code === "string" &&
+      (err.code.startsWith("ER_") ||
+        err.code === "PROTOCOL_CONNECTION_LOST" ||
+        err.code === "ECONNREFUSED" ||
+        err.code === "ETIMEDOUT")
+    ) {
+      console.error("[authenticate] Authentication database unavailable.");
+
+      return res.status(503).json({
+        message: "Authentication service temporarily unavailable.",
+      });
+    }
+
+    if (err.name === "JsonWebTokenError" || err.name === "NotBeforeError") {
+      return res.status(401).json({ message: "Invalid token." });
+    }
+
+    // Fail closed for unexpected validation errors.
+    console.error("[authenticate] Authentication validation failed.");
+
+    return res.status(503).json({
+      message: "Authentication service temporarily unavailable.",
+    });
   }
 }
 

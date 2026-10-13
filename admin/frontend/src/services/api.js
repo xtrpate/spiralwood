@@ -41,6 +41,7 @@ const isPublicGuestRequest = (url = "") => {
   return (
     requestUrl.includes("/customer/products") ||
     requestUrl.includes("/customer/blueprints") ||
+    requestUrl.includes("/auth/login") ||
     requestUrl.includes("/customer/auth/login") ||
     requestUrl.includes("/customer/auth/register") ||
     requestUrl.includes("/customer/auth/verify-otp") ||
@@ -53,21 +54,10 @@ const isPublicGuestRequest = (url = "") => {
 
 api.interceptors.request.use(
   (config) => {
-    const requestUrl = config?.url || "";
-
-    const token =
-      localStorage.getItem("wisdom_token") ||
-      localStorage.getItem("cust_token") ||
-      localStorage.getItem("token") ||
-      localStorage.getItem("pos_token") ||
-      sessionStorage.getItem("wisdom_token") ||
-      sessionStorage.getItem("cust_token") ||
-      sessionStorage.getItem("token") ||
-      sessionStorage.getItem("pos_token");
-
-    if (token && !isPublicGuestRequest(requestUrl)) {
-      config.headers = config.headers || {};
-      config.headers.Authorization = `Bearer ${token}`;
+    // Authentication uses the server-managed HttpOnly session cookie.
+    // Axios sends it through withCredentials; never read JWTs from browser storage.
+    if (config.headers?.Authorization) {
+      delete config.headers.Authorization;
     }
 
     return config;
@@ -97,38 +87,42 @@ api.interceptors.response.use(
 
     if (status === 401) {
       const isPublicRequest = isPublicGuestRequest(requestUrl);
+      const isSessionCheck = /\/auth\/me\/?$/.test(
+        String(requestUrl).split("?")[0],
+      );
 
-      if (!isPublicRequest) {
-        localStorage.removeItem("wisdom_token");
-        localStorage.removeItem("wisdom_user");
-        localStorage.removeItem("cust_token");
-        localStorage.removeItem("cust_user");
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        localStorage.removeItem("pos_token");
-        localStorage.removeItem("pos_user");
+      // No session is a normal state on public pages.
+      // Let authStore.refreshMe() handle this response without
+      // clearing unrelated browser state or redirecting the visitor.
+      if (isSessionCheck || isPublicRequest) {
+        return Promise.reject(error);
+      }
 
-        sessionStorage.removeItem("wisdom_token");
-        sessionStorage.removeItem("wisdom_user");
-        sessionStorage.removeItem("cust_token");
-        sessionStorage.removeItem("cust_user");
-        sessionStorage.removeItem("token");
-        sessionStorage.removeItem("user");
-        sessionStorage.removeItem("pos_token");
-        sessionStorage.removeItem("pos_user");
+      localStorage.removeItem("wisdom_token");
+      localStorage.removeItem("wisdom_user");
+      localStorage.removeItem("cust_token");
+      localStorage.removeItem("cust_user");
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      localStorage.removeItem("pos_token");
+      localStorage.removeItem("pos_user");
 
-        // End Cash-owned browser state with the expired authenticated
-        // session. Do not delete the teammate-owned QR attempt. If one is
-        // present, preserve its cart so its server-backed recovery flow is
-        // not changed by this Cash-only patch.
-        sessionStorage.removeItem("pos_cash_checkout");
-        if (!sessionStorage.getItem("pos_qr_attempt")) {
-          sessionStorage.removeItem("pos_cart");
-        }
+      sessionStorage.removeItem("wisdom_token");
+      sessionStorage.removeItem("wisdom_user");
+      sessionStorage.removeItem("cust_token");
+      sessionStorage.removeItem("cust_user");
+      sessionStorage.removeItem("token");
+      sessionStorage.removeItem("user");
+      sessionStorage.removeItem("pos_token");
+      sessionStorage.removeItem("pos_user");
 
-        if (window.location.pathname !== "/login") {
-          window.location.href = "/login";
-        }
+      sessionStorage.removeItem("pos_cash_checkout");
+      if (!sessionStorage.getItem("pos_qr_attempt")) {
+        sessionStorage.removeItem("pos_cart");
+      }
+
+      if (window.location.pathname !== "/login") {
+        window.location.href = "/login";
       }
 
       return Promise.reject(error);

@@ -6,6 +6,7 @@ const crypto = require("crypto");
 // const nodemailer = require("nodemailer");
 const db = require("../../config/db"); // Uses the unified db config
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
+const { createSession } = require("../../services/authSessionService");
 const {
   getEffectivePermissionsForUser,
 } = require("../../services/permissionService");
@@ -22,6 +23,20 @@ const {
 } = require("../../utils/phone");
 
 require("dotenv").config();
+
+const SESSION_COOKIE_NAME =
+  process.env.AUTH_SESSION_COOKIE_NAME || "wisdom_session";
+
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+const SESSION_COOKIE_SAME_SITE = String(
+  process.env.AUTH_COOKIE_SAME_SITE || (IS_PRODUCTION ? "none" : "lax"),
+)
+  .trim()
+  .toLowerCase();
+
+const SESSION_COOKIE_SECURE =
+  IS_PRODUCTION || SESSION_COOKIE_SAME_SITE === "none";
 
 const OTP_EXPIRY_MINUTES = 15;
 const RESET_OTP_EXPIRY_MINUTES = 15;
@@ -2177,7 +2192,8 @@ exports.resetPassword = async (req, res) => {
         password = ?,
         otp_code = NULL,
         otp_purpose = NULL,
-        otp_expires = NULL
+        otp_expires = NULL,
+        token_version = COALESCE(token_version, 0) + 1
       WHERE id = ?
         AND role = 'customer'
         AND otp_purpose = 'password_reset'
@@ -2485,21 +2501,12 @@ exports.login = async (req, res) => {
 
     const permissions = await getEffectivePermissionsForUser(user);
 
-    // 4. ISSUE UNIFIED JWT
-    const token = jwt.sign(
-      {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        authority_level: user.authority_level || "user",
-        staff_type: user.staff_type || null,
-        must_change_password: Number(user.must_change_password) === 1 ? 1 : 0,
-        token_version: Number(user.token_version) || 0,
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "8h" },
-    );
+    // 4. CREATE SERVER-MANAGED SESSION
+    const session = await createSession({
+      userId: user.id,
+      ipAddress: req.ip || null,
+      userAgent: req.get("user-agent") || null,
+    });
 
     await db.query("UPDATE users SET last_login = NOW() WHERE id = ?", [
       user.id,
@@ -2512,8 +2519,15 @@ exports.login = async (req, res) => {
       responseStatus: 200,
     });
 
+    res.cookie(SESSION_COOKIE_NAME, session.sessionToken, {
+      httpOnly: true,
+      secure: SESSION_COOKIE_SECURE,
+      sameSite: SESSION_COOKIE_SAME_SITE,
+      path: "/",
+      expires: session.expiresAt,
+    });
+
     return res.json({
-      token,
       user: {
         id: user.id,
         name: user.name,

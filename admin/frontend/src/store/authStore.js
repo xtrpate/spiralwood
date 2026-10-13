@@ -2,17 +2,20 @@ import { create } from "zustand";
 import api from "../services/api";
 import { connectSocket, disconnectSocket } from "../services/socket";
 
-const AUTH_KEYS = ["wisdom_token", "wisdom_user", "token", "user"];
+const AUTH_KEYS = [
+  "wisdom_token",
+  "cust_token",
+  "wisdom_user",
+  "cust_user",
+  "token",
+  "user",
+];
+
 const POS_KEYS = ["pos_token", "pos_user"];
 const REMEMBER_KEY = "wisdom_remember_me";
 
-const parseJson = (value) => {
-  try {
-    return JSON.parse(value || "null");
-  } catch {
-    return null;
-  }
-};
+// Authentication profiles are kept in application memory only.
+// Never restore a user or authentication state from browser storage.
 
 const extractAuthErrorMessage = (
   err,
@@ -23,18 +26,8 @@ const extractAuthErrorMessage = (
   err?.message ||
   fallback;
 
-const getStoredUser = () =>
-  parseJson(localStorage.getItem("wisdom_user")) ||
-  parseJson(sessionStorage.getItem("wisdom_user")) ||
-  parseJson(localStorage.getItem("user")) ||
-  parseJson(sessionStorage.getItem("user"));
-
-const getStoredToken = () =>
-  localStorage.getItem("wisdom_token") ||
-  sessionStorage.getItem("wisdom_token") ||
-  localStorage.getItem("token") ||
-  sessionStorage.getItem("token") ||
-  null;
+// Authentication profiles are kept in application memory only.
+// Never restore a user or authentication state from browser storage.
 
 const normalizePermissionKey = (value) =>
   String(value || "")
@@ -47,22 +40,12 @@ const normalizePermissions = (value) => {
   return [...new Set(value.map(normalizePermissionKey).filter(Boolean))].sort();
 };
 
-const hasLocalAuth = () =>
-  !!(localStorage.getItem("wisdom_token") || localStorage.getItem("token"));
-
-const getActiveStorage = () => (hasLocalAuth() ? localStorage : sessionStorage);
-
-const syncAuthHeader = (token) => {
-  if (token) {
-    api.defaults.headers.common.Authorization = `Bearer ${token}`;
-  } else {
-    delete api.defaults.headers.common.Authorization;
-  }
-};
-
 const removeKeys = (storage, keys) => {
   keys.forEach((key) => storage.removeItem(key));
 };
+
+const getActiveStorage = () =>
+  localStorage.getItem(REMEMBER_KEY) === "true" ? localStorage : sessionStorage;
 
 const hasStoredPosQrAttempt = () =>
   Boolean(sessionStorage.getItem("pos_qr_attempt"));
@@ -75,70 +58,70 @@ const clearCashierCashState = ({ preserveQrCart = false } = {}) => {
   }
 };
 
-const persistSession = (token, user, rememberMe = false) => {
-  const targetStorage = rememberMe ? localStorage : sessionStorage;
-  const otherStorage = rememberMe ? sessionStorage : localStorage;
-
-  removeKeys(targetStorage, AUTH_KEYS);
-  removeKeys(otherStorage, AUTH_KEYS);
+const persistSession = (rememberMe = false) => {
+  // Remove legacy authentication credentials and cached profiles.
+  removeKeys(localStorage, AUTH_KEYS);
+  removeKeys(sessionStorage, AUTH_KEYS);
 
   removeKeys(localStorage, POS_KEYS);
   removeKeys(sessionStorage, POS_KEYS);
 
-  // A successful login starts a new cash workspace. If a QR attempt is
-  // already stored, leave its cart alone because that flow has its own
-  // server-backed recovery lifecycle.
+  // Preserve the existing cashier and QR-cart cleanup behavior.
   clearCashierCashState({ preserveQrCart: true });
 
-  targetStorage.setItem("wisdom_token", token);
-  targetStorage.setItem("wisdom_user", JSON.stringify(user));
-
-  // legacy/shared keys para sa ibang pages na umaasa pa dito
-  targetStorage.setItem("token", token);
-  targetStorage.setItem("user", JSON.stringify(user));
-
+  // Remember Me controls the existing preference only.
+  // Authentication remains in the server-managed HttpOnly cookie.
   localStorage.setItem(REMEMBER_KEY, rememberMe ? "true" : "false");
-
-  syncAuthHeader(token);
 };
 
-const persistUserOnly = (user) => {
-  const storage = getActiveStorage();
-
-  storage.setItem("wisdom_user", JSON.stringify(user));
-  storage.setItem("user", JSON.stringify(user));
+const persistUserOnly = () => {
+  // User profiles belong in application memory, not browser storage.
+  removeKeys(localStorage, ["wisdom_user", "user"]);
+  removeKeys(sessionStorage, ["wisdom_user", "user"]);
 };
 
 const clearSession = () => {
   removeKeys(localStorage, [...AUTH_KEYS, ...POS_KEYS]);
   removeKeys(sessionStorage, [...AUTH_KEYS, ...POS_KEYS]);
 
-  // IMPORTANT:
-  // Huwag buburahin ang cust_cart para hindi mawala ang cart after logout/login
+  // Preserve the existing customer custom-checkout cleanup behavior.
   sessionStorage.removeItem("cust_custom_cart");
   sessionStorage.removeItem("cust_selected_keys");
   sessionStorage.removeItem("cust_selected_custom_checkout");
 
-  // Normal logout already cleared the cashier cart before C3A. Keep that
-  // behavior and also remove the cash checkout safety key.
   clearCashierCashState();
-
-  syncAuthHeader(null);
 };
 
-const savedUser = getStoredUser();
-const savedToken = getStoredToken();
+// Remove legacy authentication credentials and cached profiles
+// from both browser storage areas.
+// Do not clear cart, checkout, or other unrelated browser state.
+const LEGACY_AUTH_KEYS = [
+  "wisdom_token",
+  "cust_token",
+  "token",
+  "wisdom_user",
+  "cust_user",
+  "user",
+  "pos_token",
+  "pos_user",
+];
 
-syncAuthHeader(savedToken);
+removeKeys(localStorage, LEGACY_AUTH_KEYS);
+removeKeys(sessionStorage, LEGACY_AUTH_KEYS);
 
-if (savedUser?.role && savedToken) {
-  connectSocket(savedToken);
-}
+delete api.defaults.headers.common.Authorization;
+
+// A stored profile is not proof of authentication.
+// The server must validate the HttpOnly session cookie.
+const savedUser = null;
 
 const useAuthStore = create((set, get) => ({
   user: savedUser,
-  token: savedToken,
+  token: null,
   permissions: normalizePermissions(savedUser?.permissions),
+
+  // True only after the initial server session check has completed.
+  authInitialized: false,
 
   hasPermission: (permissionKey) => {
     const key = normalizePermissionKey(permissionKey);
@@ -182,14 +165,12 @@ const useAuthStore = create((set, get) => ({
     const cleanEmail = String(email || "").trim();
 
     try {
-      // Point this to the customer auth controller we just updated!
       const { data } = await api.post("/customer/auth/login", {
         email: cleanEmail,
         password,
         recaptcha_token: recaptchaToken,
       });
 
-      // 2. Persist and Set State
       const permissions = normalizePermissions(data.user?.permissions);
 
       const normalizedUser = {
@@ -197,27 +178,31 @@ const useAuthStore = create((set, get) => ({
         permissions,
       };
 
-      persistSession(data.token, normalizedUser, rememberMe);
+      // The backend sets the HttpOnly session cookie.
+      // Never persist or keep the returned compatibility JWT.
+      persistSession(rememberMe);
+
+      delete api.defaults.headers.common.Authorization;
 
       set({
         user: normalizedUser,
-        token: data.token,
+        token: null,
         permissions,
+        authInitialized: true,
       });
 
       if (normalizedUser?.role) {
-        connectSocket(data.token);
+        connectSocket();
       }
 
-      // 3. Return the user (which includes their role!)
       return data.user;
     } catch (err) {
-      // 4. Clean, unified error handling
       const finalError = new Error(
         extractAuthErrorMessage(err, "Incorrect email or password."),
       );
 
-      // Attach response so LoginPage.jsx can read "EMAIL_NOT_VERIFIED"
+      // Preserve LoginPage.jsx handling for EMAIL_NOT_VERIFIED and
+      // other backend authentication errors.
       if (err.response) {
         finalError.response = err.response;
       }
@@ -401,7 +386,7 @@ const useAuthStore = create((set, get) => ({
 
   completeTemporaryPasswordChange: async (currentPassword, newPassword) => {
     try {
-      const { data } = await api.put("/auth/change-password", {
+      await api.put("/auth/change-password", {
         current_password: currentPassword,
         new_password: newPassword,
       });
@@ -411,65 +396,57 @@ const useAuthStore = create((set, get) => ({
         must_change_password: 0,
         permissions: normalizePermissions(get().permissions),
       };
-      const freshToken = data?.token || get().token;
-      const rememberMe = localStorage.getItem(REMEMBER_KEY) === "true";
 
-      if (freshToken) {
-        persistSession(freshToken, updatedUser, rememberMe);
-        set({
-          user: updatedUser,
-          token: freshToken,
-          permissions: normalizePermissions(updatedUser.permissions),
-        });
+      persistUserOnly(updatedUser);
 
-        if (updatedUser?.role) {
-          connectSocket(freshToken);
-        }
-      } else {
-        persistUserOnly(updatedUser);
-        set({ user: updatedUser });
+      delete api.defaults.headers.common.Authorization;
+
+      set({
+        user: updatedUser,
+        token: null,
+        permissions: normalizePermissions(updatedUser.permissions),
+      });
+
+      if (updatedUser?.role) {
+        connectSocket();
       }
+
       return updatedUser;
     } catch (err) {
       const wrapped = new Error(
         extractAuthErrorMessage(err, "Password could not be changed."),
       );
+
       if (err.response) wrapped.response = err.response;
+
       throw wrapped;
     }
   },
 
-  logout: () => {
-    disconnectSocket();
-    clearSession();
-
-    set({
-      user: null,
-      token: null,
-      permissions: [],
-    });
-  },
-
-  refreshMe: async () => {
-    const token = get().token || getStoredToken();
-
-    if (!token) {
+  logout: async () => {
+    try {
+      // Revoke the server-managed session and clear its HttpOnly cookie.
+      await api.post("/auth/logout");
+    } catch {
+      // Clear local UI state even if the server is temporarily unavailable.
+    } finally {
+      disconnectSocket();
       clearSession();
+
+      delete api.defaults.headers.common.Authorization;
+
       set({
         user: null,
         token: null,
         permissions: [],
       });
-      return null;
     }
+  },
 
-    syncAuthHeader(token);
-
+  refreshMe: async () => {
     try {
-      // WISDOM AUTH REFRESH B1
-      // Always revalidate the logged-in account against the server.
-      // This prevents stale localStorage user data from becoming
-      // the authoritative customer session state.
+      // The browser sends the HttpOnly session cookie automatically.
+      // A JWT in frontend state or storage is not required.
       const { data } = await api.get("/auth/me");
 
       const permissions = normalizePermissions(data?.permissions);
@@ -479,27 +456,52 @@ const useAuthStore = create((set, get) => ({
         permissions,
       };
 
-      persistUserOnly(normalizedUser);
+      persistUserOnly();
+
+      delete api.defaults.headers.common.Authorization;
 
       set({
         user: normalizedUser,
-        token,
+        token: null,
         permissions,
+        authInitialized: true,
       });
 
       if (normalizedUser?.role) {
-        connectSocket(token);
+        connectSocket();
       }
 
       return normalizedUser;
-    } catch {
-      clearSession();
+    } catch (err) {
+      disconnectSocket();
 
-      set({
-        user: null,
-        token: null,
-        permissions: [],
-      });
+      const status = err?.response?.status;
+
+      if (status === 401 || status === 403) {
+        // Clear authentication credentials and cached profiles only.
+        // Preserve carts and checkout data during session validation.
+        removeKeys(localStorage, [...AUTH_KEYS, ...POS_KEYS]);
+        removeKeys(sessionStorage, [...AUTH_KEYS, ...POS_KEYS]);
+
+        delete api.defaults.headers.common.Authorization;
+
+        set({
+          user: null,
+          token: null,
+          permissions: [],
+          authInitialized: true,
+        });
+      } else {
+        // A network or server error does not prove the session is invalid,
+        // but it also must not leave an old profile authorized in the UI.
+        // Keep the HttpOnly cookie untouched so the session can be retried.
+        set({
+          user: null,
+          token: null,
+          permissions: [],
+          authInitialized: true,
+        });
+      }
 
       return null;
     }

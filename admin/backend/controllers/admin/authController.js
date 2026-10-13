@@ -2,14 +2,20 @@
 // controllers/authController.js (Unified Gateway for Admin, Staff, and Customers)
 // controllers/authController.js (Unified Gateway for Admin, Staff, and Customers)
 const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 // const nodemailer = require("nodemailer");
 const pool = require("../../config/db");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
+
 const {
   getEffectivePermissionsForUser,
 } = require("../../services/permissionService");
+const {
+  createSession,
+  revokeSession,
+  revokeAllUserSessions,
+} = require("../../services/authSessionService");
+
 const {
   normalizePhilippinePhone,
   getPhoneLookupVariants,
@@ -21,6 +27,42 @@ const {
   sendBrevoEmail,
 } = require("../../utils/emailHelper");
 require("dotenv").config();
+
+const SESSION_COOKIE_NAME =
+  process.env.AUTH_SESSION_COOKIE_NAME || "wisdom_session";
+
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const SESSION_COOKIE_SAME_SITE = String(
+  process.env.AUTH_COOKIE_SAME_SITE || (IS_PRODUCTION ? "none" : "lax"),
+)
+  .trim()
+  .toLowerCase();
+const SESSION_COOKIE_SECURE =
+  IS_PRODUCTION || SESSION_COOKIE_SAME_SITE === "none";
+
+function readSessionCookie(req) {
+  const cookieHeader = req.headers.cookie;
+
+  if (typeof cookieHeader !== "string" || !cookieHeader) {
+    return undefined;
+  }
+
+  const prefix = `${SESSION_COOKIE_NAME}=`;
+  const item = cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(prefix));
+
+  if (!item) {
+    return undefined;
+  }
+
+  try {
+    return decodeURIComponent(item.slice(prefix.length));
+  } catch {
+    return null;
+  }
+}
 
 // ══════════════════════════════════════════════════════════════
 //   CUSTOMER OTP CONFIGURATION (For unverified logins)
@@ -193,20 +235,19 @@ exports.login = async (req, res) => {
       reason: "authenticated",
     });
 
-    const token = jwt.sign(
-      {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        authority_level: user.authority_level || "user",
-        name: user.name,
-        staff_type: user.staff_type || null,
-        must_change_password: Number(user.must_change_password) === 1 ? 1 : 0,
-        token_version: Number(user.token_version) || 0,
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "8h" },
-    );
+    const session = await createSession({
+      userId: user.id,
+      ipAddress: req.ip,
+      userAgent: req.get("user-agent"),
+    });
+
+    res.cookie(SESSION_COOKIE_NAME, session.sessionToken, {
+      httpOnly: true,
+      secure: SESSION_COOKIE_SECURE,
+      sameSite: SESSION_COOKIE_SAME_SITE,
+      path: "/",
+      expires: session.expiresAt,
+    });
 
     const permissions = await getEffectivePermissionsForUser(user);
 
@@ -233,7 +274,7 @@ exports.login = async (req, res) => {
       last_login: user.last_login || null,
       must_change_password: Number(user.must_change_password) === 1 ? 1 : 0,
     };
-    res.json({ token, user: safeUser });
+    return res.json({ user: safeUser });
   } catch (err) {
     console.error("[Unified Login Error]", err);
     res.status(500).json({ message: "Server error during login." });
@@ -443,9 +484,29 @@ exports.changePassword = async (req, res) => {
 
     const hashed = await bcrypt.hash(newPassword, 12);
     await pool.query(
-      "UPDATE users SET password = ?, must_change_password = 0 WHERE id = ?",
+      `UPDATE users
+      SET password = ?,
+          must_change_password = 0,
+          token_version = COALESCE(token_version, 0) + 1
+    WHERE id = ?`,
       [hashed, req.user.id],
     );
+
+    await revokeAllUserSessions(req.user.id);
+
+    const session = await createSession({
+      userId: req.user.id,
+      ipAddress: req.ip,
+      userAgent: req.get("user-agent"),
+    });
+
+    res.cookie(SESSION_COOKIE_NAME, session.sessionToken, {
+      httpOnly: true,
+      secure: SESSION_COOKIE_SECURE,
+      sameSite: SESSION_COOKIE_SAME_SITE,
+      path: "/",
+      expires: session.expiresAt,
+    });
 
     await writeAuditLogSafe({
       userId: req.user.id,
@@ -456,28 +517,37 @@ exports.changePassword = async (req, res) => {
       ipAddress: req.ip || null,
     });
 
-    const token = jwt.sign(
-      {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        authority_level: user.authority_level || "user",
-        name: user.name,
-        staff_type: user.staff_type || null,
-        must_change_password: 0,
-        token_version: Number(user.token_version) || 0,
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "8h" },
-    );
-
     return res.json({
       message: "Password changed successfully.",
       must_change_password: 0,
-      token,
     });
   } catch (err) {
     console.error("[changePassword]", err);
     return res.status(500).json({ message: "Unable to change password." });
+  }
+};
+
+exports.logout = async (req, res) => {
+  try {
+    const sessionToken = readSessionCookie(req);
+
+    if (sessionToken) {
+      await revokeSession(sessionToken);
+    }
+
+    res.clearCookie(SESSION_COOKIE_NAME, {
+      httpOnly: true,
+      secure: SESSION_COOKIE_SECURE,
+      sameSite: SESSION_COOKIE_SAME_SITE,
+      path: "/",
+    });
+
+    return res.json({ message: "Logged out successfully." });
+  } catch (err) {
+    console.error("[logout] Unable to revoke authentication session.");
+
+    return res.status(503).json({
+      message: "Unable to complete logout right now. Please try again.",
+    });
   }
 };

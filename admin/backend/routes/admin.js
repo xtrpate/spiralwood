@@ -239,9 +239,11 @@ const customDiscussionUpload = (req, res, next) => {
 // ══════════════════════════════════════════════════════════════════════════════
 // AUTH
 // ══════════════════════════════════════════════════════════════════════════════
+
 const { loginLimiter } = require("../middleware/authRateLimit");
 // ...
 router.post("/auth/login", loginLimiter, auth.login);
+router.post("/auth/logout", auth.logout);
 router.get("/auth/me", authenticate, auth.getMe);
 router.put("/auth/profile", authenticate, auth.updateProfile);
 router.put("/auth/change-password", authenticate, auth.changePassword);

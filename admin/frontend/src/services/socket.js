@@ -20,36 +20,20 @@ const notifySocketReady = () => {
   });
 };
 
-export const connectSocket = (token) => {
-  const cleanToken = String(token || "").trim();
-
-  if (!cleanToken) {
-    return null;
-  }
-
+export const connectSocket = () => {
   if (socket) {
-    const currentToken = String(socket.auth?.token || "");
-
-    if (currentToken === cleanToken) {
-      if (!socket.connected) {
-        socket.connect();
-      }
-
-      if (socket.connected) {
-        notifySocketReady();
-      }
-
-      return socket;
+    if (!socket.connected) {
+      socket.connect();
     }
 
-    socket.disconnect();
-    socket = null;
+    if (socket.connected) {
+      notifySocketReady();
+    }
+
+    return socket;
   }
 
   socket = io(SOCKET_URL, {
-    auth: {
-      token: cleanToken,
-    },
     withCredentials: true,
     reconnection: true,
   });
