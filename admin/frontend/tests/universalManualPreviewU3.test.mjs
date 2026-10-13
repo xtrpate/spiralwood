@@ -71,6 +71,6 @@ test('U3 source requires temporary Admin-only 3D scene and hard exit barrier',()
   assert.ok(design.includes('pointerEvents: "auto"') && design.includes('manualPreview3D && view === "3d"'));
   assert.ok(design.includes('setManualPreview3D(null)'));
   assert.ok(modal.includes('planUniversalManualAdminPreviewU3') && modal.includes('onShowPreview({ parts:planned.parts'));
-  assert.ok(modal.includes('setOpen(false)') && modal.includes('View temporary 3D preview'));
+  assert.ok(modal.includes('setOpen(false)') && modal.includes('Preview Resized Furniture'));
   assert.ok(!design.includes('setComponents(manualPreview3D'));
 });

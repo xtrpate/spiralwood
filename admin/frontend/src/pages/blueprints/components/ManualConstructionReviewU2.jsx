@@ -60,29 +60,29 @@ export function ManualConstructionReviewU2({components = [], onShowPreview = nul
   return <>
     <div style={{background:'#111827',color:'#cbd5e1',padding:'5px 15px',display:'flex',alignItems:'center',gap:10,borderBottom:'1px solid #334155',flexWrap:'wrap'}}>
       <button type="button" style={action} onClick={()=>setOpen(true)}>
-        Manual Construction Review (U2)
+        Furniture Size Review
       </button>
-      <span style={{fontSize:11}}>Admin-only draft • {total} physical parts • No Save/Publish/Customer permission</span>
+      <span style={{fontSize:11}}>Draft design • {total} parts • Check size rules before saving</span>
     </div>
     {open && <div role="presentation" style={{position:'fixed',inset:0,zIndex:20000,background:'rgba(0,0,0,.7)',display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
       <div role="dialog" aria-modal="true" aria-label="Manual Construction Review" style={{background:'#111827',color:'#e2e8f0',border:'1px solid #475569',borderRadius:4,maxWidth:980,width:'100%',maxHeight:'92vh',overflowY:'auto',padding:17,boxShadow:'0 10px 40px #0009'}}>
         <div style={{display:'flex',alignItems:'start',justifyContent:'space-between',gap:12}}>
           <div>
-            <div style={{fontSize:16,fontWeight:700,marginBottom:5}}>Universal Manual Construction — U2 Review</div>
+            <div style={{fontSize:16,fontWeight:700,marginBottom:5}}>Review Furniture Resizing</div>
             <div style={{fontSize:12,color:'#fbbf24',lineHeight:1.5}}>
-              Suggested rules are not verified. Admin must inspect each physical part and contact. Passing geometry preview is NOT joinery approval or Customer permission.
+              Check how each part follows changes in furniture size. A successful preview does not confirm build safety or automatically allow customer resizing.
             </div>
           </div>
           <button type="button" style={action} onClick={()=>setOpen(false)} aria-label="Close construction review">Close</button>
         </div>
         {!proposal.ok ? <div role="alert" style={{marginTop:20,color:'#fca5a5'}}>{proposal.error}</div> : <>
           <div style={{marginTop:14,display:'flex',alignItems:'center',gap:16,flexWrap:'wrap',fontSize:12}}>
-            <span><b>Original:</b> {AXES.map(axis=>`${axis[0].toUpperCase()}: ${Math.round(proposal.bounds[axis].size)} mm`).join(' · ')}</span>
-            <span><b>Reviewed:</b> {confirmed.length}/{total} parts</span>
+            <span><b>Current size:</b> {AXES.map(axis=>`${axis[0].toUpperCase()}: ${Math.round(proposal.bounds[axis].size)} mm`).join(' · ')}</span>
+            <span><b>Parts checked:</b> {confirmed.length}/{total} parts</span>
           </div>
           <div style={{marginTop:15,padding:10,border:'1px solid #334155',borderRadius:3}}>
-            <div style={heading}>1. Enter Admin-reviewed test range (mm)</div>
-            <div style={{fontSize:11,color:'#94a3b8',marginBottom:10}}>Initial ±10% values are suggestions only. Review the actual joint clearances and furniture limits; adjust before checking. Geometry extremes are tested, not certified.</div>
+            <div style={heading}>1. Set allowed furniture sizes (mm)</div>
+            <div style={{fontSize:11,color:'#94a3b8',marginBottom:10}}>The suggested limits are a starting point. Set the smallest and largest safe sizes for this furniture, then run the size test. The test does not replace a real construction check.</div>
             <div style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:10}}>
               {AXES.map(axis=><div key={axis}>
                 <div style={{...label,textTransform:'capitalize'}}>{axis} (original {Math.round(proposal.bounds[axis].size)})</div>
@@ -95,7 +95,7 @@ export function ManualConstructionReviewU2({components = [], onShowPreview = nul
             </div>
           </div>
           <div style={{marginTop:14,padding:10,border:'1px solid #334155',borderRadius:3}}>
-            <div style={heading}>2. Select and confirm every physical part</div>
+            <div style={heading}>2. Check each furniture part</div>
             <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'start'}}>
               <div style={{width:250,maxHeight:280,overflowY:'auto',display:'grid',gap:4}}>
                 {proposal.parts.map(p=>{const id=String(p.id);return <button key={id} type="button" onClick={()=>setSelected(id)} style={{...action,textAlign:'left',background:id===selected?'#1d4ed8':'#1e293b',padding:8}}>
@@ -105,10 +105,10 @@ export function ManualConstructionReviewU2({components = [], onShowPreview = nul
               <div style={{flex:'1 1 330px',minWidth:0}}>
                 {selectedPart && <>
                   <div style={{fontSize:12,fontWeight:700,marginBottom:8}}>{selectedPart.partCode || selectedPart.id} · {selectedPart.label || selectedPart.type}</div>
-                  <div style={{fontSize:11,color:'#94a3b8',marginBottom:10}}>Set where each physical edge follows the whole furniture frame. A pair using the same anchor preserves that part's thickness/section along that axis.</div>
+                  <div style={{fontSize:11,color:'#94a3b8',marginBottom:10}}>For Width, Height, and Depth, choose where each side stays attached as the furniture changes size. Choosing the same position for both sides keeps that part's size along that direction.</div>
                   {AXES.map(axis=><div key={axis} style={{display:'grid',gridTemplateColumns:'60px 1fr 1fr',gap:8,alignItems:'end',marginBottom:10}}>
                     <strong style={{textTransform:'capitalize',fontSize:11,paddingBottom:8}}>{axis}</strong>
-                    {EDGES.map(edge=><label style={label} key={edge}>{edge} edge
+                    {EDGES.map(edge=><label style={label} key={edge}>{edge === 'start' ? 'Start side' : 'End side'}
                       <select aria-label={`${selectedPart.partCode || selectedPart.id} ${axis} ${edge}`} style={{...dark,width:'100%',fontSize:11}} value={rules[String(selectedPart.id)]?.[axis]?.[edge] ?? ''} onChange={e=>setEdge(String(selectedPart.id),axis,edge,e.target.value)}>
                         {U2_RULE_CHOICES.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
                       </select>
@@ -116,43 +116,43 @@ export function ManualConstructionReviewU2({components = [], onShowPreview = nul
                   </div>)}
                   <label style={{display:'flex',alignItems:'start',gap:7,fontSize:12,lineHeight:1.5,color:'#f8fafc',padding:'8px 0'}}>
                     <input type="checkbox" checked={confirmed.includes(String(selectedPart.id))} onChange={e=>{const id=String(selectedPart.id);setConfirmed(prev=>e.target.checked?[...prev,id]:prev.filter(x=>x!==id));setResult(null);setPreviewError(null);onInvalidateReviewed?.()}} />
-                    I inspected this part's six edge rules, dimensions, and physical attachments (Admin review, not engineering certification).
+                    I checked this part's dimensions, position, and resizing behavior.
                   </label>
                 </>}
               </div>
             </div>
           </div>
           <div style={{marginTop:15,display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
-            <button type="button" style={{...action,background:'#2563eb',color:'white',padding:'10px 14px'}} onClick={check}>Validate Draft Geometry (8 range corners)</button>
-            <span style={{fontSize:11,color:'#fbbf24'}}>No geometry or database mutation.</span>
+            <button type="button" style={{...action,background:'#2563eb',color:'white',padding:'10px 14px'}} onClick={check}>Test All Size Limits</button>
+            <span style={{fontSize:11,color:'#fbbf24'}}>Test only — no changes saved.</span>
           </div>
           {result?.ok && typeof onStageReviewed === 'function' && <div style={{marginTop:14,padding:12,border:'1px solid #334155'}}>
-            <div style={heading}>U4 — Stage reviewed geometry for next Save</div>
+            <div style={heading}>3. Confirm size settings</div>
             <div style={{fontSize:11,color:'#fbbf24',lineHeight:1.5,marginBottom:9}}>
-              Your next Save will ask the backend to re-check all 8 geometry corners and bind the review to this exact part list. No Customer permission or carpentry certification.
+              Click Confirm, then Save the blueprint to store these reviewed size settings. Saving does not automatically enable customer resizing.
             </div>
             <button type="button" style={{...action,background:'#2563eb',color:'#fff',padding:'10px 14px'}} onClick={()=>onStageReviewed(settings())}>
-              Stage geometry review for Save
+              Confirm Settings for Save
             </button>
           </div>}
           {result?.ok && typeof onShowPreview === 'function' && <div style={{marginTop:14,padding:12,border:'1px solid #334155'}}>
-            <div style={heading}>3. Preview reviewed dimensions in Admin 3D (U3)</div>
-            <div style={{color:'#fbbf24',fontSize:11,marginBottom:10}}>Preview only: the live design, Undo, Save and Publish remain unchanged. Exit preview to restore the original scene.</div>
+            <div style={heading}>4. Preview the resized furniture</div>
+            <div style={{color:'#fbbf24',fontSize:11,marginBottom:10}}>Try a different Width, Height and Depth without changing your original design. Exit preview to return to editing.</div>
             <div style={{display:'flex',flexWrap:'wrap',gap:10,alignItems:'end'}}>
               {AXES.map(axis=><label key={axis} style={{fontSize:11,textTransform:'capitalize'}}>{axis} (mm)
                 <input type="number" step="1" aria-label={`U3 preview ${axis}`} style={{...dark,display:'block',width:108,marginTop:4}}
                   value={previewDimensions[axis] ?? ''} onChange={e=>{setPreviewDimensions(old=>({...old,[axis]:e.target.value}));setPreviewError(null)}} />
               </label>)}
               <button type="button" style={{...action,background:'#2563eb',color:'#fff',padding:'10px 14px'}} onClick={showPreview}>
-                View temporary 3D preview
+                Preview Resized Furniture
               </button>
             </div>
             {previewError && <div role="alert" style={{color:'#fca5a5',marginTop:9,fontSize:12}}>{previewError}</div>}
           </div>}
           {result && <div role="status" style={{marginTop:12,padding:12,border:'1px solid #475569',fontSize:12,lineHeight:1.6,color:result.ok?'#86efac':'#fca5a5'}}>
             {result.ok
-              ? `U2 PREVIEW PASS: ${result.partCount} parts; ${result.cornerChecks} corner combinations. Draft only — not saved, not approved, Customer still Size Protected.`
-              : `U2 REVIEW BLOCKED [${result.code}]: ${result.error}`}
+              ? `Size test passed: ${result.partCount} parts checked across ${result.cornerChecks} size combinations. Settings are not saved yet.`
+              : `Size test needs attention: ${result.error}`}
           </div>}
         </>}
       </div>

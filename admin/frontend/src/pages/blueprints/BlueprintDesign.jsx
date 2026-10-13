@@ -759,8 +759,8 @@ export default function BlueprintDesign() {
       {view === "3d" && (stagedManualReviewU4 || hasStoredManualReviewU4) ? (
         <div style={{background:'#172554',color:'#bfdbfe',padding:'7px 16px',fontSize:11}}>
           {stagedManualReviewU4
-            ? 'U4 geometry review staged. Click Save to ask the backend to validate and persist it; Customer remains Size Protected.'
-            : 'U4 geometry review stored on Blueprint. Changes require revalidation; Customer remains Size Protected.'}
+            ? 'Size review ready. Click Save to verify and store it. Customer resizing is not enabled yet.'
+            : 'Size review saved. If parts change, review the sizes again. Customer resizing is not enabled yet.'}
         </div>
       ) : null}
       {view === "3d" ? (
@@ -783,13 +783,13 @@ export default function BlueprintDesign() {
       {manualPreview3D && view === "3d" ? (
         <div role="presentation" style={{position:"fixed",inset:0,zIndex:2147480000,background:"transparent",pointerEvents: "auto"}}>
           <div role="status" style={{position:"absolute",top:20,right:20,background:"#0f172a",color:"#e2e8f0",border:"1px solid #38bdf8",padding:16,maxWidth:400,boxShadow:"0 8px 32px #0008",fontSize:12}}>
-            <div style={{fontWeight:700,marginBottom:7}}>U3 Admin-only 3D Preview</div>
-            <div style={{color:"#fbbf24",lineHeight:1.5,marginBottom:9}}>Not saved or published. Editor actions are blocked during preview. Customer sizing remains protected.</div>
+            <div style={{fontWeight:700,marginBottom:7}}>Resized Furniture Preview</div>
+            <div style={{color:"#fbbf24",lineHeight:1.5,marginBottom:9}}>Preview only. Your original design is unchanged, and editing is paused until you exit.</div>
             <div style={{marginBottom:10}}>
-              W {manualPreview3D.dimensions.width} Â· H {manualPreview3D.dimensions.height} Â· D {manualPreview3D.dimensions.depth} mm
+              Width: {manualPreview3D.dimensions.width} mm | Height: {manualPreview3D.dimensions.height} mm | Depth: {manualPreview3D.dimensions.depth} mm
             </div>
             <button type="button" style={{background:"#2563eb",border:"1px solid #60a5fa",color:"white",padding:"9px 13px",cursor:"pointer"}} onClick={() => setManualPreview3D(null)}>
-              Restore original design
+              Exit Preview
             </button>
           </div>
         </div>

@@ -632,9 +632,9 @@ export function FurnitureLibraryPanel({
         <div style={S.libraryStickyTop}>
           <div style={S.libraryHeaderRow}>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={S.floatingTitle}>Add Furniture</div>
+              <div style={S.floatingTitle}>Furniture Library</div>
               <div style={S.librarySubtleText}>
-                Drag a furniture template or part into the workspace.
+                Drag a furniture part or template into the workspace.
               </div>
             </div>
 

@@ -11,11 +11,11 @@ import {manualWorldBoxU8, manualWorldFrameU8} from './universalManualWorldBounds
 
 export const U2_REVIEW_VERSION = 1;
 export const U2_RULE_CHOICES = Object.freeze([
-  { value: 'min', label: 'Follow minimum side' },
-  { value: 'max', label: 'Follow maximum side' },
-  { value: 'center', label: 'Follow middle (50%)' },
-  { value: 'quarter', label: 'Follow quarter (25%)' },
-  { value: 'three-quarter', label: 'Follow three-quarter (75%)' },
+  { value: 'min', label: 'Start of furniture (0%)' },
+  { value: 'max', label: 'End of furniture (100%)' },
+  { value: 'center', label: 'Center of furniture (50%)' },
+  { value: 'quarter', label: 'Quarter point (25%)' },
+  { value: 'three-quarter', label: 'Three-quarter point (75%)' },
 ]);
 const AXES = Object.freeze({ width: 'x', height: 'y', depth: 'z' });
 const text = x => String(x ?? '').trim();
