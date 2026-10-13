@@ -515,16 +515,63 @@ export default function DailyStockInReportPage() {
       ];
       XLSX.utils.book_append_sheet(workbook, sheet, "Stock In");
 
-      const scope =
-        appliedFrom && appliedTo
-          ? `${appliedFrom}_to_${appliedTo}`
-          : "all_dates";
-      const stamp = new Date(generatedAt)
-        .toISOString()
-        .replace(/[:.]/g, "-")
-        .slice(0, 19);
+      const inventoryFilenamePart =
+        inventoryType === "raw_material"
+          ? "raw_materials"
+          : inventoryType === "ready_made"
+            ? "ready_made"
+            : "all_inventory";
 
-      const fileName = `wisdom_stock_in_report_${scope}_${stamp}.xlsx`;
+      const searchFilenamePart = search.trim()
+        ? "search_filtered"
+        : "all_items";
+
+      const resolvedDateRange = resolvePeriodRange(
+        appliedPeriod,
+        todayManila,
+        appliedFrom,
+        appliedTo,
+      );
+
+      const dateRangeFilenamePart =
+        resolvedDateRange.from && resolvedDateRange.to
+          ? `${resolvedDateRange.from}_to_${resolvedDateRange.to}`
+          : resolvedDateRange.from
+            ? `from_${resolvedDateRange.from}`
+            : resolvedDateRange.to
+              ? `up_to_${resolvedDateRange.to}`
+              : "all_time";
+
+      const exportNow = new Date();
+
+      const timestampParts = new Intl.DateTimeFormat("en-PH", {
+        timeZone: "Asia/Manila",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+      })
+        .formatToParts(exportNow)
+        .reduce((parts, part) => {
+          if (part.type !== "literal") {
+            parts[part.type] = part.value;
+          }
+
+          return parts;
+        }, {});
+
+      const exportTimestamp =
+        `${timestampParts.year}${timestampParts.month}${timestampParts.day}` +
+        `_${timestampParts.hour}${timestampParts.minute}${timestampParts.second}` +
+        `_${String(exportNow.getMilliseconds()).padStart(3, "0")}`;
+
+      const fileName =
+        `wisdom_inventory_stock_in_${inventoryFilenamePart}_` +
+        `${searchFilenamePart}_${dateRangeFilenamePart}_` +
+        `exported_${exportTimestamp}.xlsx`;
 
       if (window.showSaveFilePicker) {
         const handle = await window.showSaveFilePicker({

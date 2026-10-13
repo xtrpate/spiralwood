@@ -810,19 +810,49 @@ export default function CurrentInventoryReportPage() {
                   .replace(/[^a-z0-9]+/g, "_")
                   .replace(/^_+|_+$/g, "");
 
-      const stockHealthFilenamePart =
-        stockStatus === ""
-          ? "all_stock_health"
-          : humanize(stockStatus)
-              .toLowerCase()
-              .replace(/[^a-z0-9]+/g, "_")
-              .replace(/^_+|_+$/g, "");
+      const stockHealthFilenamePart = stockStatus
+        ? humanize(stockStatus)
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "_")
+            .replace(/^_+|_+$/g, "")
+        : "all";
+
+      const searchFilenamePart = search.trim()
+        ? "search_filtered"
+        : "all_items";
 
       const dateFilenamePart = `as_of_${reportDate}`;
 
-      const exportTimestamp = new Date().getTime();
+      const exportNow = new Date();
 
-      const fileName = `wisdom_inventory_report_${inventoryFilenamePart}_${stockHealthFilenamePart}_${dateFilenamePart}_${exportTimestamp}.xlsx`;
+      const timestampParts = new Intl.DateTimeFormat("en-PH", {
+        timeZone: "Asia/Manila",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+      })
+        .formatToParts(exportNow)
+        .reduce((parts, part) => {
+          if (part.type !== "literal") {
+            parts[part.type] = part.value;
+          }
+
+          return parts;
+        }, {});
+
+      const exportTimestamp =
+        `${timestampParts.year}${timestampParts.month}${timestampParts.day}` +
+        `_${timestampParts.hour}${timestampParts.minute}${timestampParts.second}` +
+        `_${String(exportNow.getMilliseconds()).padStart(3, "0")}`;
+
+      const fileName =
+        `wisdom_inventory_report_${inventoryFilenamePart}_` +
+        `stock_health_${stockHealthFilenamePart}_${searchFilenamePart}_` +
+        `${dateFilenamePart}_exported_${exportTimestamp}.xlsx`;
 
       if (window.showSaveFilePicker) {
         const handle = await window.showSaveFilePicker({

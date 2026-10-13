@@ -77,10 +77,110 @@ const pdfSafeText = (value) =>
     .replace(/\s+/g, " ")
     .trim();
 
-const fileBaseName = (dateKey) =>
-  `Stock-Movements-Report-${String(dateKey || "export")
+const sanitizeFilenamePart = (value, fallback = "all") =>
+  String(value ?? "")
     .trim()
-    .replace(/[^0-9A-Za-z_-]+/g, "-")}`;
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^[_-]+|[_-]+$/g, "") || fallback;
+
+const formatExportTimestamp = (date = new Date()) => {
+  const parts = new Intl.DateTimeFormat("en-PH", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  })
+    .formatToParts(date)
+    .reduce((result, part) => {
+      if (part.type !== "literal") {
+        result[part.type] = part.value;
+      }
+      return result;
+    }, {});
+
+  const milliseconds = String(date.getMilliseconds()).padStart(3, "0");
+
+  return `${parts.year}${parts.month}${parts.day}_${parts.hour}${parts.minute}${parts.second}_${milliseconds}`;
+};
+
+const formatFilenameDateRange = (value) => {
+  const text = String(value ?? "").trim();
+
+  if (!text || /^(all|all time|all dates)$/i.test(text)) {
+    return "all_time";
+  }
+
+  return (
+    text
+      .replace(/\s+to\s+/gi, "_to_")
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^[_-]+|[_-]+$/g, "") || "all_time"
+  );
+};
+
+const fileBaseName = (meta = {}) => {
+  const filters = Array.isArray(meta.filters) ? meta.filters : [];
+
+  const dateRange = filters.find(
+    ([label]) =>
+      String(label ?? "")
+        .trim()
+        .toLowerCase() === "date range",
+  )?.[1];
+
+  const isAllRecords =
+    String(meta.scopeLabel ?? "")
+      .trim()
+      .toLowerCase() === "all records";
+
+  const keyFilterParts = isAllRecords
+    ? ["all_records"]
+    : filters.reduce((parts, [label, value]) => {
+        const normalizedLabel = String(label ?? "")
+          .trim()
+          .toLowerCase();
+        const normalizedValue = String(value ?? "").trim();
+
+        if (normalizedLabel === "date range" || !normalizedValue) {
+          return parts;
+        }
+
+        if (normalizedLabel === "search") {
+          if (!/^all(?:\s|$)/i.test(normalizedValue)) {
+            parts.push("search_filtered");
+          }
+          return parts;
+        }
+
+        if (/^all(?:\s|$)/i.test(normalizedValue)) {
+          return parts;
+        }
+
+        parts.push(
+          `${sanitizeFilenamePart(normalizedLabel)}_${sanitizeFilenamePart(normalizedValue)}`,
+        );
+
+        return parts;
+      }, []);
+
+  if (keyFilterParts.length === 0) {
+    keyFilterParts.push("current_filters");
+  }
+
+  const dateRangePart = isAllRecords
+    ? "all_time"
+    : formatFilenameDateRange(dateRange);
+
+  return `wisdom_stock_movements_${keyFilterParts.join("_")}_${dateRangePart}_exported_${formatExportTimestamp()}`;
+};
 
 const saveBlob = async ({ blob, fileName }) => {
   const url = URL.createObjectURL(blob);
@@ -170,7 +270,7 @@ const exportXlsx = async ({ rows, meta }) => {
 
   await saveBlob({
     blob: new Blob([buffer], { type: XLSX_MIME }),
-    fileName: `${fileBaseName(meta.dateKey)}.xlsx`
+    fileName: `${fileBaseName(meta)}.xlsx`,
   });
 };
 
@@ -193,7 +293,7 @@ const exportCsv = async ({ rows, meta }) => {
     blob: new Blob([`\uFEFF${csv}`], {
       type: "text/csv;charset=utf-8",
     }),
-    fileName: `${fileBaseName(meta.dateKey)}.csv`
+    fileName: `${fileBaseName(meta)}.csv`,
   });
 };
 
@@ -233,12 +333,9 @@ const exportPdf = async ({ rows, meta }) => {
     const row = Math.floor(index / 3);
     const x = margin + column * ((pageWidth - margin * 2) / 3);
     const y = metaY + row * 4;
-    doc.text(
-      `${pdfSafeText(label)}: ${pdfSafeText(value || "All")}`,
-      x,
-      y,
-      { maxWidth: (pageWidth - margin * 2) / 3 - 4 },
-    );
+    doc.text(`${pdfSafeText(label)}: ${pdfSafeText(value || "All")}`, x, y, {
+      maxWidth: (pageWidth - margin * 2) / 3 - 4,
+    });
   });
 
   const metadataLines = Math.max(1, Math.ceil(metadata.length / 3));
@@ -297,7 +394,7 @@ const exportPdf = async ({ rows, meta }) => {
 
   await saveBlob({
     blob: doc.output("blob"),
-    fileName: `${fileBaseName(meta.dateKey)}.pdf`
+    fileName: `${fileBaseName(meta)}.pdf`,
   });
 };
 
@@ -350,9 +447,11 @@ const exportDocx = async ({ rows, meta }) => {
     }),
   ];
 
-  (Array.isArray(meta.filters) ? meta.filters : []).forEach(([label, value]) => {
-    children.push(docxParagraph(`${label}: ${value || "All"}`, { size: 15 }));
-  });
+  (Array.isArray(meta.filters) ? meta.filters : []).forEach(
+    ([label, value]) => {
+      children.push(docxParagraph(`${label}: ${value || "All"}`, { size: 15 }));
+    },
+  );
 
   children.push(
     new Paragraph({
@@ -444,7 +543,7 @@ const exportDocx = async ({ rows, meta }) => {
 
   await saveBlob({
     blob: await Packer.toBlob(document),
-    fileName: `${fileBaseName(meta.dateKey)}.docx`
+    fileName: `${fileBaseName(meta)}.docx`,
   });
 };
 

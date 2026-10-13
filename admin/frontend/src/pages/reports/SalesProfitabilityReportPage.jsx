@@ -98,19 +98,75 @@ const getExportFilenamePart = (value) =>
 
 const getExportDateFilenamePart = (dateFilter, customStart, customEnd) => {
   if (dateFilter === "custom") {
-    return `${customStart || "start"}_to_${customEnd || "end"}`;
+    if (customStart && customEnd) {
+      return `${customStart}_to_${customEnd}`;
+    }
+
+    if (customStart) return `from_${customStart}`;
+    if (customEnd) return `up_to_${customEnd}`;
+
+    return "all_time";
   }
 
-  const labels = {
-    all: "all_time",
-    today: "today",
-    yesterday: "yesterday",
-    this_week: "this_week",
-    this_month: "this_month",
-    this_year: "this_year",
+  if (dateFilter === "all") {
+    return "all_time";
+  }
+
+  const dateParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const values = Object.fromEntries(
+    dateParts
+      .filter((part) => ["year", "month", "day"].includes(part.type))
+      .map((part) => [part.type, part.value]),
+  );
+
+  const todayKey = `${values.year}-${values.month}-${values.day}`;
+  const [year, month, day] = todayKey.split("-").map(Number);
+
+  const shiftDateKey = (dateKey, days) => {
+    const [dateYear, dateMonth, dateDay] = dateKey.split("-").map(Number);
+
+    return new Date(Date.UTC(dateYear, dateMonth - 1, dateDay + days))
+      .toISOString()
+      .slice(0, 10);
   };
 
-  return labels[dateFilter] || getExportFilenamePart(dateFilter);
+  if (dateFilter === "today") {
+    return todayKey;
+  }
+
+  if (dateFilter === "yesterday") {
+    return shiftDateKey(todayKey, -1);
+  }
+
+  if (dateFilter === "this_week") {
+    const weekday = new Date(`${todayKey}T00:00:00Z`).getUTCDay();
+    const mondayOffset = weekday === 0 ? -6 : 1 - weekday;
+    const startDate = shiftDateKey(todayKey, mondayOffset);
+    const endDate = shiftDateKey(startDate, 6);
+
+    return `${startDate}_to_${endDate}`;
+  }
+
+  if (dateFilter === "this_month") {
+    const startDate = `${values.year}-${values.month}-01`;
+    const endDate = new Date(Date.UTC(year, month, 0))
+      .toISOString()
+      .slice(0, 10);
+
+    return `${startDate}_to_${endDate}`;
+  }
+
+  if (dateFilter === "this_year") {
+    return `${year}-01-01_to_${year}-12-31`;
+  }
+
+  return getExportFilenamePart(dateFilter);
 };
 
 const getExportDateRangeLabel = (dateFilter, customStart, customEnd) => {
@@ -465,15 +521,46 @@ export default function SalesProfitabilityReportPage() {
     const orderTypeFilenamePart =
       orderType === "all" ? "all_orders" : getExportFilenamePart(orderType);
 
+    const searchFilenamePart = String(debouncedSearch || "").trim()
+      ? "search_filtered"
+      : "all_records";
+
     const dateFilenamePart = getExportDateFilenamePart(
       dateFilter,
       customStart,
       customEnd,
     );
 
-    const exportTimestamp = new Date().getTime();
+    const exportNow = new Date();
 
-    const fileName = `profitability_report_${orderTypeFilenamePart}_${dateFilenamePart}_${exportTimestamp}.xlsx`;
+    const timestampParts = new Intl.DateTimeFormat("en-PH", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(exportNow)
+      .reduce((parts, part) => {
+        if (part.type !== "literal") {
+          parts[part.type] = part.value;
+        }
+
+        return parts;
+      }, {});
+
+    const exportTimestamp =
+      `${timestampParts.year}${timestampParts.month}${timestampParts.day}` +
+      `_${timestampParts.hour}${timestampParts.minute}${timestampParts.second}` +
+      `_${String(exportNow.getMilliseconds()).padStart(3, "0")}`;
+
+    const fileName =
+      `wisdom_profitability_completed_orders_` +
+      `order_type_${orderTypeFilenamePart}_${searchFilenamePart}_` +
+      `${dateFilenamePart}_exported_${exportTimestamp}.xlsx`;
 
     let saveHandle = null;
 

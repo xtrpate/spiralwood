@@ -445,36 +445,90 @@ export default function SalesReportPage() {
     let saveHandle = null;
 
     try {
-      const channelFilenamePart =
-        String(appliedChannel || "all")
+      const sanitizeFilenamePart = (value, fallback) =>
+        String(value ?? "")
           .trim()
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, "_")
-          .replace(/^_+|_+$/g, "") || "all_channels";
+          .replace(/^_+|_+$/g, "") || fallback;
 
-      const paymentFilenamePart =
-        String(appliedPayment || "all")
-          .trim()
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "_")
-          .replace(/^_+|_+$/g, "") || "all_payments";
+      const channelFilenamePart = sanitizeFilenamePart(
+        appliedChannel,
+        "all_channels",
+      );
 
-      const dateFilenamePart =
-        appliedPeriod === "custom"
-          ? `${appliedFrom || "start"}_to_${appliedTo || "end"}`
-          : appliedPeriod === "daily"
-            ? "today"
-            : appliedPeriod === "weekly"
-              ? "this_week"
-              : appliedPeriod === "monthly"
-                ? "this_month"
-                : appliedPeriod === "yearly"
-                  ? "this_year"
-                  : "report_period";
+      const paymentFilenamePart = sanitizeFilenamePart(
+        appliedPayment,
+        "all_payments",
+      );
 
-      const exportTimestamp = new Date().getTime();
+      const { year, month, day } = getManilaDateParts();
 
-      const fileName = `wisdom_sales_report_${channelFilenamePart}_${paymentFilenamePart}_${dateFilenamePart}_${exportTimestamp}.xlsx`;
+      const todayKey = toCalendarYMD(year, month, day);
+
+      let dateFilenamePart = "all_time";
+
+      if (appliedPeriod === "custom") {
+        dateFilenamePart =
+          appliedFrom && appliedTo
+            ? `${appliedFrom}_to_${appliedTo}`
+            : appliedFrom
+              ? `from_${appliedFrom}`
+              : appliedTo
+                ? `up_to_${appliedTo}`
+                : "all_time";
+      } else if (appliedPeriod === "daily") {
+        dateFilenamePart = todayKey;
+      } else if (appliedPeriod === "weekly") {
+        const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+
+        const mondayOffset = weekday === 0 ? -6 : 1 - weekday;
+        const startDate = shiftCalendarDate(year, month, day, mondayOffset);
+        const endDate = shiftCalendarDate(year, month, day, mondayOffset + 6);
+
+        dateFilenamePart = `${startDate}_to_${endDate}`;
+      } else if (appliedPeriod === "monthly") {
+        const startDate = toCalendarYMD(year, month, 1);
+        const endDate = new Date(Date.UTC(year, month, 0))
+          .toISOString()
+          .slice(0, 10);
+
+        dateFilenamePart = `${startDate}_to_${endDate}`;
+      } else if (appliedPeriod === "yearly") {
+        dateFilenamePart = `${year}-01-01_to_${year}-12-31`;
+      }
+
+      const exportNow = new Date();
+
+      const timestampParts = new Intl.DateTimeFormat("en-PH", {
+        timeZone: "Asia/Manila",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+      })
+        .formatToParts(exportNow)
+        .reduce((parts, part) => {
+          if (part.type !== "literal") {
+            parts[part.type] = part.value;
+          }
+
+          return parts;
+        }, {});
+
+      const exportTimestamp =
+        `${timestampParts.year}${timestampParts.month}${timestampParts.day}` +
+        `_${timestampParts.hour}${timestampParts.minute}${timestampParts.second}` +
+        `_${String(exportNow.getMilliseconds()).padStart(3, "0")}`;
+
+      const fileName =
+        `wisdom_sales_performance_channel_${channelFilenamePart}_` +
+        `payment_${paymentFilenamePart}_${dateFilenamePart}_` +
+        `exported_${exportTimestamp}.xlsx`;
+
       /*
        * IMPORTANT:
        * Open Save As BEFORE any awaited API request so the browser

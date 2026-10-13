@@ -636,7 +636,7 @@ const getExportDateFilterLabel = (dateFilter, customStart, customEnd) => {
   }
 
   if (dateFilter === "today") {
-    return formatExportDate(today);
+    return formatFilenameDate(now);
   }
 
   if (dateFilter === "yesterday") {
@@ -722,7 +722,7 @@ const getExportDateFilenamePart = (dateFilter, customStart, customEnd) => {
     const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
 
-    return `yesterday_${formatFilenameDate(yesterday)}`;
+    return formatFilenameDate(yesterday);
   }
 
   if (dateFilter === "this_week") {
@@ -767,7 +767,7 @@ const getExportDateFilenamePart = (dateFilter, customStart, customEnd) => {
     }
   }
 
-  return "all_dates";
+  return "all_time";
 };
 
 const ORDER_STATUS_FILTER_OPTIONS = [
@@ -1031,24 +1031,26 @@ export default function TransactionReportPage() {
       return;
     }
 
-    const searchFilenamePart = getExportFilenamePart(search || "all_records");
+    const subreportFilenamePart =
+      reportType === "orders" ? "orders" : "cancellations";
 
-    const channelFilenamePart =
+    const searchFilenamePart = String(search || "").trim()
+      ? "search_filtered"
+      : "all_records";
+
+    const keyFilterParts =
       reportType === "orders"
-        ? getExportFilenamePart(channelFilter || "all_channels")
-        : "";
-
-    const statusFilenamePart =
-      reportType === "orders"
-        ? getExportFilenamePart(statusFilter || "all_statuses")
-        : "";
-
-    const cancellationOrderTypeFilenamePart =
-      reportType === "cancellations"
-        ? getExportFilenamePart(
-            cancellationOrderTypeFilter || "all_order_types",
-          )
-        : "";
+        ? [
+            `channel_${getExportFilenamePart(channelFilter || "all_channels")}`,
+            `status_${getExportFilenamePart(statusFilter || "all_statuses")}`,
+            searchFilenamePart,
+          ]
+        : [
+            `order_type_${getExportFilenamePart(
+              cancellationOrderTypeFilter || "all_order_types",
+            )}`,
+            searchFilenamePart,
+          ];
 
     const dateFilenamePart = getExportDateFilenamePart(
       dateFilter,
@@ -1056,12 +1058,36 @@ export default function TransactionReportPage() {
       customEnd,
     );
 
-    const exportTimestamp = new Date().getTime();
+    const exportNow = new Date();
+
+    const timestampParts = new Intl.DateTimeFormat("en-PH", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(exportNow)
+      .reduce((parts, part) => {
+        if (part.type !== "literal") {
+          parts[part.type] = part.value;
+        }
+
+        return parts;
+      }, {});
+
+    const exportTimestamp =
+      `${timestampParts.year}${timestampParts.month}${timestampParts.day}` +
+      `_${timestampParts.hour}${timestampParts.minute}${timestampParts.second}` +
+      `_${String(exportNow.getMilliseconds()).padStart(3, "0")}`;
 
     const fileName =
-      reportType === "orders"
-        ? `transaction_report_orders_${searchFilenamePart}_${channelFilenamePart}_${statusFilenamePart}_${dateFilenamePart}_${exportTimestamp}.xlsx`
-        : `transaction_report_cancellations_${searchFilenamePart}_${cancellationOrderTypeFilenamePart}_${dateFilenamePart}_${exportTimestamp}.xlsx`;
+      `wisdom_transactions_${subreportFilenamePart}_` +
+      `${keyFilterParts.join("_")}_${dateFilenamePart}_` +
+      `exported_${exportTimestamp}.xlsx`;
 
     let saveHandle = null;
 

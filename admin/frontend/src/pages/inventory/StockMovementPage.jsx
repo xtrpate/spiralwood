@@ -96,9 +96,7 @@ const getPhilippineDateKey = (value = new Date()) => {
 };
 
 const shiftDateKey = (dateKey, days) => {
-  const [year, month, day] = String(dateKey)
-    .split("-")
-    .map(Number);
+  const [year, month, day] = String(dateKey).split("-").map(Number);
 
   return new Date(Date.UTC(year, month - 1, day + days))
     .toISOString()
@@ -122,7 +120,9 @@ const formatDimension = (value) => {
 const formatMaterialSpecification = (row = {}) => {
   if (!row.material_name) return "";
 
-  const form = String(row.material_form || "").trim().toLowerCase();
+  const form = String(row.material_form || "")
+    .trim()
+    .toLowerCase();
   const formLabel = MATERIAL_FORM_LABELS[form] || "";
   const length = formatDimension(row.length_mm);
   const width = formatDimension(row.width_mm);
@@ -254,8 +254,8 @@ export default function StockMovementPage() {
         setProducts(
           (r.data.products || []).filter(
             (product) =>
-              String(product.type || "standard").toLowerCase() !== "blueprint" &&
-              Number(product.is_active ?? 1) === 1,
+              String(product.type || "standard").toLowerCase() !==
+                "blueprint" && Number(product.is_active ?? 1) === 1,
           ),
         ),
       );
@@ -339,9 +339,8 @@ export default function StockMovementPage() {
   const handleMovementTypeChange = (value) => {
     setForm((current) => {
       const material =
-        rawMats.find(
-          (row) => Number(row.id) === Number(current.material_id),
-        ) || null;
+        rawMats.find((row) => Number(row.id) === Number(current.material_id)) ||
+        null;
 
       return {
         ...current,
@@ -480,9 +479,13 @@ export default function StockMovementPage() {
       }));
 
       const dateRange =
-        filters.from || filters.to
-          ? `${filters.from || "Beginning"} to ${filters.to || "Today"}`
-          : "All time";
+        filters.from && filters.to
+          ? `${filters.from} to ${filters.to}`
+          : filters.from
+            ? `From ${filters.from}`
+            : filters.to
+              ? `Up to ${filters.to}`
+              : "All time";
 
       const exportFilters =
         exportScope === "filtered"
@@ -582,8 +585,7 @@ export default function StockMovementPage() {
   const requiresTraceability = ["adjustment", "return"].includes(form.type);
   const requiresSupplierReference =
     form.type === "in" && isMaterialTarget && Boolean(form.supplier_id);
-  const requiresReference =
-    requiresTraceability || requiresSupplierReference;
+  const requiresReference = requiresTraceability || requiresSupplierReference;
   const selectedCurrentStock = isMaterialTarget
     ? selectedOnHand
     : isProductTarget
@@ -1201,9 +1203,7 @@ export default function StockMovementPage() {
                         `Order #${detailsRow.order_id}`}
                     </button>
                     {detailsRow.customer_name && (
-                      <div style={detailsMuted}>
-                        {detailsRow.customer_name}
-                      </div>
+                      <div style={detailsMuted}>{detailsRow.customer_name}</div>
                     )}
                     {detailsRow.order_status && (
                       <div style={detailsMuted}>
@@ -1229,10 +1229,9 @@ export default function StockMovementPage() {
                     <div style={detailsValue}>
                       #{detailsRow.reservation_id}
                       {detailsRow.reservation_status
-                        ? ` · ${String(detailsRow.reservation_status).replaceAll(
-                            "_",
-                            " ",
-                          )}`
+                        ? ` · ${String(
+                            detailsRow.reservation_status,
+                          ).replaceAll("_", " ")}`
                         : ""}
                     </div>
                   </div>
@@ -1241,9 +1240,7 @@ export default function StockMovementPage() {
                 {detailsRow.supplier_name && (
                   <div style={detailsField}>
                     <div style={detailsLabel}>Supplier</div>
-                    <div style={detailsValue}>
-                      {detailsRow.supplier_name}
-                    </div>
+                    <div style={detailsValue}>{detailsRow.supplier_name}</div>
                   </div>
                 )}
 
@@ -1448,31 +1445,34 @@ export default function StockMovementPage() {
                 />
               </div>
 
-              {form.type === "adjustment" &&
-                adjustmentDifference !== null && (
-                  <div style={availabilityBox}>
-                    <div>
-                      <span style={availabilityLabel}>Current</span>
-                      <strong>
-                        {formatQuantity(selectedCurrentStock)} {adjustmentUnit}
-                      </strong>
-                    </div>
-                    <div>
-                      <span style={availabilityLabel}>New</span>
-                      <strong>
-                        {formatQuantity(adjustmentRequestedQuantity)} {adjustmentUnit}
-                      </strong>
-                    </div>
-                    <div>
-                      <span style={availabilityLabel}>Difference</span>
-                      <strong>{adjustmentDifferenceLabel}</strong>
-                    </div>
+              {form.type === "adjustment" && adjustmentDifference !== null && (
+                <div style={availabilityBox}>
+                  <div>
+                    <span style={availabilityLabel}>Current</span>
+                    <strong>
+                      {formatQuantity(selectedCurrentStock)} {adjustmentUnit}
+                    </strong>
                   </div>
-                )}
+                  <div>
+                    <span style={availabilityLabel}>New</span>
+                    <strong>
+                      {formatQuantity(adjustmentRequestedQuantity)}{" "}
+                      {adjustmentUnit}
+                    </strong>
+                  </div>
+                  <div>
+                    <span style={availabilityLabel}>Difference</span>
+                    <strong>{adjustmentDifferenceLabel}</strong>
+                  </div>
+                </div>
+              )}
 
               <div style={fieldGroup}>
                 <label style={label}>
-                  Reference {requiresReference ? "*" : (
+                  Reference{" "}
+                  {requiresReference ? (
+                    "*"
+                  ) : (
                     <span style={optionalText}>Optional</span>
                   )}
                 </label>
@@ -1552,8 +1552,8 @@ export default function StockMovementPage() {
             </h2>
 
             <p style={{ ...dialogText, marginBottom: 16 }}>
-              Choose the scope and file format. Every format uses the same
-              stock movement dataset and Philippine-time filters.
+              Choose the scope and file format. Every format uses the same stock
+              movement dataset and Philippine-time filters.
             </p>
 
             <div style={exportScopeList}>

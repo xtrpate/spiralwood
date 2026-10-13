@@ -41,14 +41,14 @@ const getExportDateFilterLabel = (dateFilter, customStart, customEnd) => {
   }
 
   if (dateFilter === "today") {
-    return formatExportDate(today);
+    return formatFilenameDate(now);
   }
 
   if (dateFilter === "yesterday") {
-    const yesterday = new Date(today);
+    const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
 
-    return formatExportDate(yesterday);
+    return formatFilenameDate(yesterday);
   }
 
   if (dateFilter === "this_week") {
@@ -172,7 +172,7 @@ const getExportDateFilenamePart = (dateFilter, customStart, customEnd) => {
     }
   }
 
-  return "all_dates";
+  return "all_time";
 };
 
 const pdfFormatDateTime = (value) => {
@@ -1297,9 +1297,20 @@ export default function StockReportPage() {
 
       XLSX.utils.book_append_sheet(workbook, sheet, reportLabel);
 
-      const inventoryFilenamePart = getExportFilenamePart(
-        inventoryType || "all_inventory",
-      );
+      const subreportFilenamePart =
+        reportType === "movements" ? "movements" : "transfers";
+
+      const keyFilterParts =
+        reportType === "movements"
+          ? [
+              getExportFilenamePart(inventoryType || "all_inventory"),
+              getExportFilenamePart(movementType || "all_movement_types"),
+            ]
+          : [];
+
+      keyFilterParts.push(search.trim() ? "search_filtered" : "all_records");
+
+      const keyFiltersFilenamePart = keyFilterParts.join("_");
 
       const dateFilenamePart = getExportDateFilenamePart(
         dateFilter,
@@ -1307,9 +1318,36 @@ export default function StockReportPage() {
         customEnd,
       );
 
-      const exportTimestamp = new Date().getTime();
+      const exportNow = new Date();
 
-      const fileName = `stock_report_${reportType}_${inventoryFilenamePart}_${dateFilenamePart}_${exportTimestamp}.xlsx`;
+      const timestampParts = new Intl.DateTimeFormat("en-PH", {
+        timeZone: "Asia/Manila",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+      })
+        .formatToParts(exportNow)
+        .reduce((parts, part) => {
+          if (part.type !== "literal") {
+            parts[part.type] = part.value;
+          }
+
+          return parts;
+        }, {});
+
+      const exportTimestamp =
+        `${timestampParts.year}${timestampParts.month}${timestampParts.day}` +
+        `_${timestampParts.hour}${timestampParts.minute}${timestampParts.second}` +
+        `_${String(exportNow.getMilliseconds()).padStart(3, "0")}`;
+
+      const fileName =
+        `wisdom_stock_report_${subreportFilenamePart}_` +
+        `${keyFiltersFilenamePart}_${dateFilenamePart}_` +
+        `exported_${exportTimestamp}.xlsx`;
 
       if (window.showSaveFilePicker) {
         const handle = await window.showSaveFilePicker({

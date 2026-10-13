@@ -619,13 +619,11 @@ const getOperationsExportDateFilenamePart = (
   const todayKey = getPhilippineDateKey();
 
   if (normalizedFilter === "today") {
-    return `today_${todayKey}`;
+    return todayKey;
   }
 
   if (normalizedFilter === "yesterday") {
-    const yesterdayKey = shiftDateKey(todayKey, -1);
-
-    return `yesterday_${yesterdayKey}`;
+    return shiftDateKey(todayKey, -1);
   }
 
   if (normalizedFilter === "this_week") {
@@ -683,7 +681,7 @@ const getOperationsExportDateFilenamePart = (
     return "custom_date";
   }
 
-  return "all_dates";
+  return "all_time";
 };
 
 /*
@@ -2175,9 +2173,15 @@ export default function OperationsReportPage({ fixedOperationType = null }) {
 
       XLSX.utils.book_append_sheet(workbook, sheet, activeOperation.label);
 
+      const subreportFilenamePart = getExportFilenamePart(operationType);
+
       const statusFilenamePart = getExportFilenamePart(
         statusFilter === "all" ? "all_statuses" : statusFilter,
       );
+
+      const searchFilenamePart = String(debouncedSearch || "").trim()
+        ? "search_filtered"
+        : "all_records";
 
       const dateFilenamePart = getOperationsExportDateFilenamePart(
         dateFilter,
@@ -2185,9 +2189,36 @@ export default function OperationsReportPage({ fixedOperationType = null }) {
         customEnd,
       );
 
-      const exportTimestamp = new Date().getTime();
+      const exportNow = new Date();
 
-      const fileName = `operations_report_${operationType}_${statusFilenamePart}_${dateFilenamePart}_${exportTimestamp}.xlsx`;
+      const timestampParts = new Intl.DateTimeFormat("en-PH", {
+        timeZone: "Asia/Manila",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+      })
+        .formatToParts(exportNow)
+        .reduce((parts, part) => {
+          if (part.type !== "literal") {
+            parts[part.type] = part.value;
+          }
+
+          return parts;
+        }, {});
+
+      const exportTimestamp =
+        `${timestampParts.year}${timestampParts.month}${timestampParts.day}` +
+        `_${timestampParts.hour}${timestampParts.minute}${timestampParts.second}` +
+        `_${String(exportNow.getMilliseconds()).padStart(3, "0")}`;
+
+      const fileName =
+        `wisdom_operations_${subreportFilenamePart}_` +
+        `status_${statusFilenamePart}_${searchFilenamePart}_` +
+        `${dateFilenamePart}_exported_${exportTimestamp}.xlsx`;
 
       if (window.showSaveFilePicker) {
         const handle = await window.showSaveFilePicker({
