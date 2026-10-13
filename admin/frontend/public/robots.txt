@@ -2,4 +2,4 @@
 User-agent: *
 Disallow:
 
-Sitemap: https://spiralwoodservice.onrender.com/sitemap.xml
+Sitemap: https://www.spiralwoodservice.com/sitemap.xml
