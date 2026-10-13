@@ -9,8 +9,26 @@ export default function ProtectedRoute({
   requiredPermission = null,
   children,
 }) {
-  const { user, hasPermission } = useAuthStore();
+  const { user, hasPermission, authInitialized } = useAuthStore();
   const location = useLocation();
+
+  // Wait until the server has checked the HttpOnly session cookie.
+  if (!authInitialized) {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        style={{
+          minHeight: "40vh",
+          display: "grid",
+          placeItems: "center",
+          padding: "32px 16px",
+        }}
+      >
+        Loading...
+      </div>
+    );
+  }
 
   if (!user) {
     return <Navigate to="/login" replace state={{ from: location }} />;

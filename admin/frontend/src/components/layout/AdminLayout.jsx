@@ -230,6 +230,11 @@ const NAV_ITEMS = [
         path: "/admin/reports/current-inventory?tab=ready_made",
         icon: Package,
       },
+      {
+        label: "Inventory Analytics",
+        path: "/admin/reports/inventory-analytics",
+        icon: BarChart3,
+      },
     ],
   },
 

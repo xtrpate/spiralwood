@@ -2,7 +2,13 @@
  * context/AuthContext.jsx
  * Customer portal — matches wisdom_db + customer.auth.js
  */
-import { createContext, useContext, useState, useEffect } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from "react";
 import axios from "axios";
 
 axios.defaults.baseURL =
@@ -11,31 +17,80 @@ axios.defaults.baseURL =
     ? "http://localhost:5000/api"
     : "https://spiralwoodservices.onrender.com/api");
 
+// Use the server-managed HttpOnly session cookie for authentication.
+axios.defaults.withCredentials = true;
+delete axios.defaults.headers.common.Authorization;
+
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem("cust_token"));
   const [loading, setLoading] = useState(true);
 
+  const clearCustomerProfile = useCallback(() => {
+    localStorage.removeItem("cust_user");
+    sessionStorage.removeItem("cust_user");
+
+    // Remove older cached customer profile keys.
+    localStorage.removeItem("user");
+    localStorage.removeItem("wisdom_user");
+    sessionStorage.removeItem("user");
+    sessionStorage.removeItem("wisdom_user");
+
+    setUser(null);
+  }, []);
+
   useEffect(() => {
-    if (token) {
-      axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-      const stored = localStorage.getItem("cust_user");
-      if (stored) setUser(JSON.parse(stored));
-    } else {
-      delete axios.defaults.headers.common["Authorization"];
-    }
-    setLoading(false);
-  }, [token]);
+    let active = true;
+
+    const restoreSession = async () => {
+      try {
+        // baseURL already ends in /api.
+        // The browser sends the HttpOnly cookie automatically.
+        const response = await axios.get("/auth/me");
+
+        if (!active) return;
+
+        const currentUser = response.data?.user ?? response.data;
+
+        if (currentUser?.role !== "customer") {
+          clearCustomerProfile();
+          return;
+        }
+
+        setUser(currentUser);
+        // Keep the customer profile in React memory only.
+      } catch (error) {
+        if (!active) return;
+
+        const status = error?.response?.status;
+
+        if (status === 401 || status === 403) {
+          clearCustomerProfile();
+        }
+
+        // Do not treat a network failure as proof that a session
+        // is invalid. Keep the UI responsive while reporting no
+        // authenticated user until validation succeeds.
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    restoreSession();
+
+    return () => {
+      active = false;
+    };
+  }, [clearCustomerProfile]);
 
   const register = async (payload) => {
-    const res = await axios.post("/api/customer/auth/register", payload);
+    const res = await axios.post("/customer/auth/register", payload);
     return res.data;
   };
 
   const verifyOtp = async (email, otp) => {
-    const res = await axios.post("/api/customer/auth/verify-otp", {
+    const res = await axios.post("/customer/auth/verify-otp", {
       email,
       otp,
     });
@@ -43,19 +98,19 @@ export const AuthProvider = ({ children }) => {
   };
 
   const resendOtp = async (email) => {
-    const res = await axios.post("/api/customer/auth/resend-otp", { email });
+    const res = await axios.post("/customer/auth/resend-otp", { email });
     return res.data;
   };
 
   const forgotPassword = async (email) => {
-    const res = await axios.post("/api/customer/auth/forgot-password", {
+    const res = await axios.post("/customer/auth/forgot-password", {
       email,
     });
     return res.data;
   };
 
   const resetPassword = async (email, otp, newPassword) => {
-    const res = await axios.post("/api/customer/auth/reset-password", {
+    const res = await axios.post("/customer/auth/reset-password", {
       email,
       otp,
       new_password: newPassword,
@@ -64,35 +119,38 @@ export const AuthProvider = ({ children }) => {
   };
 
   const login = async (email, password) => {
-    const res = await axios.post("/api/customer/auth/login", {
+    const res = await axios.post("/customer/auth/login", {
       email,
       password,
     });
 
-    const { token: t, user: u } = res.data;
+    const currentUser = res.data?.user;
 
-    localStorage.setItem("cust_token", t);
-    localStorage.setItem("cust_user", JSON.stringify(u));
-    axios.defaults.headers.common["Authorization"] = `Bearer ${t}`;
-    setToken(t);
-    setUser(u);
+    if (!currentUser) {
+      throw new Error("Login response did not contain user information.");
+    }
 
-    return u;
+    // The backend must set the HttpOnly session cookie.
+    // Never store the compatibility JWT returned by the backend.
+    delete axios.defaults.headers.common.Authorization;
+
+    setUser(currentUser);
+    // Keep the customer profile in React memory only.
+
+    return currentUser;
   };
 
-  const logout = () => {
-    localStorage.removeItem("cust_token");
-    localStorage.removeItem("cust_user");
-    delete axios.defaults.headers.common["Authorization"];
-    setToken(null);
-    setUser(null);
+  const logout = async () => {
+    await axios.post("/auth/logout");
+
+    delete axios.defaults.headers.common.Authorization;
+    clearCustomerProfile();
   };
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        token,
         loading,
         login,
         logout,

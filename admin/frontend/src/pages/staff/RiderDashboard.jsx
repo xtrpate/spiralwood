@@ -10,6 +10,7 @@ import {
   Truck,
 } from "lucide-react";
 import api from "../../services/api";
+import useAuthStore from "../../store/authStore";
 import { PH_TIME_ZONE, parseSystemDateTime } from "../../utils/dateTime";
 import { getSocket, subscribeSocketReady } from "../../services/socket";
 import "./RiderScreen.css";
@@ -154,11 +155,16 @@ const amountToCollectLabel = (delivery = {}) => {
 
 export default function RiderDashboard() {
   const navigate = useNavigate();
+  const { user, authInitialized } = useAuthStore();
+
+  const isDeliveryRider =
+    user?.role === "staff" && user?.staff_type === "delivery_rider";
   const [deliveries, setDeliveries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
   const deliveriesRequestRef = useRef(0);
+  const logoutStartedRef = useRef(false);
 
   const todayKey = getPHDateKey();
   const todayLabel = new Date().toLocaleDateString("en-PH", {
@@ -169,47 +175,101 @@ export default function RiderDashboard() {
     year: "numeric",
   });
 
-  const loadDeliveries = useCallback(async ({ silent = false } = {}) => {
-    const requestId = ++deliveriesRequestRef.current;
+  const loadDeliveries = useCallback(
+    async ({ silent = false } = {}) => {
+      if (logoutStartedRef.current) return;
 
-    if (!silent) {
-      setLoading(true);
-      setLoadError("");
-    }
+      const requestId = ++deliveriesRequestRef.current;
 
-    try {
-      const res = await api.get("/pos/deliveries");
-
-      if (requestId !== deliveriesRequestRef.current) return;
-      if (!Array.isArray(res.data)) {
-        throw new Error("Invalid rider deliveries response.");
+      if (!isDeliveryRider) {
+        setDeliveries([]);
+        setLoadError("");
+        setLoading(false);
+        return;
       }
-
-      setDeliveries(res.data);
-      setLoadError("");
-    } catch (err) {
-      if (requestId !== deliveriesRequestRef.current) return;
-
-      console.error("Failed to load rider dashboard data", err);
 
       if (!silent) {
-        setLoadError(
-          err?.response?.data?.message ||
-            "Unable to load your deliveries. Please try again.",
-        );
+        setLoading(true);
+        setLoadError("");
       }
-    } finally {
-      if (requestId === deliveriesRequestRef.current && !silent) {
-        setLoading(false);
+
+      try {
+        const res = await api.get("/pos/deliveries");
+
+        if (requestId !== deliveriesRequestRef.current) return;
+        if (!Array.isArray(res.data)) {
+          throw new Error("Invalid rider deliveries response.");
+        }
+
+        setDeliveries(res.data);
+        setLoadError("");
+      } catch (err) {
+        if (
+          requestId !== deliveriesRequestRef.current ||
+          logoutStartedRef.current
+        ) {
+          return;
+        }
+
+        // A 401 can occur if the session expires while a request is in flight.
+        // Do not report expected authentication failures as dashboard errors.
+        if (err?.response?.status === 401) {
+          return;
+        }
+
+        console.error("Failed to load rider dashboard data", err);
+
+        if (!silent) {
+          setLoadError(
+            err?.response?.data?.message ||
+              "Unable to load your deliveries. Please try again.",
+          );
+        }
+      } finally {
+        if (requestId === deliveriesRequestRef.current && !silent) {
+          setLoading(false);
+        }
       }
-    }
+    },
+    [isDeliveryRider],
+  );
+
+  useEffect(() => {
+    const handleLogoutStarted = () => {
+      logoutStartedRef.current = true;
+
+      // Invalidate any request already in progress.
+      deliveriesRequestRef.current += 1;
+    };
+
+    window.addEventListener("wisdom:logout-started", handleLogoutStarted);
+
+    return () => {
+      window.removeEventListener("wisdom:logout-started", handleLogoutStarted);
+    };
   }, []);
 
   useEffect(() => {
+    if (!authInitialized) return;
+
+    if (!isDeliveryRider) {
+      deliveriesRequestRef.current += 1;
+      setDeliveries([]);
+      setLoadError("");
+      setLoading(false);
+      return;
+    }
+
+    logoutStartedRef.current = false;
+
     loadDeliveries();
-  }, [loadDeliveries]);
+  }, [authInitialized, isDeliveryRider, loadDeliveries]);
 
   useEffect(() => {
+    if (!authInitialized || !isDeliveryRider) {
+      return undefined;
+    }
+
     const handleAssignmentChanged = () => {
       loadDeliveries({ silent: true });
     };
@@ -275,7 +335,7 @@ export default function RiderDashboard() {
 
       unsubscribeReady();
     };
-  }, [loadDeliveries]);
+  }, [authInitialized, isDeliveryRider, loadDeliveries]);
 
   const inTransitDeliveries = useMemo(
     () =>

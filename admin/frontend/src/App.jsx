@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import api, { buildAssetUrl } from "./services/api";
 
 import {
@@ -62,6 +62,9 @@ const CancellationsPage = lazy(
 const SalesReportPage = lazy(() => import("./pages/sales/SalesReportPage"));
 const CurrentInventoryReportPage = lazy(
   () => import("./pages/reports/CurrentInventoryReportPage"),
+);
+const InventoryAnalyticsReportsPage = lazy(
+  () => import("./pages/reports/InventoryAnalyticsReportsPage"),
 );
 const DailyStockInReportPage = lazy(
   () => import("./pages/reports/DailyStockInReportPage"),
@@ -197,11 +200,16 @@ window.addEventListener("error", (e) => {
 });
 
 function RequireAuth({ children, roles }) {
-  const { user } = useAuthStore();
+  const { user, authInitialized } = useAuthStore();
   const location = useLocation();
 
+  // Wait for the server to validate the HttpOnly session cookie.
+  if (!authInitialized) {
+    return <RouteLoadingFallback />;
+  }
+
   if (!user) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
   if (roles && !roles.includes(user.role)) {
@@ -229,7 +237,11 @@ function RequirePermission({ permission, children }) {
 }
 
 function RequireStaffType({ children, allowedTypes }) {
-  const { user } = useAuthStore();
+  const { user, authInitialized } = useAuthStore();
+
+  if (!authInitialized) {
+    return <RouteLoadingFallback />;
+  }
 
   if (!user) {
     return <Navigate to="/login" replace />;
@@ -251,7 +263,11 @@ function RequireStaffType({ children, allowedTypes }) {
 }
 
 function RequireStaffOnlyType({ children, allowedTypes }) {
-  const { user } = useAuthStore();
+  const { user, authInitialized } = useAuthStore();
+
+  if (!authInitialized) {
+    return <RouteLoadingFallback />;
+  }
 
   if (!user) {
     return <Navigate to="/login" replace />;
@@ -340,6 +356,24 @@ function CustomCartEditRoute() {
 }
 
 export default function App() {
+  const refreshMe = useAuthStore((state) => state.refreshMe);
+  const authInitializationStarted = useRef(false);
+
+  useEffect(() => {
+    // Prevent duplicate initialization during React development
+    // effect replays within the same App component lifecycle.
+    if (authInitializationStarted.current) {
+      return;
+    }
+
+    authInitializationStarted.current = true;
+
+    // Validate the server-managed session before protected routes
+    // can grant access. Do not trust a browser-stored user profile
+    // or JWT as proof of authentication.
+    void refreshMe();
+  }, [refreshMe]);
+
   useEffect(() => {
     api
       .get("/website/settings")
@@ -756,6 +790,15 @@ export default function App() {
                     element={
                       <RequirePermission permission="stock_movements.view">
                         <CurrentInventoryReportPage />
+                      </RequirePermission>
+                    }
+                  />
+
+                  <Route
+                    path="reports/inventory-analytics"
+                    element={
+                      <RequirePermission permission="stock_movements.view">
+                        <InventoryAnalyticsReportsPage />
                       </RequirePermission>
                     }
                   />

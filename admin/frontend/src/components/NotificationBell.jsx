@@ -268,6 +268,7 @@ export default function NotificationBell({
   const [unreadCount, setUnreadCount] = useState(0);
   const [historyHasMore, setHistoryHasMore] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [logoutStarted, setLogoutStarted] = useState(false);
 
   // WISDOM CUSTOM ORANGE NOTIFICATION BELL V1
   const NOTIFICATION_PAGE_SIZE = 50;
@@ -275,11 +276,30 @@ export default function NotificationBell({
   const markingInFlightRef = useRef(new Set());
   const realtimeNotificationIdsRef = useRef(new Set());
   const isMountedRef = useRef(true);
+  const activeUserIdRef = useRef(user?.id);
+  activeUserIdRef.current = user?.id;
 
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleLogoutStarted = () => {
+      setLogoutStarted(true);
+      setNotifications([]);
+      setUnreadCount(0);
+      setHistoryHasMore(false);
+      setHistoryLoading(false);
+      setOpen(false);
+    };
+
+    window.addEventListener("wisdom:logout-started", handleLogoutStarted);
+
+    return () => {
+      window.removeEventListener("wisdom:logout-started", handleLogoutStarted);
     };
   }, []);
 
@@ -295,34 +315,48 @@ export default function NotificationBell({
   }, []);
 
   const fetchUnreadCount = useCallback(async () => {
+    const requestUserId = user?.id;
+    if (!requestUserId || logoutStarted) return;
+
     try {
       const { data } = await api.get("/tasks/unread-count");
-      if (isMountedRef.current) {
+
+      if (
+        isMountedRef.current &&
+        Number(activeUserIdRef.current) === Number(requestUserId)
+      ) {
         setUnreadCount(Number(data?.notification_count) || 0);
       }
     } catch {
-      // Badge failure must never break the surrounding page.
+      // Expected during session expiry or a request interrupted by logout.
     }
-  }, []);
+  }, [user?.id, logoutStarted]);
 
   const fetchNotifications = useCallback(async () => {
+    const requestUserId = user?.id;
+    if (!requestUserId || logoutStarted) return;
+
     try {
       const { data } = await api.get(
         `/tasks/notifications?limit=${NOTIFICATION_PAGE_SIZE}&offset=0`,
       );
-      if (isMountedRef.current) {
+
+      if (
+        isMountedRef.current &&
+        Number(activeUserIdRef.current) === Number(requestUserId)
+      ) {
         setNotifications((current) => mergeNotifications(current, data));
-        setHistoryHasMore(
-          (hasMore) => hasMore && data.length === NOTIFICATION_PAGE_SIZE,
-        );
+        setHistoryHasMore(data.length === NOTIFICATION_PAGE_SIZE);
       }
     } catch {
-      // A failed notification fetch must never break the surrounding page.
+      // Expected during session expiry or a request interrupted by logout.
     }
-  }, [mergeNotifications]);
+  }, [mergeNotifications, user?.id, logoutStarted]);
 
   const loadOlderNotifications = useCallback(async () => {
-    if (historyLoading || !historyHasMore) return;
+    if (logoutStarted || !user?.id || historyLoading || !historyHasMore) {
+      return;
+    }
 
     setHistoryLoading(true);
     try {
@@ -348,11 +382,34 @@ export default function NotificationBell({
   ]);
 
   useEffect(() => {
+    if (!user?.id || logoutStarted) {
+      setNotifications([]);
+      setUnreadCount(0);
+      setHistoryHasMore(false);
+      setHistoryLoading(false);
+      setOpen(false);
+      return;
+    }
+
+    setHistoryHasMore(true);
     fetchNotifications();
     fetchUnreadCount();
-  }, [fetchNotifications, fetchUnreadCount]);
+
+    const intervalId = setInterval(() => {
+      fetchNotifications();
+      fetchUnreadCount();
+    }, 30000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [user?.id, logoutStarted, fetchNotifications, fetchUnreadCount]);
 
   useEffect(() => {
+    if (!user?.id || logoutStarted) {
+      return undefined;
+    }
+
     const handleNotificationNew = (payload) => {
       const notificationId = Number(payload?.id);
       const notificationUserId = Number(payload?.user_id);
@@ -419,7 +476,13 @@ export default function NotificationBell({
 
       unsubscribeReady();
     };
-  }, [fetchNotifications, fetchUnreadCount, mergeNotifications, user?.id]);
+  }, [
+    fetchNotifications,
+    fetchUnreadCount,
+    mergeNotifications,
+    user?.id,
+    logoutStarted,
+  ]);
 
   const markAllRead = async () => {
     try {

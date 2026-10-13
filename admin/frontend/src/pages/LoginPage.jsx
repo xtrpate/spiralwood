@@ -109,10 +109,28 @@ export default function LoginPage() {
         // Navigation should not depend on browser storage.
       }
 
-      const nextRoute =
-        user?.role === "customer"
-          ? getCustomerPostLoginRoute(requestedRedirectTo)
-          : requestedRedirectTo || getDefaultRouteForUser(user);
+      const defaultRoute = getDefaultRouteForUser(user);
+      const requestedPath = String(requestedRedirectTo || "").trim();
+
+      let nextRoute = defaultRoute;
+
+      if (user?.role === "customer") {
+        nextRoute = getCustomerPostLoginRoute(requestedPath);
+      } else if (
+        user?.role === "admin" &&
+        (requestedPath === "/change-temporary-password" ||
+          requestedPath === "/admin" ||
+          requestedPath.startsWith("/admin/"))
+      ) {
+        nextRoute = requestedPath;
+      } else if (
+        user?.role === "staff" &&
+        (requestedPath === "/change-temporary-password" ||
+          requestedPath === "/staff" ||
+          requestedPath.startsWith("/staff/"))
+      ) {
+        nextRoute = requestedPath;
+      }
 
       navigate(nextRoute, { replace: true });
     } catch (err) {
