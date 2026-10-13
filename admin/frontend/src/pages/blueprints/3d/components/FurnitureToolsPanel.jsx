@@ -2596,7 +2596,6 @@ export function FurnitureToolsPanel({
                   style={actionInputStyle}
                 >
                   <option value="pair">Double Door Pair</option>
-                  <option value="inset_pair">Inset Pair (Base Cabinet)</option>
                   <option value="single">Single Door</option>
                 </select>
               </label>

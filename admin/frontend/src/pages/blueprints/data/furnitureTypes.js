@@ -1079,28 +1079,16 @@ const COMPONENT_LIBRARY_GROUPS = [
   {
     label: "Panels & Shelves (Parts)",
     items: FURNITURE_PART_TYPES.filter((item) =>
-      ["board_panel", "shelf", "side_panel", "top_panel", "bottom_panel", "back_panel", "divider_panel"].includes(item.partRole),
+      ["board_panel", "shelf", "side_panel", "top_panel", "bottom_panel", "back_panel"].includes(item.partRole),
     ),
   },
   {
     label: "Legs & Supports (Parts)",
     items: FURNITURE_PART_TYPES.filter((item) =>
-      ["leg", "apron_rail", "support_brace", "toe_kick"].includes(item.partRole),
-    ),
-  },
-  {
-    label: "Doors & Drawers (Parts)",
-    items: FURNITURE_PART_TYPES.filter((item) =>
-      ["door", "drawer_front"].includes(item.partRole),
+      ["leg", "apron_rail"].includes(item.partRole),
     ),
   },
   { label: "Chair Parts", items: CHAIR_PART_TYPES },
-  {
-    label: "Bed Parts",
-    items: FURNITURE_PART_TYPES.filter((item) =>
-      ["headboard", "bed_side_rail"].includes(item.partRole),
-    ),
-  },
   { label: "Custom Shape Parts", items: WOODWORKING_PROFILE_TYPES },
   {
     label: "Custom Shapes",

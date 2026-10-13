@@ -487,16 +487,7 @@ export function FurnitureLibraryPanel({
     const mergedGroups = [
       ...COMPONENT_LIBRARY_GROUPS.filter(
         (group) =>
-          !["Custom Shape Parts", "Custom Shapes"].includes(group.label),
-      ).map((group) =>
-        group.label === "Chair Parts"
-          ? {
-              ...group,
-              items: (group.items || []).filter((item) =>
-                ["chair_seat_panel", "chair_back_slat"].includes(item.type),
-              ),
-            }
-          : group,
+          !["Chair Parts", "Custom Shape Parts", "Custom Shapes"].includes(group.label),
       ),
     ];
 

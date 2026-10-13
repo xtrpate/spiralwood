@@ -6,7 +6,7 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
-const read = (pathInRepo) => fs.readFileSync(path.join(root, pathInRepo), 'utf8');
+const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
 const furniture = read('admin/frontend/src/pages/blueprints/data/furnitureTypes.js');
 const library = read('admin/frontend/src/pages/blueprints/3d/components/FurnitureLibraryPanel.jsx');
 const insertion = read('admin/frontend/src/pages/blueprints/hooks/useBlueprintComponentInsertion.js');
@@ -14,9 +14,10 @@ const props = read('admin/frontend/src/pages/blueprints/3d/components/Properties
 
 function literalArray(name, source, context = {}) {
   const match = source.match(new RegExp(`const ${name} = (\\[[\\s\\S]*?\\n\\]);`));
-  assert.ok(match, `${name} array must exist`);
-  return vm.runInNewContext(match[1], context, {timeout: 1200});
+  assert.ok(match, `${name} definition must exist`);
+  return vm.runInNewContext(match[1], context, { timeout: 1200 });
 }
+
 const base = literalArray('FURNITURE_PART_TYPES', furniture);
 const chair = literalArray('CHAIR_PART_TYPES', furniture);
 const groups = literalArray('COMPONENT_LIBRARY_GROUPS', furniture, {
@@ -25,64 +26,42 @@ const groups = literalArray('COMPONENT_LIBRARY_GROUPS', furniture, {
   WOODWORKING_PROFILE_TYPES: [], ROUNDED_BOX_TYPES: [],
   CIRCLE_TYPES: [], TRIANGLE_TYPES: [], CUBE_TYPES: [], TRAPEZOID_TYPES: [],
 });
-const customParts = (a) => Array.from(a, x => ({...x}));
-const partGroups = groups.filter(group => /parts/i.test(group.label) && !/custom/i.test(group.label));
-const exposed = partGroups.flatMap(group => group.label === 'Chair Parts'
-  ? group.items.filter(item => ['chair_seat_panel', 'chair_back_slat'].includes(item.type))
-  : group.items);
-
 const originalTypes = [
   'furniture_board_panel', 'furniture_shelf', 'furniture_leg',
   'furniture_side_panel', 'furniture_top_panel', 'furniture_bottom_panel',
   'furniture_back_panel', 'furniture_apron_rail',
 ];
-const newRoles = new Map([
-  ['furniture_divider_panel','divider_panel'],
-  ['furniture_door_panel','door'],
-  ['furniture_drawer_front','drawer_front'],
-  ['furniture_support_brace','support_brace'],
-  ['furniture_toe_kick_base','toe_kick'],
-  ['furniture_headboard','headboard'],
-  ['furniture_bed_side_rail','bed_side_rail'],
-]);
 
-test('Card B2: 8 existing generic components preserved, plus exactly 7 new generic parts', () => {
-  assert.equal(base.length, 15);
+// Preserve the historical B2 definitions for old saved blueprint compatibility.
+// New Admin insertions must offer only the original eight basic types.
+test('Restore original eight: source keeps the original 8 generic parts unchanged', () => {
   assert.deepEqual(Array.from(base.slice(0, 8), x => x.type), originalTypes);
-  assert.deepEqual(Array.from(base.slice(8), x => x.type), Array.from(newRoles.keys()));
-  for (const obj of base) {
-    assert.ok(obj.w > 0 && obj.h > 0 && obj.d > 0, `positive dimensions for ${obj.type}`);
-    assert.ok(obj.partRole, `explicit structural role for ${obj.type}`);
-  }
-  for (const obj of base.slice(8)) {
-    assert.equal(obj.partRole, newRoles.get(obj.type));
-    assert.equal(obj.unitPrice, 0, `no placeholder sale price for ${obj.type}`);
-    assert.equal(obj.blueprintStyle, 'part');
-  }
+  assert.equal(base.length, 15, 'retain prior definitions for already-saved B2 designs');
   assert.equal(new Set(base.map(x => x.type)).size, 15);
+  for (const x of base) {
+    assert.ok(x.w > 0 && x.h > 0 && x.d > 0);
+    assert.ok(x.partRole);
+  }
 });
 
-test('Card B2: precisely 17 distinct visible parts in the 5 planned groups', () => {
-  assert.deepEqual(Array.from(partGroups, g => [g.label, g.items.length]), [
-    ['Panels & Shelves (Parts)', 7],
-    ['Legs & Supports (Parts)', 4],
-    ['Doors & Drawers (Parts)', 2],
-    ['Chair Parts', 7], // filter of existing seven applied by 3D panel
-    ['Bed Parts', 2],
+test('Restore original eight: only Panels & Shelves (6) and Legs & Supports (2) are displayed', () => {
+  const choices = groups.filter(g => /parts/i.test(g.label) && !/custom/i.test(g.label));
+  assert.deepEqual(Array.from(choices.filter(g => g.label !== 'Chair Parts'), g => [g.label, g.items.length]), [
+    ['Panels & Shelves (Parts)', 6],
+    ['Legs & Supports (Parts)', 2],
   ]);
-  assert.equal(exposed.length, 17);
-  assert.equal(new Set(exposed.map(x => x.type)).size, 17);
-  assert.match(library, /group.label === "Chair Parts"/);
-  assert.match(library, /\["chair_seat_panel", "chair_back_slat"\]\.includes\(item\.type\)/);
-  for (const x of exposed) assert.ok(x.label);
+  assert.match(library, /\["Chair Parts", "Custom Shape Parts", "Custom Shapes"\]\.includes\(group\.label\)/);
+  assert.doesNotMatch(library, /group\.label === "Chair Parts"/);
+  const visible = choices.filter(g => g.label !== 'Chair Parts').flatMap(g => g.items);
+  assert.equal(visible.length, 8);
+  assert.deepEqual(Array.from(visible, x => x.type).sort(), originalTypes.slice().sort());
 });
 
-test('Card B2: legacy chair parts and builders unaffected; manual faces do not auto-animate', () => {
+test('Restore original eight: previously placed B2 parts, naming, chair insertion and builders stay compatible', () => {
   assert.equal(chair.length, 7);
-  assert.equal(base.find(x => x.type === 'furniture_door_panel').partFunction, 'normal');
-  assert.equal(base.find(x => x.type === 'furniture_drawer_front').partFunction, 'normal');
-  assert.match(insertion, /partFunction: typeDef\.partFunction \|\| "auto"/);
+  assert.ok(base.some(x => x.type === 'furniture_door_panel'));
+  assert.ok(base.some(x => x.type === 'furniture_drawer_front'));
+  assert.match(props, /function PartNameEditor\(/);
   assert.match(insertion, /partRole: typeDef\.partRole \|\| ""/);
-  assert.match(insertion, /setComponents\(\(previous\) => \[\.\.\.previous, newComponent\]\)/);
-  assert.match(props, /function PartNameEditor\(/); // B1 remains
+  assert.match(insertion, /getChairManualPlacement/);
 });
