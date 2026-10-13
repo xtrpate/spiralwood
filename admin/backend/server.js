@@ -484,6 +484,8 @@ app.use("/api/pos", require("./routes/pos.schedule"));
 app.use("/api/pos", require("./routes/pos.receipts"));
 app.use("/api/tasks", require("./routes/pos.tasks"));
 
+app.use("/", require("./routes/sitemap"));
+
 app.get("/health", async (req, res) => {
   try {
     await pool.query("SELECT 1 AS ok");

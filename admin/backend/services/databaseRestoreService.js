@@ -229,6 +229,31 @@ function buildRestoreSqlMode(originalMode) {
   return [...new Set(modes)].join(",");
 }
 
+async function ensureBackupRecord(conn, backup) {
+  if (!backup?.fileName) return;
+
+  const [existing] = await conn.query(
+    "SELECT id FROM backup_logs WHERE file_name = ? LIMIT 1",
+    [backup.fileName],
+  );
+
+  if (existing.length > 0) return;
+
+  await conn.query(
+    `INSERT INTO backup_logs
+       (type, triggered_by, file_name, file_size_kb, storage_path, status, notes, created_at)
+     VALUES (?, NULL, ?, ?, ?, 'success', ?, ?)`,
+    [
+      backup.type || "manual",
+      backup.fileName,
+      Number(backup.sizeKb) || 0,
+      backup.storagePath || null,
+      backup.notes || null,
+      backup.createdAt || new Date(),
+    ],
+  );
+}
+
 async function buildDataRestorePlan(conn, statements, createTableDdls) {
   await assertTargetDatabase(conn);
 
