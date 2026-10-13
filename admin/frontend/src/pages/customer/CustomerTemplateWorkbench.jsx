@@ -18,7 +18,7 @@ const toPositiveNumber = (value) => {
   return Number.isFinite(n) && n > 0 ? n : 0;
 };
 
-const normalizeComponentList = (items = []) =>
+const normalizeComponentList = (items = [], keepReviewedPrecision = false) =>
   (Array.isArray(items) ? items : []).map((item) => {
     const normalized = normalizeComponent({
       ...item,
@@ -32,8 +32,19 @@ const normalizeComponentList = (items = []) =>
     // normalizeComponent intentionally has a fixed production schema.
     // Preserve this CUSTOMER REQUEST field explicitly in the cart snapshot,
     // without changing production material/wood_type or panel geometry.
+    // The generic component normalizer rounds geometry to whole mm.
+    // Server-verified manual reviews can produce legitimate 0.5mm anchors.
+    // Do not alter geometry of other (unverified) furniture families.
+    const exactGeometry = keepReviewedPrecision &&
+      ['x','y','z','width','height','depth'].every(key =>
+        typeof item?.[key] === 'number' && Number.isFinite(item[key]) &&
+        (!['width','height','depth'].includes(key) || item[key] > 0))
+        ? Object.fromEntries(['x','y','z','width','height','depth']
+            .map(key => [key,item[key]]))
+        : {};
     return {
       ...normalized,
+      ...exactGeometry,
       requested_wood_type: resolveCustomerWoodType(item?.requested_wood_type),
     };
   });
@@ -99,7 +110,8 @@ export default function CustomerTemplateWorkbench({
   );
 
   const initialComponents = useMemo(
-    () => normalizeComponentList(sceneData?.components || []),
+    () => normalizeComponentList(sceneData?.components || [],
+      sceneData?.universalManualPreview?.verified === true),
     [sceneData],
   );
 
@@ -182,6 +194,7 @@ export default function CustomerTemplateWorkbench({
       Array.isArray(draft?.components) && draft.components.length
         ? draft.components
         : initialComponents,
+      sceneData?.universalManualPreview?.verified === true,
     );
 
     const finalDimensions = buildFinalDimensions(draft, initialDimensions);

@@ -10,6 +10,8 @@ import {
   saveCustomReferencePhotos,
 } from "../../utils/customReferencePhotoStore";
 import { getCustomerItemDimensions } from "./customerGeometryBounds.mjs";
+import { restoreReviewedManualCartGeometryU12 } from "../../utils/customerReviewedManualCartEditU12.mjs";
+import { prepareReviewedManualCartSaveU13 } from "../../utils/customerReviewedManualCartSaveU13.mjs";
 import "./customizepage.css";
 
 const resolveImage = (value) => {
@@ -157,6 +159,17 @@ const buildEditableCartBlueprint = (baseBlueprint = {}, item = {}) => {
   const baseView3dData = parseSafeObject(baseBlueprint?.view_3d_data);
   const dims = getItemDisplayDims(item);
 
+  // Previous Cart snapshots may round valid 0.5mm panel coordinates to 1mm.
+  // Restore only when EVERY part matches the freshly server-verified U4
+  // blueprint review and requested W/H/D. Unknown edits remain protected.
+  const restored = restoreReviewedManualCartGeometryU12(
+    baseBlueprint?.customer_universal_manual_resize,
+    savedComponents,
+    { width: Number(item?.width), height: Number(item?.height), depth: Number(item?.depth) },
+  );
+  const editComponents = restored.ok ? restored.parts : savedComponents;
+  const editDims = restored.ok ? restored.dimensions : dims;
+
   const worldSize = normalizeEditorWorldSize(
     editorSnapshot?.worldSize,
     baseDesignData?.worldSize || baseView3dData?.worldSize,
@@ -165,7 +178,7 @@ const buildEditableCartBlueprint = (baseBlueprint = {}, item = {}) => {
   const designData = savedComponents.length
     ? {
         ...baseDesignData,
-        components: savedComponents,
+        components: editComponents,
         worldSize,
       }
     : baseDesignData;
@@ -173,7 +186,7 @@ const buildEditableCartBlueprint = (baseBlueprint = {}, item = {}) => {
   const view3dData = savedComponents.length
     ? {
         ...baseView3dData,
-        components: savedComponents,
+        components: editComponents,
         worldSize,
       }
     : baseView3dData;
@@ -203,13 +216,13 @@ const buildEditableCartBlueprint = (baseBlueprint = {}, item = {}) => {
     hardware: item?.hardware || baseBlueprint?.hardware || "",
     default_dimensions: {
       ...parseSafeObject(baseBlueprint?.default_dimensions),
-      width_mm: dims.width,
-      height_mm: dims.height,
-      depth_mm: dims.depth,
+      width_mm: editDims.width,
+      height_mm: editDims.height,
+      depth_mm: editDims.depth,
     },
     design_data: designData,
     view_3d_data: view3dData,
-    ...(savedComponents.length ? { components: savedComponents } : {}),
+    ...(savedComponents.length ? { components: editComponents } : {}),
   };
 };
 
@@ -463,6 +476,18 @@ export default function CustomCartPage() {
         editItem.depth,
       );
 
+      // U13: Customer Save must use the EXACT U4-reviewed geometry, not a
+      // whole-mm-normalized snapshot that measures 1 mm larger at checkout.
+      // Every physical part is rechecked against the freshly verified source;
+      // unreviewed designs retain their existing protected path.
+      const reviewedSave = prepareReviewedManualCartSaveU13(
+        editBlueprint?.customer_universal_manual_resize,
+        nextComponents,
+        { width, height, depth },
+      );
+      if (!reviewedSave.ok) throw new Error(reviewedSave.error);
+      const finalComponents = reviewedSave.parts;
+
       const requestedQuantity = Number(draft?.quantity);
       const quantity =
         Number.isSafeInteger(requestedQuantity) && requestedQuantity > 0
@@ -518,7 +543,7 @@ export default function CustomCartPage() {
         },
         editor_snapshot: {
           worldSize: nextWorldSize,
-          components: nextComponents,
+          components: finalComponents,
         },
       };
 
