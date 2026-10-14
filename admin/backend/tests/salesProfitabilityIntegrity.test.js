@@ -184,7 +184,7 @@ async function run() {
   );
   assert.match(frontendSource, /\|\| !canExport/);
   assert.match(frontendSource, />Order Date<|"Order Date"/);
-  assert.match(frontendSource, /r\.order_date/);
+  assert.match(frontendSource, /formatDateTime\(row\.order_date\)/);
   assert.match(frontendSource, /row\.order_date/);
   assert.doesNotMatch(frontendSource, /Date Sold|date_sold/);
   assert.match(frontendSource, /<strong>Scope:<\/strong> Completed Orders/);

@@ -121,12 +121,31 @@ const buildSalesReportFilters = (query = {}) => {
   return { where, params };
 };
 
+// Blueprint quotation total includes VAT; profitability revenue must not.
+// Ready-made orders keep their existing historical reporting basis in this card.
+const SALES_REPORT_REVENUE_SQL = `
+  CASE
+    WHEN o.order_type = 'blueprint' AND e.status = 'approved'
+      THEN GREATEST(0, COALESCE(o.total, 0) - COALESCE(e.tax, 0))
+    ELSE COALESCE(o.total, 0)
+  END
+`;
+
+// PRICING-F2 stores marked-up SELLING amounts in estimations.material_cost
+// and estimations.labor_cost. The immutable costing snapshot holds the
+// actual material + manufacturing labor production cost, before markup.
+// Legacy estimates without that snapshot retain their pre-existing fallback.
 const SALES_REPORT_COGS_SQL = `
   CASE
     WHEN o.order_type = 'blueprint' THEN
       CASE
-        WHEN e.status = 'approved'
-          THEN COALESCE(e.material_cost, 0) + COALESCE(e.labor_cost, 0)
+        WHEN e.status = 'approved' THEN
+          CASE
+            WHEN JSON_VALID(e.estimation_data) = 1
+              AND JSON_TYPE(JSON_EXTRACT(e.estimation_data, '$.costing_formula.production_cost')) IN ('INTEGER', 'DOUBLE', 'DECIMAL')
+              THEN CAST(JSON_UNQUOTE(JSON_EXTRACT(e.estimation_data, '$.costing_formula.production_cost')) AS DECIMAL(18,2))
+            ELSE COALESCE(e.material_cost, 0) + COALESCE(e.labor_cost, 0)
+          END
         ELSE 0
       END
     ELSE COALESCE((
@@ -177,7 +196,7 @@ exports.getSalesProfitabilityReport = async (req, res) => {
         o.order_type,
         o.customer_id,
         COALESCE(u.name, o.walkin_customer_name, 'Walk-in Customer') AS customer_name,
-        o.total AS revenue,
+        ${SALES_REPORT_REVENUE_SQL} AS revenue,
         ${SALES_REPORT_COGS_SQL} AS cogs
       FROM orders o
       LEFT JOIN users u ON u.id = o.customer_id
@@ -215,7 +234,7 @@ exports.getSalesProfitabilityReport = async (req, res) => {
           COALESCE(SUM(report_rows.cogs), 0) AS total_cogs
         FROM (
           SELECT
-            COALESCE(o.total, 0) AS revenue,
+            ${SALES_REPORT_REVENUE_SQL} AS revenue,
             ${SALES_REPORT_COGS_SQL} AS cogs
           FROM orders o
           LEFT JOIN users u ON u.id = o.customer_id

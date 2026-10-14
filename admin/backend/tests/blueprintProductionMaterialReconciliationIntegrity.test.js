@@ -51,7 +51,7 @@ assert.ok(
 
 assert.match(
   orderDetailSource,
-  /api\.patch\(\s*`\/orders\/\$\{id\}\/status`,\s*\{\s*status:\s*nextStatus\s*\},\s*\{\s*suppressGlobalErrorToast:\s*true\s*\}/,
+  /api\.patch\(\s*`\/orders\/\$\{id\}\/status`,\s*\{\s*status:\s*nextStatus(?:\s*,[\s\S]*?)?\s*\},\s*\{\s*suppressGlobalErrorToast:\s*true\s*\}/,
   "Order status failures must suppress the shared toast because the page already renders the server message locally.",
 );
 assert.match(
