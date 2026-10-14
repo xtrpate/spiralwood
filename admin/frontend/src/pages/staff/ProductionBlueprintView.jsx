@@ -3,6 +3,10 @@ import { useNavigate, useParams } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import { WOOD_FINISHES } from "../blueprints/data/furnitureTypes";
 import { extractCustomerBlueprintScene } from "../customer/customerBlueprintAdapter";
+import {
+  getRequestedActualWood,
+  matchesRequestedActualWood,
+} from "../blueprints/data/actualWoodMaterialValidation.mjs";
 import StaffProductionBlueprintViewer from "./StaffProductionBlueprintViewer";
 import "./ProductionBlueprintView.css";
 
@@ -152,6 +156,11 @@ export default function ProductionBlueprintView() {
   );
 
   const parts = Array.isArray(scene?.components) ? scene.components : [];
+  // WISDOM STAFF ACTUAL WOOD VISIBILITY CARD 1: display only, not approval.
+  const requestedWoodParts = parts.filter((part) => getRequestedActualWood(part));
+  const mismatchedWoodParts = requestedWoodParts.filter(
+    (part) => !matchesRequestedActualWood(part),
+  );
   const dimensions = scene?.defaultDimensions || {};
   const metadata = scene?.metadata || {};
 
@@ -328,6 +337,16 @@ export default function ProductionBlueprintView() {
                   ? "This is the saved customer order design. Follow its dimensions, material, finish, color, and part configuration for production."
                   : "This order has no saved customization snapshot, so the approved Blueprint is shown as the production reference."}
               </div>
+              {requestedWoodParts.length > 0 ? (
+                <div className="production-blueprint-order-note" role="alert">
+                  Saved customer design is not an Admin-validated manufacturing material schedule.
+                  {" "}{requestedWoodParts.length} part(s) request actual solid wood;
+                  {" "}{mismatchedWoodParts.length} retain a different saved structural material.
+                  Requested Mahogany/Pine or other wood is not a color or veneer.
+                  Ask Admin to confirm final species, construction and thickness before manufacturing.
+                  Do not treat inventory consumption or a priced estimate as per-part validation.
+                </div>
+              ) : null}
             </aside>
           </div>
 
@@ -406,7 +425,9 @@ export default function ProductionBlueprintView() {
                       <th>Width</th>
                       <th>Height</th>
                       <th>Depth</th>
-                      <th>Material</th>
+                      <th>Saved Material</th>
+                      <th>Requested Actual Wood</th>
+                      <th>Wood Review</th>
                       <th>Finish / Color</th>
                     </tr>
                   </thead>
@@ -418,6 +439,14 @@ export default function ProductionBlueprintView() {
                         <td>{formatMm(part.height)}</td>
                         <td>{formatMm(part.depth)}</td>
                         <td>{firstText(part.material, part.wood_type) || overallMaterial}</td>
+                        <td>{getRequestedActualWood(part) || "No change requested"}</td>
+                        <td>
+                          {!getRequestedActualWood(part)
+                            ? "Not requested"
+                            : matchesRequestedActualWood(part)
+                              ? "Needs Admin confirmation"
+                              : "Needs Admin validation - material mismatch"}
+                        </td>
                         <td><FinishValue value={partFinishes[index]} /></td>
                       </tr>
                     ))}

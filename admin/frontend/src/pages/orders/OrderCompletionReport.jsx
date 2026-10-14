@@ -127,14 +127,14 @@ export function exportOrderCompletionReportPdf(order) {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9.2);
     doc.text(String(title || "").toUpperCase(), margin + 3, y + 5);
-    y += 10;
+    y += 9.5;
   };
 
   const addField = (label, value) => {
     const safeValue =
       value === null || value === undefined || value === "" ? "-" : String(value);
     const valueLines = doc.splitTextToSize(safeValue, contentWidth - 52);
-    const rowHeight = Math.max(5.5, valueLines.length * 4.1 + 0.8);
+    const rowHeight = Math.max(5.1, valueLines.length * 4.1 + 0.8);
 
     ensureSpace(rowHeight + 0.5);
 

@@ -1135,13 +1135,13 @@ export default function SalesProfitabilityReportPage() {
 
         [
           cell("Revenue"),
-          cell("The completed-order selling value before deducting COGS."),
+          cell("Blueprint revenue excludes saved quotation VAT; other historical sales retain their existing basis."),
         ],
 
         [
           cell("COGS"),
           cell(
-            "The direct or estimated production cost assigned to completed orders.",
+            "For recent Blueprint orders, actual material + production labor cost before markup; delivery costs are not separately deducted. Legacy estimates use their original stored fields.",
           ),
         ],
 
@@ -1367,6 +1367,12 @@ export default function SalesProfitabilityReportPage() {
           <p>
             Track revenue against inventory costs to measure gross profit
             margins and business performance.
+          </p>
+          <p style={{ fontSize: 12, color: '#71717a', maxWidth: 720 }}>
+            Blueprint revenue excludes the saved quotation VAT, and recent
+            Blueprint COGS uses material and manufacturing labor production
+            costs before markup. Delivery expenses are not separately deducted;
+            legacy estimates and ready-made VAT treatment need further review.
           </p>
         </div>
 

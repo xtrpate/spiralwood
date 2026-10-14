@@ -19,6 +19,10 @@ import {
   X,
 } from "lucide-react";
 
+// Phase 1: Keep the legacy advanced-access implementation intact, but do not
+// expose its controls. The backend and existing permissions are unchanged.
+const ENABLE_ADVANCED_ACCESS_UI = false;
+
 const AUTHORITY_LEVELS = {
   user: {
     label: "Standard",
@@ -29,7 +33,7 @@ const AUTHORITY_LEVELS = {
     desc: "Business management access",
   },
   admin: {
-    label: "Super Admin",
+    label: "Admin",
     desc: "Full system administration",
   },
 };
@@ -44,7 +48,7 @@ const STAFF_TYPES = {
     desc: "Production and appointment access",
   },
   delivery_rider: {
-    label: "Delivery Staff",
+    label: "Delivery Personnel",
     desc: "Delivery assignment access",
   },
 };
@@ -142,8 +146,7 @@ function UserAvatar({ src, name, isAdmin = false }) {
 }
 
 const getRoleLabel = (user) => {
-  if (isSuperAdminAccount(user)) return "Super Admin";
-  if (isManagerAccount(user)) return "Manager";
+  if (user?.role === "admin") return "Admin";
   return STAFF_TYPES[user?.staff_type]?.label || "Staff";
 };
 
@@ -437,8 +440,12 @@ export default function UsersPage() {
       payload.append("email", form.email.trim());
       payload.append("phone", form.phone.trim());
       payload.append("address", form.address.trim());
-      payload.append("role", form.role);
-      payload.append("authority_level", form.authority_level || "user");
+      // New accounts are staff-only. Edits preserve the saved account role.
+      payload.append("role", modal === "add" ? "staff" : form.role);
+      payload.append(
+        "authority_level",
+        modal === "add" ? "user" : form.authority_level || "user",
+      );
       payload.append(
         "staff_type",
         form.role === "staff" ? form.staff_type : "",
@@ -589,7 +596,7 @@ export default function UsersPage() {
         <div>
           <h1 className="um-page-title">User Management</h1>
           <p className="um-page-subtitle">
-            Manage management and staff accounts, roles, and access.
+            Manage the Admin account and staff members.
           </p>
         </div>
 
@@ -612,7 +619,7 @@ export default function UsersPage() {
           icon={<Users size={18} strokeWidth={1.9} />}
         />
         <SummaryCard
-          label="Management Accounts"
+          label="Admin Accounts"
           value={admins.length}
           icon={<ShieldCheck size={18} strokeWidth={1.9} />}
         />
@@ -634,7 +641,7 @@ export default function UsersPage() {
           <div>
             <h2>Accounts</h2>
             <p>
-              Review account details, access roles, status, and recent sign-in
+              Review account details, staff roles, status, and recent sign-in
               activity.
             </p>
           </div>
@@ -674,7 +681,7 @@ export default function UsersPage() {
               }
             >
               <option value="">All Types</option>
-              <option value="admin">Management</option>
+              <option value="admin">Admin</option>
               <option value="staff">Staff</option>
             </select>
           </label>
@@ -716,7 +723,7 @@ export default function UsersPage() {
                 <th>Role</th>
                 <th>Status</th>
                 <th>Last Login</th>
-                <th className="um-actions-heading">Role & Access</th>
+                <th className="um-actions-heading">Actions</th>
               </tr>
             </thead>
 
@@ -795,7 +802,7 @@ export default function UsersPage() {
         />
       )}
 
-      {authChangeTarget && (
+      {ENABLE_ADVANCED_ACCESS_UI && authChangeTarget && (
         <ModalShell onClose={() => setAuthChangeTarget(null)} compact>
           <div className="um-modal-header">
             <div>
@@ -846,7 +853,7 @@ export default function UsersPage() {
         </ModalShell>
       )}
 
-      {permissionTarget && (
+      {ENABLE_ADVANCED_ACCESS_UI && permissionTarget && (
         <PermissionModal
           target={permissionTarget}
           data={permissionData}
@@ -920,8 +927,11 @@ function UserRow({
   const canDeactivate =
     hasPermission("users.delete") && actorCanManageTarget && !isMe;
   const canViewCustomAccess =
-    isSuperAdminAccount(me) && hasPermission("users.manage");
+    ENABLE_ADVANCED_ACCESS_UI &&
+    isSuperAdminAccount(me) &&
+    hasPermission("users.manage");
   const canChangeAccess =
+    ENABLE_ADVANCED_ACCESS_UI &&
     isSuperAdminAccount(me) &&
     hasPermission("users.authority") &&
     user.role === "admin" &&
@@ -945,7 +955,7 @@ function UserRow({
               {isMe && <span className="um-you-label">You</span>}
             </div>
             <span className="um-account-type">
-              {user.role === "admin" ? "Management account" : "Staff account"}
+              {user.role === "admin" ? "Admin account" : "Staff account"}
             </span>
           </div>
         </div>
@@ -975,22 +985,24 @@ function UserRow({
             )}
           </small>
 
-          <select
-            className="um-authority-select"
-            value={user.authority_level || "user"}
-            onChange={(event) => onAuthorityChange(user, event.target.value)}
-            disabled={saving || !canChangeAccess}
-            aria-label={`Access level for ${user.name}`}
-          >
-            {user.role === "admin" ? (
-              <>
-                <option value="manager">Manager</option>
-                <option value="admin">Super Admin</option>
-              </>
-            ) : (
-              <option value="user">Standard</option>
-            )}
-          </select>
+          {ENABLE_ADVANCED_ACCESS_UI && (
+            <select
+              className="um-authority-select"
+              value={user.authority_level || "user"}
+              onChange={(event) => onAuthorityChange(user, event.target.value)}
+              disabled={saving || !canChangeAccess}
+              aria-label={`Access level for ${user.name}`}
+            >
+              {user.role === "admin" ? (
+                <>
+                  <option value="manager">Manager</option>
+                  <option value="admin">Admin</option>
+                </>
+              ) : (
+                <option value="user">Standard</option>
+              )}
+            </select>
+          )}
         </div>
       </td>
 
@@ -1094,7 +1106,6 @@ function AccountModal({
 }) {
   const isEdit = mode === "edit";
   const isSelf = isEdit && target?.id === me?.id;
-  const canManageManagementAccounts = isSuperAdminAccount(me);
 
   return (
     <ModalShell onClose={onClose}>
@@ -1106,8 +1117,8 @@ function AccountModal({
           <h3>{isEdit ? "Edit Account" : "Add Account"}</h3>
           <p>
             {isEdit
-              ? `Update account information and access for ${target?.name || "this user"}.`
-              : "Create a manager or staff account."}
+              ? `Update account details for ${target?.name || "this user"}. The role remains unchanged.`
+              : "Create an account for a Cashier, Furniture Specialist, or Delivery Personnel."}
           </p>
         </div>
 
@@ -1202,61 +1213,27 @@ function AccountModal({
           </div>
 
           <section className="um-form-section">
-            <div className="um-section-label">Account Type</div>
-
-            <div className="um-choice-grid">
-              {[
-                ...(canManageManagementAccounts
-                  ? [
-                      {
-                        value: "admin",
-                        label: "Manager",
-                        desc: "Admin portal access for business management",
-                      },
-                    ]
-                  : []),
-                {
-                  value: "staff",
-                  label: "Staff",
-                  desc: "Access based on assigned staff role",
-                },
-              ].map((option) => (
-                <label
-                  key={option.value}
-                  className={`um-choice${form.role === option.value ? " is-selected" : ""}`}
-                >
-                  <input
-                    type="radio"
-                    name="role"
-                    value={option.value}
-                    checked={form.role === option.value}
-                    disabled={isSelf && option.value !== "admin"}
-                    onChange={() => {
-                      setF("role", option.value);
-                      setF(
-                        "authority_level",
-                        option.value === "admin" ? "manager" : "user",
-                      );
-
-                      if (option.value === "staff" && !form.staff_type) {
-                        setF("staff_type", "cashier");
-                      }
-                    }}
-                  />
-
-                  <span>
-                    <strong>{option.label}</strong>
-                    <small>{option.desc}</small>
-                  </span>
-                </label>
-              ))}
+            <div className="um-section-label">
+              {isEdit ? "Account Role" : "Staff Role"}
             </div>
-          </section>
 
-          {form.role === "staff" && (
-            <section className="um-form-section">
-              <div className="um-section-label">Staff Role</div>
-
+            {isEdit ? (
+              <div className="um-choice-grid">
+                <div className="um-choice is-selected">
+                  <span>
+                    <strong>
+                      {form.role === "admin"
+                        ? "Admin"
+                        : STAFF_TYPES[form.staff_type]?.label || "Staff"}
+                    </strong>
+                    <small>
+                      Existing role is read-only and will not change when
+                      saving account details.
+                    </small>
+                  </span>
+                </div>
+              </div>
+            ) : (
               <div className="um-choice-grid um-choice-grid-three">
                 {Object.entries(STAFF_TYPES).map(([value, meta]) => (
                   <label
@@ -1270,7 +1247,6 @@ function AccountModal({
                       checked={form.staff_type === value}
                       onChange={() => setF("staff_type", value)}
                     />
-
                     <span>
                       <strong>{meta.label}</strong>
                       <small>{meta.desc}</small>
@@ -1278,8 +1254,8 @@ function AccountModal({
                   </label>
                 ))}
               </div>
-            </section>
-          )}
+            )}
+          </section>
 
           <section className="um-form-section um-status-section">
             <div>

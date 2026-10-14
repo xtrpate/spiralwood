@@ -71,19 +71,16 @@ test("W4: F1 legacy Inventory-only quote remains mathematically identical", () =
   assert.deepEqual(current, old);
 });
 
-test("W4: Admin preview and server use the same internal wood + material + labor formula", async () => {
+test("W4-A2: outdated W3 reference prices no longer authorize a new browser quote", async () => {
   const preview = (await import(pathToFileURL(path.resolve(__dirname, "../../frontend/src/pages/blueprints/blueprintPricingPreview.mjs")))).previewFixedMarkupQuote({
     items: combined,
-    woodReferencePrices: WOOD_REFERENCE_PRICES,
+    woodReferencePrices: WOOD_REFERENCE_PRICES, // development fixture: not DB verified
     requestedWoodTypes: ["mahogany", "pine"],
     rawMaterials: [{ id: 102, unit_cost: 300, name: "Hinges" }],
     laborCost: 26000,
   });
-  const backend = computeProductionCostWithManualWood({ items: combined, materialsById: map, laborCost: 26000 });
-  assert.equal(preview.ready, true);
-  assert.equal(preview.material_cost, backend.material_cost);
-  assert.equal(preview.furniture_selling_total, backend.proposed_furniture_selling_price);
-  assert.equal(preview.billable_labor_cost, 31200);
+  assert.equal(preview.ready, false);
+  assert.match(preview.message, /Review wood type|wood/i);
 });
 
 test("W4: Admin preview rejects missing species and invalid quantities", async () => {
@@ -104,7 +101,8 @@ test("W4: Save/Send integrity safeguards preserved, with hardcoded price revalid
   assert.match(source, /computeProductionCostWithManualWood\(/);
   assert.match(source, /Wood plank is counted twice/);
   assert.match(helpers, /"wood_reference"/);
-  assert.match(ui, /section="wood_reference"/);
-  assert.match(ui, /Wood Planks — Admin Quantity Estimate/);
-  assert.match(ui, /getQuotationInventoryIssues\(inventoryItems, rawMaterials, woodReferenceItems\.length > 0\)/);
+  assert.doesNotMatch(ui, /section="wood_reference"/);
+  assert.doesNotMatch(ui, /Wood Planks — Admin Quantity Estimate/);
+  assert.match(ui, /rows=\{\[\.\.\.woodReferenceItems, \.\.\.otherInventoryItems\]\}/);
+  assert.match(ui, /getQuotationInventoryIssues\(inventoryRequirementsForPreview, rawMaterials\)/);
 });
