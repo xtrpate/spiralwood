@@ -194,7 +194,7 @@ async function assertTargetDatabase(conn) {
   return actual;
 }
 
-const IMMUTABLE_RESTORE_TABLES = new Set(["audit_logs"]);
+const IMMUTABLE_RESTORE_TABLES = new Set(["audit_logs", "backup_logs"]);
 
 function isGeneratedCurrentColumn(column) {
   const extra = String(column?.Extra || "").toLowerCase();
@@ -369,8 +369,9 @@ async function buildDataRestorePlan(conn, statements, createTableDdls) {
       );
     }
 
-    // Audit logs are append-only in WISDOM. Preserve the current records
-    // instead of deleting or replacing them with historical audit data.
+    // Preserve operational and audit history during a historical restore.
+    // audit_logs is append-only, and backup_logs must retain current backup
+    // records, including safety backups created after the selected snapshot.
     if (IMMUTABLE_RESTORE_TABLES.has(parsed.tableName)) {
       continue;
     }
@@ -749,9 +750,9 @@ async function runDatabaseRestore({
       await conn.query(statement.sql);
     }
 
-    // A backup cannot contain its own backup_logs row because the row is
-    // written only after dump generation. Re-register the source and safety
-    // backup inside this transaction so they survive the historical restore.
+    // Preserve the source and safety backup entries in backup history.
+    // Existing records remain untouched; this helper re-adds either one only
+    // if its record is absent from the current backup_logs table.
     await ensureBackupRecord(conn, {
       type: backupRow.type,
       fileName: backupRow.file_name,
