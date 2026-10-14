@@ -63,10 +63,14 @@ const DELIVERY_PROOF_MIME_BY_EXTENSION = new Map([
 const validateDeliveryProofFile = (file) => {
   if (!file) return null;
 
-  const name = String(file.name || "").trim().toLowerCase();
+  const name = String(file.name || "")
+    .trim()
+    .toLowerCase();
   const extensionMatch = /(.[^.]+)$/.exec(name);
   const extension = extensionMatch ? extensionMatch[1] : "";
-  const mime = String(file.type || "").trim().toLowerCase();
+  const mime = String(file.type || "")
+    .trim()
+    .toLowerCase();
   const expectedMime = DELIVERY_PROOF_MIME_BY_EXTENSION.get(extension);
 
   if (!expectedMime || mime !== expectedMime) {
@@ -1883,7 +1887,7 @@ export default function DeliveryManagement() {
                                 name={`recipient_name_${delivery.id}`}
                                 type="text"
                                 maxLength={150}
-                                pattern="[A-Za-zÀ-ÖØ-öø-ÿ .'-]+"
+                                pattern="[A-Za-zÀ-ÖØ-öø-ÿ .'\-]+"
                                 value={acknowledgementForm.received_by_name}
                                 onChange={(event) => {
                                   const value = event.target.value.replace(
@@ -2299,10 +2303,11 @@ export default function DeliveryManagement() {
                                   Wrong Delivery Status?
                                 </div>
                                 <div style={helperText}>
-                                  Use Undo Delivery only if this order was marked
-                                  Delivered by mistake. For a wrong POD photo,
-                                  use Replace Proof above. A rejected payment
-                                  should use Record Payment Again instead.
+                                  Use Undo Delivery only if this order was
+                                  marked Delivered by mistake. For a wrong POD
+                                  photo, use Replace Proof above. A rejected
+                                  payment should use Record Payment Again
+                                  instead.
                                 </div>
                                 <div className="rider-button-row">
                                   <button
