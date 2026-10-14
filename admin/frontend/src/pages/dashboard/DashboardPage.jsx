@@ -1339,7 +1339,7 @@ export default function DashboardPage() {
       </section>
 
       <section className="dashboard-grid dashboard-grid--main">
-        <div className="dash-card">
+        <div className="dash-card" style={{ gridColumn: "1 / -1" }}>
           <div className="card-header">
             <div>
               <h2 className="card-title">Inventory Valuation Trends</h2>
@@ -1385,49 +1385,6 @@ export default function DashboardPage() {
               <Line
                 data={inventoryValuationTrendData}
                 options={inventoryValuationOptions}
-              />
-            )}
-          </div>
-        </div>
-
-        <div className="dash-card">
-          <div className="card-header">
-            <div>
-              <h2 className="card-title">Inventory Turnover Trends</h2>
-              <p className="card-description">
-                Raw-material outflow and ready-made COGS divided by average
-                inventory value across the selected Dashboard date range.
-              </p>
-            </div>
-          </div>
-
-          <div className="dash-chart-area dash-chart-area--inventory-analytics">
-            {inventoryAnalyticsError ? (
-              <div className="dash-empty-state">
-                <div className="dash-empty-title">
-                  Inventory turnover unavailable
-                </div>
-                <div className="dash-empty-text">{inventoryAnalyticsError}</div>
-              </div>
-            ) : !inventoryAnalytics ? (
-              <Line
-                data={inventoryTurnoverTrendData}
-                options={inventoryTurnoverOptions}
-              />
-            ) : !hasInventoryTurnoverTrend ? (
-              <div className="dash-empty-state">
-                <div className="dash-empty-title">
-                  Turnover data unavailable
-                </div>
-                <div className="dash-empty-text">
-                  A complete opening and closing inventory value and reliable
-                  outflow or COGS costs are required.
-                </div>
-              </div>
-            ) : (
-              <Line
-                data={inventoryTurnoverTrendData}
-                options={inventoryTurnoverOptions}
               />
             )}
           </div>

@@ -741,6 +741,48 @@ function calculateAnalyticsTurnover(outflow, openingValue, closingValue) {
   return Math.round((outflow.value / averageInventory) * 100) / 100;
 }
 
+function buildTurnoverInputs(outflow, openingValue, closingValue) {
+  const openingComplete =
+    openingValue?.complete === true &&
+    openingValue.value !== null &&
+    Number.isFinite(Number(openingValue.value));
+
+  const closingComplete =
+    closingValue?.complete === true &&
+    closingValue.value !== null &&
+    Number.isFinite(Number(closingValue.value));
+
+  const averageInventoryValue =
+    openingComplete && closingComplete
+      ? Math.round(
+          ((Number(openingValue.value) + Number(closingValue.value)) / 2) * 100,
+        ) / 100
+      : null;
+
+  return {
+    opening_inventory_value: openingComplete
+      ? Number(openingValue.value)
+      : null,
+
+    opening_inventory_complete: openingComplete,
+
+    closing_inventory_value: closingComplete
+      ? Number(closingValue.value)
+      : null,
+
+    closing_inventory_complete: closingComplete,
+
+    average_inventory_value: averageInventoryValue,
+
+    outflow_value:
+      outflow?.complete === true
+        ? Math.round(Number(outflow.value || 0) * 100) / 100
+        : null,
+
+    outflow_complete: outflow?.complete === true,
+  };
+}
+
 exports.getInventoryAnalytics = async (req, res) => {
   try {
     const requestedFrom = String(req.query.from || "").trim();
@@ -1041,6 +1083,36 @@ exports.getInventoryAnalytics = async (req, res) => {
       "ready",
     );
 
+    // An empty opening snapshot is not sufficient evidence that the
+    // business physically had zero inventory at the start of the period.
+    // Withhold turnover when records exist at closing but none were
+    // available for the opening snapshot.
+    if (
+      openingRawSnapshot.rows.length === 0 &&
+      closingRawSnapshot.rows.length > 0
+    ) {
+      openingRawValue.value = null;
+      openingRawValue.complete = false;
+      openingRawValue.baselineUnavailable = true;
+
+      warnings.push(
+        "Raw-material opening inventory value is unavailable because no matching raw-material records existed at the start of the period. Turnover is withheld rather than assuming an unverified zero opening balance.",
+      );
+    }
+
+    if (
+      openingReadySnapshot.rows.length === 0 &&
+      closingReadySnapshot.rows.length > 0
+    ) {
+      openingReadyValue.value = null;
+      openingReadyValue.complete = false;
+      openingReadyValue.baselineUnavailable = true;
+
+      warnings.push(
+        "Ready-made opening inventory value is unavailable because no matching ready-made product records existed at the start of the period. Turnover is withheld rather than assuming an unverified zero opening balance.",
+      );
+    }
+
     const [rawPeriodRows, readyPeriodRows] = await Promise.all([
       queryAnalyticsRawOutflow(rawRows, openingCutoff, clock.cutoffSql),
       queryAnalyticsReadyMadeCogs(productRows, openingCutoff, clock.cutoffSql),
@@ -1242,6 +1314,28 @@ exports.getInventoryAnalytics = async (req, res) => {
               "ready",
             );
 
+            // An empty opening snapshot is not proof of a zero opening
+            // balance when inventory records exist by the end of the bucket.
+            // Keep the closing valuation visible, but withhold turnover
+            // until the opening baseline can be verified.
+            if (
+              rawOpeningSnapshot.rows.length === 0 &&
+              rawClosingSnapshot.rows.length > 0
+            ) {
+              rawOpeningValue.value = null;
+              rawOpeningValue.complete = false;
+              rawOpeningValue.baselineUnavailable = true;
+            }
+
+            if (
+              readyOpeningSnapshot.rows.length === 0 &&
+              readyClosingSnapshot.rows.length > 0
+            ) {
+              readyOpeningValue.value = null;
+              readyOpeningValue.complete = false;
+              readyOpeningValue.baselineUnavailable = true;
+            }
+
             const rawOutflow = rawTrendOutflows.get(target.key) || {
               value: 0,
               complete: true,
@@ -1348,6 +1442,24 @@ exports.getInventoryAnalytics = async (req, res) => {
 
         ready_made: readySelected
           ? calculateAnalyticsTurnover(
+              readyPeriodCogs,
+              openingReadyValue,
+              closingReadyValue,
+            )
+          : null,
+      },
+
+      turnover_inputs: {
+        raw_materials: rawSelected
+          ? buildTurnoverInputs(
+              rawPeriodOutflow,
+              openingRawValue,
+              closingRawValue,
+            )
+          : null,
+
+        ready_made: readySelected
+          ? buildTurnoverInputs(
               readyPeriodCogs,
               openingReadyValue,
               closingReadyValue,

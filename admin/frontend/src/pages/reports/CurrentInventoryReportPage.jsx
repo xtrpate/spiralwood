@@ -320,10 +320,6 @@ export default function CurrentInventoryReportPage() {
   const [error, setError] = useState("");
   const [selectedInventoryItem, setSelectedInventoryItem] = useState(null);
 
-  const [analytics, setAnalytics] = useState(null);
-  const [analyticsLoading, setAnalyticsLoading] = useState(true);
-  const [analyticsError, setAnalyticsError] = useState("");
-
   const reportRequestIdRef = useRef(0);
   const hasLoadedReportRef = useRef(false);
   const exportInProgressRef = useRef(false);
@@ -446,49 +442,6 @@ export default function CurrentInventoryReportPage() {
   useEffect(() => {
     loadReport();
   }, [reportDate, loadReport]);
-
-  useEffect(() => {
-    let active = true;
-
-    const loadAnalytics = async () => {
-      setAnalyticsLoading(true);
-      setAnalyticsError("");
-
-      try {
-        const response = await api.get("/inventory/analytics", {
-          params: {
-            date: reportDate,
-            inventory_type: inventoryType,
-            search: search.trim(),
-            stock_status: stockStatus,
-          },
-        });
-
-        if (!active) return;
-
-        setAnalytics(response.data || null);
-      } catch (err) {
-        if (!active) return;
-
-        setAnalytics(null);
-        setAnalyticsError(
-          err?.response?.data?.message ||
-            err?.message ||
-            "Failed to load inventory analytics.",
-        );
-      } finally {
-        if (active) {
-          setAnalyticsLoading(false);
-        }
-      }
-    };
-
-    loadAnalytics();
-
-    return () => {
-      active = false;
-    };
-  }, [reportDate, inventoryType, search, stockStatus]);
 
   const normalizedSearch = normalize(search);
 
@@ -1126,60 +1079,6 @@ export default function CurrentInventoryReportPage() {
               label="Pending Material Demand"
               value={formatQuantity(summary.pendingNeedCount, 0)}
               note="Raw materials still needed by pending Blueprint reservations"
-            />
-          </div>
-
-          <div className="cir-analytics-kpi-grid">
-            <SummaryCard
-              label="Inventory Turnover • 30 Days"
-              value={
-                analyticsLoading
-                  ? "Loading..."
-                  : inventoryType === "raw"
-                    ? formatTurnover(analytics?.turnover?.raw_materials)
-                    : inventoryType === "ready_made"
-                      ? formatTurnover(analytics?.turnover?.ready_made)
-                      : `${formatTurnover(
-                          analytics?.turnover?.raw_materials,
-                        )} / ${formatTurnover(analytics?.turnover?.ready_made)}`
-              }
-              note={
-                analyticsError
-                  ? analyticsError
-                  : inventoryType === "raw"
-                    ? "Raw materials • Outflow divided by average inventory value."
-                    : inventoryType === "ready_made"
-                      ? "Ready-made products • Cost of goods sold divided by average inventory value."
-                      : "Raw materials / Ready-made products. Outflow or COGS divided by average inventory value."
-              }
-            />
-
-            <SummaryCard
-              label="Inventory Valuation"
-              value={
-                analyticsLoading
-                  ? "Loading..."
-                  : formatPeso(analytics?.valuation?.total)
-              }
-              note={
-                analyticsError
-                  ? analyticsError
-                  : analyticsLoading
-                    ? "Calculating inventory value..."
-                    : inventoryType === "raw"
-                      ? `Raw materials: ${formatPeso(
-                          analytics?.valuation?.raw_materials,
-                        )} • Estimated using current catalog costs`
-                      : inventoryType === "ready_made"
-                        ? `Ready-made products: ${formatPeso(
-                            analytics?.valuation?.ready_made,
-                          )} • Estimated using current catalog costs`
-                        : `Raw materials: ${formatPeso(
-                            analytics?.valuation?.raw_materials,
-                          )} • Ready-made: ${formatPeso(
-                            analytics?.valuation?.ready_made,
-                          )} • Estimated using current catalog costs`
-              }
             />
           </div>
 
