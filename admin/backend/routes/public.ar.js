@@ -3,7 +3,6 @@
 const express = require("express");
 const multer = require("multer");
 const rateLimit = require("express-rate-limit");
-const { authenticate, authorize } = require("../middleware/auth");
 
 const {
   createARSession,
@@ -15,9 +14,14 @@ const {
 
 const router = express.Router();
 
-const MAX_AR_FILE_BYTES = Math.max(
-  5 * 1024 * 1024,
-  Number.parseInt(process.env.AR_MAX_FILE_BYTES, 10) || 24 * 1024 * 1024,
+// Anonymous visitors may generate a QR, so bound per-file memory consumption.
+// This cap applies equally to guests and signed-in customers.
+const MAX_AR_FILE_BYTES = Math.min(
+  16 * 1024 * 1024,
+  Math.max(
+    5 * 1024 * 1024,
+    Number.parseInt(process.env.AR_MAX_FILE_BYTES, 10) || 16 * 1024 * 1024,
+  ),
 );
 
 const upload = multer({
@@ -31,13 +35,63 @@ const upload = multer({
 
 const createLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: Number.parseInt(process.env.AR_CREATE_RATE_LIMIT, 10) || 12,
+  max: Math.min(8, Math.max(1, Number.parseInt(process.env.AR_CREATE_RATE_LIMIT, 10) || 8)),
   standardHeaders: true,
   legacyHeaders: false,
   message: {
     message: "Too many AR previews were created. Please try again later.",
   },
 });
+
+// In addition to the hourly IP quota, stop repeat uploads across a whole day.
+// This is process-local protection; use a shared store for multi-instance scale.
+const dailyCreateLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: 24,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    message: "Daily AR preview limit reached. Please try again tomorrow.",
+  },
+});
+
+// WISDOM's customization viewer is public. Do not demand a JWT to build its
+// QR; restrict uploads to the known browser origins, not arbitrary websites.
+// Origin is a browser-level safeguard, not proof of identity. The two IP
+// rate limits and Multer limits above remain essential.
+const normalizedOrigin = (value) => {
+  try {
+    const url = new URL(String(value || ""));
+    return ["http:", "https:"].includes(url.protocol) ? url.origin : "";
+  } catch (_error) {
+    return "";
+  }
+};
+
+const ALLOWED_CREATE_ORIGINS = new Set(
+  [
+    process.env.FRONTEND_URL,
+    process.env.ADMIN_URL,
+    "https://spiralwoodservice.com",
+    "https://www.spiralwoodservice.com",
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:3002",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+    "http://127.0.0.1:3002",
+  ].map(normalizedOrigin).filter(Boolean),
+);
+
+const requireWisdomOrigin = (req, res, next) => {
+  const origin = normalizedOrigin(req.headers.origin);
+  if (!origin || !ALLOWED_CREATE_ORIGINS.has(origin)) {
+    return res.status(403).json({
+      message: "Please open WISDOM to create an AR preview.",
+    });
+  }
+  return next();
+};
 
 const isValidGlb = (buffer) =>
   Buffer.isBuffer(buffer) &&
@@ -88,7 +142,7 @@ const secureCloudinaryUrl = (value) => {
   return url.startsWith("https://") ? url : "";
 };
 
-router.post("/sessions", createLimiter, authenticate, authorize("customer", "admin"), (req, res) => {
+router.post("/sessions", requireWisdomOrigin, createLimiter, dailyCreateLimiter, (req, res) => {
   upload.fields([
     { name: "glb", maxCount: 1 },
     { name: "usdz", maxCount: 1 },

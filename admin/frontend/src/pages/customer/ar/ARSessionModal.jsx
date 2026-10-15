@@ -99,7 +99,7 @@ export default function ARSessionModal({
           type="button"
           className="wisdom-ar-modal-close"
           onClick={onClose}
-          aria-label="Close AR preview"
+          aria-label="Close AR view"
         >
           ×
         </button>
@@ -123,7 +123,7 @@ export default function ARSessionModal({
           <div className="wisdom-ar-state-panel">
             <div className="wisdom-ar-error-mark">!</div>
             <h2 id="wisdom-ar-modal-title">
-              AR preview could not be prepared
+              AR view could not be prepared
             </h2>
             <p>{error}</p>
             <button
@@ -151,16 +151,16 @@ export default function ARSessionModal({
 
             <div className="wisdom-ar-ready-copy">
               <h2 id="wisdom-ar-modal-title">
-                Show in your room (AR)
+                View Furniture in Your Room
               </h2>
 
               <p className="wisdom-ar-lead">
-                Scan the QR code using your phone. The furniture
-                opens at its configured real-world size.
+                Scan the QR code with your phone to view your furniture
+                using its configured dimensions.
               </p>
 
               <div className="wisdom-ar-size-card">
-                <span>AR MODEL SIZE</span>
+                <span>FURNITURE DIMENSIONS</span>
                 <strong>
                   {formatMm(dimensionsMm?.width_mm)} ×{" "}
                   {formatMm(dimensionsMm?.height_mm)} ×{" "}
@@ -179,27 +179,27 @@ export default function ARSessionModal({
                 className="wisdom-ar-open-device-link"
                 href={sessionUrl}
               >
-                Open on this device
+                Open AR on This Device
               </a>
 
               {isLocalhost ? (
                 <p className="wisdom-ar-local-note">
-                  A phone cannot reach a QR that starts with
-                  localhost. Use the included local HTTPS AR test
-                  helper, or test from the deployed HTTPS website.
+                  A QR code containing localhost cannot be opened on
+                  another device. Use the secure WISDOM website
+                  to scan the QR code with your phone.
                 </p>
               ) : (
                 <p className="wisdom-ar-ready-note">
-                  Keep the furniture at its configured scale when
-                  checking whether it fits your room.
+                  View the furniture at its configured dimensions
+                  to see how it fits in your space.
                 </p>
               )}
 
-              {/* WISDOM AR PROTOTYPE NOTICE */}
+              {/* AR PLACEMENT GUIDANCE */}
               <div
                 className="wisdom-ar-prototype-note"
                 role="note"
-                aria-label="AR prototype notice"
+                aria-label="AR placement guidance"
               >
                 <span
                   className="wisdom-ar-prototype-icon"
@@ -208,17 +208,16 @@ export default function ARSessionModal({
                   i
                 </span>
                 <p>
-                  <strong>Prototype notice:</strong> This AR preview
-                  is still under development. Furniture is shown at
-                  its configured real-world size, but placement and
-                  tracking accuracy may vary by device, lighting, and
-                  environment.
+                  <strong>Placement guidance:</strong> For better results,
+                  use good lighting and slowly move your phone to
+                  detect the floor. Placement accuracy may vary
+                  depending on your device and surroundings.
                 </p>
               </div>
 
               <p className="wisdom-ar-expiry-note">
-                This temporary AR link expires automatically in
-                about 2 hours.
+                This AR viewing link expires about 2 hours after
+                it is created.
               </p>
             </div>
           </div>
