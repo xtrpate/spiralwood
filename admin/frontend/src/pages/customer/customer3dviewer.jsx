@@ -61,6 +61,9 @@ import {
 import { isCustomerWoodEligibleComponent, getCustomerWoodEligibleTargetIds } from "./customerWoodEligibility.mjs";
 import { applyWoodFinish } from "../blueprints/data/componentUtils";
 import { getCustomerFurnitureDimensions } from "./customerGeometryBounds.mjs";
+import { isVisibleFurniturePart } from "./ar/visibleARParts.mjs";
+import ARSessionModal from "./ar/ARSessionModal";
+import useFurnitureAR from "./ar/useFurnitureAR";
 import "./customer3dviewer-roomle-complete.css";
 
 const WORLD_W = 6400;
@@ -2092,6 +2095,11 @@ export default function Customer3DViewer({
     return normalizeDimensions(initialDimensions || {});
   }, [components, initialDimensions]);
 
+  const furnitureAR = useFurnitureAR({
+    components,
+    dimensionsMm: overallBounds,
+  });
+
   // CUST-B2: Only the verified ten-part bookshelf shape is resizable.
   const bookshelfSupport = useMemo(
     () => getCustomerBookshelfResizeSupport(components), [components]);
@@ -4032,7 +4040,8 @@ export default function Customer3DViewer({
 
     const dummySelectable = [];
     const boundsBox = new THREE.Box3();
-    const safeComponents = normalizeViewerComponents(components);
+    const safeComponents = normalizeViewerComponents(components)
+      .filter(isVisibleFurniturePart);
 
     safeComponents.forEach((comp) => {
       try {
@@ -5132,6 +5141,7 @@ export default function Customer3DViewer({
       }
       style={styles.root}
     >
+      <ARSessionModal {...furnitureAR.modalProps} />
       {!readOnly && customizeFeedback ? (
         <div
           className="wisdom-config-feedback-toast"
@@ -5657,6 +5667,19 @@ export default function Customer3DViewer({
                       }
                     >
                       <Maximize2 size={18} strokeWidth={1.65} />
+                    </button>
+                  </div>
+
+                  <div className="wisdom-roomle-toolbar-slot">
+                    <button
+                      type="button"
+                      className="wisdom-roomle-tool"
+                      data-tooltip="View in your room (AR)"
+                      onClick={furnitureAR.open}
+                      disabled={furnitureAR.busy}
+                      aria-label="View in your room (AR)"
+                    >
+                      <span className="wisdom-ar-tool-glyph">AR</span>
                     </button>
                   </div>
 
