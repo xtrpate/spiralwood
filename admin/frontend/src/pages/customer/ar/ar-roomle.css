@@ -427,3 +427,119 @@
     box-sizing: border-box;
   }
 }
+
+.wisdom-ar-wall-fit {
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.wisdom-ar-wall-fit h3 {
+  margin: 0 0 6px;
+  color: #111827;
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.wisdom-ar-wall-fit-intro,
+.wisdom-ar-wall-fit-caveat {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.wisdom-ar-wall-fit-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.wisdom-ar-wall-fit-fields label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.wisdom-ar-wall-fit-fields input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  box-sizing: border-box;
+  border: 1px solid #111827;
+  border-radius: 0;
+  padding: 0 10px;
+  background: #ffffff;
+  color: #111827;
+  font: inherit;
+  font-size: 14px;
+}
+
+.wisdom-ar-wall-fit-result {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.wisdom-ar-wall-fit-result > strong {
+  display: block;
+  margin-bottom: 5px;
+  color: #111827;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.wisdom-ar-wall-fit-result.is-fits > strong {
+  color: #166534;
+}
+
+.wisdom-ar-wall-fit-result.is-does-not-fit > strong {
+  color: #b91c1c;
+}
+
+.wisdom-ar-wall-fit-result > p {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.wisdom-ar-wall-fit-values {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  color: #374151;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.wisdom-ar-wall-fit-values > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wisdom-ar-wall-fit-values strong {
+  text-align: right;
+}
+
+.wisdom-ar-wall-fit-caveat {
+  margin-top: 12px;
+  font-size: 11px;
+}
+
+@media (max-width: 420px) {
+  .wisdom-ar-wall-fit-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .wisdom-ar-wall-fit-values > div {
+    align-items: flex-start;
+  }
+}
