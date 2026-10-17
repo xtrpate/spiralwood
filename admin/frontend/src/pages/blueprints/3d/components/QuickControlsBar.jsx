@@ -277,7 +277,7 @@ function ControlSection({ title, children }) {
   );
 }
 
-export function QuickControlsBar() {
+export function QuickControlsBar({ onAutoCenter, canAutoCenter = false }) {
   const rootRef = useRef(null);
   const [open, setOpen] = useState(false);
 
@@ -322,8 +322,38 @@ export function QuickControlsBar() {
         top: 14,
         right: 390,
         zIndex: 1250,
+        display: "grid",
+        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+        alignItems: "center",
+        gap: 8,
+        width: 198,
       }}
     >
+      <button
+        type="button"
+        onClick={onAutoCenter}
+        disabled={!canAutoCenter}
+        title={canAutoCenter ? "Center selected furniture on the floor" : "Select editable furniture parts to enable Auto Center"}
+        style={{
+          height: 30,
+          padding: "0 10px",
+          border: "1px solid rgba(100,116,139,.72)",
+          borderRadius: 2,
+          background: "rgba(7,14,26,.94)",
+          color: "#e5edf8",
+          boxShadow: "0 4px 12px rgba(0,0,0,.18)",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 9,
+          fontWeight: 600,
+          whiteSpace: "nowrap",
+          cursor: canAutoCenter ? "pointer" : "not-allowed",
+          opacity: canAutoCenter ? 1 : 0.45,
+        }}
+      >
+        Auto Center
+      </button>
       <button
         type="button"
         aria-expanded={open}

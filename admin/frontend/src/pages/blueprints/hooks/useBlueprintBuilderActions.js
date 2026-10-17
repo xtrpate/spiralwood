@@ -12,6 +12,8 @@ import {
 import { clamp, makeGroupId, snap } from "../data/utils";
 import { planCompleteDrawerBoxGeometry } from "../data/drawerBoxGeometry";
 import { planDrawerOpeningTargets } from "../data/drawerOpeningPlan";
+import { validateBlueprintGeneratedParts } from "../data/floorWorkspaceA3B.mjs";
+import { validateBlueprintCabinetRebuild } from "../data/floorWorkspaceA3B2A.mjs";
 
 export function useBlueprintBuilderActions({
   components,
@@ -26,12 +28,43 @@ export function useBlueprintBuilderActions({
   view,
   getCabinetBuilderContext3D,
   worldHeight,
+  worldWidth,
+  worldDepth,
   floorOffset = 40,
   gridSize = 20,
 }) {
   const GRID_SIZE = gridSize;
   const FLOOR_OFFSET = floorOffset;
   const WORLD_H = worldHeight;
+  const canAppendGeneratedParts = useCallback((parts) => {
+    const result = validateBlueprintGeneratedParts({
+      parts, worldWidth, worldDepth,
+      floorComponentY: WORLD_H - FLOOR_OFFSET,
+    });
+    if (!result.ok) {
+      toast.error(result.error);
+      return false;
+    }
+    return true;
+  }, [worldWidth, worldDepth, WORLD_H, FLOOR_OFFSET]);
+
+  // A3B2-A: Validate the proposed complete cabinet replacement BEFORE history,
+  // deletions, selection changes, or notifications. Legacy untouched parts
+  // remain untouched even when their original coordinates are out of bounds.
+  const canApplyCabinetRebuild = useCallback((nextComponents) => {
+    const result = validateBlueprintCabinetRebuild({
+      before: components,
+      after: nextComponents,
+      worldWidth,
+      worldDepth,
+      floorComponentY: WORLD_H - FLOOR_OFFSET,
+    });
+    if (!result.ok) {
+      toast.error(result.error);
+      return false;
+    }
+    return true;
+  }, [components, worldWidth, worldDepth, WORLD_H, FLOOR_OFFSET]);
 
   const buildCabinetBox3D = useCallback(
     (options = {}) => {
@@ -354,6 +387,7 @@ export function useBlueprintBuilderActions({
           }
         }
 
+        if (!canAppendGeneratedParts(parts)) return;
         pushHistory(components);
         setComponents((prev) => [...prev, ...parts]);
         setSelectedIds(parts.map((item) => item.id));
@@ -642,6 +676,7 @@ export function useBlueprintBuilderActions({
           }
         }
 
+        if (!canAppendGeneratedParts(parts)) return;
         pushHistory(components);
         setComponents((prev) => [...prev, ...parts]);
         setSelectedIds(parts.map((item) => item.id));
@@ -969,6 +1004,7 @@ export function useBlueprintBuilderActions({
           }
         }
 
+        if (!canAppendGeneratedParts(parts)) return;
         pushHistory(components);
         setComponents((prev) => [...prev, ...parts]);
         setSelectedIds(parts.map((item) => item.id));
@@ -1306,6 +1342,7 @@ export function useBlueprintBuilderActions({
           }
         }
 
+        if (!canAppendGeneratedParts(parts)) return;
         pushHistory(components);
         setComponents((prev) => [...prev, ...parts]);
         setSelectedIds(parts.map((item) => item.id));
@@ -1545,6 +1582,7 @@ export function useBlueprintBuilderActions({
         }
       }
 
+      if (!canAppendGeneratedParts(parts)) return;
       pushHistory(components);
       setComponents((prev) => [...prev, ...parts]);
       setSelectedIds(parts.map((item) => item.id));
@@ -1556,7 +1594,7 @@ export function useBlueprintBuilderActions({
         `${groupLabel} generated (${parts.length} part${parts.length !== 1 ? "s" : ""}).`,
       );
     },
-    [components, editorMode, view, WORLD_H, pushHistory],
+    [components, editorMode, view, WORLD_H, pushHistory, canAppendGeneratedParts],
   );
 
 
@@ -1796,6 +1834,7 @@ export function useBlueprintBuilderActions({
         }),
       ];
 
+      if (!canAppendGeneratedParts(parts)) return;
       pushHistory(components);
       setComponents((prev) => [...prev, ...parts]);
       setSelectedIds(parts.map((item) => item.id));
@@ -1805,7 +1844,7 @@ export function useBlueprintBuilderActions({
 
       toast.success(`${groupLabel} generated (9 parts).`);
     },
-    [components, editorMode, view, WORLD_H, pushHistory],
+    [components, editorMode, view, WORLD_H, pushHistory, canAppendGeneratedParts],
   );
 
   const createDoorPairFrontParts3D = useCallback(
@@ -2053,16 +2092,17 @@ export function useBlueprintBuilderActions({
         ...(ctx.frontParts || []).map((item) => item.id),
       ]);
 
+      const preserved = components.filter(
+        (item) => !removeShelfAndFrontIds.has(item.id),
+      );
+      const nextComponents = preserved.concat(newShelves);
+
+      if (!canApplyCabinetRebuild(nextComponents)) return;
       pushHistory(
         Array.isArray(components)
           ? components.map((item) => normalizeComponent(item))
           : [],
       );
-
-      const preserved = components.filter(
-        (item) => !removeShelfAndFrontIds.has(item.id),
-      );
-      const nextComponents = preserved.concat(newShelves);
 
       setComponents(nextComponents);
 
@@ -2099,6 +2139,7 @@ export function useBlueprintBuilderActions({
       isLocked,
       components,
       pushHistory,
+      canApplyCabinetRebuild,
     ],
   );
 
@@ -2205,15 +2246,16 @@ export function useBlueprintBuilderActions({
         });
       });
 
+      const nextComponents = components
+        .filter((item) => !ctx.removeInteriorAndFrontIds.has(item.id))
+        .concat(newParts);
+
+      if (!canApplyCabinetRebuild(nextComponents)) return;
       pushHistory(
         Array.isArray(components)
           ? components.map((item) => normalizeComponent(item))
           : [],
       );
-
-      const nextComponents = components
-        .filter((item) => !ctx.removeInteriorAndFrontIds.has(item.id))
-        .concat(newParts);
 
       setComponents(nextComponents);
 
@@ -2233,7 +2275,7 @@ export function useBlueprintBuilderActions({
           : "2 Column cabinet interior applied.",
       );
     },
-    [editorMode, getCabinetBuilderContext3D, components, pushHistory],
+    [editorMode, getCabinetBuilderContext3D, components, pushHistory, canApplyCabinetRebuild],
   );
 
 
@@ -2352,13 +2394,15 @@ export function useBlueprintBuilderActions({
         }
 
         const oldDoorIds = new Set(previousDoors.map((item) => String(item.id)));
-        pushHistory(Array.isArray(components) ? components.map((item) => normalizeComponent(item)) : []);
-        setComponents((previous) => previous
+        const nextComponents = components
           .filter((item) => !oldDoorIds.has(String(item.id)))
           .map((item) => updatedShelfDepth.has(String(item.id))
             ? { ...item, depth: updatedShelfDepth.get(String(item.id)) }
             : item)
-          .concat(nextDoorParts));
+          .concat(nextDoorParts);
+        if (!canApplyCabinetRebuild(nextComponents)) return;
+        pushHistory(Array.isArray(components) ? components.map((item) => normalizeComponent(item)) : []);
+        setComponents(nextComponents);
         setSelectedIds(nextDoorParts.map((item) => item.id));
         setSelectedId(nextDoorParts[0].id);
         setEdit3DId(nextDoorParts[0].id);
@@ -2596,16 +2640,16 @@ export function useBlueprintBuilderActions({
 
       const removeDoorIds = new Set(currentDoorParts.map((item) => item.id));
 
+      const nextComponents = components
+        .filter((item) => !removeDoorIds.has(item.id))
+        .concat(nextDoorParts);
+
+      if (!canApplyCabinetRebuild(nextComponents)) return;
       pushHistory(
         Array.isArray(components)
           ? components.map((item) => normalizeComponent(item))
           : [],
       );
-
-      const nextComponents = components
-        .filter((item) => !removeDoorIds.has(item.id))
-        .concat(nextDoorParts);
-
       setComponents(nextComponents);
       setSelectedIds(nextDoorParts.map((item) => item.id));
       setSelectedId(nextDoorParts[0]?.id || ctx.primaryId);
@@ -2630,6 +2674,7 @@ export function useBlueprintBuilderActions({
       isLocked,
       components,
       pushHistory,
+      canApplyCabinetRebuild,
     ],
   );
 
@@ -3155,16 +3200,16 @@ export function useBlueprintBuilderActions({
         currentGeneratedDrawerParts.map((item) => item.id),
       );
 
+      const nextComponents = components
+        .filter((item) => !removeDrawerIds.has(item.id))
+        .concat(nextDrawerParts);
+
+      if (!canApplyCabinetRebuild(nextComponents)) return;
       pushHistory(
         Array.isArray(components)
           ? components.map((item) => normalizeComponent(item))
           : [],
       );
-
-      const nextComponents = components
-        .filter((item) => !removeDrawerIds.has(item.id))
-        .concat(nextDrawerParts);
-
       setComponents(nextComponents);
       setSelectedIds(nextDrawerParts.map((item) => item.id));
       setSelectedId(nextDrawerParts[0]?.id || ctx.primaryId);
@@ -3189,6 +3234,7 @@ export function useBlueprintBuilderActions({
       isLocked,
       components,
       pushHistory,
+      canApplyCabinetRebuild,
     ],
   );
   const buildCabinetFrontPreset3D = useCallback(
@@ -3335,16 +3381,16 @@ export function useBlueprintBuilderActions({
         );
       }
 
+      const nextComponents = components
+        .filter((item) => !ctx.removeFrontIds.has(item.id))
+        .concat(nextFrontParts);
+
+      if (!canApplyCabinetRebuild(nextComponents)) return;
       pushHistory(
         Array.isArray(components)
           ? components.map((item) => normalizeComponent(item))
           : [],
       );
-
-      const nextComponents = components
-        .filter((item) => !ctx.removeFrontIds.has(item.id))
-        .concat(nextFrontParts);
-
       setComponents(nextComponents);
       setSelectedIds(nextFrontParts.map((item) => item.id));
       setSelectedId(nextFrontParts[0]?.id || ctx.primaryId);
@@ -3360,6 +3406,7 @@ export function useBlueprintBuilderActions({
       createDrawerStackFrontParts3D,
       components,
       pushHistory,
+      canApplyCabinetRebuild,
     ],
   );
 
@@ -3415,16 +3462,16 @@ export function useBlueprintBuilderActions({
         }
       });
 
+      const nextComponents = components
+        .filter((item) => !ctx.removeFrontIds.has(item.id))
+        .concat(nextFrontParts);
+
+      if (!canApplyCabinetRebuild(nextComponents)) return;
       pushHistory(
         Array.isArray(components)
           ? components.map((item) => normalizeComponent(item))
           : [],
       );
-
-      const nextComponents = components
-        .filter((item) => !ctx.removeFrontIds.has(item.id))
-        .concat(nextFrontParts);
-
       setComponents(nextComponents);
       setSelectedIds(nextFrontParts.map((item) => item.id));
       setSelectedId(nextFrontParts[0]?.id || ctx.primaryId);
@@ -3440,6 +3487,7 @@ export function useBlueprintBuilderActions({
       createDrawerStackFrontParts3D,
       components,
       pushHistory,
+      canApplyCabinetRebuild,
     ],
   );
 
@@ -3508,16 +3556,16 @@ export function useBlueprintBuilderActions({
         }
       });
 
+      const nextComponents = components
+        .filter((item) => !ctx.removeFrontIds.has(item.id))
+        .concat(nextFrontParts);
+
+      if (!canApplyCabinetRebuild(nextComponents)) return;
       pushHistory(
         Array.isArray(components)
           ? components.map((item) => normalizeComponent(item))
           : [],
       );
-
-      const nextComponents = components
-        .filter((item) => !ctx.removeFrontIds.has(item.id))
-        .concat(nextFrontParts);
-
       setComponents(nextComponents);
       setSelectedIds(nextFrontParts.map((item) => item.id));
       setSelectedId(nextFrontParts[0]?.id || ctx.primaryId);
@@ -3533,6 +3581,7 @@ export function useBlueprintBuilderActions({
       createDrawerStackFrontParts3D,
       components,
       pushHistory,
+      canApplyCabinetRebuild,
     ],
   );
 

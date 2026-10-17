@@ -6,6 +6,8 @@ import toast from "react-hot-toast";
 // ── Data & Types ──────────────────────────────────────────────────────────────
 import { VIEWS, EXPORT_VIEWS, WOOD_FINISHES } from "./data/furnitureTypes";
 import { normalizeComponent } from "./data/componentUtils";
+import { validateBlueprintFloorEdits, hasBlueprintFloorGeometryChange } from "./data/floorWorkspaceA3.mjs";
+import { planBlueprintAutoCenter } from "./data/floorWorkspaceA1.mjs";
 import { mmToDisplay } from "./data/utils";
 import {
   DEFAULT_IMPORT_DIMENSIONS,
@@ -416,6 +418,10 @@ export default function BlueprintDesign() {
     editorMode,
     isLocked,
     pushHistory,
+    worldWidth: WORLD_W,
+    worldDepth: WORLD_D,
+    worldHeight: WORLD_H,
+    floorOffset: FLOOR_OFFSET,
     gridSize: GRID_SIZE,
   });
 
@@ -496,7 +502,23 @@ export default function BlueprintDesign() {
 
       if (!hasMeaningfulChange) return;
 
-      if (!options.skipHistory) {
+      // A3A: evaluate actual normalized geometry before recording any edit.
+    if (hasBlueprintFloorGeometryChange(attrs)) {
+      const proposed = Object.fromEntries(
+        components.filter((part) => targetSet.has(part.id))
+          .map((part) => [part.id, normalizeComponent({ ...part, ...attrs })]),
+      );
+      const floorCheck = validateBlueprintFloorEdits({
+        components, updatesById: proposed, worldWidth: WORLD_W,
+        worldDepth: WORLD_D, floorComponentY: WORLD_H - FLOOR_OFFSET,
+      });
+      if (!floorCheck.ok) {
+        toast.error(floorCheck.error);
+        return;
+      }
+    }
+
+    if (!options.skipHistory) {
         pushHistory(components);
       }
 
@@ -544,7 +566,22 @@ export default function BlueprintDesign() {
 
       if (!entries.length) return;
 
-      if (!options.skipHistory) {
+      // A3A: check every changed part as one atomic batch, never split an assembly.
+    const geometryChanges = entries.filter(([, attrs]) => hasBlueprintFloorGeometryChange(attrs));
+    if (geometryChanges.length) {
+      const proposed = Object.fromEntries(geometryChanges.map(([partId, attrs]) =>
+        [partId, normalizeComponent({ ...currentById.get(partId), ...attrs })],
+      ));
+      const floorCheck = validateBlueprintFloorEdits({
+        components, updatesById: proposed, worldWidth: WORLD_W,
+        worldDepth: WORLD_D, floorComponentY: WORLD_H - FLOOR_OFFSET,
+      });
+      if (!floorCheck.ok) {
+        toast.error(floorCheck.error);
+        return;
+      }
+    }
+    if (!options.skipHistory) {
         pushHistory(components);
       }
 
@@ -559,6 +596,59 @@ export default function BlueprintDesign() {
     },
     [editorMode, components, pushHistory],
   );
+
+  // A2: Auto Center is a deliberate operation on explicitly selected furniture.
+  // Do not implicitly center every assembly in a multi-furniture Blueprint.
+  const canAutoCenter3D =
+    editorMode === "editable" &&
+    !saving &&
+    !pendingPlacement &&
+    !manualPreview3D &&
+    !stagedManualReviewU4 &&
+    activeSelectedComponents3D.length > 0 &&
+    !activeSelectedComponents3D.some((part) => isLocked(part));
+
+  const handleAutoCenter3D = useCallback(() => {
+    if (editorMode !== "editable" || saving || pendingPlacement ||
+        manualPreview3D || stagedManualReviewU4) return;
+
+    const chosenIds = selectedIds.length
+      ? [...new Set(selectedIds.filter(Boolean))]
+      : [selectedId].filter(Boolean);
+    if (!chosenIds.length) return;
+    const chosen = components.filter((part) => chosenIds.includes(part.id));
+    if (chosen.some((part) => isLocked(part))) {
+      toast.error("Unlock all selected furniture parts before centering.");
+      return;
+    }
+
+    const proposal = planBlueprintAutoCenter({
+      components, selectedIds: chosenIds,
+      worldWidth: WORLD_W, worldDepth: WORLD_D,
+    });
+    if (!proposal.ok) {
+      toast.error(proposal.error || "Cannot center the selected furniture.");
+      return;
+    }
+    if (proposal.unchanged) {
+      toast("Selected furniture is already centered.");
+      return;
+    }
+
+    // Absolute coordinates are review-sensitive. Let the Admin cancel before
+    // changing a Blueprint that has an already saved Furniture Size Review.
+    if (hasStoredManualReviewU4 && !window.confirm(
+      "Auto Center will change saved part coordinates. Your Furniture Size Review may need to be repeated after saving. Continue?"
+    )) return;
+
+    // One existing batch update = one Undo history entry, no auto-save.
+    updateManyComps(proposal.updatesById);
+    toast.success(`Centered selected furniture (${proposal.selectedCount} parts).`);
+  }, [
+    editorMode, saving, pendingPlacement, manualPreview3D, stagedManualReviewU4,
+    selectedIds, selectedId, components, isLocked, hasStoredManualReviewU4,
+    updateManyComps,
+  ]);
 
   const {
     canCreateAssembly,
@@ -612,6 +702,8 @@ export default function BlueprintDesign() {
     activeSelectionIds3D,
     activeSelectedComponents3D,
     hasLockedSmartSelection3D,
+    worldWidth: WORLD_W,
+    worldDepth: WORLD_D,
     worldHeight: WORLD_H,
     floorOffset: FLOOR_OFFSET,
     gridSize: GRID_SIZE,
@@ -639,6 +731,8 @@ export default function BlueprintDesign() {
     view,
     getCabinetBuilderContext3D,
     worldHeight: WORLD_H,
+    worldWidth: WORLD_W,
+    worldDepth: WORLD_D,
     floorOffset: FLOOR_OFFSET,
     gridSize: GRID_SIZE,
   });
@@ -800,6 +894,8 @@ export default function BlueprintDesign() {
             setEdit3DId={setEdit3DId}
             onUpdateComp={updateComp}
             onBatchUpdateComps={updateManyComps}
+            onAutoCenter={handleAutoCenter3D}
+            canAutoCenter={canAutoCenter3D}
             canUseSmartActions={canUseSmartActions3D}
             smartSelectionCount={activeSelectedComponents3D.length}
             hasLockedSmartSelection={hasLockedSmartSelection3D}

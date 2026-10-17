@@ -15,6 +15,7 @@ import { createFurnitureObject } from "./createFurnitureObjects";
 import { FURNITURE_TEMPLATE_SET } from "../data/furnitureTypes";
 import { normalizeComponent } from "../data/componentUtils";
 import { getRotatedComponentBounds3D } from "../data/rotationBounds";
+import { getWorldFloorXZCorrection, validateBlueprintFloorEdits } from "../data/floorWorkspaceA3.mjs";
 import { isWoodworkingProfileComponent } from "../data/woodworkingProfile";
 import {
   snap,
@@ -513,6 +514,8 @@ function ThreeDViewer({
   setEdit3DId,
   onUpdateComp,
   onBatchUpdateComps,
+  onAutoCenter,
+  canAutoCenter = false,
   lockedFields,
   canvasW,
   canvasH,
@@ -627,6 +630,7 @@ function ThreeDViewer({
 
   const onPushHistoryRef = useRef(onPushHistory);
   const onBeforeDragRef = useRef(null);
+  const singleSafeTransformRef = useRef(null);
 
   const mountRef = useRef(null);
   const rendererRef = useRef(null);
@@ -1503,14 +1507,29 @@ function ThreeDViewer({
 
       obj.updateMatrixWorld(true);
       const box = new THREE.Box3().setFromObject(obj);
-      if (box.isEmpty() || box.min.y >= floorWorldY - 0.001) return 0;
+      if (box.isEmpty()) return 0;
 
-      const correctionY = floorWorldY - box.min.y;
-      obj.position.y += correctionY;
-      obj.updateMatrixWorld(true);
+      const correction = getWorldFloorXZCorrection({
+        minX: box.min.x, maxX: box.max.x, minZ: box.min.z, maxZ: box.max.z,
+        worldWidth: canvasW, worldDepth: canvasD,
+      });
+      if (!correction.ok) return false; // Oversized: caller restores last valid transform.
+
+      const correctionY = Math.max(0, floorWorldY - box.min.y);
+      // A tiny inset prevents integer-coordinate persistence rounding outside.
+      const xSlack = Math.max(0, canvasW - (box.max.x - box.min.x));
+      const zSlack = Math.max(0, canvasD - (box.max.z - box.min.z));
+      const dx = correction.dx ? correction.dx + Math.sign(correction.dx) * Math.min(0.51, xSlack / 2) : 0;
+      const dz = correction.dz ? correction.dz + Math.sign(correction.dz) * Math.min(0.51, zSlack / 2) : 0;
+      if (dx || dz || correctionY) {
+        obj.position.x += dx;
+        obj.position.z += dz;
+        obj.position.y += correctionY;
+        obj.updateMatrixWorld(true);
+      }
       return correctionY;
     },
-    [floorWorldY],
+    [floorWorldY, canvasW, canvasD],
   );
 
   const worldFromComp = useCallback(
@@ -2774,6 +2793,10 @@ function ThreeDViewer({
         mode: transformModeRef.current || "translate",
         startPivotMatrix: pivot.matrixWorld.clone(),
         startPivotInverse: pivot.matrixWorld.clone().invert(),
+        lastSafePivot: {
+          position: pivot.position.clone(), quaternion: pivot.quaternion.clone(),
+          scale: pivot.scale.clone(),
+        },
         items: entries.map(({ id, obj, comp }) => ({
           id,
           obj,
@@ -2837,7 +2860,36 @@ function ThreeDViewer({
       pivot.position.y += floorWorldY - selectionBox.min.y;
       applyPreviewFromPivot();
     }
-  }, [floorWorldY]);
+    // A3A: correct the ONE pivot, not every panel (prevents detached shelves).
+    const floorBox = new THREE.Box3();
+    state.items.forEach((item) => floorBox.expandByObject(item.obj));
+    if (floorBox.isEmpty()) return;
+    const correction = getWorldFloorXZCorrection({
+      minX: floorBox.min.x, maxX: floorBox.max.x,
+      minZ: floorBox.min.z, maxZ: floorBox.max.z,
+      worldWidth: canvasW, worldDepth: canvasD,
+    });
+    if (!correction.ok) {
+      // Oversized during rotate: keep the last valid orientation.
+      const last = state.lastSafePivot;
+      pivot.position.copy(last.position);
+      pivot.quaternion.copy(last.quaternion);
+      pivot.scale.copy(last.scale);
+      applyPreviewFromPivot();
+      return;
+    }
+    if (correction.dx || correction.dz) {
+      const xSlack = Math.max(0, canvasW - (floorBox.max.x - floorBox.min.x));
+      const zSlack = Math.max(0, canvasD - (floorBox.max.z - floorBox.min.z));
+      pivot.position.x += correction.dx ? correction.dx + Math.sign(correction.dx) * Math.min(0.51, xSlack / 2) : 0;
+      pivot.position.z += correction.dz ? correction.dz + Math.sign(correction.dz) * Math.min(0.51, zSlack / 2) : 0;
+      applyPreviewFromPivot();
+    }
+    state.lastSafePivot = {
+      position: pivot.position.clone(), quaternion: pivot.quaternion.clone(),
+      scale: pivot.scale.clone(),
+    };
+  }, [floorWorldY, canvasW, canvasD]);
 
   const commitMultiTransform = useCallback(() => {
     const state = multiTransformStateRef.current;
@@ -2856,6 +2908,15 @@ function ThreeDViewer({
       updatesById[item.id] = clampComponentUpdatesToFloor(item.comp, updates);
     });
 
+    const floorCheck = validateBlueprintFloorEdits({
+      components: componentsRef.current || [], updatesById,
+      worldWidth: canvasW, worldDepth: canvasD, floorComponentY,
+    });
+    if (!floorCheck.ok) {
+      onBeforeDragRef.current = null;
+      resetMultiTransformState();
+      return;
+    }
     if (onBeforeDragRef.current) {
       onPushHistoryRef.current?.(onBeforeDragRef.current);
       onBeforeDragRef.current = null;
@@ -2863,7 +2924,7 @@ function ThreeDViewer({
 
     onBatchUpdateCompsRef.current?.(updatesById, { skipHistory: true });
     resetMultiTransformState();
-  }, [clampComponentUpdatesToFloor, compFromWorld, resetMultiTransformState]);
+  }, [clampComponentUpdatesToFloor, compFromWorld, resetMultiTransformState, canvasW, canvasD, floorComponentY]);
 
   const captureCameraView = useCallback(
     () => captureCameraSnapshot(cameraRef.current, orbitRef.current),
@@ -3227,6 +3288,10 @@ function ThreeDViewer({
           const entry = currentId ? entryMapRef.current.get(currentId) : null;
 
           if (entry?.obj && entry?.comp) {
+            singleSafeTransformRef.current = {
+              id: currentId, position: entry.obj.position.clone(),
+              quaternion: entry.obj.quaternion.clone(), scale: entry.obj.scale.clone(),
+            };
             if (transformModeRef.current === "scale") {
               singleScaleStateRef.current = {
                 id: currentId,
@@ -3270,7 +3335,20 @@ function ThreeDViewer({
 
         // Keep the final transform preview above the design floor before
         // converting it back into Blueprint component coordinates.
-        clampObjectToBlueprintFloor(entry.obj);
+        if (clampObjectToBlueprintFloor(entry.obj) === false) {
+          const safe = singleSafeTransformRef.current;
+          if (safe?.id === currentId) {
+            entry.obj.position.copy(safe.position);
+            entry.obj.quaternion.copy(safe.quaternion);
+            entry.obj.scale.copy(safe.scale);
+            entry.obj.updateMatrixWorld(true);
+          }
+          onBeforeDragRef.current = null;
+          singleScaleStateRef.current = null;
+          singleSafeTransformRef.current = null;
+          clearLiveSelectedComp();
+          return;
+        }
 
         const scaleState = singleScaleStateRef.current;
         const isScaleCommit =
@@ -3280,6 +3358,18 @@ function ThreeDViewer({
           ? getAnchoredScaleUpdates(entry.obj, entry.comp, scaleState)
           : compFromWorld(entry.obj, entry.comp, transformModeRef.current);
         const updates = clampComponentUpdatesToFloor(entry.comp, rawUpdates);
+        const floorCheck = validateBlueprintFloorEdits({
+          components: componentsRef.current || [],
+          updatesById: { [currentId]: normalizeComponent({ ...entry.comp, ...updates }) },
+          worldWidth: canvasW, worldDepth: canvasD, floorComponentY,
+        });
+        if (!floorCheck.ok) {
+          onBeforeDragRef.current = null;
+          singleScaleStateRef.current = null;
+          singleSafeTransformRef.current = null;
+          clearLiveSelectedComp();
+          return;
+        }
 
         if (onBeforeDragRef.current) {
           onPushHistoryRef.current?.(onBeforeDragRef.current);
@@ -3290,6 +3380,7 @@ function ThreeDViewer({
         // transform without creating a second identical history entry.
         onUpdateCompRef.current?.(currentId, updates, { skipHistory: true });
         singleScaleStateRef.current = null;
+        singleSafeTransformRef.current = null;
 
         // Keep the final preview intact until React rebuilds the object from
         // the committed component data. Resetting the scale here caused a
@@ -3325,8 +3416,27 @@ function ThreeDViewer({
 
       // Guard only the user's active transform. Unlike the removed global
       // collision pass, this does not mutate component data during rebuilds.
-      clampObjectToBlueprintFloor(entry.obj);
+      const restoreLastSafe = () => {
+        const last = singleSafeTransformRef.current;
+        if (!last || last.id !== currentId) return;
+        entry.obj.position.copy(last.position);
+        entry.obj.quaternion.copy(last.quaternion);
+        entry.obj.scale.copy(last.scale);
+        entry.obj.updateMatrixWorld(true);
+      };
+      if (clampObjectToBlueprintFloor(entry.obj) === false) {
+        restoreLastSafe();
+      }
       syncLiveSelectedCompFromObject(currentId, entry.obj, entry.comp);
+      // The anchored scale preview can reposition the mesh after the first clamp.
+      if (clampObjectToBlueprintFloor(entry.obj) === false) {
+        restoreLastSafe();
+      } else {
+        singleSafeTransformRef.current = {
+          id: currentId, position: entry.obj.position.clone(),
+          quaternion: entry.obj.quaternion.clone(), scale: entry.obj.scale.clone(),
+        };
+      }
       syncSelectionOutlines();
     };
 
@@ -3804,7 +3914,10 @@ function ThreeDViewer({
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
       <div ref={mountRef} style={{ width: "100%", height: "100%" }} />
 
-      <QuickControlsBar />
+      <QuickControlsBar
+        onAutoCenter={onAutoCenter}
+        canAutoCenter={Boolean(canAutoCenter && !isExploded3D && !pendingPlacement && !isLibraryDragPlacing && editorMode === "editable")}
+      />
 
       {/* --- NEW: Visual Box for Selection --- */}
       {selectionRect && (

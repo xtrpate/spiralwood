@@ -1,0 +1,26 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { validateBlueprintGeneratedParts as check } from '../src/pages/blueprints/data/floorWorkspaceA3B.mjs';
+const part = (attrs={}) => ({id:'p1',type:'panel',x:100,y:2940,z:100,width:400,height:220,depth:300,rotationX:0,rotationY:0,rotationZ:0,...attrs});
+const run = ps => check({parts:ps,worldWidth:6400,worldDepth:5200,floorComponentY:3160});
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const read=f=>fs.readFileSync(path.join(root,f),'utf8');
+
+test('A3B1 valid new part accepted including floor contact',()=>assert.equal(run([part()]).ok,true));
+test('A3B1 edge contact is legal',()=>assert.equal(run([part({x:6000,z:4900})]).ok,true));
+test('A3B1 outside x floor is rejected',()=>assert.equal(run([part({x:6000.1})]).code,'PART_OUTSIDE_FLOOR'));
+test('A3B1 outside z floor is rejected',()=>assert.equal(run([part({z:4900.1})]).code,'PART_OUTSIDE_FLOOR'));
+test('A3B1 negative coordinate rejected',()=>assert.equal(run([part({x:-1})]).code,'PART_OUTSIDE_FLOOR'));
+test('A3B1 below floor rejected',()=>assert.equal(run([part({y:2941})]).code,'PART_BELOW_FLOOR'));
+test('A3B1 rotated physical footprint is checked',()=>assert.equal(run([part({x:100,z:5070,width:500,depth:180,rotationY:90})]).code,'PART_OUTSIDE_FLOOR'));
+test('A3B1 group fails atomically if one generated part is outside',()=>assert.equal(run([part(),part({id:'p2',x:6300})]).ok,false));
+test('A3B1 never mutates input parts',()=>{let p=Object.freeze(part());assert.equal(run([p]).ok,true);assert.equal(p.x,100);});
+test('A3B1 reference visual excluded from physical validation',()=>assert.equal(run([part({type:'reference_proxy',x:-5000})]).ok,true));
+test('A3B1 duplicate generated ID is rejected',()=>assert.equal(run([part(),part()]).code,'DUPLICATE_PART'));
+test('A3B1 corrupt numeric coordinates rejected',()=>assert.equal(run([part({z:Infinity})]).code,'INVALID_PART_GEOMETRY'));
+test('A3B1 generated placement guards all 5 furniture library insertions before pushHistory',()=>{const s=read('src/pages/blueprints/hooks/useBlueprintComponentInsertion.js');assert.equal((s.match(/if \(!canInsertParts\(/g)||[]).length,5);assert.ok(s.includes('if (applied) setPendingPlacement(null);'));});
+test('A3B1 generated append guards all 6 builder append paths before pushHistory',()=>{const s=read('src/pages/blueprints/hooks/useBlueprintBuilderActions.js');assert.equal((s.match(/if \(!canAppendGeneratedParts\(parts\)\) return;/g)||[]).length,6);});
+test('A3B1 BlueprintDesign passes the builder workspace dimensions',()=>{const s=read('src/pages/blueprints/BlueprintDesign.jsx');assert.ok(s.includes('worldWidth: WORLD_W,') && s.includes('worldDepth: WORLD_D,'));});

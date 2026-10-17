@@ -16,6 +16,7 @@ import {
 } from "../data/templateComponents";
 import { getPlacedGenericComponentData } from "../data/componentPlacementUtils";
 import { getChairManualPlacement } from "../export/placementHelpers";
+import { validateBlueprintGeneratedParts } from "../data/floorWorkspaceA3B.mjs";
 
 export function useBlueprintComponentInsertion({
   components,
@@ -47,6 +48,18 @@ export function useBlueprintComponentInsertion({
         : {};
 
       const floorY = worldHeight - floorOffset;
+      // A3B1: Validate the fully generated part geometry BEFORE history,
+      // selection changes, or adding anything to the scene.
+      const canInsertParts = (parts) => {
+        const result = validateBlueprintGeneratedParts({
+          parts, worldWidth, worldDepth, floorComponentY: floorY,
+        });
+        if (!result.ok) {
+          toast.error(result.error);
+          return false;
+        }
+        return true;
+      };
 
       const getManualPlacement = (width, height, depth) => {
         if (!worldPlacement) return null;
@@ -99,6 +112,7 @@ export function useBlueprintComponentInsertion({
           }),
         );
 
+        if (!canInsertParts(parts)) return false;
         pushHistory(components);
         setComponents((previous) => [...previous, ...parts]);
         setSelectedId(parts[0]?.id || null);
@@ -106,7 +120,7 @@ export function useBlueprintComponentInsertion({
         setSelectedIds(parts.map((part) => part.id));
         setTransformMode("translate");
         toast.success(`${typeDef.label} added.`);
-        return;
+        return true;
       }
 
       if (typeDef.type === "chair_template") {
@@ -138,6 +152,7 @@ export function useBlueprintComponentInsertion({
         });
         const parts = builtChair.parts;
 
+        if (!canInsertParts(parts)) return false;
         pushHistory(components);
         setComponents((previous) => [...previous, ...parts]);
         setSelectedId(parts[0]?.id || null);
@@ -146,7 +161,7 @@ export function useBlueprintComponentInsertion({
         setTransformMode("translate");
         setActiveChairBuild({ id: groupId, label: groupLabel });
         toast.success("Dining chair template generated.");
-        return;
+        return true;
       }
 
       if (isChairPartType(typeDef.type)) {
@@ -221,6 +236,7 @@ export function useBlueprintComponentInsertion({
           locked: false,
         });
 
+        if (!canInsertParts([newComponent])) return false;
         pushHistory(components);
         setComponents((previous) => [...previous, newComponent]);
         setSelectedId(newComponent.id);
@@ -229,7 +245,7 @@ export function useBlueprintComponentInsertion({
         setTransformMode("translate");
         setActiveChairBuild(targetBuild);
         toast.success(`${newComponent.label} added.`);
-        return;
+        return true;
       }
 
       if (typeDef.type === "dining_chair") {
@@ -270,6 +286,7 @@ export function useBlueprintComponentInsertion({
           locked: false,
         });
 
+        if (!canInsertParts([newComponent])) return false;
         pushHistory(components);
         setComponents((previous) => [...previous, newComponent]);
         setSelectedId(newComponent.id);
@@ -277,7 +294,7 @@ export function useBlueprintComponentInsertion({
         setSelectedIds([newComponent.id]);
         setTransformMode("translate");
         toast.success("Dining chair added.");
-        return;
+        return true;
       }
 
       const manualPlacement = getManualPlacement(
@@ -321,6 +338,7 @@ export function useBlueprintComponentInsertion({
         locked: false,
       });
 
+      if (!canInsertParts([newComponent])) return false;
       pushHistory(components);
       setComponents((previous) => [...previous, newComponent]);
       setSelectedId(newComponent.id);
@@ -328,6 +346,7 @@ export function useBlueprintComponentInsertion({
       setSelectedIds([newComponent.id]);
       setTransformMode("translate");
       toast.success("Component added in 3D.");
+      return true;
     },
     [
       activeChairBuild,
@@ -392,8 +411,8 @@ export function useBlueprintComponentInsertion({
   const placePendingComponent = useCallback(
     (worldPlacement) => {
       if (!pendingPlacement) return;
-      commitAddComponent(pendingPlacement, worldPlacement);
-      setPendingPlacement(null);
+      const applied = commitAddComponent(pendingPlacement, worldPlacement);
+      if (applied) setPendingPlacement(null);
     },
     [commitAddComponent, pendingPlacement, setPendingPlacement],
   );

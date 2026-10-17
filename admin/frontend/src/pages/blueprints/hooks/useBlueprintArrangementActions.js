@@ -5,6 +5,8 @@ import { normalizeComponent } from "../data/componentUtils";
 import { clamp, makeGroupId, snap } from "../data/utils";
 import { createObjectId, deepClone } from "../data/editorUtils";
 import { getSelectionBoundsXYZ } from "../data/selectionUtils";
+import { validateBlueprintFloorEdits } from "../data/floorWorkspaceA3.mjs";
+import { validateBlueprintCabinetRebuild } from "../data/floorWorkspaceA3B2A.mjs";
 import {
   analyzeSmartAssemblyResize,
   buildSmartAssemblyResizePlan,
@@ -27,6 +29,8 @@ export function useBlueprintArrangementActions({
   activeSelectionIds3D,
   activeSelectedComponents3D,
   hasLockedSmartSelection3D,
+  worldWidth,
+  worldDepth,
   worldHeight,
   floorOffset = 40,
   gridSize = 20,
@@ -34,6 +38,26 @@ export function useBlueprintArrangementActions({
   const GRID_SIZE = gridSize;
   const WORLD_H = Number(worldHeight) || 3200;
   const FLOOR_OFFSET = Number(floorOffset) || 40;
+
+  const allowSceneFloorProposal = useCallback((after) => {
+    const result = validateBlueprintCabinetRebuild({
+      before: components, after,
+      worldWidth, worldDepth,
+      floorComponentY: WORLD_H - FLOOR_OFFSET,
+    });
+    if (!result.ok) toast.error(result.error || "Furniture must remain inside the Blueprint floor.");
+    return result.ok;
+  }, [components, worldWidth, worldDepth, WORLD_H, FLOOR_OFFSET]);
+
+  const allowBatchFloorEdit = useCallback((updatesById) => {
+    const result = validateBlueprintFloorEdits({
+      components, updatesById,
+      worldWidth, worldDepth,
+      floorComponentY: WORLD_H - FLOOR_OFFSET,
+    });
+    if (!result.ok) toast.error(result.error || "Furniture must remain inside the Blueprint floor.");
+    return result.ok;
+  }, [components, worldWidth, worldDepth, WORLD_H, FLOOR_OFFSET]);
 
   const getSmartWidthResizeAssembly3D = useCallback(() => {
     const primaryId =
@@ -97,6 +121,7 @@ export function useBlueprintArrangementActions({
         return plan;
       }
 
+      if (!allowBatchFloorEdit(plan.changesById)) return null;
       updateManyComps(plan.changesById);
 
       const nextPrimaryId = plan.assemblyIds.includes(selectedId)
@@ -121,6 +146,7 @@ export function useBlueprintArrangementActions({
       getSmartWidthResizeAssembly3D,
       isLocked,
       updateManyComps,
+      allowBatchFloorEdit,
       selectedId,
     ],
   );
@@ -196,6 +222,7 @@ export function useBlueprintArrangementActions({
         cursor += (Number(comp[sizeKey]) || 0) + safeGap;
       });
 
+      if (!allowBatchFloorEdit(changesById)) return;
       updateManyComps(changesById);
       setTransformMode("translate");
 
@@ -217,6 +244,7 @@ export function useBlueprintArrangementActions({
       getSmartAxisMeta,
       getSelectionBoundsXYZ,
       updateManyComps,
+      allowBatchFloorEdit,
     ],
   );
 
@@ -301,6 +329,7 @@ export function useBlueprintArrangementActions({
         cursor += (Number(comp[sizeKey]) || 0) + evenGap;
       });
 
+      if (!allowBatchFloorEdit(changesById)) return;
       updateManyComps(changesById);
       setTransformMode("translate");
 
@@ -322,6 +351,7 @@ export function useBlueprintArrangementActions({
       getSmartAxisMeta,
       getSelectionBoundsXYZ,
       updateManyComps,
+      allowBatchFloorEdit,
     ],
   );
 
@@ -609,15 +639,9 @@ export function useBlueprintArrangementActions({
           return;
         }
 
-        pushHistory(
-          Array.isArray(components)
-            ? components.map((item) => normalizeComponent(item))
-            : [],
-        );
-
         const changeMap = new Map(Object.entries(changesById));
 
-        setComponents((prev) =>
+        const proposeFloorChange = (prev) => (
           prev.map((item) => {
             const attrs = changeMap.get(item.id);
             return attrs
@@ -626,8 +650,17 @@ export function useBlueprintArrangementActions({
                   ...attrs,
                 })
               : item;
-          }),
+          })
         );
+        if (!allowSceneFloorProposal(proposeFloorChange(components))) return;
+
+        pushHistory(
+          Array.isArray(components)
+            ? components.map((item) => normalizeComponent(item))
+            : [],
+        );
+
+        setComponents(proposeFloorChange);
 
         nextLegIds = sortedLegs.map((leg) => leg.id);
       } else {
@@ -659,6 +692,8 @@ export function useBlueprintArrangementActions({
           }),
         );
 
+        if (!allowSceneFloorProposal([...components, ...generatedLegs])) return;
+
         pushHistory(
           Array.isArray(components)
             ? components.map((item) => normalizeComponent(item))
@@ -689,6 +724,7 @@ export function useBlueprintArrangementActions({
       getAssemblyItemsFromComponent,
       isLocked,
       pushHistory,
+      allowSceneFloorProposal,
       WORLD_H,
       FLOOR_OFFSET,
     ],
@@ -1215,13 +1251,7 @@ export function useBlueprintArrangementActions({
         return;
       }
 
-      pushHistory(
-        Array.isArray(components)
-          ? components.map((item) => normalizeComponent(item))
-          : [],
-      );
-
-      setComponents((prev) =>
+      const proposeFloorChange = (prev) => (
         prev
           .map((item) => {
             const attrs = updateMap.get(item.id);
@@ -1232,8 +1262,17 @@ export function useBlueprintArrangementActions({
                 })
               : item;
           })
-          .concat(createdParts),
+          .concat(createdParts)
       );
+      if (!allowSceneFloorProposal(proposeFloorChange(components))) return;
+
+      pushHistory(
+        Array.isArray(components)
+          ? components.map((item) => normalizeComponent(item))
+          : [],
+      );
+
+      setComponents(proposeFloorChange);
 
       setSelectedIds(resultIds);
       setSelectedId(resultIds[0] || host.id);
@@ -1257,6 +1296,7 @@ export function useBlueprintArrangementActions({
       getAssemblyItemsFromComponent,
       isLocked,
       pushHistory,
+      allowSceneFloorProposal,
     ],
   );
 
@@ -1815,6 +1855,7 @@ export function useBlueprintArrangementActions({
         cursor += (Number(comp[sizeKey]) || 0) + safeGap;
       });
 
+      if (!allowBatchFloorEdit(changesById)) return;
       updateManyComps(changesById);
       setTransformMode("translate");
 
@@ -1834,6 +1875,7 @@ export function useBlueprintArrangementActions({
       getSmartAxisMeta,
       getSelectionBoundsXYZ,
       updateManyComps,
+      allowBatchFloorEdit,
     ],
   );
 
@@ -1937,6 +1979,7 @@ export function useBlueprintArrangementActions({
         cursorY += shelfThickness + computedGap;
       });
 
+      if (!allowBatchFloorEdit(changesById)) return;
       updateManyComps(changesById);
       setSelectedId(host.id);
       setEdit3DId(host.id);
@@ -1951,6 +1994,7 @@ export function useBlueprintArrangementActions({
       activeSelectedComponents3D,
       getSmartHelperSelection3D,
       updateManyComps,
+      allowBatchFloorEdit,
     ],
   );
 
@@ -2040,13 +2084,7 @@ export function useBlueprintArrangementActions({
         locked: false,
       });
 
-      pushHistory(
-        Array.isArray(components)
-          ? components.map((c) => normalizeComponent(c))
-          : [],
-      );
-
-      setComponents((prev) =>
+      const proposeFloorChange = (prev) => (
         prev
           .map((item) =>
             item.id === source.id
@@ -2056,8 +2094,17 @@ export function useBlueprintArrangementActions({
                 })
               : item,
           )
-          .concat(rightPanel),
+          .concat(rightPanel)
       );
+      if (!allowSceneFloorProposal(proposeFloorChange(components))) return;
+
+      pushHistory(
+        Array.isArray(components)
+          ? components.map((c) => normalizeComponent(c))
+          : [],
+      );
+
+      setComponents(proposeFloorChange);
 
       setSelectedIds([source.id, rightPanelId]);
       setSelectedId(source.id);
@@ -2073,6 +2120,7 @@ export function useBlueprintArrangementActions({
       getSmartHelperSelection3D,
       components,
       pushHistory,
+      allowSceneFloorProposal,
     ],
   );
 
@@ -2241,13 +2289,7 @@ export function useBlueprintArrangementActions({
         locked: false,
       });
 
-      pushHistory(
-        Array.isArray(components)
-          ? components.map((c) => normalizeComponent(c))
-          : [],
-      );
-
-      setComponents((prev) =>
+      const proposeFloorChange = (prev) => (
         prev
           .filter((item) => !extraTargetIds.has(item.id))
           .map((item) =>
@@ -2258,8 +2300,17 @@ export function useBlueprintArrangementActions({
                 })
               : item,
           )
-          .concat(rightFront),
+          .concat(rightFront)
       );
+      if (!allowSceneFloorProposal(proposeFloorChange(components))) return;
+
+      pushHistory(
+        Array.isArray(components)
+          ? components.map((c) => normalizeComponent(c))
+          : [],
+      );
+
+      setComponents(proposeFloorChange);
 
       setSelectedIds([source.id, rightFrontId]);
       setSelectedId(source.id);
@@ -2279,6 +2330,7 @@ export function useBlueprintArrangementActions({
       getSmartHelperSelection3D,
       components,
       pushHistory,
+      allowSceneFloorProposal,
       selectedId,
     ],
   );
@@ -2424,13 +2476,7 @@ export function useBlueprintArrangementActions({
         locked: false,
       });
 
-      pushHistory(
-        Array.isArray(components)
-          ? components.map((c) => normalizeComponent(c))
-          : [],
-      );
-
-      setComponents((prev) =>
+      const proposeFloorChange = (prev) => (
         prev
           .filter((item) => !extraTargetIds.has(item.id))
           .map((item) =>
@@ -2441,8 +2487,17 @@ export function useBlueprintArrangementActions({
                 })
               : item,
           )
-          .concat(rightDoor),
+          .concat(rightDoor)
       );
+      if (!allowSceneFloorProposal(proposeFloorChange(components))) return;
+
+      pushHistory(
+        Array.isArray(components)
+          ? components.map((c) => normalizeComponent(c))
+          : [],
+      );
+
+      setComponents(proposeFloorChange);
 
       setSelectedIds([source.id, rightDoorId]);
       setSelectedId(source.id);
@@ -2462,6 +2517,7 @@ export function useBlueprintArrangementActions({
       getSmartHelperSelection3D,
       components,
       pushHistory,
+      allowSceneFloorProposal,
       selectedId,
     ],
   );
@@ -2642,13 +2698,7 @@ export function useBlueprintArrangementActions({
         }
       }
 
-      pushHistory(
-        Array.isArray(components)
-          ? components.map((c) => normalizeComponent(c))
-          : [],
-      );
-
-      setComponents((prev) =>
+      const proposeFloorChange = (prev) => (
         prev
           .filter((item) => !extraTargetIds.has(item.id))
           .map((item) => {
@@ -2660,8 +2710,17 @@ export function useBlueprintArrangementActions({
                 })
               : item;
           })
-          .concat(createdParts),
+          .concat(createdParts)
       );
+      if (!allowSceneFloorProposal(proposeFloorChange(components))) return;
+
+      pushHistory(
+        Array.isArray(components)
+          ? components.map((c) => normalizeComponent(c))
+          : [],
+      );
+
+      setComponents(proposeFloorChange);
 
       setSelectedIds(resultIds);
       setSelectedId(resultIds[0] || null);
@@ -2681,6 +2740,7 @@ export function useBlueprintArrangementActions({
       getSmartHelperSelection3D,
       components,
       pushHistory,
+      allowSceneFloorProposal,
       selectedId,
     ],
   );
@@ -2823,13 +2883,7 @@ export function useBlueprintArrangementActions({
         locked: false,
       };
 
-      pushHistory(
-        Array.isArray(components)
-          ? components.map((c) => normalizeComponent(c))
-          : [],
-      );
-
-      setComponents((prev) =>
+      const proposeFloorChange = (prev) => (
         prev
           .filter((item) => !extraTargetIds.has(item.id))
           .map((item) =>
@@ -2839,8 +2893,17 @@ export function useBlueprintArrangementActions({
                   ...faceAttrs,
                 })
               : item,
-          ),
+          )
       );
+      if (!allowSceneFloorProposal(proposeFloorChange(components))) return;
+
+      pushHistory(
+        Array.isArray(components)
+          ? components.map((c) => normalizeComponent(c))
+          : [],
+      );
+
+      setComponents(proposeFloorChange);
 
       setSelectedIds([source.id]);
       setSelectedId(source.id);
@@ -2860,6 +2923,7 @@ export function useBlueprintArrangementActions({
       getSmartHelperSelection3D,
       components,
       pushHistory,
+      allowSceneFloorProposal,
       selectedId,
     ],
   );
@@ -2992,6 +3056,7 @@ export function useBlueprintArrangementActions({
         };
       });
 
+      if (!allowBatchFloorEdit(changesById)) return;
       updateManyComps(changesById);
       setTransformMode("translate");
       toast.success(
@@ -3004,6 +3069,7 @@ export function useBlueprintArrangementActions({
       activeSelectedComponents3D,
       getSmartBuilderHostAndTargets3D,
       updateManyComps,
+      allowBatchFloorEdit,
     ],
   );
 
@@ -3060,6 +3126,7 @@ export function useBlueprintArrangementActions({
         changesById[comp.id] = nextAttrs;
       });
 
+      if (!allowBatchFloorEdit(changesById)) return;
       updateManyComps(changesById);
       setTransformMode("translate");
       toast.success(`Aligned ${activeSelectedComponents3D.length} object(s).`);
@@ -3070,6 +3137,7 @@ export function useBlueprintArrangementActions({
       activeSelectedComponents3D,
       getSelectionBoundsXYZ,
       updateManyComps,
+      allowBatchFloorEdit,
     ],
   );
 
@@ -3142,9 +3210,9 @@ export function useBlueprintArrangementActions({
         );
       }
 
-      updateManyComps({
-        [movingComp.id]: nextAttrs,
-      });
+      const flushChangesById = { [movingComp.id]: nextAttrs };
+      if (!allowBatchFloorEdit(flushChangesById)) return;
+      updateManyComps(flushChangesById);
 
       setTransformMode("translate");
       toast.success(`${movingComp.label || "Object"} snapped flush.`);
@@ -3157,6 +3225,7 @@ export function useBlueprintArrangementActions({
       selectedId,
       getSelectionBoundsXYZ,
       updateManyComps,
+      allowBatchFloorEdit,
     ],
   );
 
@@ -3227,6 +3296,8 @@ export function useBlueprintArrangementActions({
         return normalizeComponent(next);
       });
 
+      if (!allowSceneFloorProposal([...components, ...duplicated])) return;
+
       pushHistory(components);
       setComponents((prev) => [...prev, ...duplicated]);
       setSelectedIds(duplicated.map((item) => item.id));
@@ -3243,6 +3314,7 @@ export function useBlueprintArrangementActions({
       getSelectionBoundsXYZ,
       components,
       pushHistory,
+      allowSceneFloorProposal,
     ],
   );
 

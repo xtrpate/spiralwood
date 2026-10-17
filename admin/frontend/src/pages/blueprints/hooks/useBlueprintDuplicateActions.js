@@ -5,6 +5,7 @@ import { getSelectionGroup, normalizeComponent } from "../data/componentUtils";
 import { makeGroupId, snap } from "../data/utils";
 import { createObjectId, deepClone } from "../data/editorUtils";
 import { getSelectionBoundsXYZ } from "../data/selectionUtils";
+import { validateBlueprintCabinetRebuild } from "../data/floorWorkspaceA3B2A.mjs";
 
 // WISDOM UNIVERSAL PART MACHINING DUPLICATE SAFETY V2.0.1
 const makeDuplicateMachiningId = (prefix) =>
@@ -37,8 +38,24 @@ export function useBlueprintDuplicateActions({
   editorMode,
   isLocked,
   pushHistory,
+  worldWidth,
+  worldDepth,
+  worldHeight,
+  floorOffset = 40,
   gridSize = 20,
 }) {
+  const allowDuplicateFloor = useCallback((duplicated) => {
+    const result = validateBlueprintCabinetRebuild({
+      before: components,
+      after: [...components, ...duplicated],
+      worldWidth,
+      worldDepth,
+      floorComponentY: worldHeight - floorOffset,
+    });
+    if (!result.ok) toast.error(result.error || "Duplicate would leave the Blueprint floor.");
+    return result.ok;
+  }, [components, worldWidth, worldDepth, worldHeight, floorOffset]);
+
   const getAssemblyItemsFromComponent = useCallback(
     (compOrId) => {
       const comp =
@@ -396,6 +413,8 @@ export function useBlueprintDuplicateActions({
       offsetZ: 120,
     });
 
+    if (!allowDuplicateFloor(duplicated)) return;
+
     pushHistory(components);
     setComponents((prev) => [...prev, ...duplicated]);
     setSelectedIds(duplicated.map((item) => item.id));
@@ -410,6 +429,7 @@ export function useBlueprintDuplicateActions({
     pushHistory,
     getGroupAwareSelectionIds,
     cloneSelectionWithOffsets,
+    allowDuplicateFloor,
     setComponents,
     setEdit3DId,
     setSelectedId,
@@ -463,6 +483,8 @@ export function useBlueprintDuplicateActions({
         offsetZ: axis === "z" ? step : 0,
       });
 
+      if (!allowDuplicateFloor(duplicated)) return;
+
       pushHistory(components);
       setComponents((prev) => [...prev, ...duplicated]);
       setSelectedIds(duplicated.map((item) => item.id));
@@ -481,6 +503,7 @@ export function useBlueprintDuplicateActions({
       pushHistory,
       getGroupAwareSelectionIds,
       cloneSelectionWithOffsets,
+      allowDuplicateFloor,
       gridSize,
       setComponents,
       setEdit3DId,
@@ -523,6 +546,8 @@ export function useBlueprintDuplicateActions({
       offsetZ: 120,
     });
 
+    if (!allowDuplicateFloor(duplicated)) return;
+
     pushHistory(components);
     setComponents((prev) => [...prev, ...duplicated]);
     setSelectedIds(duplicated.map((item) => item.id));
@@ -541,6 +566,7 @@ export function useBlueprintDuplicateActions({
     pushHistory,
     getGroupAwareSelectionIds,
     cloneSelectionWithOffsets,
+    allowDuplicateFloor,
     setComponents,
     setEdit3DId,
     setSelectedId,

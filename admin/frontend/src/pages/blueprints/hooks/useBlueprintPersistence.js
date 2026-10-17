@@ -2,6 +2,7 @@ import { useCallback, useRef } from "react";
 import toast from "react-hot-toast";
 import api from "../../../services/api";
 import { sanitizeImportDimensions } from "../data/blueprintCompatibilityUtils";
+import { validateBlueprintSaveA4 } from "../data/floorSaveGuardA4.mjs";
 import { normalizeComponent, getComponentsBounds3D } from "../data/componentUtils";
 import { snap } from "../data/utils";
 import {
@@ -92,6 +93,27 @@ export function useBlueprintPersistence({
       const normalizedComponents = Array.isArray(components)
         ? components.map((component) => normalizeComponent(component))
         : [];
+
+      // A4: last-chance floor preflight and reviewed-construction preservation.
+      // Check the exact serialized parts, not the blue grid or preview objects.
+      // Normalizing both versions avoids treating old missing defaults as edits.
+      const normalizedSavedDesignData = {
+        ...savedDesignData,
+        components: Array.isArray(savedDesignData?.components)
+          ? savedDesignData.components.map((part) => normalizeComponent(part))
+          : [],
+      };
+      const savePreflight = validateBlueprintSaveA4({
+        savedDesignData: normalizedSavedDesignData,
+        nextComponents: normalizedComponents,
+        worldSize,
+        floorOffset: 40,
+        stagedManualReviewU4,
+      });
+      if (!savePreflight.ok) {
+        toast.error(savePreflight.error, { duration: 7000 });
+        return { ok: false, reason: savePreflight.code };
+      }
 
       const cleanedSavedDesignData = { ...savedDesignData };
       [
