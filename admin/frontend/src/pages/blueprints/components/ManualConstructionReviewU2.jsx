@@ -96,6 +96,17 @@ export function ManualConstructionReviewU2({components = [], onShowPreview = nul
           </div>
           <div style={{marginTop:14,padding:10,border:'1px solid #334155',borderRadius:3}}>
             <div style={heading}>2. Check each furniture part</div>
+            <label style={{display:'flex',alignItems:'center',gap:8,fontSize:12,color:'#f8fafc',marginBottom:10,cursor:'pointer'}}>
+              <input type="checkbox" aria-label="Check all furniture parts"
+                checked={total > 0 && proposal.parts.every(p=>confirmed.includes(String(p.id)))}
+                onChange={e=>{
+                  setConfirmed(e.target.checked ? proposal.parts.map(p=>String(p.id)) : []);
+                  setResult(null);
+                  setPreviewError(null);
+                  onInvalidateReviewed?.();
+                }} />
+              Check all furniture parts
+            </label>
             <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'start'}}>
               <div style={{width:250,maxHeight:280,overflowY:'auto',display:'grid',gap:4}}>
                 {proposal.parts.map(p=>{const id=String(p.id);return <button key={id} type="button" onClick={()=>setSelected(id)} style={{...action,textAlign:'left',background:id===selected?'#1d4ed8':'#1e293b',padding:8}}>
